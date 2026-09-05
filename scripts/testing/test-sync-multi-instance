@@ -27,10 +27,10 @@ SECRET=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
 PORT=$(( 9200 + RANDOM % 300 ))
 pass=0; fail=0
 
-# No pkill. This used to `pkill -9 -f Matter.router`, which kills every relay in the container
-# including one a developer is running by hand in tmux to poke at `/m`. The problem it was for --
-# a leftover relay answering on the port we wanted with a secret we had forgotten -- is what the
-# random port above solves, and this gate traps its own $RPID on the way out. Check the port instead.
+# No pkill: `pkill -f Matter.router` would take out every relay in the container, including one a
+# developer is running by hand in tmux to poke at `/m`. The problem that would be for -- a leftover relay
+# on the port we wanted, with a secret we had forgotten -- is what the random port above solves, and this
+# gate traps its own $RPID on the way out. So check the port instead.
 if command -v ss > /dev/null && ss -ltn 2>/dev/null | grep -q ":$PORT "; then
   echo "port $PORT is already in use; re-run (the port is random per run)" >&2
   exit 2
@@ -145,12 +145,12 @@ echo "== a review queue stages work inert until it is approved"
 # already applied these ops can never stage them afterwards.
 
 # FIRST, from a COLD cursor, which is a coworker's day one. An op pushed now sits past the first PAGE of
-# a cursor at zero, because the shipped baseline alone is seven pages. `review pull` used to ask for one
-# page and stop, so it staged nothing and answered "Nothing new to stage" -- indistinguishable from being
-# up to date, while a plain `dark pull` would then apply the same ops without review.
+# a cursor at zero, because the shipped baseline alone is seven pages. A `review pull` that asks for one
+# page and stops stages nothing and answers "Nothing new to stage" -- indistinguishable from being up to
+# date, while a plain `dark pull` then applies the same ops without review.
 #
-# This block used to be ordered the other way round, with `x D pull` first, which drained every page and
-# left the next op on page 1. That hid the bug: the gate was passing because it had worked around it.
+# The COLD case has to come first. Draining the pages with `x D pull` beforehand leaves the next op on
+# page 1, which is the shape that passes either way.
 x A switch main > /dev/null
 x A fn /SM.T.coldstaged '() : Int64 = 66L' > /dev/null
 x A commit "cold review" -y > /dev/null
@@ -198,10 +198,10 @@ for n in 1 2 3 4; do [[ "$(x C eval "SM.Agents.a$n ()" | tail -1)" == "${n}0" ]]
 if $allok; then ok "and another instance received all four"; else bad "another instance received all four" "see above"; fi
 
 echo "== a branch EDITED several times, and what the other instance sees"
-# One version per name is the easy case, and it was the only one covered. Three is where a branch
-# overlay can disagree with itself: the name is bound three times, and anything that folds those ops by
-# hash rather than by what the name currently binds picks an arbitrary one. `view` did exactly that and
-# showed a different version than `eval` ran.
+# One version per name is the easy case. THREE is where a branch overlay can disagree with itself: the
+# name is bound three times, and anything that folds those ops by hash rather than by what the name
+# currently binds picks an arbitrary one -- which is how `view` comes to show a different version than
+# `eval` runs.
 x A branch create edited > /dev/null
 for v in 1 2 3; do
   x A --branch edited fn /SM.T.edited "() : Int64 = ${v}0L" > /dev/null

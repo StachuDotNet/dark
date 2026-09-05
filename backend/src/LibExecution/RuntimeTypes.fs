@@ -16,7 +16,6 @@ type HashSet<'a> = System.Collections.Generic.HashSet<'a>
 type Stack<'a> = System.Collections.Generic.Stack<'a>
 
 
-
 /// Structural hash of a package item's content (shape, not name/location).
 type Hash =
   | Hash of string
@@ -2257,16 +2256,14 @@ type PackageManager =
     /// invariant), so a second insert is a cheap no-op.
     persistBlob : string -> byte[] -> Ply<unit>
 
-    /// Is this package fn hash marked Harmful?
-    /// Content-addressed like the other PM lookups: a deprecation is keyed on
-    /// the hash, so there is no branch to take -- deprecation state does not flow through branches.
-    /// Only fns participate — see DeprecationKind.Harmful for why.
-    /// Synchronous: every implementation computes this without I/O (the DB-backed one reads a cache), so
-    /// returning `Ply<bool>` would cost a computation-expression bind on every package call.
+    /// Is this package fn hash marked Harmful? Only fns participate -- see
+    /// `DeprecationKind.Harmful` for why.
     ///
-    /// No branch either: a deprecation is keyed on the content hash, and content is the same thing on
-    /// every branch. Both halves of that are worth keeping -- upstream made it synchronous, this branch
-    /// dropped the branch id, and they are independent wins.
+    /// No branch, because a deprecation keys on the CONTENT hash and content is the same thing on
+    /// every branch. Content-addressed like the other PM lookups.
+    ///
+    /// Synchronous: every implementation computes this without I/O (the DB-backed one reads a cache),
+    /// so returning `Ply<bool>` would cost a computation-expression bind on every package call.
     isHarmful : FQFnName.Package -> bool
 
     init : Ply<unit>
@@ -2679,6 +2676,12 @@ module InterpreterStatsSink =
     if retained < maxRetained then
       retained <- retained + 1
       all.Add s
+
+
+/// Lightweight interpreter performance counters.
+/// Incremented during execution, read/reset via builtins.
+/// Per-builtin timing uses a dictionary keyed by name; overhead is ~1 Stopwatch
+/// call per builtin invocation, only when detailedTiming is true.
 type InterpreterStats =
   {
     /// When false, all counting is skipped (zero overhead in hot loop)

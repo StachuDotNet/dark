@@ -157,9 +157,6 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | Ok l -> executeList state l
     | Error _ -> executeList state 20L
   | [ "show", id ] -> executeShow state id
-  | [ "help" ] ->
-    Stdlib.printLine (help state)
-    state
   | verb :: _ ->
     match movedFromOps verb with
     | Some target ->
@@ -173,7 +170,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
         state
 
 let complete
-  (state: AppState)
-  (args: List<String>)
+  (_state: AppState)
+  (_args: List<String>)
   : List<Completion.CompletionItem> =
   []

@@ -123,13 +123,16 @@ let execute (state: AppState) (args: List<String>) : AppState =
   let detailed = Stdlib.List.member args "--detailed"
   let args = args |> Stdlib.List.filter (fun a -> a != "--detailed")
 
-  // The count, parsed ONCE, for every shape. `--json` and `--detailed` used to default a junk argument
-  // to 20 and answer as though nothing had been asked; the pretty path refuses it, so they do too.
+  // Parsed ONCE, before the shapes split, so `--json` and `--detailed` refuse a junk argument the same
+  // way the pretty path does rather than defaulting it to 20 and answering as though nothing was asked.
   let limit =
     match args with
     | [ n ] -> Stdlib.Int64.parse n |> Stdlib.Result.toOption
     | _ -> Stdlib.Option.Option.Some 20L
 
+  // A branch name is the thing people put here, because `dark log <branch>` takes one. Answering with
+  // the help would let the command answer plausibly rather than refuse, which is the failure shape that
+  // made `dark branch rename` create a branch called "rename".
   match (args, limit) with
   | ([ n ], None) ->
     printErr $"`dark commits` takes a count, not a branch name."
@@ -148,21 +151,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
   else
 
   match args with
-  | [] -> executeList state 20L
-  | [ "help" ] ->
-    Stdlib.printLine (help state)
-    state
-  | [ n ] ->
-    match Stdlib.Int64.parse n with
-    | Ok l -> executeList state l
-    | Error _ ->
-      // A branch name is the thing people put here, because `dark log <branch>` takes one. Printing
-      // the help instead let the command answer plausibly rather than refuse, which is the failure
-      // shape that made `dark branch rename` create a branch called "rename".
-      printErr $"`dark commits` takes a count, not a branch name."
-      printHint "  this branch's commits:  dark commits"
-      printHint $"  that branch's history:  dark log {n}"
-      state
+  // `limit` above already parsed the count and refused anything that isn't one, so both shapes here are
+  // the same call.
+  | [] -> executeList state limit
+  | [ _n ] -> executeList state limit
   | _ ->
     printErr "`dark commits` takes at most a count."
     Stdlib.printLine (help state)
@@ -217,8 +209,7 @@ let helpShow (_state: AppState) : String =
 /// you'd resolve by typing more of it.
 let executeShow (state: AppState) (args: List<String>) : AppState =
   match args with
-  | []
-  | [ "help" ] ->
+  | [] ->
     Stdlib.printLine (helpShow state)
     state
   | [ prefix ] ->
@@ -250,8 +241,10 @@ let executeShow (state: AppState) (args: List<String>) : AppState =
     Stdlib.printLine (helpShow state)
     state
 
+/// Shared by `commits` and `show`, whose arguments are a count and a hash. Neither is worth offering:
+/// a count has no candidates, and a hash prefix is what `dark commits` just printed.
 let complete
-  (state: AppState)
-  (args: List<String>)
+  (_state: AppState)
+  (_args: List<String>)
   : List<Completion.CompletionItem> =
   []

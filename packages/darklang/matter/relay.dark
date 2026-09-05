@@ -11,7 +11,7 @@ module Darklang.Matter.Relay
 type HttpResponse = Stdlib.Http.Response
 type HttpRequest = Stdlib.Http.Request
 
-let pingHandlerFn (req: HttpRequest) : HttpResponse =
+let pingHandlerFn (_req: HttpRequest) : HttpResponse =
   Stdlib.Http.responseWithText "pong" 200
 
 
@@ -21,9 +21,9 @@ let pingHandlerFn (req: HttpRequest) : HttpResponse =
 /// Deliberately not the client's `max(origin_ts)`: a stamp cursor assumes ops arrive in stamp order, and
 /// concurrent editing on two machines then skips exactly the interesting ops, silently and forever.
 let pullHandlerFn (req: HttpRequest) : HttpResponse =
-  // A cursor that is not a number is REFUSED, not read as zero. Reading it as zero answered 200 with
-  // the whole log and a `cursor` of 0, so a client whose stored cursor had gone bad re-pulled everything
-  // and was told it had synced incrementally. Wrong quietly beats wrong loudly here.
+  // A cursor that is not a number is REFUSED, not read as zero. Read as zero it would answer 200 with the
+  // whole log and a `cursor` of 0, telling a client whose stored cursor had gone bad that it had synced
+  // incrementally. Failing loudly is the only version of this a client can act on.
   let parsed =
     match Stdlib.Http.Request.queryParam req "sinceSeq" with
     | Some raw ->
@@ -54,7 +54,7 @@ let pullHandlerFn (req: HttpRequest) : HttpResponse =
 
 /// Cheap "what do you hold?" summary (op count + cursor) -- no full-log transfer. Powers
 /// `dark sync status <url>`.
-let headHandlerFn (req: HttpRequest) : HttpResponse =
+let headHandlerFn (_req: HttpRequest) : HttpResponse =
   Stdlib.Http.responseWithJson (SCM.Wire.headEncode (SCM.Wire.localHead ())) 200
 
 
@@ -79,13 +79,10 @@ let writeAllowed (req: HttpRequest) : Stdlib.Result.Result<Unit, String> =
     Stdlib.Result.Result.Error
       "this relay has an empty write secret, so it accepts no writes. Set DARK_MATTER_WRITE_SECRET where it runs."
   | Some expected ->
-    // Split the scheme off at the FIRST space and compare it case-INSENSITIVELY, as RFC 7235 says an
-    // auth scheme is. Two bugs lived in the `replaceAll h "Bearer " ""` this replaces:
-    //
-    //   - it stripped EVERY occurrence, anywhere, so a secret that happened to contain "Bearer " could
-    //     never authenticate. Nothing said so; the relay just called the secret wrong.
-    //   - it only matched the exact casing `Bearer`, so `bearer <secret>` was refused with "that write
-    //     secret isn't the one this relay expects" while the secret was perfectly correct.
+    // Split the scheme off at the FIRST space and compare it case-INSENSITIVELY, as RFC 7235 says an auth
+    // scheme is. Both halves matter: a secret is allowed to contain the word "Bearer", so stripping the
+    // scheme wherever it appears would lock out a perfectly good secret, and `bearer <secret>` is as
+    // valid as `Bearer <secret>`.
     //
     // A credential with no scheme is taken as-is, which is what a hand-written `curl -H "Authorization:
     // <secret>"` sends.
@@ -129,8 +126,8 @@ let pushHandlerFn (req: HttpRequest) : HttpResponse =
     Stdlib.Http.Request.queryParam req "owner" |> Stdlib.Option.withDefault ""
 
   // Refused, the way `/branch/push` refuses the same shape. Ops stored under owner "" are invisible to
-  // every `?owner=` pull, forever, and nothing anywhere says so: a client that forgot the parameter got
-  // a 200 and a relay that had quietly dropped its work on the floor.
+  // every `?owner=` pull, forever, so accepting them would answer 200 to a client whose work the relay
+  // has just dropped on the floor.
   if owner == "" then
     Stdlib.Http.badRequest "push needs ?owner="
   else

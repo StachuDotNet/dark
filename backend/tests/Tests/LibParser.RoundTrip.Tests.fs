@@ -282,7 +282,7 @@ let t
       : Task<RT.Dval * List<PT.PackageOp> * string> =
       task {
         let! parseExeState = executionStateFor basePM false Map.empty
-        // branch: main, named rather than inherited from the process
+        // The branch to resolve names against: main, named rather than taken from the process.
         let args = NEList.ofList (RT.DUuid PT.BranchId.Main.Guid) [ RT.DString src ]
         let! parseResult =
           LibExecution.Execution.executeFunction parseExeState parseFnName [] args
@@ -303,7 +303,6 @@ let t
           let enhancedPM = LibDB.PackageManager.withExtraOps basePM packageOps
           let! ppExeState = executionStateFor enhancedPM false Map.empty
 
-          // main's width argument, and this branch's typed branch id.
           let ppArgs =
             NEList.ofList
               (RT.DUuid PT.BranchId.Main.Guid)
@@ -496,7 +495,7 @@ let parseForCliDval (input : string) =
     let! parseExeState = executionStateFor pmPT false Map.empty
     let args =
       NEList.ofList
-        // The branch to resolve names against. "" meant main two spellings ago; main has a real id now.
+        // The branch to resolve names against.
         (RT.DUuid PT.BranchId.Main.Guid)
         [ RT.DString "Tests"
           RT.DString "test"

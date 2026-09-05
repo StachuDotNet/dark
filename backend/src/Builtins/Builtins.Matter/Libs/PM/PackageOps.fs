@@ -124,19 +124,17 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-
-
     { name = fn "scmAddOps" 0
       typeParams = []
       parameters =
         [ Param.make
             "branchId"
             TUuid
-            "the branch these ops land on; \"\" is main. Passed rather than ambient so a caller can author onto a branch it isn't sitting on -- which is what sync does"
+            "the branch these ops land on (main is `SCM.Ids.mainBranchId`). Passed rather than ambient so a caller can author onto a branch it isn't sitting on -- which is what sync does"
           Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
       returnType = TypeReference.result TInt TString
       description =
-        "Add package ops to <branchId> (\"\" = main), uncommitted. Returns the "
+        "Add package ops to <param branchId>, uncommitted. Returns the "
         + "number inserted; duplicates are skipped, since an op's id is its content."
       fn =
         let resultOk = Dval.resultOk KTInt KTString
@@ -154,9 +152,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               // `package_values` (keyed by AddValue) and `locations` (keyed by SetName) disagree and the
               // value cannot be found.
               if not branchId.IsMain then
-                // Refuse, rather than write: `createBranch` here used to REVIVE a merged or archived
-                // branch, so a workbench still holding the id after a merge in another shell put its next
-                // edit on a branch nothing would ever merge again.
+                // Refuse, rather than write: a merged or archived branch must not be REVIVED by an
+                // edit landing on it. A workbench still holding the id after a merge in another shell
+                // would otherwise put its next edit on a branch nothing will ever merge again.
                 match! LibDB.Branches.isFinished branchId with
                 | true ->
                   return
@@ -276,7 +274,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           Param.make
             "parentId"
             TUuid
-            "the branch id to parent a NEW branch to (\"main\" at top level)" ]
+            "the branch id to parent a NEW branch to; `SCM.Ids.mainBranchId` at top level" ]
       returnType = TTuple(TUuid, TBool, [])
       description =
         "Resolves a branch name to its id, creating the branch if the name has no "
@@ -296,17 +294,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // The name to SHOW for a branch id. Falls back to the id, which is all an imported branch that
-    // arrived as tagged ops with no registry row of its own has to show.
-    // The id a person means when they type <name> at a branch verb: the most recent branch still listed
-    // under it, merged or not. Never creates -- unlike `scmResolveBranch`, this backs the paths that
-    // should refuse rather than quietly start something.
-    //
-    // Merged branches are INCLUDED on purpose. `dark branches` lists them, so `dark diff <that name>` has
-    // to find them; refusing a name you just read off the listing is the worst of both answers.
-    // Whether a branch's work is already in its parent. `merge` asks before doing anything, because
-    // merging an already-merged branch flips nothing and reports "Merged 0 op(s)", which reads like a
-    // failure of the merge rather than an answer to a question you already had.
     // Change which branch THIS process is on, without restarting it.
     //
     // Boot (`--branch`, or `current_branch`) covers the one-shot case, but it can't be the only way in:
@@ -314,8 +301,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // that name resolution and authoring actually read. Writing the config key alone would leave the
     // display saying one thing and the behaviour doing another.
     //
-    //. Returns the branch it ended up on, so a caller reports what happened rather than what it
-    // asked for.
+    // Returns the branch it ended up on, so a caller reports what happened rather than what it asked for.
     { name = fn "scmSelectBranch" 0
       typeParams = []
       parameters =
@@ -677,7 +663,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         | _, _, _, [| DUuid branchIdGuid |] ->
           uply {
             let branchId = PT.BranchId.Id branchIdGuid
-            // The event's id, so the Dark caller can COMMIT it. Left uncommitted it sat in main's
+            // The event's id, so the Dark caller can COMMIT it. Left uncommitted it sits in main's
             // draft, where `status` (which counts bindings) reads clean and the next unrelated commit
             // sweeps it up under a message about something else.
             let! eventId = recordBranchEvent branchId PT.Archived

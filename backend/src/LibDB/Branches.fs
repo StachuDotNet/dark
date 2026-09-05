@@ -1,3 +1,9 @@
+/// The branch STORE. A branch is a stable id, a name alias, and a FRONTIER of ops.
+///
+/// Ops live in the shared content-addressed `package_ops`; a branch's own are inserted
+/// effective=0 (in the log, not folded into main) and tagged in `op_branches`. Its overlay PM is
+/// `withExtraOps corePM (loadDeltaOps branchId)`. Merging up flips those ops effective=1 and folds
+/// them, reusing the same gate.
 module LibDB.Branches
 
 open System.Threading.Tasks
@@ -13,21 +19,16 @@ module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 module Hashing = LibSerialization.Hashing.Hashing
 
-/// The branch STORE. A branch is a stable id, a name alias, and a FRONTIER of ops.
-///
-/// Ops live in the shared content-addressed `package_ops`; a branch's own are inserted
-/// effective=0 (in the log, not folded into main) and tagged in `op_branches`. Its overlay PM is
-/// `withExtraOps corePM (loadDeltaOps branchId)`. Merging up flips those ops effective=1 and folds
-/// them, reusing the same gate.
 /// The content-addressed row id for an op. One definition, shared with authoring and
 /// the fold, so a branch tags the same op id those two mint.
 let private opRowId (op : PT.PackageOp) : System.Guid = Hashing.computeOpRowId op
 
-/// Create a branch off `parentId` ("main" for a top-level branch). The fork point is tracked PER
+/// Create a branch off `parentId` (main for a top-level branch). The fork point is tracked PER
 /// NAME (branch_name_bases, recorded on authoring), not a whole-branch watermark, so there's no
 /// base column here. Idempotent on id.
-// TODO(ephemeral-branch-GC): abandoned agent branches are cleaned up only by EXPLICIT archive
-// (decided: no TTL/auto-archive for now). Revisit if short-lived agent branches pile up.
+///
+/// Branches are reclaimed only by an EXPLICIT archive. There is no TTL and no auto-archive, so an
+/// abandoned agent branch stays live until someone says otherwise.
 let createBranch
   (id : PT.BranchId)
   (name : string)
@@ -119,9 +120,9 @@ let isLive (branchId : PT.BranchId) : Task<bool> =
 /// so the prefix is the form most likely to be pasted. Mirrors `Cli.Branch.lookupRef`, which the
 /// branch verbs go through.
 ///
-/// A miss says WHY, because only one kind of miss should create a branch. `None` used to stand for
-/// four different things, and the caller created a branch named after a peer's uuid or an ambiguous
-/// prefix, silently.
+/// A miss says WHY, because only one kind of miss should create a branch. A bare `None` would stand
+/// for four different things at once, and the caller would silently start a branch named after a
+/// peer's uuid, or after an ambiguous prefix.
 type RefLookup =
   | Found of PT.BranchId
   /// A full id, and no branch here has it: a peer's, or a mispaste.
@@ -418,7 +419,7 @@ let storeDeltaBlobsStamped
 let storeDeltaOps (branchId : PT.BranchId) (ops : List<PT.PackageOp>) : Task<int64> =
   storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, OriginTs.next ())))
 
-/// <fn storeDeltaOps> for ops with a known provenance: 'propagation' or 'resolution'.
+/// `storeDeltaOps` for ops with a known provenance: 'propagation' or 'resolution'.
 let storeDeltaOpsFrom
   (source : string)
   (branchId : PT.BranchId)
@@ -460,9 +461,10 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
          JOIN op_branches ob ON ob.op_id = p.id
          WHERE ob.branch_id IN (SELECT bid FROM chain)
          ORDER BY p.origin_ts, p.rowid"
-      // `@mainId`, not the literal 'main': `parent_id` holds main's UUID, so the string comparison this
-      // replaces was true for every row and the walk only terminated because main has no `branches` row.
-      // The same drift `Branching.BranchId` exists to stop, in SQL, where no type checker reads it.
+      // `@mainId`, never the literal 'main': `parent_id` holds main's UUID, so comparing against the
+      // NAME is true of every row, and the walk then terminates only because main has no `branches`
+      // row. The same drift `Branching.BranchId` exists to stop, in SQL, where no type checker reads
+      // it.
       |> Sql.parameters
         [ "start", Sql.string (string branchId)
           "mainId", Sql.string (string PT.BranchId.Main) ]
@@ -485,7 +487,6 @@ let undeferBranchEvents () : Task<unit> =
   |> Sql.executeStatementAsync
 
 
-/// A branch's registered parent id ('main' if none recorded / unknown).
 /// <param branchId> and its ancestors, nearest first, ending at main.
 ///
 /// The order IS the precedence: everything scoped to a branch chain resolves most-specific-first, so
@@ -518,6 +519,7 @@ let branchChain (branchId : PT.BranchId) : Task<List<PT.BranchId>> =
     return ids @ [ PT.BranchId.Main ]
   }
 
+/// A branch's registered parent id; main when none is recorded, or the branch is unknown here.
 let parentOf (branchId : PT.BranchId) : Task<PT.BranchId> =
   task {
     let! p =
@@ -560,9 +562,9 @@ let parentNameHashes (parentId : PT.BranchId) : Task<Map<NameKey, string>> =
             match op with
             | PT.PackageOp.SetName(loc, target, _)
             // An Override BINDS, the same as a SetName: it is what a `resolve mine` writes, and
-            // `rebindKeys` and the overlay both count it. Missing it here meant a child of a branch
-            // that had settled a conflict recorded the PRE-override hash as the state it forked from,
-            // so the name read as diverged the moment anyone touched it.
+            // `rebindKeys` and the overlay both count it. Skipped here, a child of a branch that had
+            // settled a conflict would record the PRE-override hash as the state it forked from, and
+            // the name would read as diverged the moment anyone touched it.
             | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) ->
               let (Hash h) = target.hash
               Map.add (loc.owner, String.concat "." loc.modules, loc.name) h m

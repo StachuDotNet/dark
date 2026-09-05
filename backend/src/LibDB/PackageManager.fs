@@ -162,11 +162,11 @@ let createInMemoryOver
     | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) -> bind loc target
 
   // Items are keyed by the hash the item CARRIES, which after stabilization is the hash its SetName
-  // names. Pairing "the Add before this SetName" was wrong for an overlay: chain ops are ordered by
-  // origin_ts ACROSS authors, so after a bundle import the Add before your SetName can be somebody
-  // else's, and your name resolved to their body. Adjacency survives only as the fallback for an
-  // item with no hash yet (pre-stabilization input: the Wasm REPL's raw pass, parser tests), and only
-  // for a SetName no stamped item answers.
+  // names. Pairing by ADJACENCY -- "the Add just before this SetName" -- is wrong for an overlay:
+  // chain ops are ordered by origin_ts ACROSS authors, so after a bundle import the Add before your
+  // SetName can be somebody else's, and your name would resolve to their body. Adjacency survives
+  // only as the fallback for an item with no hash yet (pre-stabilization input: the Wasm REPL's raw
+  // pass, parser tests), and only for a SetName no stamped item answers.
   let pairItems
     (isAdd : PT.PackageOp -> Option<'item>)
     (hashOf : 'item -> Hash)
@@ -285,9 +285,9 @@ let createInMemoryOver
           | _, PT.Search.SearchDepth.AllDescendants -> fm = cm || isPrefix cm fm
         // Match the QUALIFIED path as well as the bare name. Main's SQL tests the query against
         // `owner`, `modules` and `owner || '.' || modules`, so `search Probe.Ctx` finds what lives
-        // under it. Matching only the bare name here meant the overlay answered that query with
-        // nothing while main answered it with main's items, so a branch's own work was invisible to
-        // exactly the search someone types to find it.
+        // under it. On the bare name alone the overlay answers such a query with nothing while main
+        // answers it with main's items, which makes a branch's own work invisible to exactly the
+        // search someone types to find it.
         let qualified (loc : PT.PackageLocation) =
           String.concat "." (fullModule loc @ [ loc.name ])
         let nameMatches (loc : PT.PackageLocation) =
@@ -303,11 +303,10 @@ let createInMemoryOver
           moduleMatches loc && nameMatches loc
         // One entry per LOCATION, bound to what that location currently binds -- never one per hash.
         //
-        // Enumerating the hash map instead returned every version a branch had ever bound, in HASH
-        // order, and callers take the head: `dark view` on a branch showed whichever version happened
-        // to have the lowest hash. Two versions in, that was right by luck; three versions in, it
-        // showed the second-newest while `eval`, `diff` and `log` all ran the newest. Reading one
-        // thing and running another is the worst shape that bug could take.
+        // Enumerating the hash map instead yields every version a branch has ever bound, in HASH
+        // order, and callers take the head: `dark view` on a branch would show whichever version
+        // happens to hash lowest, while `eval`, `diff` and `log` all run the newest. Reading one
+        // thing and running another is the worst shape that mistake can take.
         //
         // Going through the location maps is also what makes search agree with `findFn` BY
         // CONSTRUCTION rather than by two pieces of code happening to fold the same ops the same way,

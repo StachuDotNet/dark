@@ -25,15 +25,33 @@ FIXTURE=scripts/testing/fixtures/hostile-relay.py
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
+# Every mode answers /ping before it consults the mode, including the one whose whole job is never
+# answering, so this is the readiness check for all of them. A fixture that failed to bind otherwise looks
+# exactly like a client that found nothing wrong: the assertions below are "did NOT crash" and "recorded
+# nothing", and both pass against a port with no server on it.
+wait_for_relay() {  # wait_for_relay <port>
+  local port="$1"
+  for _ in $(seq 1 30); do
+    [[ "$(curl -s --max-time 2 "http://localhost:$port/ping" 2>/dev/null)" == "pong" ]] && return 0
+    sleep 1
+  done
+  echo "the hostile relay never came up on $port" >&2
+  exit 2
+}
+
+start_relay() {  # start_relay <port>
+  python3 "$FIXTURE" "$1" >/dev/null 2>&1 &
+  wait_for_relay "$1"
+}
+
 rm -rf "$WORK"; mkdir -p "$WORK"
 
 MODES=(9081 9082 9084 9085)
 EXTRA_MODES=(9087)
-for m in "${MODES[@]}" "${EXTRA_MODES[@]}"; do
-  python3 "$FIXTURE" "$m" >/dev/null 2>&1 &
-done
 trap 'pkill -f "$FIXTURE" 2>/dev/null || true' EXIT
-sleep 2
+for m in "${MODES[@]}" "${EXTRA_MODES[@]}"; do
+  start_relay "$m"
+done
 
 client() {  # client <name> -> echoes its rundir
   local name="$1"
@@ -95,8 +113,7 @@ echo "  ok   a cursor past ops this store lost rewinds instead of pulling zero f
 # 5. A relay that restarts under a pull. Page 1 lands; page 2's connection drops. The client must not
 #    record the relay's position off that pull (it would skip the un-pulled ops for good), and the next
 #    pull must pick up where the last page landed.
-python3 "$FIXTURE" 9088 >/dev/null 2>&1 &
-sleep 1
+start_relay 9088
 dir=$(client "crestart")
 out=$(timeout 120 env DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" pull "http://localhost:9088" 2>&1 | clean_output || true)
 grep -q "a page didn't land" <<<"$out" \
@@ -110,8 +127,7 @@ echo "  ok   a relay that dies mid-pull: position not recorded, and the next pul
 
 # 6. A peer that upgraded before you did. The refusal has to name BOTH versions, the one the bundle
 #    claims and the one this build speaks, or the person cannot tell which side to upgrade.
-python3 "$FIXTURE" 9089 >/dev/null 2>&1 &
-sleep 1
+start_relay 9089
 dir=$(client "cfuture")
 out=$(timeout 120 env DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" pull "http://localhost:9089" 2>&1 | clean_output || true)
 grep -q "sync format v99 not understood by this build, which speaks v" <<<"$out" \
@@ -127,8 +143,7 @@ echo "  ok   a peer on a newer wire format is refused, naming both versions"
 #    briefly read that as a hang, which it is not. One request proves the timeout works and costs a
 #    quarter as much, and a gate that takes two minutes to say something it could say in thirty seconds
 #    is a gate people start skipping.
-python3 "$FIXTURE" 9086 >/dev/null 2>&1 &
-sleep 1
+start_relay 9086
 dir=$(client "chang")
 start=$(date +%s)
 out=$(timeout 120 env DARK_CONFIG_RUNDIR="$dir" "$PWD/$CLI" sync status "http://localhost:9086" 2>&1 | clean_output || true)

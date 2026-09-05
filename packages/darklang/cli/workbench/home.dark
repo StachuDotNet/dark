@@ -20,8 +20,8 @@ let homeHeader (label: String) : BodyItem =
   BodyItem { name = label; kind = "home-sec"; isModule = false; desc = "" }
 
 /// The same, for a stamp stored as text. A commit's `origin_ts` is a portable authoring stamp rather than
-/// a clock reading, so it arrives as a string; showing it raw put an ISO timestamp in the middle of a
-/// sentence on the landing screen.
+/// a clock reading, so it arrives as a string; raw, it puts an ISO timestamp in the middle of a
+/// sentence.
 let agoText (ts: String) : String =
   match Stdlib.DateTime.parse ts with
   | Ok d -> ago d
@@ -201,10 +201,8 @@ let field (label: String) (value: String) : String =
 
 /// Summarize a commit's named changes and deprecations up to `cap` lines.
 let commitChangeLines (c: SCM.Commits.Commit) (cap: Int) : List<String> =
-  // Capped: the init commit holds tens of thousands of ops, and rendering a twelve-line
-  // summary through the uncapped path took over a second. `namedCount` below is the total.
-  // `c.hash` is already a String; converting it was a runtime type error, and this is the first thing
-  // the home screen renders on a store with commits and nothing needing you, so the workbench died on open.
+  // Capped: the init commit holds tens of thousands of ops, and rendering a twelve-line summary through
+  // the uncapped path costs over a second. `namedCount` below is the true total.
   let (ops, namedCount) = SCM.PackageOps.getCommitNamedOps c.hash cap
   let named =
     ops
@@ -244,8 +242,7 @@ let refreshCommitDetail (next: State) : State =
     match homeSelectedCommit next with
     | None -> next
     | Some c ->
-      // A commit hash is already text here (`Commits.Commit.hash` is a String), so there is nothing to
-      // convert; converting it is a runtime type error that only fires once a commit exists to select.
+      // `Commits.Commit.hash` is already text; there is no `Hash` wrapper here to unwrap.
       let hash = c.hash
       let (cachedHash, _lines) = next.commitDetail
       if cachedHash == hash then next
@@ -410,9 +407,9 @@ let renderHome (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdli
   // The cached status, not a fresh count: this draws per keypress, and Home saying a different number
   // from the Changes view is exactly the disagreement `state.scmStatus` exists to prevent.
   let commits = state.scmStatus.commits
-  // Not "synced": this counts conflicts and says nothing about sync, which is the same wording the
-  // context row stopped using for the same reason. The two rows are read together, so they say the
-  // same thing in the same words.
+  // Not "synced": this counts conflicts and says nothing about pushing or pulling. The same wording as
+  // the context row, deliberately -- the two are read together, so they say the same thing in the same
+  // words.
   let sync =
     if conflicts == 0 then
       "✓ nothing waiting"

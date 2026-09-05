@@ -155,15 +155,24 @@ rather than shouted at you when you commit:
   ack <id>... [--why "..."]          leave it for now (`ack --all` for all)
   constraints resolve <id>... [--as <how>]   fix it now, naming the fix
 
-Two kinds today, and they want opposite things from you.
+Three kinds today, and they want different things from you.
 
-DRIFTED REFERENCES -- a live item still using a version that isn't what the
-name means now. In a distributed store this is the NORMAL steady state, not a
-backlog: another machine's caller of your fn can't be propagated to, and must
-not silently repoint when you sync. Usually you ack it, or pin it and mean it.
+STALE-USAGE -- a live item still using a version that isn't what the name means
+now. In a distributed store this is the NORMAL steady state, not a backlog:
+another machine's caller of your fn can't be propagated to, and must not
+silently repoint when you sync. Usually you ack it, or pin it and mean it. It is
+the only kind `constraints resolve` can fix for you, as `--as repoint`.
 
   #a1b2c3d4  Ux.Money.total
          uses Ux.Money.cents @ 6dcfe636, current is c422b6f1
+
+KIND-CHANGED -- the name is a different KIND of thing now (a value where there
+was a fn), so the usage cannot be repointed at all: following it would mean
+rewriting what the code MEANS. Ack it, or edit the usage yourself.
+
+DECISION-SUPERSEDED -- a conflict override of yours was undone by a later
+ordinary edit. Nothing is stale and no kind moved; the name is simply not where
+you put it. Ack it, or `conflicts override` again.
 
 Acking is bulk -- "seen it" means the same for every finding. Resolving isn't:
 it means something different per kind, so it asks you to name the resolution

@@ -49,8 +49,10 @@ let bindingsFromWireRecords
 let unknownRecords
   (records: List<Wire.SyncOp>)
   : List<Wire.SyncOp> =
-  // 2000, not 200: with the Dict lookup below the per-chunk cost is linear, so bigger chunks just mean
-  // fewer round trips (15.0s against 20.1s on a 10,833-op bundle).
+  // Bigger than `Conflicts.inChunkSize`, and deliberately: that one is sized for the old 999-parameter
+  // cap because its callers are cold paths where the margin is free, while this is an import's inner
+  // loop against the linked build's 32,766. With the Dict lookup below the per-chunk cost is linear, so
+  // a larger chunk is purely fewer round trips (15.0s against 20.1s on a 10,833-op bundle).
   let chunks =
     match Stdlib.List.chunkBySize records 2000 with
     | Ok cs -> cs
@@ -156,7 +158,6 @@ let finishSyncImport (sourceId: String) (plan: SyncPlan) : Unit =
       else
         ()
 
-
     ()
 
 
@@ -181,10 +182,9 @@ let recordSyncBases (sourceId: String) : Unit =
 
 /// Record who wrote each arriving op, from what the wire said.
 ///
-/// The relay records this on PUSH (`op_owners`), and its export hands the author back on every op, but a
-/// client threw it away on import: `op_owners` is empty on every client, for every op, which is why
-/// "a decision of YOURS was superseded" has not been expressible. Keeping it costs one insert per import
-/// and makes provenance answerable locally.
+/// The relay records this on PUSH (`op_owners`) and hands the author back on every op it exports. Keeping
+/// it on import costs one insert per batch and is what makes "a decision of YOURS was superseded"
+/// answerable locally; drop it and `op_owners` is empty on every client, for every op.
 ///
 /// A locally-authored op gets no row, so "no row" means "mine" and a row means "arrived from them". That
 /// is implicit rather than stated, and the honest version records the local identity too; this is the

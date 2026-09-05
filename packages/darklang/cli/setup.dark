@@ -2,10 +2,10 @@ module Darklang.Cli.Setup
 
 // `dark sync setup`: the one command that gets a fresh instance syncing.
 //
-// The pieces were all here already -- `identity`, `connect`, `--secret`, `push` -- but they had to be run
-// in the right order, and the secret had to be typed as a command argument, which puts it in shell
-// history and on screen. This asks for each in turn, takes the secret without echoing it, and reports
-// what it actually managed rather than what it attempted.
+// Every piece has a command of its own -- `identity`, `connect`, `--secret`, `push` -- but they have to
+// run in that order, and `--secret` as a command argument puts the credential in shell history and on
+// screen. This asks for each in turn, takes the secret without echoing it, and reports what it managed
+// rather than what it attempted.
 
 let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
 let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
@@ -18,27 +18,12 @@ let ask (question: String) : String =
   Stdlib.print (Stdlib.Cli.UI.Colors.hint question)
   Stdlib.String.trim (Stdlib.Cli.Stdin.readLine ())
 
-/// A url this instance can name a relay by. Empty keeps the stored one.
-let askRelay (current: String) : String =
-  let shown =
-    if current == "" then
-      "none yet"
-    else
-      current
+/// Ask for one setting, showing what is stored now. Empty keeps it, which is what makes re-running this
+/// safe on an already-configured instance.
+let askWithCurrent (label: String) (current: String) : String =
+  let shown = if current == "" then "none yet" else current
 
-  match ask $"  Relay url [{shown}]: " with
-  | "" -> current
-  | typed -> typed
-
-/// This instance's sync identity: the name a colleague sees your ops arrive under.
-let askIdentity (current: String) : String =
-  let shown =
-    if current == "" then
-      "none yet"
-    else
-      current
-
-  match ask $"  This instance's name [{shown}]: " with
+  match ask $"  {label} [{shown}]: " with
   | "" -> current
   | typed -> typed
 
@@ -58,14 +43,15 @@ let execute (state: AppState) (_args: List<String>) : AppState =
 
   Stdlib.printLine ""
 
-  let identity = askIdentity (SCM.PackageOps.identity ())
+  // The name a colleague sees your ops arrive under.
+  let identity = askWithCurrent "This instance's name" (SCM.PackageOps.identity ())
 
   if identity == "" then
     printErr "an instance needs a name before it can sync."
     state
   else
 
-  let relay = askRelay (SCM.PackageOps.relay ())
+  let relay = askWithCurrent "Relay url" (SCM.PackageOps.relay ())
 
   if relay == "" then
     printErr "a relay url is needed to sync."
@@ -153,7 +139,8 @@ let complete
 /// `dark sync ...`, with `setup` peeled off the front.
 ///
 /// This lives here rather than in `sync.dark` because the dependency only runs one way: setup calls
-/// `Cli.Sync.executePush` and `relaySecret`, so sync cannot call back into setup without a cycle.
+/// `Cli.Sync.executePush`, `hasRelaySecret` and `setRelaySecret`, so sync cannot call back into setup
+/// without a cycle.
 ///
 /// `setup` is a sync subcommand and not a top-level one on purpose. It configures the relay, the instance
 /// name and the write secret, which is all sync; a bare `dark setup` implies you must configure something

@@ -58,8 +58,9 @@ module Wins =
     (b "" "ffff")
     (b "2026-01-01T00:00:00.000Z" "aaaa")) = false
 
-  // The same binding again, stamped the same: nothing to win. The fold keeps what it has and its earliest
-  // stamp; recording never sees this (equal hashes are not a conflict). F# used to say true here.
+  // The same binding again, stamped the same: nothing to win, so the incoming side loses. The fold
+  // keeps what it has and its earliest stamp, and recording never sees this at all, since equal
+  // hashes are not a conflict.
   (Darklang.SCM.Conflicts.incomingWins
     (b "2026-01-01T00:00:00.000Z" "aaaa")
     (b "2026-01-01T00:00:00.000Z" "aaaa")) = false

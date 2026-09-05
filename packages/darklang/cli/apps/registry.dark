@@ -15,7 +15,6 @@ let available () : List<Model.App> =
         slug = "heartbeat"
         description = "Demo daemon: logs a heartbeat every interval until stopped"
         target = Model.Target.Daemon "Darklang.Cli.Apps.Examples.heartbeat" }
-    // (sync apps removed: the F# sync stack was ripped; sync gets rebuilt in Dark on the op substrate.)
     Model.App
       { name = "Outliner"
         slug = "outliner"

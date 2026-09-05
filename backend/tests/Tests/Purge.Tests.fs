@@ -85,8 +85,8 @@ let purgeTablesAllExist =
   }
 
 
-/// The OTHER coupling, and the one that already went wrong: a table can name the log by content hash
-/// rather than by `op_id`, and the test above cannot see it.
+/// The OTHER coupling, and the one the test above cannot see: a table can name the log by content
+/// hash rather than by `op_id`.
 ///
 /// Two kinds, and they need opposite answers, so this cannot be automatic. A cache keyed on content
 /// (`type_checked`, `package_blobs`) stays TRUE across a reload, because a hash is its content. A claim
@@ -94,8 +94,8 @@ let purgeTablesAllExist =
 /// that never happened to it.
 ///
 /// So the guard is an allowlist. A new table with a hash column fails this until someone writes down which
-/// kind it is. That is the whole point: `conflicts` and `sync_bases` both sat outside the purge for
-/// exactly as long as nobody was forced to say.
+/// kind it is. That is the whole point: without the forced answer a table simply sits outside the
+/// purge, and nothing says so.
 let private hashCoupledSurvivors =
   [ "commits" // canonical; a commit whose ops are gone is empty, not wrong
     "package_blobs" // content-addressed cache: hash IS the content
@@ -139,9 +139,9 @@ let hashCoupledTablesAreClassified =
 
 let logStateProjectionsArePurged =
   testTask "conflicts and sync_bases are emptied by a purge" {
-    // Named rather than derived, because what makes these two different from `type_checked` is meaning,
-    // not shape. Leaving them behind produced a store that reported "1 conflict to review" and then showed
-    // neither version, because the ops it named had been replaced.
+    // Named rather than derived, because what makes these two different from `type_checked` is
+    // meaning, not shape. Left behind, they describe a log that no longer exists: the store reports
+    // "1 conflict to review" and then shows neither version, since the ops it names are gone.
     for t in [ "conflicts"; "sync_bases" ] do
       Expect.isTrue
         (List.contains t Purge.tables)
@@ -151,9 +151,9 @@ let logStateProjectionsArePurged =
   }
 
 
-/// Every table the fold regenerates is purged. Derived, so it catches the NEXT one: `propagation_policy`
-/// was in `Seed.projectionTables` (nothing else writes it) and not here, and neither guard above could see
-/// it, since it carries no `op_id` and no hash column.
+/// Every table the fold regenerates is purged. Derived from `Seed.projectionTables` rather than listed,
+/// so it catches the next projection whatever its shape: `propagation_policy`, for one, carries neither
+/// an `op_id` nor a hash column, so neither guard above can see it.
 let foldProjectionsArePurged =
   testTask "every table the fold regenerates is in Purge.tables" {
     for t in LibDB.Seed.projectionTables do
@@ -164,15 +164,22 @@ let foldProjectionsArePurged =
   }
 
 
+/// `Seed.export`'s source, which the two tests below assert against rather than running it: `export`
+/// copies a whole store, and driving it here would need a second one.
+let private seedSource () : string =
+  System.IO.File.ReadAllText(
+    System.IO.Path.Combine("..", "backend", "src", "LibDB", "Seed.fs")
+  )
+
+
 /// The seed is a fresh install's starting store, and these tables are one install's RELATIONSHIPS:
 /// with a relay (`sync_pushed`, `sync_bases`) and with itself (`config_v0`, which holds the relay url and
 /// its write secret). A seed built from a developer's store would otherwise ship that developer's
-/// relationships to everyone. `sync_pushed` was missed when it was added; this reads the export's SQL so
-/// the next such table is not.
+/// relationships to everyone. Reads the export's SQL rather than trusting a list, so a per-install
+/// table added later is not silently left in.
 let seedExportStripsPerInstallState =
   test "Seed.export strips every per-install table" {
-    let source =
-      System.IO.File.ReadAllText(System.IO.Path.Combine("..", "backend", "src", "LibDB", "Seed.fs"))
+    let source = seedSource ()
     for t in [ "sync_pushed"; "sync_bases"; "config_v0"; "conflicts"; "op_owners" ] do
       Expect.isTrue
         (source.Contains $"DELETE FROM {t};")
@@ -184,16 +191,12 @@ let seedExportStripsPerInstallState =
 /// above are, and shipping it puts whatever they were part-way through on a stranger's first run as
 /// "1 item changed" under a name nobody has heard of.
 ///
-/// Asserted against the source, like its neighbour, because `export` copies a whole store and running
-/// it here would need one. The guard `check-seed-carries-refs` is the other half and refused three
-/// release builds in one evening before this was stripped at the source: the F# suite leaves its own
-/// fixtures in main's draft, so whether a build succeeded depended on what you had last run.
+/// The guard `check-seed-carries-refs` is the other half, and it is the one a release build trips:
+/// the F# suite leaves its own fixtures in main's draft, so without this strip whether a build
+/// succeeds depends on what you last ran.
 let seedExportStripsTheBuildersDraft =
   test "Seed.export strips uncommitted main ops" {
-    let source =
-      System.IO.File.ReadAllText(
-        System.IO.Path.Combine("..", "backend", "src", "LibDB", "Seed.fs")
-      )
+    let source = seedSource ()
     Expect.isTrue
       (source.Contains "DELETE FROM package_ops
       WHERE commit_hash IS NULL")

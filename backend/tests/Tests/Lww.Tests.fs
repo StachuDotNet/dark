@@ -39,9 +39,9 @@ let private cases : List<string * string * string * string * bool> =
     // `conflicts.dark` documents that neither declared table had.
     ("", "ffff", "2026-01-01T00:00:00.000Z", "aaaa", false)
 
-    // The same binding again, stamped the same: nothing to win. The fold keeps what it has and its
-    // earliest stamp; recording never sees this (equal hashes are not a conflict). F# said `true` here
-    // and Dark said `false`, and the fold's own equal-hash arm agrees with Dark.
+    // The same binding again, stamped the same: nothing to win, so the incoming side loses. The
+    // fold keeps what it has and its earliest stamp, and recording never sees this at all, since
+    // equal hashes are not a conflict.
     ("2026-01-01T00:00:00.000Z", "aaaa", "2026-01-01T00:00:00.000Z", "aaaa", false) ]
 
 
@@ -57,8 +57,9 @@ let private agreesWithTheTable =
 
 
 /// `isStale` is what the fold calls; the table is written from the recording side. Pinning both to the
-/// same rows is what stops one drifting while the other keeps the table green. (This used to assert
-/// `isStale <> not isStale`, which is true of any body at all.)
+/// same rows is what stops one drifting while the other keeps the table green. Note that it asserts
+/// against the table's own expectation, not against `incomingWins`: comparing the two functions to
+/// each other would pass for any pair that agreed, including a pair that agreed on the wrong answer.
 let private isStaleAgreesWithTheTable =
   test "isStale answers the table's rows from the fold's side" {
     cases

@@ -69,13 +69,12 @@ type MatterState =
 
 /// Put the workbench on <param branchId>: the state's own field AND the process overlay.
 ///
-/// The workbench is one long-lived process that changes branch without restarting, which is
-/// exactly what `selectBranch` exists for. Six switch points set `state.branchId` and never
-/// called it, so the header said the new branch while `SCM.Draft.read ()` -- which resolves
-/// through the process overlay and backs the Changes list, the conflict counts and Home's wip
-/// section -- went on describing the old one. Then `x` discarded "ALL uncommitted" using
-/// `state.branchId`, on a branch whose contents had never been on screen. Every switch goes
-/// through here so those two cannot disagree again.
+/// The workbench is one long-lived process that changes branch without restarting, which is what
+/// `selectBranch` exists for. Both have to move together: the header and the item list read
+/// `state.branchId`, while `SCM.Draft.read ()` resolves through the process overlay and backs the
+/// Changes list, the conflict counts and Home's wip section. Move one without the other and the
+/// screen describes one branch while `x` discards the draft of another. EVERY switch goes through
+/// here.
 let onBranch (state: State) (branchId: Uuid) : State =
   let _ = SCM.PackageOps.selectBranch branchId
   { state with branchId = branchId }
@@ -115,7 +114,7 @@ let aiSectionAt (index: Int) : AiSection =
 let emptyMatter () : MatterState =
   MatterState { lens = Lens.WholeTree }
 
-/// The next lens the toggle key moves to. Three of them now, so it cycles rather than flipping.
+/// The next lens the toggle key moves to. Three lenses, so it cycles rather than flipping.
 let otherLens (lens: Lens) : Lens =
   match lens with
   | WholeTree -> Lens.ValuesOnly

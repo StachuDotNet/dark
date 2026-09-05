@@ -461,7 +461,6 @@ let execute
     // interpreter-computed Dval. The graft's PT2RT.PackageValue.toRT uses
     // evalConstantExpr (constants only) and would SHADOW that with an empty Dval for
     // a fn-call body. Name resolution stays branch-isolated via the SetName overlay.
-    // scm-spec 11.
     let branchFns =
       branchOps
       |> List.choose (function
@@ -525,7 +524,7 @@ let fns () : List<BuiltInFn> =
           Param.make
             "branchId"
             TUuid
-            "the branch to resolve names against; \"\" is main. A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
+            "the branch to resolve names against (main is `SCM.Ids.mainBranchId`). A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
           Param.make "filename" TString ""
           Param.make "code" TString ""
           Param.make "args" (TList TString) ""
@@ -661,7 +660,7 @@ let fns () : List<BuiltInFn> =
           Param.make
             "branchId"
             TUuid
-            "the branch to resolve names against; \"\" is main. A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
+            "the branch to resolve names against (main is `SCM.Ids.mainBranchId`). A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
           Param.make "expression" TString ""
           Param.make
             "currentModule"

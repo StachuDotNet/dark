@@ -65,8 +65,10 @@ type Step = { name : string; run : unit -> unit }
 
 let steps : List<Step> =
   [
-    // A conflict is recorded against a name; this scopes it to a BRANCH too. Empty string means main,
-    // matching how a branch id is spelled everywhere else, so existing rows keep their meaning.
+    // A conflict is recorded against a name; this scopes it to a BRANCH too. Note the default here is
+    // '' while `schema.sql` declares main's uuid, so a conflict row that predates the column is
+    // scoped to no branch at all and no listing shows it. Deliberate: a conflict is a finding about a
+    // log this store has since replaced, and re-detection produces it again under a real branch id.
     { name = "20260731_000001_conflicts_branch_id"
       run =
         fun () ->
@@ -187,8 +189,8 @@ let applySchemaTables (schemaSql : string) : unit =
       upper.StartsWith "CREATE TABLE" || upper.StartsWith "INSERT OR IGNORE")
     schemaSql
 
-/// Step 3: indexes, once every column they name exists. `UNIQUE` counts: there is one, on
-/// `package_dependencies`, and matching only "CREATE INDEX" silently skipped it.
+/// Step 3: indexes, once every column they name exists. `UNIQUE` has to be matched separately:
+/// `CREATE UNIQUE INDEX` does not start with "CREATE INDEX", and `package_dependencies` has one.
 let applySchemaIndexes (schemaSql : string) : unit =
   runStatements
     (fun upper ->
@@ -196,11 +198,13 @@ let applySchemaIndexes (schemaSql : string) : unit =
     schemaSql
 
 
-/// Run every step this store has not run, in order. `steps` carry new COLUMNS, which `IF NOT EXISTS`
-/// cannot. Called after the schema bootstrap, so on a fresh store every step is a no-op that records
-/// itself.
+/// Step 2: run every step this store has not run, in order. `steps` carry new COLUMNS, which `IF NOT
+/// EXISTS` cannot. Called after the schema bootstrap, so on a fresh store every step is a no-op that
+/// records itself.
 ///
-/// Untested: `Releases.Tests.fs` covered the release planner this replaced, and went with it.
+/// There is no test suite over this. Each step's guard (`addColumnIfMissing`, `tableExists`) is what
+/// makes it safe to run against a store of any age, so a new step that skips those has nothing
+/// checking it.
 let runPending () : unit =
   let done_ = alreadyRun ()
 

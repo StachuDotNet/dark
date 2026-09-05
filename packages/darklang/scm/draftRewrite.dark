@@ -322,8 +322,8 @@ let unstageRepoint
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Result.Result<Int, String> =
   // Two records of provenance, one per scope. `isStagedRepoint` and `rewriteBy` read and rewrite MAIN's
-  // draft; from a branch they found main's staged repoint and dropped it, so a `pin` issued on a branch
-  // reverted main. The branch's own record is `op_branches.source`.
+  // draft, so on a branch they would find and drop MAIN's staged repoint -- a pin issued on a branch
+  // reverting main. The branch's own record is `op_branches.source`.
   match SCM.PackageOps.currentBranch () with
   | id when Stdlib.Bool.not (SCM.Ids.isMain id) ->
     let key = (loc.owner, Stdlib.String.join loc.modules ".", loc.name)

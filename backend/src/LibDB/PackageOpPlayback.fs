@@ -24,7 +24,7 @@ module BS = LibSerialization.Binary.Serialization
 module DE = LibDB.DependencyExtractor
 open LibSerialization.Hashing
 
-// `Ctx`, `exec`, `execRows`, `bytesOption`, `p`, `pUuid`, `pOpt`: one connection and one
+// `Ctx` and the `exec` / `execRows` / scalar readers / `p*` binders: one connection and one
 // prepared-command cache for the whole batch. See LibDB.PreparedBatch for why.
 open LibDB.PreparedBatch
 
@@ -218,8 +218,6 @@ let private applyAddType
           BS.PT.PackageType.deserialize hash bytes
           |> Hashing.computeTypeHash Hashing.Normal)
 
-    // Extract and store dependency references atomically. Each
-    // Dependency carries its own location (populated by the resolver).
     let refs = DE.extractFromType typ
     do! updateDependencies ctx hashStr refs
   }
@@ -368,13 +366,13 @@ let private applySetNameFrom
     // it resembles are different ops with different content hashes, so a reconstruction hashes to an op
     // that is not in the log, the stamp reads as unknown, and the staleness check silently degrades to
     // last-writer-wins for every binding.
-    let thisOpId = LibSerialization.Hashing.Hashing.computeOpRowId opForStamp
+    let thisOpId = Hashing.computeOpRowId opForStamp
     let! thisTs = originTsOf ctx thisOpId
 
     let! curBinding =
       task {
         use cmd = ctx.conn.CreateCommand()
-        // Keyed by NAME, not (name, kind): a location's identity is (owner, modules, name) — `item_type` is
+        // Keyed by NAME, not (name, kind): a location's identity is (owner, modules, name) -- `item_type` is
         // only a lookup hint (item_hash + kind -> find the thing), never part of what a name IS. So the
         // binding this op supersedes is whatever is live at the name, whatever kind it holds.
         cmd.CommandText <-
@@ -399,10 +397,10 @@ let private applySetNameFrom
 
     let isStale =
       match curBinding, thisTs with
-      // On an EXACT TIE (two DIFFERENT ops for one name stamped the same millisecond — a genuine
+      // On an EXACT TIE (two DIFFERENT ops for one name stamped the same millisecond -- a genuine
       // cross-instance race), break by item hash: the higher wins. That tie-break is PORTABLE (content,
       // not arrival/rowid), so every instance converges on the same winner. Local sequential authoring
-      // never ties — `Inserts` self-stamps each op with a strictly-increasing origin_ts.
+      // never ties -- `Inserts` self-stamps each op with a strictly-increasing origin_ts.
       | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
         // THE rule lives in `LibDB.Lww`, so this cannot drift from the copy that decides the same
         // question when a conflict is recorded (`SCM.Conflicts.incomingWins`, in Dark). If those two
@@ -485,9 +483,11 @@ let private serializeAnnotation
   ms.ToArray()
 
 
-/// Apply a Deprecate op — supersede any prior un-superseded row for (branch, item_hash, item_kind).
-/// CLEANUP: identity is hash-keyed (`Reference` carries only a Hash), so two unrelated FQNs sharing a hash
-/// deprecate together. Fix: carry location on `Reference` + the `deprecations` table and filter by it.
+/// Apply a Deprecate op: supersede any prior un-superseded row for (item_hash, item_kind).
+///
+/// Identity is hash-keyed, because `Reference` carries only a Hash, so two unrelated FQNs that share a
+/// hash deprecate together. Narrowing that means carrying a location on `Reference` and on the
+/// `deprecations` table, and filtering by it.
 let private applyDeprecate
   (ctx : Ctx)
   (target : PT.Reference)
@@ -580,20 +580,10 @@ let private applyDecision
   (kind : PT.DecisionKind)
   : Task<unit> =
   task {
-    let opId = LibSerialization.Hashing.Hashing.computeOpRowId op
-
-    let! ts =
-      task {
-        use cmd = ctx.conn.CreateCommand()
-        cmd.CommandText <- "SELECT origin_ts FROM package_ops WHERE id = $id"
-        cmd.Parameters.AddWithValue("$id", string opId) |> ignore<SqliteParameter>
-        use! reader = cmd.ExecuteReaderAsync()
-        let! hasRow = reader.ReadAsync()
-        if hasRow && not (reader.IsDBNull 0) then
-          return reader.GetString 0
-        else
-          return ""
-      }
+    let opId = Hashing.computeOpRowId op
+    // "" for an op the log does not hold: it loses every `origin_ts` guard below, which is the right
+    // answer for a decision nothing recorded.
+    let! ts = originTsOf ctx opId |> Task.map (Option.defaultValue "")
 
     let modules = String.concat "." loc.modules
 
@@ -841,7 +831,7 @@ let private applyUnbind
   : Task<unit> =
   task {
     let modulesStr = String.concat "." location.modules
-    let thisOpId = LibSerialization.Hashing.Hashing.computeOpRowId op
+    let thisOpId = Hashing.computeOpRowId op
     let! thisTs = originTsOf ctx thisOpId
 
     let! live =
@@ -963,7 +953,7 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
     | PT.PackageOp.BranchEvent(branchId, event, at) ->
       // An event for a branch this store has never heard of folds to nothing. That is not a failure:
       // branch ids travel with a bundle, so the ones you share match.
-      do! applyBranchEvent ctx (LibSerialization.Hashing.Hashing.computeOpRowId op) branchId event at
+      do! applyBranchEvent ctx (Hashing.computeOpRowId op) branchId event at
   }
 
 
@@ -972,13 +962,13 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
 // ------------------------------------------------------------------
 
 /// Apply a list of PackageOps using a caller-provided open SqliteConnection.
-/// The caller controls transaction boundaries — wrap the call in BEGIN/COMMIT
-/// for a bulk-replay or use auto-commit for a small commit-time batch. A
+/// The caller controls transaction boundaries: wrap the call in BEGIN/COMMIT
+/// for a bulk-replay, or use auto-commit for a small commit-time batch. A
 /// fresh prepared-statement cache (Ctx) is created and disposed per call,
 /// so the cache lifetime matches a single `applyOpsOnConnection` invocation.
 ///
-/// Dep-edge location columns come straight from each `Dependency`'s `location` (stashed on `NameResolution`
-/// at resolve time) — no post-hoc backfill.
+/// Dep-edge location columns come straight from each `Dependency`'s `location`, stashed on
+/// `NameResolution` at resolve time, so there is no post-hoc backfill.
 let applyOpsOnConnectionFrom
   (conn : SqliteConnection)
   (source : string)
@@ -1007,9 +997,9 @@ let applyOpsOnConnection
 
 /// Convenience wrapper for callers that don't have a shared connection (e.g.
 /// Inserts.fs at commit time, where the op batch is small). Opens a fresh
-/// connection per call and wraps the whole batch in a single transaction —
-/// faster than auto-commit and makes the apply atomic with respect to other
-/// readers.
+/// connection per call and wraps the whole batch in a single transaction:
+/// faster than auto-commit, and it makes the apply atomic with respect to
+/// other readers.
 let applyOpsFrom (source : string) (ops : List<PT.PackageOp>) : Task<unit> =
   task {
     use conn = new SqliteConnection(LibDB.Sqlite.connString)
@@ -1020,8 +1010,6 @@ let applyOpsFrom (source : string) (ops : List<PT.PackageOp>) : Task<unit> =
   }
 
 let applyOps (ops : List<PT.PackageOp>) : Task<unit> = applyOpsFrom "op" ops
-
-
 
 
 /// Record the callees of these `Add*` ops' items without folding anything else. For an op the log

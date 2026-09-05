@@ -209,18 +209,15 @@
   </Target>
 
   <!-- Make the compile itself depend on the seed, so a regenerated one actually reaches the binary.
-       `CompressDatabase` above keeps seed.db.gz current, but nothing told CoreCompile that the embedded
-       resource had changed, so an incremental publish happily reused the previous assembly and shipped
-       the OLD seed. That fails silently and in the worst possible way: `reload-packages` succeeds, the
-       publish succeeds, and the exe still has yesterday's packages, so a `.dark` fix looks shipped and
-       is not. Listing it here puts it in CoreCompile's inputs, which is what makes the staleness
-       visible to MSBuild.
+       `CompressDatabase` above keeps seed.db.gz current, but nothing else tells CoreCompile that the
+       embedded resource changed, and an incremental publish that reuses the previous assembly ships the
+       OLD seed. That fails silently and in the worst possible way: `reload-packages` succeeds, the
+       publish succeeds, and the exe still has the previous packages, so a `.dark` fix looks shipped and
+       is not. Listing it here puts it in CoreCompile's inputs, where MSBuild looks for staleness.
 
-       Caveat, so nobody trusts this further than it goes: `dotnet build -c Release` currently rebuilds
-       this assembly on EVERY invocation regardless, so the fix cannot be observed there. It was written
-       against the reported failure in the AOT `publish` path, which was not reproduced here (each
-       reproduction is a ~15 minute publish). What is asserted is only that the dependency is now
-       declared where MSBuild looks; whether the publish honours it is unverified. -->
+       How far this goes: it declares the dependency. `dotnet build -c Release` rebuilds this assembly on
+       every invocation regardless, so the effect is not observable there, and it has not been confirmed
+       against the AOT `publish` path; each reproduction there is a ~15 minute publish. -->
   <ItemGroup Condition="'$(Configuration)' == 'Release' And Exists('../../../rundir/seed.db.gz')">
     <CustomAdditionalCompileInputs Include="../../../rundir/seed.db.gz" />
   </ItemGroup>

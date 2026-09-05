@@ -1,5 +1,6 @@
-/// Proof for the branches-as-overlays model (notes/fresh-arch/branches-concurrency.md).
-/// A "branch" is its delta ops overlaid on a shared core PackageManager (PM.withExtraOps).
+/// Proof for the branches-as-overlays model: a "branch" is its delta ops overlaid on a shared
+/// core PackageManager (`PM.withExtraOps`).
+///
 /// Two properties concurrent agents depend on:
 ///   - ISOLATION FROM CORE: a fn authored on a branch overlay resolves + EXECUTES there, but
 ///     is invisible to the shared core -- it never leaks into main.
@@ -23,12 +24,14 @@ module RT = LibExecution.RuntimeTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module Exe = LibExecution.Execution
 module PM = LibDB.PackageManager
-module HS = LibDB.HashStabilization
-module Package = LibParser.Package
-module NR = LibParser.NameResolver
 module Branches = LibDB.Branches
 module Sel = LibDB.BranchSelection
 module Queries = LibDB.Queries
+module Seed = LibDB.Seed
+module BS = LibSerialization.Binary.Serialization
+
+open TestUtils.TestUtils
+
 
 /// A branch id for a test, derived from a readable label.
 ///
@@ -41,38 +44,24 @@ let private testBranch (label : string) : PT.BranchId =
     System.Guid(md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes label))
   )
 
-module Seed = LibDB.Seed
-module BS = LibSerialization.Binary.Serialization
 
-open TestUtils.TestUtils
-
-
-/// The names the parent has moved since a branch forked, asked of the DARK implementation.
+/// A `List<String>` (or a `Result` wrapping one) from a Dark call, as these assertions expect.
 ///
-/// `SCM.Branches.nameConflicts` is the merge gate the CLI actually consults; a test that called an F#
-/// copy would be asserting about a second implementation rather than the one that runs. Same for
-/// `darkRebase` below.
+/// The SCM verbs the CLI consults live in Dark, so a test that called an F# copy of one would be
+/// asserting about a second implementation rather than about the one that runs. A Dark-side `Error`
+/// fails the test here: these callers ask questions that are supposed to have answers.
 let private darkStringList (code : string) : Task<List<string>> =
   task {
-    let! ptExpr = parsePTExpr code
-    let! state = executionStateFor PM.pt false Map.empty
-    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
+    let strings (items : List<RT.Dval>) =
+      items
+      |> List.map (fun d ->
+        match d with
+        | RT.DString s -> s
+        | other -> $"{other}")
 
-    match! Exe.executeExpr state rtExpr with
-    | Ok(RT.DList(_, items)) ->
-      return
-        items
-        |> List.map (fun d ->
-          match d with
-          | RT.DString s -> s
-          | other -> $"{other}")
-    | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DList(_, items) ])) ->
-      return
-        items
-        |> List.map (fun d ->
-          match d with
-          | RT.DString s -> s
-          | other -> $"{other}")
+    match! evalDarkExpr code with
+    | Ok(RT.DList(_, items)) -> return strings items
+    | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DList(_, items) ])) -> return strings items
     | Ok(RT.DEnum(_, _, _, "Error", [ RT.DString e ])) ->
       return failtest $"the Dark call failed: {e}"
     | Ok other -> return failtest $"unexpected result shape: {other}"
@@ -82,21 +71,22 @@ let private darkStringList (code : string) : Task<List<string>> =
 let private darkBranch (branchId : PT.BranchId) : string =
   $"(Stdlib.Uuid.parse \"{branchId}\" |> Builtin.unwrap)"
 
+/// The names the parent has moved since a branch forked, per the merge gate the CLI consults.
 let private nameConflicts (branchId : PT.BranchId) : Task<List<string>> =
   darkStringList $"Darklang.SCM.Branches.nameConflicts {darkBranch branchId}"
 
+/// Accept the parent's current state as this branch's new base, and report the names the parent
+/// had changed since the fork. Afterwards the branch's own ops layer on top (LWW by origin_ts)
+/// and merge is unblocked.
 let private rebase (branchId : PT.BranchId) : Task<List<string>> =
   darkStringList $"Darklang.SCM.Branches.rebase {darkBranch branchId}"
 
 
 /// Run a Dark call answering `Result<Unit, String>`, as the F# result these assertions expect.
+/// The `Error` is handed back rather than failing, because refusing is one of the answers.
 let private darkUnitResult (code : string) : Task<Result<unit, string>> =
   task {
-    let! ptExpr = parsePTExpr code
-    let! state = executionStateFor PM.pt false Map.empty
-    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
-
-    match! Exe.executeExpr state rtExpr with
+    match! evalDarkExpr code with
     | Ok(RT.DEnum(_, _, _, "Ok", _)) -> return Ok()
     | Ok(RT.DEnum(_, _, _, "Error", [ RT.DString e ])) -> return Error e
     | Ok other -> return failtest $"unexpected result shape: {other}"
@@ -121,11 +111,7 @@ let private resolveKeepMine
 /// Run a Dark call answering `Result<Int, String>`, as the count these assertions expect.
 let private darkIntResult (code : string) : Task<int64> =
   task {
-    let! ptExpr = parsePTExpr code
-    let! state = executionStateFor PM.pt false Map.empty
-    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
-
-    match! Exe.executeExpr state rtExpr with
+    match! evalDarkExpr code with
     | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DInt n ])) ->
       return int64 (RT.DarkInt.toBigInt n)
     | Ok(RT.DEnum(_, _, _, "Error", [ RT.DString e ])) ->
@@ -183,8 +169,6 @@ let private parentHashLinesFromDark
     + ") |> Stdlib.Option.withDefault \"\"))) |> Stdlib.List.sort)"
   )
 
-open TestUtils.TestUtils
-
 // A branch's source: one fn `foo` returning `answer`, computed via a CORE call
 // (Stdlib.Int64.add), so executing its body ALSO proves the overlay resolves core names.
 let private branchSource (answer : int) : string =
@@ -203,18 +187,6 @@ let foo (x: Int64) : Int64 = Stdlib.Int64.add {answer - 2}L 2L"""
 
 let private fooLocIn (modName : string) : PT.PackageLocation =
   { owner = "Darklang"; modules = [ modName ]; name = "foo" }
-
-/// Parse a branch source into stabilized ops: the real authoring path, SCC-aware hashes and all.
-let private opsFor (source : string) : Task<List<PT.PackageOp>> =
-  task {
-    let builtins = localBuiltIns pmPT
-    let! parsed =
-      Package.parse builtins pmPT NR.OnMissing.ThrowError source |> Ply.toTask
-    match parsed with
-    | Ok ops -> return HS.computeRealHashes ops
-    | Error errs ->
-      return Exception.raiseInternal "branch parse failed" [ "errs", errs ]
-  }
 
 /// Execute the body of `foo` from a set of ops against `pm`. Proves the branch's code runs.
 let private runFooBody
@@ -241,7 +213,7 @@ let private runFooBody
 
 let isolationFromCore =
   testTask "a branch fn resolves + executes on its overlay but is INVISIBLE to core" {
-    let! ops = opsFor (branchSource 42)
+    let! ops = parsePackageOps (branchSource 42)
     let branch = PM.withExtraOps pmPT ops
 
     let! onBranch = branch.findFn fooLoc |> Ply.toTask
@@ -253,8 +225,8 @@ let isolationFromCore =
     Expect.equal dv (RT.DInt64 42L) "the branch fn's code runs -> 42"
   }
 
-/// An `Unbind` on a branch hides a name main holds, on that branch only. The overlay could only ever
-/// add names before this; taking one away is what lets a branch delete something.
+/// An `Unbind` on a branch hides a name main holds, on that branch only. Taking a name away, rather
+/// than only adding one, is what lets a branch delete something.
 let unbindHidesACoreNameOnTheBranchOnly =
   testTask "a branch's unbind hides main's name on the branch and leaves main alone" {
     let addLoc : PT.PackageLocation =
@@ -300,8 +272,8 @@ let unbindHidesACoreNameOnTheBranchOnly =
 let isolationBetweenBranches =
   testTask
     "two overlays over one core see only their own defs (concurrent-branch isolation)" {
-    let! opsA = opsFor (branchSource 42)
-    let! opsB = opsFor (branchSource 99)
+    let! opsA = parsePackageOps (branchSource 42)
+    let! opsB = parsePackageOps (branchSource 99)
     let branchA = PM.withExtraOps pmPT opsA
     let branchB = PM.withExtraOps pmPT opsB
 
@@ -326,24 +298,12 @@ let isolationBetweenBranches =
     Expect.equal dvB (RT.DInt64 99L) "branch B -> 99"
   }
 
-/// Resolve a branch id by its name alias (first match), if any. Unfiltered: a lookup of a
-/// specific past branch still wants to find it.
-/// Resolve a branch id by its name alias (first match), if any. Unfiltered: a lookup of a
-/// specific past branch still wants to find it.
-let private branchIdForName (name : string) : Task<Option<PT.BranchId>> =
-  Sql.query "SELECT id FROM branches WHERE name = @name LIMIT 1"
-  |> Sql.parameters [ "name", Sql.string name ]
-  |> Sql.executeRowOptionAsync (fun read ->
-    PT.BranchId.ParseUnsafe(read.string "id"))
-
-/// REBASE: accept the parent's current state as this branch's new base. Returns the names the
-/// parent had changed since the fork; after this the branch's own ops layer on top (LWW by
-/// origin_ts) and merge is unblocked.
-/// Branch-registry lookups the assertions here need.
+/// The branch a READ verb resolves a name to: the most recent branch of that name that has not been
+/// archived. A merged branch still answers, which is what `mergedBranchStaysAddressable` is about;
+/// `Branches.liveIdForName` is the stricter lookup a switch uses.
 ///
-/// These used to live in `LibDB.Branches`, where nothing but this file and one builtin called them; the
-/// production copies now live in Dark (`SCM.PackageOps`). Kept here as plain SQL rather than reaching
-/// back through Dark, so an assertion about the store reads the store.
+/// Spelled as plain SQL rather than through the Dark `SCM.PackageOps` equivalent, so an assertion
+/// about the store reads the store.
 let private idForName (name : string) : Task<Option<PT.BranchId>> =
   Sql.query
     "SELECT id FROM branches
@@ -407,12 +367,12 @@ let parentHashesAgreeAcrossLanguages =
     do! cleanupBranch parent
 
     do! Branches.createBranch parent "ph-parent" PT.BranchId.Main
-    let! parentOps = opsFor (namedSource "PhTest" 1)
+    let! parentOps = parsePackageOps (namedSource "PhTest" 1)
     let! _ = Branches.storeDeltaOps parent parentOps
     do! Branches.recordNameBases parent PT.BranchId.Main parentOps
 
     do! Branches.createBranch child "ph-child" parent
-    let! childOps = opsFor (namedSource "PhTest" 2)
+    let! childOps = parsePackageOps (namedSource "PhTest" 2)
     let! _ = Branches.storeDeltaOps child childOps
     do! Branches.recordNameBases child parent childOps
 
@@ -450,8 +410,7 @@ let parentHashesAgreeAcrossLanguages =
 /// unapplied on purpose, so a later build can apply them, which means they sit in the local log where
 /// every local reader meets them -- including `chainOverlayOps`, which is what a process RESOLVES
 /// through and loads at boot for whatever branch you are standing on. Raising there does not fail one
-/// command, it fails the CLI, and that is exactly how `dark propagate pin` once died on a store holding
-/// seven such ops and stayed dead.
+/// command, it fails the CLI, permanently, for as long as the op is in the log.
 ///
 /// The other half of the rule is that skipping one for READING never becomes dropping it for WRITING:
 /// the junk op is still in the table at the end of this.
@@ -462,7 +421,7 @@ let undecodableBranchOpIsSkippedNotFatal =
     do! cleanupBranch bid
 
     do! Branches.createBranch bid "undecodable" PT.BranchId.Main
-    let! ops = opsFor (namedSource "UndecodableTest" 3)
+    let! ops = parsePackageOps (namedSource "UndecodableTest" 3)
     let! _ = Branches.storeDeltaOps bid ops
 
     // A blob no build can read, tagged to the branch the way a peer's newer-format op arrives.
@@ -506,11 +465,11 @@ let undecodableBranchOpIsSkippedNotFatal =
 
 /// The overlay's SEARCH and its `findFn` must name the same version.
 ///
-/// They are two foldings of the same ops, and they disagreed: `findFn` went through the location map
-/// (last binding wins) while search enumerated the hash map, which is ordered BY HASH. Callers take the
-/// head, so `dark view` on a branch showed whichever version happened to have the lowest hash. With two
-/// versions that was right by luck; with three it showed the second-newest while `eval`, `diff` and
-/// `log` all ran the newest -- reading one thing and running another.
+/// They are two foldings of the same ops and it is easy for them to disagree: `findFn` goes through the
+/// location map (last binding wins) while search enumerates the hash map, which is ordered BY HASH.
+/// Callers take the head, so a search ordered by hash makes `dark view` on a branch show whichever
+/// version happens to sort lowest while `eval`, `diff` and `log` all run the newest -- reading one
+/// thing and running another.
 ///
 /// Three versions, because two cannot tell a hash-ordered answer from a correct one.
 let overlaySearchAgreesWithFindFn =
@@ -520,7 +479,7 @@ let overlaySearchAgreesWithFindFn =
     do! Branches.createBranch bid "search-agrees" PT.BranchId.Main
 
     for answer in [ 1; 2; 3 ] do
-      let! ops = opsFor (namedSource "SearchAgrees" answer)
+      let! ops = parsePackageOps (namedSource "SearchAgrees" answer)
       let! _ = Branches.storeDeltaOps bid ops
       ()
 
@@ -562,8 +521,8 @@ let overlaySearchAgreesWithFindFn =
 ///
 /// The live lookup folds last-wins per location, so it answers about the newest and nothing else, and
 /// main's `getLocationsEverNamed` reads `locations`, which a branch never writes. Between them a
-/// superseded branch version had no name at all, and `dark log` rendered it `<hash:...>` while the
-/// newest in the same listing showed its name.
+/// superseded branch version would have no name at all, and `dark log` would render it `<hash:...>`
+/// beside a newest-version line in the same listing that shows its name.
 ///
 /// A fallback, not an alternative: the live name still wins while there is one.
 let supersededBranchVersionsKeepTheirName =
@@ -573,20 +532,13 @@ let supersededBranchVersionsKeepTheirName =
     do! cleanupBranch bid
     do! Branches.createBranch bid "ever-named" PT.BranchId.Main
 
-    let! firstOps = opsFor (namedSource "EverNamed" 1)
+    let! firstOps = parsePackageOps (namedSource "EverNamed" 1)
     let! _ = Branches.storeDeltaOps bid firstOps
-    let! secondOps = opsFor (namedSource "EverNamed" 2)
+    let! secondOps = parsePackageOps (namedSource "EverNamed" 2)
     let! _ = Branches.storeDeltaOps bid secondOps
 
-    let hashOf (ops : List<PT.PackageOp>) =
-      ops
-      |> List.tryPick (fun op ->
-        match op with
-        | PT.PackageOp.SetName(_, PT.PackageFn h, _) -> Some h
-        | _ -> None)
-
-    let superseded = (hashOf firstOps).Value
-    let live = (hashOf secondOps).Value
+    let superseded = hashBoundTo firstOps "foo"
+    let live = hashBoundTo secondOps "foo"
     Expect.notEqual
       superseded
       live
@@ -622,7 +574,7 @@ let branchAuthoringCountsAsHavingItems =
     // Store BEFORE asking. The overlay memoises per branch and this test writes ops behind its back
     // (`scmAddOps` refreshes it; `storeDeltaOps` on its own does not), so asking first would cache an
     // empty branch and then answer from that.
-    let! ops = opsFor (namedSource "OwnerHasItems" 1)
+    let! ops = parsePackageOps (namedSource "OwnerHasItems" 1)
     let! _ = Branches.storeDeltaOps bid ops
 
     Expect.isTrue
@@ -643,10 +595,10 @@ let storeThenOverlay =
     do! cleanupBranch branchId
 
     do! Branches.createBranch branchId "store-proof" PT.BranchId.Main
-    let! byName = branchIdForName "store-proof"
+    let! byName = idForName "store-proof"
     Expect.equal byName (Some branchId) "branch resolves by its name alias"
 
-    let! ops = opsFor (branchSource 42)
+    let! ops = parsePackageOps (branchSource 42)
     let! stored = Branches.storeDeltaOps branchId ops
     Expect.isGreaterThan stored 0L "ops stored to the branch frontier"
 
@@ -678,7 +630,7 @@ let markMergedFlipsEffective =
     do! cleanupBranch branchId
 
     do! Branches.createBranch branchId "flip-proof" PT.BranchId.Main
-    let! ops = opsFor (branchSource 42)
+    let! ops = parsePackageOps (branchSource 42)
     let! _ = Branches.storeDeltaOps branchId ops
 
     let! pending = countEffective branchId 0
@@ -797,7 +749,7 @@ let processOverlaySelects =
       (PM.ptForBranch (PM.currentBranchId ())).findFn fooLoc |> Ply.toTask
     Expect.isNone before "no branch active -> foo unresolved (core only)"
 
-    let! ops = opsFor (branchSource 42)
+    let! ops = parsePackageOps (branchSource 42)
     PM.selectBranch (testBranch "overlaySel")
     PM.setBranchOverlay ops
     let! during =
@@ -820,8 +772,8 @@ let branchesOffBranches =
     do! Branches.createBranch (testBranch "boA") "chain-a" PT.BranchId.Main
     do! Branches.createBranch (testBranch "boB") "chain-b" (testBranch "boA") // B off A
 
-    let! opsA = opsFor (namedSource "ChainA" 42)
-    let! opsB = opsFor (namedSource "ChainB" 99)
+    let! opsA = parsePackageOps (namedSource "ChainA" 42)
+    let! opsB = parsePackageOps (namedSource "ChainB" 99)
     let! _ = Branches.storeDeltaOps (testBranch "boA") opsA
     let! _ = Branches.storeDeltaOps (testBranch "boB") opsB
 
@@ -877,7 +829,7 @@ let getWipOpsExcludesBranch =
     let branchId = testBranch "test-wip-guard"
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "wip-guard" PT.BranchId.Main
-    let! ops = opsFor (branchSource 42)
+    let! ops = parsePackageOps (branchSource 42)
     let! _ = Branches.storeDeltaOps branchId ops
 
     let! wip = Queries.getWipOps ()
@@ -922,8 +874,8 @@ let mergeDoesNotConsumeSiblingPendingOps =
     do! Branches.createBranch bS "sweep-sibling" PT.BranchId.Main
     do! Branches.createBranch bM "sweep-merging" PT.BranchId.Main
     // Distinct modules so M's fold pollutes only its own unique name (cleaned up after).
-    let! opsS = opsFor (namedSource "SweepSibling" 7)
-    let! opsM = opsFor (namedSource "SweepMerging" 8)
+    let! opsS = parsePackageOps (namedSource "SweepSibling" 7)
+    let! opsM = parsePackageOps (namedSource "SweepMerging" 8)
     let! _ = Branches.storeDeltaOps bS opsS
     let! _ = Branches.storeDeltaOps bM opsM
 
@@ -974,15 +926,6 @@ let sameNameMergesConvergeToLater =
         let! _ = Seed.applyUnappliedOps ()
         return ()
       }
-    let setNameHash (ops : List<PT.PackageOp>) : string =
-      ops
-      |> List.pick (fun op ->
-        match op with
-        | PT.PackageOp.SetName(_, target, _) ->
-          let (PT.Hash h) = target.hash
-          Some h
-        | _ -> None)
-
     do! cleanupBranch bOld
     do! cleanupBranch bNew
     do!
@@ -993,11 +936,11 @@ let sameNameMergesConvergeToLater =
     do! Branches.createBranch bNew "cvg-new" PT.BranchId.Main
     // Same module+name (ConvergeWin.foo), different bodies -> different hashes. bOld stored first, so
     // its ops get an EARLIER origin_ts than bNew's (storeDeltaOps stamps now() per call).
-    let! opsOld = opsFor (namedSource "ConvergeWin" 5)
-    let! opsNew = opsFor (namedSource "ConvergeWin" 6)
+    let! opsOld = parsePackageOps (namedSource "ConvergeWin" 5)
+    let! opsNew = parsePackageOps (namedSource "ConvergeWin" 6)
     let! _ = Branches.storeDeltaOps bOld opsOld
     let! _ = Branches.storeDeltaOps bNew opsNew
-    let newerHash = setNameHash opsNew
+    let (PT.Hash newerHash) = hashBoundTo opsNew "foo"
 
     do! mergeFold bOld
     do! mergeFold bNew
@@ -1024,7 +967,7 @@ let rebaseDetectsAndClearsConflicts =
     do! cleanupBranch bid
 
     do! Branches.createBranch bid "rebase-gate" PT.BranchId.Main
-    let! ops = opsFor (namedSource "RebaseGate" 5)
+    let! ops = parsePackageOps (namedSource "RebaseGate" 5)
     let! _ = Branches.storeDeltaOps bid ops
     do! Branches.recordNameBases bid PT.BranchId.Main ops
 
@@ -1056,7 +999,7 @@ let branchTransferImportReDerivesBases =
 
     // simulate scmImportBranchOps: register + store ops + re-derive bases.
     do! Branches.createBranch dst "xfer" PT.BranchId.Main
-    let! ops = opsFor (namedSource "XferTest" 8)
+    let! ops = parsePackageOps (namedSource "XferTest" 8)
     let! _ = Branches.storeDeltaOps dst ops
     do! Branches.recordNameBases dst PT.BranchId.Main ops
 
@@ -1087,7 +1030,7 @@ let resolveAloneRecordsANameBase =
 
     // Borrow a real (location, target) off a SetName rather than hand-building a hash: what is under
     // test is which op SHAPE gets counted, not what a Reference looks like.
-    let! ops = opsFor (namedSource "ResolveBaseTest" 7)
+    let! ops = parsePackageOps (namedSource "ResolveBaseTest" 7)
 
     let binding =
       ops
@@ -1139,7 +1082,7 @@ let resolveKeepMineDoesNotRestampSharedOps =
 
     do! cleanupBranch b
     do! Branches.createBranch b "restamp" PT.BranchId.Main
-    let! ops = opsFor (namedSource "RestampTest" 7)
+    let! ops = parsePackageOps (namedSource "RestampTest" 7)
     let! _ = Branches.storeDeltaOps b ops
     do! Branches.recordNameBases b PT.BranchId.Main ops
     do! staleNameBases b
@@ -1187,7 +1130,7 @@ let takeTheirsAfterKeepMineDropsTheOverride =
     let fqn = "Darklang.TheirsAfterMine.foo"
     do! cleanupBranch b
     do! Branches.createBranch b "theirs-after-mine" PT.BranchId.Main
-    let! ops = opsFor (namedSource "TheirsAfterMine" 7)
+    let! ops = parsePackageOps (namedSource "TheirsAfterMine" 7)
     let! _ = Branches.storeDeltaOps b ops
     do! Branches.recordNameBases b PT.BranchId.Main ops
     do! staleNameBases b
@@ -1220,7 +1163,7 @@ let perNameResolutionMineTheirs =
       task {
         do! cleanupBranch b
         do! Branches.createBranch b "resolve" PT.BranchId.Main
-        let! ops = opsFor (namedSource "ResolveTest" 5)
+        let! ops = parsePackageOps (namedSource "ResolveTest" 5)
         let! _ = Branches.storeDeltaOps b ops
         do! Branches.recordNameBases b PT.BranchId.Main ops
         do! staleNameBases b
@@ -1311,7 +1254,7 @@ let branchValueContentFoldIsolatesName =
     "folding a branch value's AddValue content populates package_values but NOT locations" {
     let source =
       "module Darklang.BranchValFoldTest\n\nval vv = Stdlib.Int64.add 3L 4L"
-    let! ops = opsFor source
+    let! ops = parsePackageOps source
     let addValueOps =
       ops
       |> List.filter (fun op ->
@@ -1388,7 +1331,7 @@ let branchExists =
     // Tagged ops with no registry row: this is what a branch bundle from another machine looks like
     // before anything registers it locally. Also has to count.
     do! cleanupBranch (testBranch "beY")
-    let! ops = opsFor (namedSource "BeY" 7)
+    let! ops = parsePackageOps (namedSource "BeY" 7)
     let! _ = Branches.storeDeltaOps (testBranch "beY") ops
     do!
       Sql.query "DELETE FROM branches WHERE id = @b"
@@ -1406,10 +1349,9 @@ let branchExists =
 
 /// A child of a branch inherits its PARENT'S pins, not just main's.
 ///
-/// `getPropagationPolicy` read (this branch, main) and nothing between, so a branch off a branch
-/// silently followed something its parent had deliberately pinned. Nested branches are first-class
-/// everywhere else in the model (the overlay chain, merge routing, name bases), and this was the one
-/// place that stopped at one level.
+/// `getPropagationPolicy` has to walk the whole chain, not just (this branch, main): stopping at one
+/// level makes a branch off a branch follow something its parent deliberately pinned. Nested branches
+/// are first-class everywhere else in the model -- the overlay chain, merge routing, name bases.
 let propagationPinsComeFromTheWholeChain =
   testTask "a child branch inherits its parent's pins, not only main's" {
     let parent = testBranch "pin-parent"
@@ -1481,7 +1423,7 @@ let mergeCountsWhatItFlipped =
     "markMergedEffective reports ops it flipped, not ops that were already effective" {
     do! cleanupBranch (testBranch "mcX")
     do! Branches.createBranch (testBranch "mcX") "" PT.BranchId.Main
-    let! ops = opsFor (namedSource "McX" 11)
+    let! ops = parsePackageOps (namedSource "McX" 11)
     let! _ = Branches.storeDeltaOps (testBranch "mcX") ops
 
     let! pending = countEffective (testBranch "mcX") 0
@@ -1506,7 +1448,7 @@ let importedOpsKeepTheirStamps =
 
     // A stamp from the far past, which the local authoring clock could never produce.
     let farPast = "2001-02-03T04:05:06.007Z"
-    let! ops = opsFor (namedSource "StX" 13)
+    let! ops = parsePackageOps (namedSource "StX" 13)
     let! _ =
       Branches.storeDeltaOpsStamped
         (testBranch "stX")
@@ -1584,8 +1526,8 @@ let branchPMIsPerBranch =
     do! Branches.createBranch (testBranch "pfA") "" PT.BranchId.Main
     do! Branches.createBranch (testBranch "pfB") "" PT.BranchId.Main
 
-    let! opsA = opsFor (namedSource "PfA" 42)
-    let! opsB = opsFor (namedSource "PfB" 99)
+    let! opsA = parsePackageOps (namedSource "PfA" 42)
+    let! opsB = parsePackageOps (namedSource "PfB" 99)
     let! _ = Branches.storeDeltaOps (testBranch "pfA") opsA
     let! _ = Branches.storeDeltaOps (testBranch "pfB") opsB
 
@@ -1635,7 +1577,7 @@ let branchNamesResolveButDontShadowMain =
     do! cleanupBranch (testBranch "lnX")
     do! Branches.createBranch (testBranch "lnX") "" PT.BranchId.Main
 
-    let! ops = opsFor (namedSource "LnX" 42)
+    let! ops = parsePackageOps (namedSource "LnX" 42)
     let! _ = Branches.storeDeltaOps (testBranch "lnX") ops
 
     let branchHash =
@@ -1685,8 +1627,8 @@ let branchNamesResolveButDontShadowMain =
 /// The three ways a run picks its branch. Each tier is scoped tighter than the one below on purpose:
 /// the FLAG is this command, the ENV is this SHELL, the config is this machine. The env tier is what
 /// lets several agents work on several branches at once without fighting over the single config key
-/// `dark switch` writes. Tested on the product's own `BranchSelection.select`, not on a `pick` defined
-/// inside the test, which is what this used to be and which could not notice anything done to `Cli.fs`.
+/// `dark switch` writes. Tested on the product's own `BranchSelection.select` rather than on a `pick`
+/// defined inside the test, which would notice nothing done to `Cli.fs`.
 let branchResolutionOrder =
   testTask "the flag beats DARK_BRANCH beats the stored branch" {
     let flagB = testBranch "sel-flag"
@@ -1783,16 +1725,18 @@ let branchEventMarksMerged =
 
 
 /// An op is one row whatever authored it, so a branch's op and main's identical op share an id. Main
-/// authoring it is main saying it runs here: the row flips effective and folds, and the tag goes. It used
-/// to be `INSERT OR IGNORE`, so the author's op did nothing while the CLI said it had, which is how
-/// `dark deprecate` came to report "Deprecated" over a fn that kept running.
+/// authoring it is main saying it runs here: the row flips effective and folds, and the tag goes.
+///
+/// `INSERT OR IGNORE` is the wrong verb for that. The row already exists, so the insert does nothing
+/// while the CLI reports that it authored -- `dark deprecate` saying "Deprecated" over a fn that keeps
+/// running.
 let mainRetakesABranchsOp =
   testTask "authoring on main an op a branch already holds makes it effective, untagged, and live" {
     let branchId = testBranch "test-branch-main-retake"
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "retake-proof" PT.BranchId.Main
 
-    let! ops = opsFor (namedSource "MainRetake" 42)
+    let! ops = parsePackageOps (namedSource "MainRetake" 42)
     let ids = ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
     let! _ = Branches.storeDeltaOps branchId ops
     let! onMainBefore = pmPT.findFn (fooLocIn "MainRetake") |> Ply.toTask
@@ -1831,9 +1775,10 @@ let mainRetakesABranchsOp =
   }
 
 
-/// A merged or archived branch is finished. Authoring on it used to go through `createBranch`, whose
-/// upsert clears `merged_at`, so a process still holding the id after a merge elsewhere put its next
-/// edit on a branch nothing would merge again, and listed it live. Now it refuses and says so.
+/// A merged or archived branch is finished, and authoring on it refuses rather than reviving it.
+///
+/// The revival route is `createBranch`, whose upsert clears `merged_at`: a process still holding the id
+/// after a merge elsewhere would put its next edit on a branch nothing merges again, listed as live.
 let authoringOnAFinishedBranchRefuses =
   testTask "authoring on a merged branch is refused rather than reviving it" {
     let branchId = testBranch "test-branch-finished-refuses"
@@ -1858,15 +1803,15 @@ let authoringOnAFinishedBranchRefuses =
 
 
 /// `SCM.PackageOps.liveBindingFor` is THE branch-aware read of a live binding: the chain overlay first,
-/// then main's projection. Direct reads of `locations` answered about main from a branch, plausibly, and
-/// that was the branch's recurring bug class.
+/// then main's projection. A direct read of `locations` answers about MAIN from a branch, plausibly and
+/// wrongly, which is the recurring bug class here.
 let liveBindingReadsTheBranchThenMain =
   testTask "liveBindingFor answers the branch's binding, and main's where the branch is silent" {
     let branchId = testBranch "test-branch-live-binding"
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "live-binding-proof" PT.BranchId.Main
 
-    let! ops = opsFor (namedSource "LiveBind" 42)
+    let! ops = parsePackageOps (namedSource "LiveBind" 42)
     let! _ = Branches.storeDeltaOps branchId ops
     let branchHash =
       ops
@@ -1916,7 +1861,7 @@ let aBranchNeverTagsWhatMainRuns =
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "no-tag-proof" PT.BranchId.Main
 
-    let! ops = opsFor (namedSource "NoTagOnMain" 42)
+    let! ops = parsePackageOps (namedSource "NoTagOnMain" 42)
     let ids = ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
     let! _ = LibDB.Inserts.insertAndApplyOps ops
     let! _ = Branches.storeDeltaOps branchId ops
@@ -1932,7 +1877,7 @@ let aBranchNeverTagsWhatMainRuns =
       Expect.contains draftIds id "and main's draft still lists its own op"
 
     // A fresh op on the same branch is tagged as before.
-    let! fresh = opsFor (namedSource "NoTagOnMainFresh" 43)
+    let! fresh = parsePackageOps (namedSource "NoTagOnMainFresh" 43)
     let! stored = Branches.storeDeltaOps branchId fresh
     Expect.equal stored (int64 (List.length fresh)) "fresh ops are stored"
     let! taggedNow =
@@ -1955,8 +1900,8 @@ let aBranchNeverTagsWhatMainRuns =
 
 
 /// Merging a branch into a non-main parent retags its ops onto the parent. Its name BASES have to move
-/// too: a name without a base can never conflict again, so a grandparent moving one of the child's names
-/// was invisible at the parent's merge.
+/// too: a name without a base can never conflict again, so a grandparent that moves one of the child's
+/// names would be invisible at the parent's merge.
 let retagMovesTheBasesToo =
   testTask "retagging a child's frontier onto its parent carries the child's name bases" {
     let parent = testBranch "test-branch-bases-parent"
@@ -1966,7 +1911,7 @@ let retagMovesTheBasesToo =
     do! Branches.createBranch parent "bases-parent" PT.BranchId.Main
     do! Branches.createBranch child "bases-child" parent
 
-    let! ops = opsFor (namedSource "BasesMove" 42)
+    let! ops = parsePackageOps (namedSource "BasesMove" 42)
     let! _ = Branches.storeDeltaOps child ops
     do!
       Sql.query
@@ -1991,9 +1936,9 @@ let retagMovesTheBasesToo =
   }
 
 
-/// `lookupRef` says WHY it missed, because only one kind of miss should start a branch. A `None` used to
-/// stand for a foreign uuid, an ambiguous prefix and an unknown name alike, and `--branch <a peer's id>`
-/// silently started a branch named after the id.
+/// `lookupRef` says WHY it missed, because only one kind of miss should start a branch. A bare `None`
+/// stands for a foreign uuid, an ambiguous prefix and an unknown name alike, which turns
+/// `--branch <a peer's id>` into a new branch named after that id.
 let refLookupSaysWhyItMissed =
   testTask "lookupRef distinguishes a foreign id, an ambiguous prefix and an unknown name" {
     let one = PT.BranchId.Id(System.Guid "aaaaaaaa-0000-4000-8000-000000000001")
@@ -2022,11 +1967,11 @@ let refLookupSaysWhyItMissed =
 
 /// The overlay pairs an item with its SetName by the hash the item carries, not by adjacency. Chain ops
 /// are ordered by origin_ts across authors, so after a bundle import two authors' ops interleave, and
-/// "the Add before this SetName" was the other author's: your name resolved to their body.
+/// "the Add before this SetName" is as likely to be the other author's: your name, their body.
 let overlayPairsByHashNotAdjacency =
   testTask "two authors' interleaved ops resolve each name to its own body" {
-    let! opsA = opsFor (namedSource "InterleaveA" 42)
-    let! opsB = opsFor (namedSource "InterleaveB" 99)
+    let! opsA = parsePackageOps (namedSource "InterleaveA" 42)
+    let! opsB = parsePackageOps (namedSource "InterleaveB" 99)
     let adds ops =
       ops |> List.filter (fun op -> match op with PT.PackageOp.AddFn _ -> true | _ -> false)
     let sets ops =
@@ -2058,7 +2003,7 @@ let anUndecodableBundleOpIsKeptNotRefused =
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "raw-proof" PT.BranchId.Main
 
-    let! ops = opsFor (namedSource "RawOp" 42)
+    let! ops = parsePackageOps (namedSource "RawOp" 42)
     let! stored = Branches.storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, "2026-01-01T00:00:00.000Z")))
     let alien = System.Guid.NewGuid()
     let! storedRaw =
@@ -2113,7 +2058,7 @@ let foldDoesNotStrandOpsItMadeEffective =
     do! cleanupBranch branchId
     do! Branches.createBranch branchId "stranded-proof" PT.BranchId.Main
 
-    let! ops = opsFor (namedSource "BranchTestStranded" 77)
+    let! ops = parsePackageOps (namedSource "BranchTestStranded" 77)
     let! _ = Branches.storeDeltaOps branchId ops
 
     let! pending = countEffective branchId 0
@@ -2231,9 +2176,9 @@ let noDirectLocationsReadsOutsideTheSilos =
 
 /// No SQL in Dark may compare a branch column against the literal `'main'`.
 ///
-/// Dead is the good case. The bad one is a comparison that half-fires, which is what those two did on
-/// this dev store: it carries BOTH spellings in `branches.parent_id`, so the guard fired for the stale
-/// rows and not the live ones.
+/// Dead is the good case. The bad one is a comparison that half-fires: a store carrying BOTH spellings
+/// in `branches.parent_id` matches for some rows and not others, so what the query does depends on
+/// which rows it happens to reach.
 ///
 /// Comments are exempt: explaining the trap is not falling into it.
 let noMainLiteralInDarkSql =
@@ -2267,10 +2212,9 @@ let noMainLiteralInDarkSql =
 
 /// A branch ID never reaches a person. Names do.
 ///
-/// The rule Phase 1 is built on: ids everywhere inside, a NAME wherever a human reads it. It has been
-/// broken three times, each time in a string nothing tests -- the conflict candidate labels, the
-/// `BranchEvent` line in `dark show`, and the `rebase` and `resolve` messages, which greeted you with
-/// `rebased onto "00000000-0000-0000-0000-000000000001"`.
+/// Ids everywhere inside, a NAME wherever a human reads it. The rule breaks in strings nothing else
+/// tests -- conflict candidate labels, the `BranchEvent` line in `dark show`, the `rebase` and
+/// `resolve` messages -- and it reads as `rebased onto "00000000-0000-0000-0000-000000000001"`.
 ///
 /// Textual, and a tripwire rather than a proof: it knows the spellings we actually use for a branch id,
 /// and only in the two forms that reach a person (`Error` and `Dval.string`). Resolve the name with
@@ -2322,9 +2266,9 @@ let branchIdsNeverReachAPerson =
 
 /// One LOCATION can hold a fn AND a value at once, so a conflict is identified by (name, item kind).
 ///
-/// Raised in a coworker's review as B1 and tagged FIX; the fold's UPDATE matched on the name alone for
-/// two months, so overriding one kind silently closed the other. The one it closed never got an answer:
-/// it leaves `dark conflicts` while its binding is still contested.
+/// The fold's UPDATE has to match on both. Matching on the name alone closes the other kind's conflict
+/// as a side effect of overriding this one, and the conflict it closes never gets an answer: it leaves
+/// `dark conflicts` while its binding is still contested.
 let overrideClosesOnlyItsOwnKind =
   testTask
     "overriding a conflict on one kind leaves the other kind's conflict pending" {
@@ -2384,8 +2328,8 @@ let overrideClosesOnlyItsOwnKind =
 let tests =
   // These mutate the process-global branch overlay AND delete from `package_ops`, either of which
   // can make a concurrent reader see the store mid-change. testSequenced, NOT testSequencedGroup:
-  // the group form only stops the tests INSIDE it from running alongside each other, and still runs
-  // in the parallel phase next to everything else, which is where the hazard is.
+  // the group form only sequences the tests inside it, and still runs in the parallel phase next
+  // to everything else.
   testSequenced
   <| testList
     "BranchOverlay"

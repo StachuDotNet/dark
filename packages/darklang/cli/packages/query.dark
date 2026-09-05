@@ -196,17 +196,11 @@ let deprecationMarker
 
 /// Forward dependencies of an item: the hashes it references, each with its kind.
 ///
-/// Went through `Builtin.depsGetDependencies`, which this branch deleted along with the rest of the
-/// per-query builtins. Nothing caught it, because a missing builtin resolves lazily and only throws when
-/// it's CALLED -- `reload-packages` says Done, and then the workbench's item page (the only caller) errored
-/// the moment you selected a function or a type. Which is to say: the main browsing surface was broken and
-/// the build was green.
+/// Wraps `SCM.Deps.dependenciesOf` so the CLI's callers go through one place.
 ///
-/// `SCM.Deps.dependenciesOf` is the Dark-side query and has the same shape, so this is the wrapper the
-/// docstring always claimed it was. `branchId` is unused: `package_dependencies` is content-addressed, one
-/// row set per item hash, and a branch's items fold their content in exactly so their edges are recorded.
+/// Takes no branch: `package_dependencies` is content-addressed, one row set per item hash, and a branch's
+/// items fold their content in precisely so their edges are recorded.
 let getDependencies
-  (branchId: Uuid)
   (hash: LanguageTools.ProgramTypes.Hash)
   : List<(LanguageTools.ProgramTypes.Hash * String)> =
   SCM.Deps.dependenciesOf hash

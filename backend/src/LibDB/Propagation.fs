@@ -117,12 +117,11 @@ let private discoverDependents
           // content-addressing makes `x + 1L` in two modules literally the same item
           // -- and every one of those names is a dependent that has to repoint.
           //
-          // Taking the branch's answer INSTEAD of main's dropped main's names on a
-          // branch, so a dependent that exists only in main never repointed there;
-          // taking main's when the branch had nothing did the reverse. On a branch a
-          // repoint of a main name is a branch-local one (it lands as a branch op),
-          // which is exactly what a branch should do with a name it changed the
-          // meaning of.
+          // Either one alone loses names: the branch's answer alone drops a dependent
+          // that exists only in main, and main's alone drops one the branch
+          // introduced. On a branch a repoint of a main name is a branch-local one (it
+          // lands as a branch op), which is exactly what a branch should do with a name
+          // it changed the meaning of.
           let batchDependents =
             hashes
             |> List.collect (fun h ->
@@ -320,13 +319,13 @@ let private stabilizationFromAffected
 /// final hash, emit Add+SetName ops, plus a repoint when the hash actually
 /// changed.
 ///
-/// An item that stabilizes to the hash it already has emits NOTHING. It is reached whenever
+/// An item that stabilizes to the hash it already has emits NOTHING. That case is reached whenever
 /// propagation runs a second time over an edit that already propagated -- `commit` does exactly
 /// that -- and the op it would otherwise author is `SetName(loc, X, previous = X)`: a name rebound
 /// to what it already holds. That op is not merely noise. It is a second naming of the same name in
 /// one draft, so `Draft.collapse` keeps it and drops the FIRST one, which is the binding the fold
-/// actually recorded -- and dropping that relists the pre-edit version. Committing a propagated
-/// edit reverted its callers.
+/// actually recorded, and dropping that relists the pre-edit version. Emitting it means committing
+/// a propagated edit reverts its callers.
 let private applyStabilization
   (s : HS.Stabilization)
   (a : Affected)
@@ -337,6 +336,9 @@ let private applyStabilization
   // item that gets here repoints.
   let mkRepoint loc currentHash newRef =
     Some { location = loc; fromRef = newRef currentHash; toRef = newRef newHash }
+  // Each `SetName` names what it replaced: `currentHash`, the same hash the repoint records as
+  // `fromRef`. A caller that followed its dependency descends from the version it was on, and that
+  // recorded lineage is what stops it looking like an independent creation to the other machine.
   if newHash = affectedCurrentHash a then
     [], None
   else
@@ -345,27 +347,18 @@ let private applyStabilization
       let transformed = { AT.transformType s.mapping t with hash = newHash }
       let ops =
         [ PT.PackageOp.AddType transformed
-          // Propagation KNOWS what it replaced -- it is the same `currentHash` the repoint records as
-          // `fromRef`. A caller that followed its dependency descends from the version it was on, which is
-          // the fact that stops it looking like an independent creation to the other machine.
           PT.PackageOp.SetName(loc, PT.PackageType newHash, Some currentHash) ]
       ops, mkRepoint loc currentHash PT.PackageType
     | AffectedFn(_, f, currentHash, loc) ->
       let transformed = { AT.transformFn s.mapping f with hash = newHash }
       let ops =
         [ PT.PackageOp.AddFn transformed
-          // Propagation KNOWS what it replaced -- it is the same `currentHash` the repoint records as
-          // `fromRef`. A caller that followed its dependency descends from the version it was on, which is
-          // the fact that stops it looking like an independent creation to the other machine.
           PT.PackageOp.SetName(loc, PT.PackageFn newHash, Some currentHash) ]
       ops, mkRepoint loc currentHash PT.PackageFn
     | AffectedValue(_, v, currentHash, loc) ->
       let transformed = { AT.transformValue s.mapping v with hash = newHash }
       let ops =
         [ PT.PackageOp.AddValue transformed
-          // Propagation KNOWS what it replaced -- it is the same `currentHash` the repoint records as
-          // `fromRef`. A caller that followed its dependency descends from the version it was on, which is
-          // the fact that stops it looking like an independent creation to the other machine.
           PT.PackageOp.SetName(loc, PT.PackageValue newHash, Some currentHash) ]
       ops, mkRepoint loc currentHash PT.PackageValue
 
@@ -487,9 +480,10 @@ let private createAllItems
   }
 
 
-/// Propagates an update to all dependents (including transitive).
-/// Returns None if no dependents, or Some(result, ops) if propagation occurred.
-/// Entry point for the entire propagation process. Called after a package item is updated.
+/// The entry point for propagation: called after a package item is updated, it repoints every
+/// dependent, transitive ones included. `None` when there are no dependents; otherwise what moved
+/// and the ops that move it.
+///
 /// <param branch> is the branch this runs on; main is an ordinary id here.
 let propagate
   (branch : PT.BranchId)
@@ -511,14 +505,12 @@ let propagate
       else
         Branches.chainBindingsByHash branch
 
-    // The user's explicit choices about what follows what. Loaded once per cascade
-    // rather than per dependent: the table only ever holds things a person
-    // deliberately said, so it stays small. Scoped to where the cascade is running.
-    // On a branch that's the branch's own choices layered over main's; on main it's
-    // main's alone, so another branch's experiment can't reach it.
-    // Main is an id like any other here: its policy rows are stored under its id, and the inheritance
-    // clause compares real ids. Sending "" for main matches no row, which reads as "no pins" rather
-    // than as an error.
+    // The user's explicit choices about what follows what. Loaded once per cascade rather than per
+    // dependent: the table only ever holds things a person deliberately said, so it stays small.
+    // Scoped to where the cascade is running -- on a branch that is the branch's own choices layered
+    // over main's, on main it is main's alone, so another branch's experiment cannot reach it. Main
+    // is an id like any other here: its policy rows are stored under its id, and the inheritance
+    // clause compares real ids.
     let! pins = PMQueries.getPropagationPins branch
     let! follows = PMQueries.getPropagationFollows branch
 

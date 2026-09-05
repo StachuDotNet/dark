@@ -113,9 +113,9 @@ let resolveConflict (state: State) (which: String) : Step =
   match selectedConflict state with
   | None -> Step.Continue { state with message = "no conflict selected" }
   | Some c ->
-    // `sideFor` reads "local" / "incoming", which is what `Candidate.side` actually holds. Asking for
-    // "A" / "B" matched nothing, so both hashes came back "" and the keep keys fed an empty hash to the
-    // resolver -- which would have bound a live name to nothing.
+    // `Candidate.side` holds "local" / "incoming", so those are the only two labels that match. A label
+    // that matches nothing yields "", and an empty hash reaching the resolver binds a live name to
+    // nothing.
     let sideFor (side: String) : String =
       match SCM.Conflicts.candidateFor c side with
       | Some cand -> cand.hash
@@ -132,8 +132,6 @@ let resolveConflict (state: State) (which: String) : Step =
 
     let label = if which == "ok" then "acknowledged" else "kept " ++ which
 
-    // A `Result` is not a `Bool`. This read `if ok then ...` on the Result itself, which is a runtime type
-    // error, so every resolve key in this view threw instead of resolving. Nothing tested it.
     let message =
       match outcome with
       | Ok _ -> "resolved: " ++ label
@@ -215,9 +213,9 @@ let runCommandInFrame (state: State) (command: String) (args: List<String>) : St
 
 /// `u`/`d` in the SCM view: push to the relay, pull from it, output in the reader.
 ///
-/// Sync was the one part of SCM the workbench could only WATCH. It showed the relay, the identity and the
-/// pull cursor and offered no way to act on any of it, so the answer to "I can see I'm ahead" was to leave
-/// and use a shell. It runs the same registered command the CLI does, so there is one implementation.
+/// Sync is an ACTION here, not just a readout: seeing that you are ahead and having to leave for a shell
+/// is how people stop pushing. It runs the same registered command the CLI does, so there is one
+/// implementation.
 ///
 /// With no relay configured this says so instead of running: `push` would fail against an empty url, and
 /// the fix is a question-asking command that cannot run inside a frame the workbench owns.

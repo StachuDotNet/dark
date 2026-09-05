@@ -63,8 +63,7 @@ let renderDevices (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<St
       [ "   " ++ on ++ "  " ++ relay
         "   " ++ (Stdlib.Cli.UI.Colors.dimText "as ") ++ identity ++ "     " ++ pulled ]
 
-  // Branches with their frontier sizes. Real, and the honest version of what the mock "branch sync" block
-  // was gesturing at: how much work is sitting on each line of work.
+  // Branches with their frontier sizes: how much work is sitting on each line of work.
   let branches = SCM.Branch.list () |> Stdlib.List.filter (fun b -> Stdlib.Bool.not b.merged)
 
   let branchLines =

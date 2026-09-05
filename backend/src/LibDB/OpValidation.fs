@@ -92,14 +92,17 @@ let hashClashes (ops : List<PT.PackageOp>) : List<string> =
 /// The names in <param ops> already held on the branch by an item of another kind, as
 /// ready-to-print messages, empty when there's no clash.
 ///
-/// One name holds one item, so replacing a value with a fn at the same name is a real decision, not a typo to
-/// absorb silently. Local authoring can ask the human to be explicit (delete it first); the SYNC fold cannot -
-/// it has no one to ask and must converge, so it replaces by last-writer-wins. That asymmetry is deliberate:
-/// this guard is UX, not an invariant. Anything that reaches the fold is still handled.
-/// NOTE (kernel-substrate): reads `locations` directly, so it answers about MAIN. A branch is an overlay
-/// with no `locations` rows of its own, so a fn-over-value clash is refused on main and accepted silently
-/// on a branch. That limitation predates this branch and is tracked in open-items; the fold still handles
-/// anything that gets past this guard, which is why it is UX rather than an invariant.
+/// One name holds one item, so replacing a value with a fn at the same name is a real decision, not
+/// a typo to absorb silently. Local authoring can ask the human to be explicit (delete it first);
+/// the SYNC fold cannot -- it has no one to ask and must converge, so it replaces by
+/// last-writer-wins. That asymmetry is deliberate: this guard is UX, not an invariant, and anything
+/// that reaches the fold is still handled.
+///
+/// <param _branchId> is not consulted. This reads `locations` directly, so it answers about MAIN,
+/// and a branch is an overlay with no `locations` rows of its own: a fn-over-value clash is refused
+/// on main and accepted silently on a branch. The parameter is there because the branch-aware
+/// version is the one callers will eventually want, and the fold handles what gets past here either
+/// way.
 let kindClashes
   (_branchId : PT.BranchId)
   (ops : List<PT.PackageOp>)

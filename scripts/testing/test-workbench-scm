@@ -3,15 +3,14 @@
 
 # The workbench's SCM surfaces, with actual work in the store.
 #
-# The PR says these replace the deleted `review` TUI, which did four things: list branches, show a branch's
-# changed items, show the commit list, and show conflicts. All four are here -- Home summarises them and the
-# Changes view lists the draft -- but `test-workbench.expect` only ever opens the workbench on an EMPTY
-# store, where every section says some version of "nothing here". That asserts the view renders, not that
-# it can show anything.
+# Four things have to reach the screen: the branch list, a branch's changed items, the commit list and
+# the conflicts. Home summarises them and the Changes view lists the draft.
 #
-# So: build a store that has a draft, a commit, a branch and a recorded conflict, and check each one
-# reaches the screen. Every row this asserts on comes from an SCM API this branch rewrote, so it is the
-# data path under test as much as the drawing.
+# `test-workbench.expect` only ever opens the workbench on an EMPTY store, where every section says some
+# version of "nothing here" -- which asserts that the view renders, not that it can show anything. So:
+# build a store with a draft, a commit, a branch and a recorded conflict, and check each one reaches the
+# screen. Every row asserted on here comes from an SCM API, so it is the data path under test as much as
+# the drawing.
 
 set -euo pipefail
 

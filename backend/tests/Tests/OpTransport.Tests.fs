@@ -1,11 +1,15 @@
-/// Regression tests for the op-transport hardening (LibDB.Inserts.importOpsBulk +
-/// LibDB.Seed.applyUnappliedOps): a malformed / poison op arriving on the wire must never
-/// throw or brick the import OR the fold. Import skips malformed records; the fold skips +
-/// quarantines unparseable ops (marks them applied so they aren't re-scanned forever).
+/// A malformed or undecodable op arriving on the wire must never throw, on any of the three
+/// paths that meet one.
 ///
-/// These run against the shared test DB, so they use a distinctive `fada0000-` id prefix
-/// and clean it up defensively (before + after) -- a failed assert can't leave test ops
-/// behind to confuse other tests.
+///   - `Inserts.importOpsBulk` skips the malformed records in a batch and imports the rest.
+///   - `Seed.applyUnappliedOps` skips an op it cannot deserialize and leaves it UNAPPLIED, so
+///     a build that can read it still folds it.
+///   - `Inserts.storeOpsWithOwner` stores a relay's hosted ops without queueing them for this
+///     store's own fold.
+///
+/// These run against the shared test store, so they use a distinctive `fada0000-` id prefix and
+/// clean it up before AND after: a failed assert must not leave test ops behind to confuse
+/// other tests.
 module Tests.OpTransport
 
 open Expecto
@@ -137,9 +141,8 @@ let relayStoreDoesNotQueueForFolding =
 // triggers WipRefresh's discard-and-reinsert of the whole main log. Branch-tagging the poison op keeps it
 // out of that sweep, but the ordering is still racy enough to flake.
 let tests =
-  // testSequenced, NOT testSequencedGroup. The group form only stops the tests INSIDE it from running
-  // alongside each other; the group still runs in the parallel phase next to everything else, which is
-  // where the actual hazard is. testSequenced is what moves them to the phase that runs alone.
+  // testSequenced, NOT testSequencedGroup: the group form only sequences the tests inside it, and
+  // still runs in the parallel phase next to everything else.
   testSequenced
   <| testList
     "OpTransport"

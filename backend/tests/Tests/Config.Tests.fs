@@ -1,3 +1,7 @@
+/// `LibDB.Config` is the mutable, per-install local key/value store (`config_v0`): the CLI
+/// entry-point pointer and per-user settings. Deliberately NOT content-addressed and NOT synced.
+///
+/// These cover the get/set/upsert contract that boot-time entry-point resolution relies on.
 module Tests.Config
 
 open System.Threading.Tasks
@@ -10,9 +14,6 @@ open TestUtils.TestUtils
 
 module Config = LibDB.Config
 
-// LibDB.Config is the mutable, per-install local key/value store (config_v0) -- the CLI entry-point pointer
-// and per-user settings. Deliberately NOT content-addressed / synced. These cover the get/set/upsert
-// contract the boot-time entry-point resolution relies on.
 let tests =
   testList
     "LibDB.Config"

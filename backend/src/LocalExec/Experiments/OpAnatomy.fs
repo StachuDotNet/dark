@@ -5,10 +5,14 @@
 /// every op to what put it there, so the answer is measured rather than argued.
 ///
 /// The accounting is exact rather than sampled. Each category's cost is known from the serializer:
-/// an id is a fixed 8 bytes (`w.Write (id : uint64)`), a hash is written as a 64-char UTF-8 string so it
-/// costs 65 with its length prefix, and every other string costs its UTF-8 length plus a varint. So
-/// counting the structures gives byte totals directly, and whatever the categories do not explain is
-/// reported as the remainder rather than quietly dropped.
+/// an id is a fixed 8 bytes (`w.Write (id : uint64)`), a hash is a form tag plus its 32 raw bytes, and
+/// every other string costs its UTF-8 length plus a varint. So counting the structures gives byte totals
+/// directly, and whatever the categories do not explain is reported as the remainder rather than quietly
+/// dropped.
+///
+/// The per-category constants below are the coupling to watch: they duplicate what the serializer does,
+/// so a change to `Serializers/PT/Common.fs` has to be mirrored here or the remainder starts absorbing
+/// the difference.
 module LocalExec.Experiments.OpAnatomy
 
 open System.Threading.Tasks
@@ -96,18 +100,16 @@ let private utf8 (s : string) : int =
 /// A string costs its bytes plus the varint that frames it.
 let private strCost (s : string) : int = let n = utf8 s in n + varintLen n
 
-// A hash is a 1-byte form tag plus 32 raw bytes. It was `String.write` of 64 hex characters (65 bytes
-// with its varint) until 2026-08-29, which cost 65 to carry 32 on the single largest category in the log.
+// A hash is a 1-byte form tag plus 32 raw bytes (see `Serializers/PT/Common.fs`). Hashes are the single
+// largest category in the log, so this constant is the one most worth keeping honest.
 let private hashCost = 33
 
 // Every id-carrying node writes exactly 8 bytes, unframed.
 //
-// Kept, after a round trip through removing them. They are random and the content hash ignores them, but
-// they are what a stored trace uses to point at a lambda, and freezing them in the bytes is what makes a
-// trace recorded in one process still match in the next. Minting them on read instead broke that.
-//
-// This row is the one to change if that ever changes again: it read 0 for a while and the structure
-// remainder went NEGATIVE, which is the accounting saying it is wrong.
+// Node ids are in the blob even though the content hash ignores them: a stored trace points at a lambda
+// by id, so freezing them in the bytes is what makes a trace recorded in one process still match in the
+// next. If they ever stop being written, this is the row to change -- a constant that overstates shows
+// up as a NEGATIVE structure remainder, which is the accounting saying it is wrong.
 let private idCost = 8
 
 
@@ -477,11 +479,11 @@ let private walkOp (t : Tally) (op : PT.PackageOp) : unit =
     countDoc t v.description
     walkExpr t v.body
 
-  | PT.PackageOp.SetName(loc, _target, previous) ->
+  | PT.PackageOp.SetName(loc, target, previous) ->
     countName t loc.owner
     List.iter (countName t) loc.modules
     countName t loc.name
-    countHash t _target.hash
+    countHash t target.hash
 
     match previous with
     | Some h -> countHash t h

@@ -74,9 +74,9 @@ module PT =
 
   /// Every `PackageOp` case, through the writer and back.
   ///
-  /// The op format is what two machines must agree on byte for byte, and no case had a roundtrip
-  /// test: coverage was indirect, by storing an op and reading it back through the fold, which never
-  /// reaches a `Decision` kind, a `BranchEvent`, or a `SetName` carrying a predecessor.
+  /// The op format is what two machines must agree on byte for byte. Storing an op and reading it
+  /// back through the fold covers this only indirectly, and never at all for a case the fold does
+  /// not reach: a `Decision` kind, a `BranchEvent`, a `SetName` carrying a predecessor.
   let packageOpTests =
     Roundtripping.testRoundtripMany
       "packageOps"

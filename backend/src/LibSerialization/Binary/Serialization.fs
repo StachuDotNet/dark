@@ -73,10 +73,9 @@ let makeSerializer<'T, 'ID>
 /// every historical readVN alongside one current writer; that is what lets a new binary decode an OLD
 /// blob.
 ///
-/// `CurrentVersion` is 1 and every reader ignores the version today. v1 is this substrate's format:
-/// the first one whose blobs outlive the binary that wrote them, since before it every store was
-/// rebuilt from `.dark` on each build. So there is nothing to branch on yet, and there will be from
-/// the next layout change on.
+/// No reader dispatches on the version yet, because `CurrentVersion` is still 1: v1 is the first
+/// format whose blobs outlive the binary that wrote them, since before it every store was rebuilt
+/// from `.dark` on each build. This exists so the first layout change has somewhere to go.
 let makeDeserializerV<'T, 'ID>
   (reader : uint32 -> BinaryReader -> 'T)
   : 'ID -> byte[] -> 'T =
@@ -96,10 +95,8 @@ let makeDeserializerV<'T, 'ID>
       reader header.Version r)
 
 
-/// Create an optimized deserializer function with embedded error handling.
-/// Version-agnostic convenience over `makeDeserializerV` (the reader ignores the
-/// blob version). Use `makeDeserializerV` directly when a type needs to decode more
-/// than one format version.
+/// Deserializer for a type with one on-disk layout: the reader never sees the blob's version.
+/// Everything uses this; `makeDeserializerV` is for the first type that needs to decode two.
 let makeDeserializer<'T, 'ID> (reader : BinaryReader -> 'T) : 'ID -> byte[] -> 'T =
   makeDeserializerV (fun _version r -> reader r)
 

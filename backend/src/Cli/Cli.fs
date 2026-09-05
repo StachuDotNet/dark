@@ -65,7 +65,6 @@ let info () =
 /// builtins would disagree with the freshly grown package DB. Force it after the grow.
 let private builtinsLazy : Lazy<RT.Builtins> =
   lazy
-    // User scripts get branch-specific context via cliParseAndExecuteScript.
     (LibExecution.Builtin.combine
       [ Builtins.CliHost.Libs.Cli.builtinsToUse ()
         Builtins.CliHost.Builtin.builtins ()

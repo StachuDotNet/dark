@@ -25,13 +25,10 @@ let itemKindFromString (s: String) : Stdlib.Option.Option<LanguageTools.ProgramT
 /// Every hash that has ever been at a location, NEWEST FIRST. Empty means the name is new here.
 /// Callers filter out the current hash to get only previous versions.
 ///
-/// Main's rows come from `locations`, which has no `branch_id` -- so on a branch that is the history you
-/// FORKED FROM, and the branch's own edits have to be appended or they are not history at all. This
-/// signature has always taken a `branchId` and used to ignore it, which is the trap `AGENTS.md` names:
-/// it answered about main, plausibly. What that cost: re-authoring a branch-only item said "Created"
-/// rather than "Updated", `dark module` did not see it as a redefinition, and -- the one that matters --
-/// `autoPropagateAfterUpdate` never repointed dependents off a version authored on the branch, because
-/// as far as it could see there was no earlier version to repoint from.
+/// Two sources, and both are needed. `locations` has no `branch_id`, so on a branch its rows are the
+/// history you FORKED FROM; the branch's own edits live in its op log and are prepended here. Answering
+/// from `locations` alone is the plausible-but-wrong shape: re-authoring a branch-only item reads as
+/// "Created" rather than "Updated", and propagation finds no earlier version to repoint dependents off.
 let getAllPreviousHashes
   (branchId: Uuid)
   (location: LanguageTools.ProgramTypes.PackageLocation)
@@ -166,16 +163,15 @@ let fnSignatureEqual
 
 /// Repoint this item's dependents NOW, into the draft, and say so in one line.
 ///
-/// Propagation happens on EDIT again, not only at commit. The reason is the whole point of doing it at all:
-/// you change `base` in order to find out what it does to the things above it, and you cannot find that out
-/// if `dep` is still pinned to the old version until you commit. Seeing the impact is how you decide whether
-/// to commit, so it has to happen first.
+/// On EDIT rather than at commit, which is the whole point of propagating at all: you change `base` in
+/// order to find out what it does to the things above it, and you cannot find that out while `dep` is
+/// still pinned to the old version. Seeing the impact is how you decide whether to commit, so it has to
+/// happen first.
 ///
-/// Nothing is committed by this. The repoints land in the DRAFT like any other edit, `dark status` counts them,
-/// and `dark commit` is still the moment you bless the whole thing. The checkpoint model is intact; what
-/// moved is when the repoint becomes visible, not when it becomes permanent.
+/// Nothing is committed here. The repoints land in the DRAFT like any other edit, `dark status` counts
+/// them, and `dark commit` is still the moment the whole thing is blessed.
 ///
-/// Quiet by design: one line, or nothing when nothing moved. The wall of per-edit consequences is the churn
+/// Quiet by design: one line, or nothing when nothing moved. A wall of per-edit consequences is the churn
 /// this design exists to remove.
 let repointNow
   (branchId: Uuid)

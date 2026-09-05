@@ -16,10 +16,9 @@ let localDb () : String = Stdlib.LocalStore.path ()
 
 /// What kind of thing a Constraint noticed.
 ///
-/// One kind exists today. The type is here so the next one is a case rather than a new command: an item left
-/// with no inbound references after a propagation, and a newly-bound fn shadowing an existing one with an
-/// identical signature, are both sketched at ProgramTypes.fs:628 and both want this same detect / record /
-/// ack lifecycle.
+/// The type is here so the next kind is a case rather than a new command: an item left with no inbound
+/// references after a propagation, and a newly-bound fn shadowing an existing one with an identical
+/// signature, both want this same detect / record / ack lifecycle.
 type Kind =
   | StaleUsage
   /// The name moved to a different KIND of item, and this usage is still on the old one.
@@ -95,7 +94,6 @@ let pinSuppresses (k: Kind) : Bool =
   | DecisionSuperseded -> false
 
 
-/// One finding, of whichever kind: the usage, the dependency it references, and the two versions.
 /// What VARIES between kinds of finding.
 ///
 /// A DU rather than two hash fields every kind has to fill: a replaced propagation choice has no hashes
@@ -113,6 +111,8 @@ type FindingDetail =
     by: String
 
 
+/// One finding: which kind it is, the usage it is about, the dependency involved, and whatever that kind
+/// needs to say beyond that.
 type Finding =
   { kind: Kind
     /// stable across re-detection, so an ack sticks
@@ -237,8 +237,6 @@ let ackedIds () : List<String> =
     "SELECT id FROM conflicts
      WHERE status = 'acked' AND kind <> 'same-name-different-hash'"
     "id"
-
-
 
 
 /// A deliberate OVERRIDE of yours that a later ordinary edit undid.

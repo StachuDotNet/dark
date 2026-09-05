@@ -15,7 +15,7 @@ module Darklang.SCM.PartialCommit
 //      the source it now points at (rule 2 does that, since the repointed body references the source's draft
 //      content). Naming the SOURCE does not drag its dependents' repoints along: those are changes to other
 //      items, they stay in the draft, and they are still consistent because what they reference just got
-//      committed. Main made that an explicit `includePropagations` decision; here it falls out of rule 2.
+//      committed. That is not a separate switch; it falls out of rule 2.
 //
 // What this deliberately does NOT do is let you commit an item while excluding something it depends on. That is
 // expressible, and it is always wrong, so the closure is automatic and reported rather than optional.
@@ -80,9 +80,9 @@ let draftAddedHashes () : List<String> =
 /// Reads the recorded edges rather than the bodies: `package_dependencies` is written by the same fold that
 /// wrote the content, so it can't disagree with what the item actually references.
 ///
-/// `added` is a parameter rather than a call because this runs once per closure round, and computing it
-/// decodes every blob in the draft. Calling it here made a partial commit quadratic in blob decodes for no
-/// reason: the set cannot change while the closure runs.
+/// `added` is a parameter rather than a call because this runs once per closure round and computing it
+/// decodes every blob in the draft. The set cannot change while the closure runs, so reading it per round
+/// would make a partial commit quadratic in blob decodes for nothing.
 let draftDepsOf (added: List<String>) (hashes: List<String>) : List<String> =
   if Stdlib.List.isEmpty hashes then
     []
@@ -116,8 +116,8 @@ let closeStep (added: List<String>) (acc: List<String>) : List<String> =
 /// argument: each round either adds a hash the draft holds or changes nothing, so the draft's own size is
 /// more rounds than can ever be needed. A cycle therefore can't hang it.
 let closeOverDeps (hashes: List<String>) : List<String> =
-  // Read ONCE, then passed down. It decodes every blob in the draft, and both the round count and every
-  // round used to call it, so a draft of N items paid N+1 full decodes of itself to commit a subset of it.
+  // Read ONCE, then passed down: it decodes every blob in the draft, and both the round count and every
+  // round need it, so asking per use is N+1 full decodes of the draft to commit a subset of it.
   let added = draftAddedHashes ()
   let rounds = Stdlib.List.length added + 1
 

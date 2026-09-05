@@ -230,20 +230,14 @@ published-vs-debug asymmetry against main is long-standing; the suspect is the R
 path, still unproven.
 
 
-## Moved in from notes, 2026-08-27
+## 2026-08-27: `push` is not slow, tracing is
 
-Two standing perf facts that were living in `notes/fresh-arch/` where nobody doing perf work would
-find them. AGENTS.md already names this file as the home for numbers and facts not worth re-deriving.
-
----
 I spent a while building a case that `push` had a serious performance problem. It does not. The dev
 container had `DARK_CONFIG_TRACE_DETAIL=on`, and that alone accounts for every number I measured.
 
 Keeping the note because the trap is worth documenting and I nearly filed the bug.
 
----
-
-## The numbers
+### The numbers
 
 Same call, same store (11,989 ops), same idle box:
 
@@ -256,26 +250,25 @@ Same call, same store (11,989 ops), same idle box:
 So the export is fine, `push`'s 2000-op chunking is fine, and a full first sync moves about twelve
 thousand ops in under six seconds. There is nothing to fix.
 
-## Why it took me so long to see it
+### Why it took me so long to see it
 
 Two things pointed away from it.
 
-- 1. **`config/dev` already says `DARK_CONFIG_TRACE_DETAIL=off`**, set by `7339eafc21` on 2026-07-31. So
-     grepping the repo told me tracing was off. The running container was created hours before that commit
-     and has `on` baked into its environment, which is fixed at create time. The config file and the live
-     process disagreed, and I trusted the file.
+1. **`config/dev` already says `DARK_CONFIG_TRACE_DETAIL=off`**. So grepping the repo told me tracing
+   was off. The running container predates that change and has `on` baked into its environment, which is
+   fixed at create time. The config file and the live process disagreed, and I trusted the file.
 
-- 2. **I measured 2.1s early in the session and minutes later on**, which looked like the store degrading
-     under me. It was not. `scripts/run-in-docker` forwards any `DARK_*` variable from the host shell into
-     the container, so a shell where I had exported `DARK_CONFIG_TRACE_DETAIL=off` produced fast numbers
-     and a shell without it produced slow ones. Same code, same data, two orders of magnitude apart,
-     depending on which terminal I happened to be in.
+2. **I measured 2.1s early in the session and minutes later on**, which looked like the store degrading
+   under me. It was not. `scripts/run-in-docker` forwards any `DARK_*` variable from the host shell into
+   the container, so a shell where I had exported `DARK_CONFIG_TRACE_DETAIL=off` produced fast numbers
+   and a shell without it produced slow ones. Same code, same data, two orders of magnitude apart,
+   depending on which terminal I happened to be in.
 
 There was also a genuine red herring in the middle: leftover test processes at 300% CPU. I caught those and
 held off reporting anything, which was the right call for the wrong reason -- I thought I had a contention
 problem, and I had a configuration one.
 
-## Fixing it
+### Fixing it
 
 `config/dev` is already correct, so the permanent fix is to recreate the container (a plain `docker
 restart` will not do it; environment is set when the container is created). Until then, any shell can
@@ -285,7 +278,7 @@ override it, because `run-in-docker` forwards host `DARK_*` vars:
 export DARK_CONFIG_TRACE_DETAIL=off
 ```
 
-## The part that is a real problem
+### The part that is a real problem
 
 Tracing has no GC, and the cost is not subtle. One night of ordinary work left **15.8 GB in
 `trace_fn_calls`** -- 164 traces, roughly 96 MB each, in a store that reached 17 GB. `dark traces delete
@@ -301,19 +294,17 @@ reports other standing properties of the store and could report this one -- it i
 case where the operator has no reason to suspect tracing is even on.
 
 
----
+## 2026-08-27: what `dark` startup actually costs
 
-Notes from instrumenting `dark` startup on the kernel-substrate branch. Moved out of a comment block in
-`Cli.fs`, where the numbers were going stale the moment anyone touched the hot path.
+Notes from instrumenting `dark` startup. They lived in a comment block in `Cli.fs`, where the numbers went
+stale the moment anyone touched the hot path.
 
 Every figure here is a measurement of one commit against one store. Treat them as a shape, not as constants,
 and re-measure before drawing a conclusion.
 
----
+### What the counters are
 
-## What the counters are
-
-This branch added three instrumentation seams, all no-ops when telemetry is off:
+There are three instrumentation seams, all no-ops when telemetry is off:
 
 - `Telemetry.time` spans around the boot phases: `cli.createPM`, `cli.growIfNeeded`, `cli.pmInit`,
   `cli.buildState`, `cli.execute`.
@@ -324,11 +315,9 @@ This branch added three instrumentation seams, all no-ops when telemetry is off:
   `executeFunction` and the stats hang off it, so without the sink the object is gone before anything could
   read it.
 
-Read them with `scripts/testing/view-telemetry.py`.
+Read them with `scripts/perf/view-telemetry.py`.
 
----
-
-## What they said
+### What they said
 
 Same store, same commit, warmed:
 
@@ -345,7 +334,7 @@ Both take roughly the same wall time. So:
 
 What's left is a large FIXED per-process cost, and it is still unexplained. That's the open question.
 
-## Build mode, before you measure anything
+### Build mode, before you measure anything
 
 Debug 701ms vs release 438ms for `dark status`, warmed, 10 runs. **Measure the release binary.** A genuine
 `--aot` build, which `build-release-cli-exes.sh` only does when asked, has never been measured and is the
@@ -354,12 +343,12 @@ obvious next thing to try.
 An earlier version of this note claimed 3x and ~225ms for release. That came from one uncontrolled run and
 does not reproduce; the controlled figure is 1.6x.
 
-## What this branch added to `status` specifically
+### What `status` costs beyond that
 
-Worth separating from the fixed cost above, because it's new and it scales with the store rather than being
-constant. `Status.summarise` calls `Constraints.pending ()`, which runs an unbounded three-way join over
+Worth separating from the fixed cost above, because it scales with the store rather than being constant.
+`Status.summarise` calls `Constraints.pending ()`, which runs an unbounded three-way join over
 `locations x package_dependencies x locations` and then one to two more queries per finding through
 `shouldFollow -> allChoices`. It also calls `draftRepoints`, which runs a recursive CTE per changed binding.
 
-None of that existed before. If `status` is measurably slower than `help` on a large store, this is where to
-look first, and the cheap fix is hoisting `allChoices` out of the per-finding loop.
+If `status` is measurably slower than `help` on a large store, this is where to look first, and the cheap
+fix is hoisting `allChoices` out of the per-finding loop.

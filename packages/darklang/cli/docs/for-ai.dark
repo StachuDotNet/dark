@@ -46,7 +46,7 @@ Updating existing items also re-checks their visible transitive dependents after
 all propagation finishes and lists any that have definite type errors. Reports
 count package locations rather than shared content hashes and do not misattribute
 errors that already existed.
-`commit` re-checks what it is committing and refuses a definite type error —
+`commit` re-checks what it is committing and refuses a definite type error;
 `commit --allow-type-errors` overrides that. An incomplete proof is reported but
 never blocks: it means the checker lacked evidence, not that the declaration is
 wrong. `typecheck` summarizes the whole branch; `--all` also lists successful
@@ -176,10 +176,10 @@ Rules:
 
 ## Critical Syntax
 - Whitespace-sensitive (like Python)
-- Nested function definitions need PARENTHESIZED params: `let helper (x) = ...`,
-  annotations optional. The parser desugars this to a local lambda, so use it for
-  task-local helpers. A nested fn can call one defined above it; a FORWARD reference
-  to one defined below fails.
+- Nested function definitions need PARENTHESIZED params AND full annotations:
+  `let helper (x: Int) : Int = ...`. The parser desugars this to a local lambda, so
+  use it for task-local helpers. A nested fn can call one defined above it; a FORWARD
+  reference to one defined below fails, and so does mutual recursion.
 - NO binding modules to variables (`let c = Darklang.Cli.Colors` is invalid --
   modules are not first-class values. Use the full path each time.)
 - Pipe |> feeds the left value as the FIRST argument of the right fn; any
@@ -215,8 +215,7 @@ If commands hang or fail silently, check logs:
   rundir/logs/cli.log    # main CLI log
   rundir/logs/           # other logs
 
-## More: docs syntax|types|operators|stdlib|errors|cli|scm
-
+## More
   docs syntax | types | operators | errors | packages
   docs stdlib | cli | scm | deprecation
   docs signatures <module>

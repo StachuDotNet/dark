@@ -250,13 +250,11 @@ let checkPackageOps
       return aggregate (Set.ofList candidateRefs) batch
   }
 
-let checkBranch
-  (pm : PT.PackageManager)
-  (builtins : Builtins)
-  // The PM already carries its branch on this branch's overlay model, so the search below needs no
-  // branch argument. Kept in the signature so callers (and the builtin) read the same as on main.
-  (_branchId : PT.BranchId)
-  : Ply<CheckReport> =
+/// Check every declaration the given package manager can see.
+///
+/// No branch parameter: a branch is an overlay carried by the pm itself, so `pm` decides what the
+/// search below reaches.
+let checkBranch (pm : PT.PackageManager) (builtins : Builtins) : Ply<CheckReport> =
   uply {
     let query : PT.Search.SearchQuery =
       { currentModule = []
@@ -646,17 +644,19 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
     { name = fn "atRestCheckBranch" 0
       typeParams = []
-      parameters = [ Param.make "branchId" TUuid "Branch to check" ]
+      parameters =
+        // NOT consulted: the search runs against the package manager this builtin set was
+        // constructed with, which is the process's own.
+        [ Param.make "branchId" TUuid "the branch a caller means" ]
       returnType = TCustomType(NR.ok (DarkTypes.reportName ()), [])
       description =
         "Checks every visible package declaration on a branch without persisting anything."
       fn =
         (function
-        | exeState, _, _, [| DUuid branchId |] ->
+        | exeState, _, _, [| DUuid _branchId |] ->
           uply {
             try
-              let! report =
-                checkBranch pm exeState.builtins (PT.BranchId.Id branchId)
+              let! report = checkBranch pm exeState.builtins
               return DarkTypes.reportToDT report
             with ex ->
               return

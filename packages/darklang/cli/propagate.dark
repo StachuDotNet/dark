@@ -27,6 +27,13 @@ let dotted (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
 let shortHash (h: LanguageTools.ProgramTypes.Hash) : String =
   LanguageTools.ProgramTypes.hashToString h |> Stdlib.String.slice 0 8
 
+/// Escape a string for a hand-assembled JSON body. Backslash first, or it would re-escape the ones the
+/// quote pass just wrote.
+let esc (x: String) : String =
+  x
+  |> Stdlib.String.replaceAll "\\" "\\\\"
+  |> Stdlib.String.replaceAll "\"" "\\\""
+
 
 /// Turn what a human typed into a location, resolved relative to where they are.
 let resolve
@@ -148,6 +155,26 @@ let describeTarget (owner: String) (modules: String) (name: String) : String =
     $"{owner}.{name}"
   else
     $"{owner}.{modules}.{name}"
+
+
+/// Refuse a target nothing is bound at, naming it. Returns whether it refused, so the caller stops.
+///
+/// Every verb here needs it: `target` re-reads an unresolvable item path as a MODULE path, so without
+/// this a typo becomes a choice recorded against a module nobody has, and the command reports success.
+/// Spelled out rather than run through `describeTarget`, which words the module case as "everything in
+/// X" -- right for reporting what a verb did, wrong under "nothing at".
+let refuseMissingTarget (owner: String) (modules: String) (name: String) : Bool =
+  if SCM.Propagation.targetExists owner modules name then
+    false
+  else
+    let path =
+      if name == "" then $"{owner}.{modules}"
+      else if modules == "" then $"{owner}.{name}"
+      else $"{owner}.{modules}.{name}"
+
+    printErr $"nothing at {path}."
+    printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
+    true
 
 
 /// Pin an ITEM and roll back the repoint it already got. Returns a one-line summary rather than printing,
@@ -321,14 +348,7 @@ let executePin (state: AppState) (arg: String) (note: String) : AppState =
   | Ok parts ->
     let (owner, modules, name) = parts
 
-    if Stdlib.Bool.not (SCM.Propagation.targetExists owner modules name) then
-      let path =
-        if name == "" then $"{owner}.{modules}"
-        else if modules == "" then $"{owner}.{name}"
-        else $"{owner}.{modules}.{name}"
-
-      printErr $"nothing at {path}."
-      printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
+    if refuseMissingTarget owner modules name then
       state
     else
 
@@ -376,14 +396,7 @@ let executeFollow (state: AppState) (arg: String) (note: String) : AppState =
   | Ok parts ->
     let (owner, modules, name) = parts
 
-    if Stdlib.Bool.not (SCM.Propagation.targetExists owner modules name) then
-      let path =
-        if name == "" then $"{owner}.{modules}"
-        else if modules == "" then $"{owner}.{name}"
-        else $"{owner}.{modules}.{name}"
-
-      printErr $"nothing at {path}."
-      printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
+    if refuseMissingTarget owner modules name then
       state
     else
 
@@ -433,14 +446,7 @@ let executeUnset (state: AppState) (arg: String) : AppState =
   | Ok parts ->
     let (owner, modules, name) = parts
 
-    if Stdlib.Bool.not (SCM.Propagation.targetExists owner modules name) then
-      let path =
-        if name == "" then $"{owner}.{modules}"
-        else if modules == "" then $"{owner}.{name}"
-        else $"{owner}.{modules}.{name}"
-
-      printErr $"nothing at {path}."
-      printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
+    if refuseMissingTarget owner modules name then
       state
     else
 
@@ -479,11 +485,6 @@ let help (_state: AppState) : String =
 
 /// Every explicit choice, as JSON. The agent path: same data the list renders.
 let executeJson (state: AppState) : AppState =
-  let esc (x: String) : String =
-    x
-    |> Stdlib.String.replaceAll "\\" "\\\\"
-    |> Stdlib.String.replaceAll "\"" "\\\""
-
   let body =
     SCM.Propagation.allChoices ()
     |> Stdlib.List.map (fun c ->
@@ -501,11 +502,6 @@ let executeJson (state: AppState) : AppState =
 /// for the whole store, so an agent parses one format either way. `"policy":"follow"` with an empty `"from"`
 /// is the default -- nothing was set -- which is exactly what the prose version says in words.
 let executeJsonFor (state: AppState) (arg: String) : AppState =
-  let esc (x: String) : String =
-    x
-    |> Stdlib.String.replaceAll "\\" "\\\\"
-    |> Stdlib.String.replaceAll "\"" "\\\""
-
   match resolve state arg with
   | Error e ->
     Stdlib.printLine $"{{\"error\":\"{esc e}\"}}"
@@ -564,7 +560,9 @@ let executeMany
   | _ ->
     names
     |> Stdlib.List.iter (fun n ->
-      let single =
+      // Each name is applied against the ORIGINAL state: these verbs report and write to the store
+      // rather than threading state, so what comes back is the same state handed in.
+      let _applied =
         if verb == "pin" then
           executePin state n why
         else
@@ -591,9 +589,6 @@ let execute (state: AppState) (args: List<String>) : AppState =
       executeList state
     else
       PropagateApp.launch state
-  | [ "help" ] ->
-    Stdlib.printLine (help state)
-    state
   | [ "list" ] ->
     if wantsJson then executeJson state else executeList state
   | [ "show", name ] ->

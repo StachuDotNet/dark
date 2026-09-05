@@ -49,11 +49,11 @@ let insertAndApplyOpsWith
       // Two statements per op, one transaction. The id is the content hash, so an identical op is one
       // row; a re-add of something main already runs affects 0 rows and is skipped below. But the row
       // can also exist at `effective = 0`: authored on a branch (tagged in `op_branches`), or synced
-      // in for review. Main authoring it now is main saying it runs here, so that row is flipped
-      // effective and folded like a fresh insert; `INSERT OR IGNORE` used to skip it, and the author's
-      // op silently did nothing while the CLI reported success. The tag goes in the same breath: an
-      // effective op is never tagged (see Branches.storeDeltaOpsStamped), and the branch that held it
-      // no longer differs from main on it.
+      // in for review. Main authoring it now is main saying it runs here, so the conflict clause
+      // flips that row effective and it folds like a fresh insert -- a plain `INSERT OR IGNORE` would
+      // skip it, and the author's op would do nothing while the CLI reported success. The tag goes in
+      // the same breath: an effective op is never tagged (see Branches.storeDeltaOpsStamped), and the
+      // branch that held it no longer differs from main on it.
       let statements =
         opsWithIds
         |> List.collect (fun (opId, _op, opBlob, originTs, commitHash) ->
@@ -73,7 +73,7 @@ let insertAndApplyOpsWith
           let parameters =
             [ "id", Sql.uuid opId
               "op_blob", Sql.bytes opBlob
-              "applied", Sql.bool false // Insert as unapplied
+              "applied", Sql.bool false
               "origin_ts", Sql.string originTs
               "commit_hash",
               (match commitHash with
@@ -115,7 +115,8 @@ let insertAndApplyOpsWith
         |> List.map (fun ((_, op, _, _, _), _) -> op)
       do! PackageOpPlayback.recordDependenciesOnly ignored
 
-      // Mark ops as applied (non-critical - ops are already applied)
+      // Bookkeeping only: the fold above already ran, so a failure here costs a redundant re-fold on
+      // the next pass, not correctness.
       if not (List.isEmpty insertedOpIds) then
         try
           let updateStatements =
@@ -127,8 +128,7 @@ let insertAndApplyOpsWith
               let parameters = [ "applied", Sql.bool true; "id", Sql.uuid opId ]
               (sql, [ parameters ]))
 
-          let _ = updateStatements |> Sql.executeTransactionSync
-          ()
+          updateStatements |> Sql.executeTransactionSync |> ignore<List<int>>
         with ex ->
           System.Console.Error.WriteLine(
             $"Warning: Failed to mark {List.length insertedOpIds} ops as applied: {ex.Message}"
@@ -138,10 +138,10 @@ let insertAndApplyOpsWith
   }
 
 
-/// Insert PackageOps and fold them into the projections. Returns the count actually inserted
-/// (duplicates skipped via INSERT OR IGNORE). Insert with applied=false, fold, then mark
-/// applied=true, so a mid-fold failure leaves the ops identifiable and retryable. Commit-free:
-/// no commit_hash, so every op is live.
+/// Insert PackageOps and fold them into the projections. Returns the count actually inserted, so an
+/// op the store already runs counts 0. Insert with applied=false, fold, then mark applied=true, so a
+/// mid-fold failure leaves the ops identifiable and retryable. Commit-free: no commit_hash, so every
+/// op is live.
 let insertAndApplyOps (ops : List<PT.PackageOp>) : Task<int64> =
   insertAndApplyOpsWith (fun _ -> nextOriginTs ()) (fun _ -> None) "op" ops
 
@@ -158,31 +158,6 @@ let insertAndApplyPropagatedOps (ops : List<PT.PackageOp>) : Task<int64> =
 /// Insert ops as main WIP (commit-free: no commit_hash, the op is live once folded).
 let insertAndApplyOpsAsWip (ops : List<PT.PackageOp>) : Task<int64> =
   insertAndApplyOps ops
-
-
-/// Reinsert WIP ops PRESERVING each op's original origin_ts and committing commit where known (by
-/// op id), minting a fresh stamp only for ops with no prior entry. This is WipRefresh's path:
-/// re-stamping every op in a whole-store reinsert would inflate the clock seconds into the future
-/// and poison the fold's timestamp-LWW for the next update. See getWipOpOriginTs.
-let insertAndApplyOpsPreservingTs
-  (preserveTs : Map<System.Guid, string>)
-  (preserveCommit : Map<System.Guid, string>)
-  (ops : List<PT.PackageOp>)
-  : Task<int64> =
-  insertAndApplyOpsWith
-    (fun opId ->
-      match Map.tryFind opId preserveTs with
-      | Some ts -> ts
-      | None -> nextOriginTs ())
-    // An op whose content didn't change keeps its id, so it keeps the commit it was committed
-    // into. A genuinely-new op has no prior entry and lands uncommitted, correctly: it's a new
-    // version you haven't reviewed.
-    (fun opId -> Map.tryFind opId preserveCommit)
-    // A whole-main rewrite re-folds bindings that were originally authored, propagated or resolved
-    // alike, and the op alone doesn't say which. 'op' is the honest default; the alternative is
-    // carrying provenance per op through the rewrite.
-    "op"
-    ops
 
 
 /// The draft's rows: main's uncommitted ops and the bindings they wrote. The `resolution` overlay is
@@ -245,8 +220,8 @@ let unreadableMainOpIds () : Task<Set<System.Guid>> =
 /// Delete, re-insert and re-fold as ONE transaction. `deletes` run first, in order; then every op is
 /// inserted (or, if its row survived the deletes at `effective = 0`, flipped effective and untagged, as
 /// `insertAndApplyOpsWith` does) and the ones that landed are folded on the same connection; then the
-/// commit. The rewrite used to be four transactions across two connections (delete; insert; fold; mark
-/// applied), and a crash after the first one deleted main's draft, or all of main, for good.
+/// commit. ONE transaction is the whole point: split across four (delete; insert; fold; mark applied)
+/// a crash after the first deletes main's draft, or all of main, with nothing to put back.
 ///
 /// `applied = 1` at insert is right because insert, fold and commit are one unit: a throw anywhere rolls
 /// all of it back and the store is exactly as it was. The fold opens nothing of its own on a connection
@@ -493,5 +468,3 @@ let commitAllAsBaseline (message : string) : Task<string> =
 
       return hash
   }
-
-

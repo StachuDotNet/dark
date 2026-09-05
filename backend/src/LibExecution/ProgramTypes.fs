@@ -38,8 +38,8 @@ module Hash =
   let empty : Hash = Hash ""
   let toHexString (Hash h) : string = h
 
-// Branch identity lives in `Branching` because `RuntimeTypes` needs it too and compiles first. These
-// two abbreviations are what let everything keep saying `PT.BranchId`.
+// Branch identity lives in `Branching` because `RuntimeTypes` needs it too and compiles first. This
+// abbreviation is what lets everything keep saying `PT.BranchId`.
 type BranchId = Branching.BranchId
 
 
@@ -742,8 +742,9 @@ type PackageOp =
   /// and the ones you do not share are none of your business.
   | BranchEvent of branchId : BranchId * event : BranchEventKind * at : string
 
-// Deliberately no PropagateUpdate / RevertPropagation op. "These changes belong
-// together" is the COMMIT, and "this version lost" is a recorded conflict.
+// There is deliberately no op for a propagation or its undo. "These changes belong together" is
+// what a COMMIT says, and "this version lost" is what a recorded conflict says; a cascade is just
+// the `AddFn`/`SetName` pairs it produced.
 
 //   | MoveItem of item: uuid * from : Location * to_: Location
 //   // we can punt this for now, I think

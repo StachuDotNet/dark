@@ -70,8 +70,10 @@ let namesToTry = LibDB.NameLookup.namesToTry
 /// The location comes from the winning `namesToTry` candidate, so dependency
 /// edges can record it directly.
 ///
-/// Single-scope kernel: lookups see main's package view (WIP included); there's
-/// no per-branch scoping to thread.
+/// There is no branch parameter, because a branch is an OVERLAY rather than a scope: the caller
+/// picks which package manager it hands over (`PackageManager.ptForBranch`), and that pm already
+/// answers for the branch it was built for. A branch id threaded through here would be a second
+/// way to say the same thing, and the two could disagree.
 let resolveGenericName<'FQName, 'Builtin when 'Builtin : comparison>
   (builtins : Option<Set<'Builtin>>)
   (onMissing : OnMissing)

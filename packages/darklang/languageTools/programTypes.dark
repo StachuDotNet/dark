@@ -472,9 +472,9 @@ module Reference =
     | PackageValue _ -> ItemKind.Value
     | PackageFn _ -> ItemKind.Fn
 
-  /// Construction must NAME the type (`Reference.PackageFn`), not just the case: a bare `PackageFn h` only
-  /// resolves in a match arm, where the matched value supplies the type. Unqualified here, this raised
-  /// "PackageFn is not a valid name" at runtime for every caller.
+  /// Construction must NAME the type (`Reference.PackageFn`), not just the case: a bare `PackageFn h`
+  /// only resolves in a match arm, where the matched value supplies the type. Unqualified in a
+  /// constructor position it is "PackageFn is not a valid name", at runtime, for every caller.
   let fromHashAndKind (h: Hash) (k: ItemKind) : Reference =
     match k with
     | Type -> Reference.PackageType h
@@ -558,9 +558,9 @@ type PackageOp =
       location: PackageLocation *
       reason: String *
       kind: DecisionKind
-  /// Something that happened to a BRANCH rather than to a name. Merged ops already travel, since they
-  /// become main ops; the FACT of the merge did not, so a colleague's copy of a branch still listed as
-  /// live work after you landed it.
+  /// Something that happened to a BRANCH rather than to a name. Merged ops travel on their own, since
+  /// they become main ops; the FACT of the merge does not, so without this a colleague's copy of a branch
+  /// goes on listing it as live work after you land it.
   | BranchEvent of branchId: Uuid * event: BranchEventKind * at: String
 
 

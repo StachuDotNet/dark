@@ -284,8 +284,8 @@ let handleIncomingMessage
 
         // branches
         // A branch id is a UUID; its NAME is the readable string (`feat`, `review`), and the two are not
-        // the same thing. (This comment used to say the opposite, from when the name WAS the id.) The
-        // editor echoes back whatever `dark/getBranches` gave it, so it never has to know which is which.
+        // the same thing. The editor echoes back whatever `dark/getBranches` gave it, so it never has to
+        // know which is which.
         | ("dark/getBranches", Some requestId, _) ->
           Branches.handleGetBranchesRequest state requestId
 
@@ -322,14 +322,15 @@ let handleIncomingMessage
         | ("dark/scm/getWipSummary", Some requestId, _) ->
           Branches.handleGetWipSummaryRequest state requestId
 
-        // These two answer explicitly rather than falling through to "we don't yet support this
-        // method". Their CONCEPTS left with the op-log migration, and a specific reason is worth more
-        // to whoever picks this up than a timeout: see `Branches.respondUnsupported`.
         | ("dark/renameBranch",
           Some requestId,
           Some(Object [ ("branchId", String b), ("name", String newName) ])) ->
           Branches.handleRenameBranchRequest state requestId b newName
 
+        // The two below answer explicitly rather than falling through to "we don't yet support this
+        // method": a rename with nothing to rename, and a concept this build has no registry for. A
+        // specific reason is worth more to whoever picks it up than a timeout -- see
+        // `Branches.respondUnsupported`.
         | ("dark/renameBranch", Some requestId, _) ->
           Branches.handleRenameBranchUnsupported state requestId
 

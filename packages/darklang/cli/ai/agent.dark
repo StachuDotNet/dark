@@ -233,8 +233,12 @@ let makeCliTool (branchName: String) (writeMode: WriteMode) : Darklang.LLM.Agent
 
 
 // AGENT SETUP
-let currentBranchName (_state: Cli.AppState) : String =
-  SCM.Ids.mainBranchName // single-scope kernel: always main
+
+/// The branch the agent's tool calls run on: the one the person is standing on. The tool spawns
+/// `dark --branch <name> ...`, so answering main here would have every agent edit land on main
+/// no matter where the person started it.
+let currentBranchName (state: Cli.AppState) : String =
+  SCM.PackageOps.branchName state.currentBranchId
 
 let createAgent (model: Darklang.LLM.Models.Model) (branchName: String) (writeMode: WriteMode) : Darklang.LLM.Agent.Agent =
   (Darklang.LLM.Agent.create ())

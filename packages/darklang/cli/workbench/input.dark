@@ -16,13 +16,10 @@ let performInputAction (state: State) (inp: InputState) : Step =
               selected = 0
               message = "committed" }
       | Error e ->
-        // `commitDraft` returns the message itself. Main's version returned a `CommitError` DU and
-        // unwrapped it here; that unwrap survived the rebase against a function that no longer returns
-        // one, so this threw on every failed workbench commit until it was caught.
-        let m = e
+        // `commitDraft`'s error IS the message; there is nothing to unwrap.
         Step.Continue
           { state with
-              input = Stdlib.Option.Option.Some { inp with prompt = "commit failed: " ++ m ++ " - esc"; field = Stdlib.Cli.UI.TextField.empty } }
+              input = Stdlib.Option.Option.Some { inp with prompt = "commit failed: " ++ e ++ " - esc"; field = Stdlib.Cli.UI.TextField.empty } }
     | None ->
       Step.Continue
         { state with
@@ -72,10 +69,12 @@ let performInputAction (state: State) (inp: InputState) : Step =
           match Packages.Location.parseRelativeTo state.location inp.field.text with
           | Error e -> Step.Continue { state with input = Stdlib.Option.Option.None; message = "rename failed: " ++ e }
           | Ok newLoc ->
-            // Two fields, not one tuple: `SetName((a, b))` passes a single tuple and blows up at runtime with
-            // "Expected 2 fields ... but got 1", which took the whole CLI down every time you pressed `r`.
-            // None: a rename binds the content at a name that was not in use. "No predecessor known" is
-            // the honest answer, and the detector only concludes anything when BOTH sides say it.
+            // Three separate fields, never one tuple: `SetName((a, b, c))` passes a single tuple and
+            // fails at runtime with "Expected 3 fields ... but got 1", which takes the CLI down.
+            //
+            // The predecessor is None because a rename binds this content at a name that was not in use:
+            // "no predecessor known" is the honest answer, and the divergence detector only concludes
+            // anything when BOTH sides claim one.
             let op =
               LanguageTools.ProgramTypes.PackageOp.SetName(
                 newLoc,
@@ -299,9 +298,8 @@ let performInputAction (state: State) (inp: InputState) : Step =
           selected = 0
           detailScroll = 0 }
   else if inp.action == "branch-create" then
-    // `create` hands back an Option: it looks the branch up after registering it, and a name that could not
-    // be registered has nothing to return. Reading `.id` straight off the Option threw instead of creating
-    // anything, so `b` in this view has never worked.
+    // `create` hands back an Option: it looks the branch up after registering it, so a name that could
+    // not be registered has nothing to return. Reading `.id` off the Option is a runtime error.
     match Darklang.SCM.Branch.create inp.field.text state.branchId with
     | None ->
       Step.Continue

@@ -54,8 +54,8 @@ let opsInCommitLimited
 /// Capped in F#: the init commit holds tens of thousands of ops, and turning them all into Dark values
 /// to render a twelve-line summary took over a second.
 ///
-/// `Int` both ways, as the builtin declares: this wrapper said `Int64` and no call had ever reached it
-/// without a runtime type error, since the one caller is the workbench's commit detail.
+/// `Int` both ways, as the builtin declares. An `Int64` here is a runtime type error at the one call
+/// site, the workbench's commit detail, rather than anything the loader catches.
 let getCommitNamedOps
   (commitHash: String)
   (limit: Int)
@@ -79,30 +79,6 @@ let count () : Int64 =
   |> Stdlib.Option.withDefault 0L
 
 
-/// The <param limit> most recent op summaries, newest first by insertion order. The SELECT lives ONLY here
-/// and takes no caller-supplied WHERE: a concatenated predicate stops being safe the first time someone
-/// routes an argument into it.
-let summaries (limit: Int64) : List<OpSummary> =
-  let sql =
-    "SELECT id, origin_ts AS ts, length(op_blob) AS sz FROM package_ops "
-    ++ $"ORDER BY rowid DESC LIMIT {Stdlib.Int64.toString limit}"
-
-  match Stdlib.Sqlite.query (localDb ()) sql with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
-      match Stdlib.Sqlite.textField row "id" with
-      | Some id ->
-        (OpSummary
-          { id = id
-            sizeBytes =
-              Stdlib.Sqlite.intField row "sz" |> Stdlib.Option.withDefault 0L
-            ts = Stdlib.Sqlite.textField row "ts" |> Stdlib.Option.withDefault "" })
-        |> Stdlib.Option.Option.Some
-      | None -> Stdlib.Option.Option.None)
-  | Error _ -> []
-
-
 /// Which ops a branch can SEE: main's log, plus that branch's own delta ops. Another branch's ops are in
 /// the same table but invisible from here -- that isolation is the point of the overlay.
 ///
@@ -111,8 +87,8 @@ let visibleWhere (branchId: Uuid) : String =
   if SCM.Ids.isMain branchId then
     "id NOT IN (SELECT op_id FROM op_branches)"
   else
-    // The CHAIN, not the branch alone: a branch off a branch sees its parent's ops too, the same walk
-    // `chainBindings` does. `@p1` is main's id, where the walk stops.
+    // The CHAIN, not the branch alone: a branch off a branch sees its parent's ops too. Same walk as
+    // `chainBindingEntries`, which carries the note on why `@p1` is bound rather than written out.
     "(id NOT IN (SELECT op_id FROM op_branches)
       OR id IN (SELECT op_id FROM op_branches WHERE branch_id IN (
            WITH RECURSIVE chain(bid) AS (
@@ -191,13 +167,6 @@ let summariesFor (branchId: Uuid) (limit: Int64) : List<OpSummary> =
   | Error _ -> []
 
 
-// the DRAFT (what you've changed and not yet committed)
-//
-// Live-on-write means a draft is not "pending work" -- it is already running. It's the set of ops you
-// haven't reviewed and committed yet, which is exactly what `dark status` reports and `dark commit` acts on.
-// Main only: a branch's ops are branch-pending and become draft when they merge.
-
-
 /// The commits whose ops live on <param branchId>, newest first.
 ///
 /// `commits` has no branch column, and cannot: a commit is not ON a branch, its OPS are. So the question
@@ -247,7 +216,8 @@ let parentCommitFor (branchId: Uuid) : String =
       "p.commit_hash IS NOT NULL AND p.effective = 1
        AND p.id NOT IN (SELECT op_id FROM op_branches)"
     else
-      // The chain, as `visibleWhere`: a branch off a branch follows its parent's commits too.
+      // The chain, as `visibleWhere`: a branch off a branch follows its parent's commits too. The walk
+      // is `chainBindingEntries`'s; its note explains the shape.
       "p.commit_hash IS NOT NULL
        AND (p.id IN (SELECT op_id FROM op_branches WHERE branch_id IN (
               WITH RECURSIVE chain(bid) AS (

@@ -440,7 +440,6 @@ matched before sending the next key, or the key lands mid-render and is dropped.
 key did nothing", it's the NEXT assertion timing out, which reads as a broken view. `_workbench-scm.expect`
 has a `press` helper for this.
 
-
 The interactive CLI (`run-cli` with no args) needs a real TTY. Use `expect`:
 
     ./scripts/run-in-docker expect scripts/testing/test-interactive.expect

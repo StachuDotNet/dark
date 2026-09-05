@@ -1847,11 +1847,7 @@ module DB =
     | _ -> Exception.raiseInternal "Invalid DB" []
 
 
-// Likewise no Branch type: a branch is a set of tagged ops, and name resolution
-// answers with an id.
-
-
-// No Commit type here, and that is not because commits are gone -- `dark commit` and
-// the `commits` table are both live. A commit is SCM state rather than program
-// structure: it marks ops, and nothing in ProgramTypes refers to one, so there is
-// nothing to convert.
+// No Branch or Commit converters here, and not because either concept is gone: `dark commit` and the
+// `commits` table are both live, and branches are everywhere. Both are SCM STATE rather than program
+// structure -- a branch is a set of tagged ops that name resolution answers for with an id, and a
+// commit marks ops. Nothing in ProgramTypes refers to either, so there is nothing to convert.

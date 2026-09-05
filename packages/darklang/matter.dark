@@ -44,14 +44,14 @@ let owners () : List<(String * Int64)> =
 
 
 /// The biggest modules, which is the closest thing to "what is here" that a stranger can skim.
-let topModules (limit: String) : List<(String * Int64)> =
+let topModules (limit: Int64) : List<(String * Int64)> =
   match
     Stdlib.Sqlite.queryP
       (db ())
       "SELECT owner || '.' || modules AS m, COUNT(*) n FROM locations
        WHERE unlisted_at IS NULL AND modules <> ''
        GROUP BY m ORDER BY n DESC LIMIT @p0"
-      [ limit ]
+      [ Stdlib.Int64.toString limit ]
   with
   | Ok rows ->
     rows
@@ -79,7 +79,7 @@ let publisherCount () : Int64 =
 
 
 /// The stylesheet, as one blob. It is CSS: read it as CSS.
-let css () : String =
+val css =
   """
   :root{--ink:#16161a;--dim:#6b6b76;--line:#e6e6ea;--bg:#fff;--accent:#4338ca;--chip:#f4f4f7}
   @media(prefers-color-scheme:dark){:root{--ink:#ececf0;--dim:#9a9aa6;--line:#2a2a32;--bg:#111114;--accent:#a5b4fc;--chip:#1c1c22}}
@@ -234,7 +234,7 @@ let route (m: String) (path: String) (what: String) : String =
 /// The landing page. Written for someone who has never heard of this: what's here, then how to get it, and
 /// only then the machine-facing endpoints -- which live behind a fold, because a relay's HTTP surface is
 /// what a MACHINE wants and almost nobody arrives wanting it first.
-let landingHandlerFn (req: HttpRequest) : HttpResponse =
+let landingHandlerFn (_req: HttpRequest) : HttpResponse =
   let featBlock =
     (feature "No setup" "Point a machine here and pull. No tailscale, no infra, nothing exposed to the internet.")
     ++ (feature "Pick up where you left off" "Write on your laptop, keep going on your desktop. Your packages follow you.")
@@ -247,7 +247,7 @@ let landingHandlerFn (req: HttpRequest) : HttpResponse =
   let pubs = publisherCount ()
 
   let modCards =
-    topModules "12"
+    topModules 12L
     |> Stdlib.List.map (fun m ->
       let (nm, n) = m
       card nm n)
@@ -577,7 +577,7 @@ let pageWithStatus (title: String) (body: String) (status: Int) : HttpResponse =
     "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
     ++ "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
     ++ $"<title>{esc title} -- matter</title><style>"
-    ++ css ()
+    ++ css
     ++ "</style></head><body><div class=\"wrap\">"
     ++ "<header><a class=\"logo\" href=\"/\"><b>matter</b><span>darklang packages</span></a>"
     ++ "<form class=\"find\" action=\"/search\" method=\"get\">"
@@ -1075,7 +1075,7 @@ let searchHandlerFn (req: HttpRequest) : HttpResponse =
 
 /// Everyone who has published here, which on a shared relay is also the list of people you are working
 /// with. Counts only; who pushed which op is the relay's business and not a visitor's.
-let ownersHandlerFn (req: HttpRequest) : HttpResponse =
+let ownersHandlerFn (_req: HttpRequest) : HttpResponse =
   let rows =
     owners ()
     |> Stdlib.List.map (fun o ->
@@ -1099,7 +1099,7 @@ let ownersHandlerFn (req: HttpRequest) : HttpResponse =
 
 /// What the relay holds, in numbers. Aggregates only -- a visitor learns the shape of the store without
 /// learning who pushed what, which is the one thing here that is nobody else's business.
-let statsHandlerFn (req: HttpRequest) : HttpResponse =
+let statsHandlerFn (_req: HttpRequest) : HttpResponse =
   let ops =
     Stdlib.Sqlite.scalarInt (db ()) "SELECT COUNT(*) AS n FROM package_ops" "n"
     |> Stdlib.Option.withDefault 0L

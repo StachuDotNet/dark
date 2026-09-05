@@ -2,10 +2,11 @@
 ///
 /// Editing an item gives it a new content hash, so everything referring to it now
 /// refers to a version that is no longer what the name means. The cascade closes
-/// that gap: it re-authors each dependent against the new hash, recursively, and
+/// that gap: it re-authors each dependent against the new hash, recursively, and it is
 /// overridable per item.
 ///
-/// These drive `LibDB.Propagation.propagate` against a real store, the same call the authoring path makes.
+/// These drive `LibDB.Propagation.propagate` against a real store: the same call the
+/// authoring path makes.
 module Tests.Propagation
 
 open Expecto
@@ -19,43 +20,14 @@ open Fumble
 open LibDB.Sqlite
 
 module PT = LibExecution.ProgramTypes
-module RT = LibExecution.RuntimeTypes
-module PM = LibDB.PackageManager
-module HS = LibDB.HashStabilization
-module Package = LibParser.Package
-module NR = LibParser.NameResolver
 module Inserts = LibDB.Inserts
-module WipRefresh = LibDB.WipRefresh
 module Propagation = LibDB.Propagation
 
 open TestUtils.TestUtils
 
-let private pmPT = PM.pt
-
-/// Author source into MAIN the way the CLI does: parse, stabilize SCC-aware hashes,
-/// insert + fold.
-let private author (source : string) : Task<List<PT.PackageOp>> =
-  task {
-    let builtins = localBuiltIns pmPT
-    let! parsed =
-      Package.parse builtins pmPT NR.OnMissing.ThrowError source |> Ply.toTask
-    match parsed with
-    | Ok ops ->
-      let stabilized = HS.computeRealHashes ops
-      let! _ = Inserts.insertAndApplyOpsAsWip stabilized
-      // The same second step the authoring builtin does: re-resolve names and
-      // recompute SCC-aware hashes now that the new items exist. Skipping it leaves
-      // forward references unresolved, so the dependency edges the cascade reads are
-      // never written.
-      let! _ = WipRefresh.refresh pmPT
-      return stabilized
-    | Error errs ->
-      return Exception.raiseInternal "propagation test parse failed" [ "errs", errs ]
-  }
-
 /// Every fixture here authors a fresh module of `m`; only the declarations differ.
 let private authorIn (m : string) (decls : string) : Task<List<PT.PackageOp>> =
-  author $"module Darklang.{m}\n\n{decls}"
+  authorIntoMain $"module Darklang.{m}\n\n{decls}"
 
 let private loc (m : string) (name : string) : PT.PackageLocation =
   { owner = "Darklang"; modules = [ m ]; name = name }
@@ -70,18 +42,6 @@ let private liveHash (l : PT.PackageLocation) : Task<Option<string>> =
       "m", Sql.string (String.concat "." l.modules)
       "n", Sql.string l.name ]
   |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
-
-/// The hash a set of authored ops BOUND to a name. Read off the SetName, not the
-/// AddFn: an AddFn carries content and no name at all -- naming is a separate op,
-/// which is the whole point of the model.
-let private hashOfFn (ops : List<PT.PackageOp>) (name : string) : PT.Hash =
-  ops
-  |> List.tryPick (fun op ->
-    match op with
-    | PT.PackageOp.SetName(l, target, _) when l.name = name -> Some target.hash
-    | _ -> None)
-  |> Option.defaultWith (fun () ->
-    Exception.raiseInternal "no SetName for name" [ "name", name ])
 
 let private hashStr (h : PT.Hash) : string =
   let (PT.Hash s) = h
@@ -156,12 +116,12 @@ let singleHop =
     let! depBefore = liveHash (loc m "dep")
     Expect.isSome depBefore "dep is bound after authoring"
 
-    let baseV1 = hashOfFn v1 "base'"
+    let baseV1 = hashBoundTo v1 "base'"
 
     let! v2 =
       authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1000L"""
 
-    let baseV2 = hashOfFn v2 "base'"
+    let baseV2 = hashBoundTo v2 "base'"
     Expect.notEqual baseV1 baseV2 "editing the body moves the content hash"
 
     let! repointed = cascade (loc m "base'") baseV1 baseV2
@@ -186,11 +146,11 @@ let b (x: Int64) : Int64 = Stdlib.Int64.add ({m}.a x) 10L
 let c (x: Int64) : Int64 = Stdlib.Int64.add ({m}.b x) 100L"""
 
     let! cBefore = liveHash (loc m "c")
-    let aV1 = hashOfFn v1 "a"
+    let aV1 = hashBoundTo v1 "a"
 
     let! v2 = authorIn m $"""let a (x: Int64) : Int64 = Stdlib.Int64.add x 2000L"""
 
-    let! repointed = cascade (loc m "a") aV1 (hashOfFn v2 "a")
+    let! repointed = cascade (loc m "a") aV1 (hashBoundTo v2 "a")
 
     // b has to move because a did; c has to move because b did. Stopping at b would
     // leave c calling a version of b that nothing points at -- which is a real state
@@ -221,12 +181,12 @@ let one (x: Int64) : Int64 = Stdlib.Int64.add ({m}.shared x) 10L
 let two (x: Int64) : Int64 = Stdlib.Int64.add ({m}.shared x) 20L
 let three (x: Int64) : Int64 = Stdlib.Int64.add ({m}.shared x) 30L"""
 
-    let sharedV1 = hashOfFn v1 "shared"
+    let sharedV1 = hashBoundTo v1 "shared"
 
     let! v2 =
       authorIn m $"""let shared (x: Int64) : Int64 = Stdlib.Int64.add x 3000L"""
 
-    let! repointed = cascade (loc m "shared") sharedV1 (hashOfFn v2 "shared")
+    let! repointed = cascade (loc m "shared") sharedV1 (hashBoundTo v2 "shared")
 
     Expect.contains repointed "one" "first dependent repoints"
     Expect.contains repointed "two" "second dependent repoints"
@@ -248,15 +208,16 @@ let held (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L
 let free (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 20L"""
 
     let! heldBefore = liveHash (loc m "held")
-    let baseV1 = hashOfFn v1 "base'"
+    let baseV1 = hashBoundTo v1 "base'"
 
     // A pin on main. This is what a propagation `Decision` op folds to, and it
     // is the whole point of the policy table: the cascade is a rule the machine
     // applies TO you until you can overrule it.
     do!
       Sql.query
-        // Main's id from the product's constant. Spelled '' by hand, this row was invisible to the
-        // cascade -- and the cascade was ALSO asking for '', so the test passed while asserting the bug.
+        // Main's id from the product's constant, never spelled by hand: the cascade looks the
+        // row up by that same id, so a hand-typed one would be a row nothing can find and a
+        // test that passes while asserting nothing.
         "INSERT INTO propagation_policy (branch_id, owner, modules, name, policy, note, origin_ts)
          VALUES (@branch, 'Darklang', @m, 'held', 'pin', 'test', '2026-01-02T00:00:00.000Z')"
       |> Sql.parameters
@@ -266,7 +227,7 @@ let free (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 20L"""
     let! v2 =
       authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 4000L"""
 
-    let! repointed = cascade (loc m "base'") baseV1 (hashOfFn v2 "base'")
+    let! repointed = cascade (loc m "base'") baseV1 (hashBoundTo v2 "base'")
 
     Expect.contains repointed "free" "the unpinned dependent follows"
     Expect.isFalse (List.contains "held" repointed) "the pinned one does not"
@@ -290,13 +251,13 @@ let crossesOwners =
         $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1L
 let mine (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L"""
 
-    let baseV1 = hashOfFn v1 "base'"
+    let baseV1 = hashBoundTo v1 "base'"
 
     // A dependent owned by someone else entirely. The first module segment is the
     // owner, so this is a genuinely foreign caller rather than another module under
     // ours.
     let! _ =
-      author
+      authorIntoMain
         $"""module Zz.{m}
 
 let theirs (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.{m}.base' x) 20L"""
@@ -304,7 +265,7 @@ let theirs (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.{m}.base' x) 20L"""
     let! v2 =
       authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 5000L"""
 
-    let! repointed = cascade (loc m "base'") baseV1 (hashOfFn v2 "base'")
+    let! repointed = cascade (loc m "base'") baseV1 (hashBoundTo v2 "base'")
 
     Expect.contains repointed "mine" "same-owner dependents follow"
 
@@ -334,7 +295,7 @@ let noChangeNoCascade =
         $"""let dep (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L"""
 
     let! depBefore = liveHash (loc m "dep")
-    let baseV1 = hashOfFn v1 "base'"
+    let baseV1 = hashBoundTo v1 "base'"
 
     // from == to: nothing changed. A cascade here would author a new version of
     // every dependent for no reason, and each of those is four ops that live in the
@@ -387,10 +348,10 @@ let finalVersionWins =
     // Three edits with no commit in between. Each one cascades, so `rd` is
     // re-authored three times; what must hold is that it ends on the LAST version of
     // `r`, not on whichever intermediate it saw first.
-    let mutable prev = hashOfFn v1 "r"
+    let mutable prev = hashBoundTo v1 "r"
     for n in [ 10; 20; 30 ] do
       let! v = authorIn m $"""let r (x: Int64) : Int64 = Stdlib.Int64.add x {n}L"""
-      let next = hashOfFn v "r"
+      let next = hashBoundTo v "r"
       let! _ = cascade (loc m "r") prev next
       prev <- next
 
@@ -438,7 +399,8 @@ let sharedHashesAllRepoint =
 
     let! v2 = authorIn m $"""let sh1 (x: Int64) : Int64 = Stdlib.Int64.add x 88L"""
 
-    let! repointed = cascade (loc m "sh1") (hashOfFn v1 "sh1") (hashOfFn v2 "sh1")
+    let! repointed =
+      cascade (loc m "sh1") (hashBoundTo v1 "sh1") (hashBoundTo v2 "sh1")
     Expect.contains repointed "d1" "the dependent of the name we edited repoints"
 
     let! d1After = liveHash (loc m "d1")
@@ -488,7 +450,7 @@ let repointIsMarkedAsFollowed =
     let! v2 = authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 72L"""
 
     let! repointed =
-      cascade (loc m "base'") (hashOfFn v1 "base'") (hashOfFn v2 "base'")
+      cascade (loc m "base'") (hashBoundTo v1 "base'") (hashBoundTo v2 "base'")
     Expect.contains repointed "dependent" "the dependent followed"
 
     // The whole point: a repoint changes only the item's resolved references, so the
@@ -509,13 +471,13 @@ let repointIsMarkedAsFollowed =
   }
 
 
-/// Regression: propagation running a SECOND time over an edit that already propagated must
-/// author nothing.
+/// Propagation running a SECOND time over an edit that already propagated must author
+/// nothing.
 ///
-/// That op is not merely redundant. It is a SECOND naming of one name in a single draft, so
-/// `Draft.collapse` keeps it at commit and drops the FIRST -- the binding the fold actually
-/// recorded -- and dropping that relists the pre-edit version. Committing a propagated edit
-/// reverted its callers, and `dark eval` on the caller returned the old answer.
+/// A repeat op is not merely redundant. It is a SECOND naming of one name in a single draft,
+/// so `Draft.collapse` keeps it at commit and drops the FIRST -- the binding the fold actually
+/// recorded -- and dropping that relists the pre-edit version. The visible cost is a commit
+/// that reverts its own callers: `dark eval` on the caller answers with the pre-edit body.
 let secondPassIsSilent =
   testTask "propagating an already-propagated edit authors nothing" {
     let m = "PropTestSecondPass"
@@ -531,8 +493,8 @@ let secondPassIsSilent =
     let! v2 =
       authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 7000L"""
 
-    let baseV1 = hashOfFn v1 "base'"
-    let baseV2 = hashOfFn v2 "base'"
+    let baseV1 = hashBoundTo v1 "base'"
+    let baseV2 = hashBoundTo v2 "base'"
 
     let! repointed = cascade (loc m "base'") baseV1 baseV2
     Expect.contains repointed "dep" "the first pass repoints dep"
@@ -570,11 +532,11 @@ let secondPassIsSilent =
 
 /// A TYPE moving repoints the fns that use it.
 ///
-/// Every other test in this file moves a FN. Propagation is kind-specific throughout -- the affected
-/// item is transformed by `transformType` / `transformFn` / `transformValue`, and the dependency edge
-/// records the kind it points at -- and none of that was covered for types or values. `dark type --help`
-/// promises this in so many words: "When updating an existing type, dependents are automatically
-/// updated to use the new version."
+/// Every other test in this file moves a FN, and propagation is kind-specific throughout: the
+/// affected item is transformed by `transformType` / `transformFn` / `transformValue`, and the
+/// dependency edge records the kind it points at, so a fn's coverage says nothing about a type's.
+/// `dark type --help` promises this in so many words: "When updating an existing type, dependents
+/// are automatically updated to use the new version."
 let typeMovesItsUsers =
   testTask "a fn that uses a type repoints when the type moves" {
     let m = "PropTestType"
@@ -589,8 +551,8 @@ let typeMovesItsUsers =
 
     let! v2 = authorIn m $"""type Rec = {{ a: Int64; b: Int64 }}"""
 
-    let recV1 = hashOfFn v1 "Rec"
-    let recV2 = hashOfFn v2 "Rec"
+    let recV1 = hashBoundTo v1 "Rec"
+    let recV2 = hashBoundTo v2 "Rec"
     Expect.notEqual recV1 recV2 "editing the type moves its content hash"
 
     let! repointed = cascadeKind PT.ItemKind.Type (loc m "Rec") recV1 recV2
@@ -621,8 +583,8 @@ let valueMovesItsReaders =
 
     let! v2 = authorIn m $"""val basis = 500L"""
 
-    let baseV1 = hashOfFn v1 "basis"
-    let baseV2 = hashOfFn v2 "basis"
+    let baseV1 = hashBoundTo v1 "basis"
+    let baseV2 = hashBoundTo v2 "basis"
     Expect.notEqual baseV1 baseV2 "editing the value moves its content hash"
 
     let! repointed = cascadeKind PT.ItemKind.Value (loc m "basis") baseV1 baseV2
@@ -641,17 +603,17 @@ let valueMovesItsReaders =
   }
 
 
-/// A SetName binds its own name and no other. Naming a hash somewhere new used to unlist wherever it
-/// was, which took out a colleague's name because you renamed yours; there is no rename op, and a rename
-/// that wants to retire the old name needs an op that names the OLD location. The rename tests the
-/// migration deleted asserted the old claim, which is now the opposite of the design, so this is a
-/// rewrite rather than a port.
+/// A SetName binds its own name and no other.
+///
+/// There is no rename op. Naming a hash somewhere new must therefore leave every other name for
+/// that hash alone -- unlisting them would take out a colleague's name because you renamed yours.
+/// A rename that does want to retire the old name is two ops, the second naming the OLD location.
 let private namingElsewhereLeavesTheOldNameBound =
   testTask "a SetName at a new name leaves the old name bound to the same hash" {
     let m = "RenameKeep"
     do! cleanupFor "Darklang" m
     let! ops = authorIn m "let old (x: Int64) : Int64 = x"
-    let h = hashOfFn ops "old"
+    let h = hashBoundTo ops "old"
     let! _ =
       Inserts.insertAndApplyOpsAsWip [ PT.PackageOp.SetName(loc m "new", PT.PackageFn h, None) ]
     let! atNew = liveHash (loc m "new")
@@ -662,10 +624,12 @@ let private namingElsewhereLeavesTheOldNameBound =
   }
 
 
-/// Two names, one body, one caller each. The callers are the same content too, so the same op, and the
-/// second is never folded; its "who calls what" rows under the second name were never written, and
-/// `deps usedby <second name>` said nobody. Edges accumulate per hash now, and an Add the log already
-/// held still records the names this parse reached its callees through.
+/// Two names, one body, one caller each -- and the callers are the same content too, so the same
+/// op, which the log already holds and never folds a second time.
+///
+/// Dependency edges therefore have to accumulate per hash rather than being written once when an
+/// Add is first folded: a parse whose Add is already in the log still has to record the names it
+/// reached its callees through, or `deps usedby <the second name>` answers that nobody calls it.
 let private callersFoundByEitherNameOfOneBody =
   testTask "a caller of either name of one body is found by either name" {
     let m1 = "TwinOne"
@@ -696,12 +660,10 @@ let private callersFoundByEitherNameOfOneBody =
 
 
 let tests =
-  // These author into the shared main store and assert on `locations`, and other
-  // tests re-fold that projection. A reader caught mid-rewrite sees a name that
-  // plainly exists as missing. testSequenced, NOT testSequencedGroup. The group form
-  // only stops the tests INSIDE it from running alongside each other; the group
-  // still runs in the parallel phase next to everything else, which is where the
-  // actual hazard is. testSequenced is what moves them to the phase that runs alone.
+  // These author into the shared main store and assert on `locations`, and other tests
+  // re-fold that projection. A reader caught mid-rewrite sees a name that plainly exists
+  // as missing. testSequenced, NOT testSequencedGroup: the group form only sequences the
+  // tests inside it, and still runs in the parallel phase next to everything else.
   testSequenced
   <| testList
     "Propagation"

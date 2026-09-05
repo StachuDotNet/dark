@@ -3,13 +3,13 @@
 /// Part of `Darklang.Cli.Workbench`.
 module Darklang.Cli.Workbench
 
-// So: one read, on transition, cached in `State`. That's the same treatment (and the same reason) the tree's
-// wip/deprecated badges already get -- the renderer runs on every keypress and has to stay a pure function
-// of state for frame diffing to be sound, so a DB read cannot live inside it.
+// One read, on transition, cached in `State`. That's the same treatment (and the same reason) the tree's
+// wip/deprecated badges get -- the renderer runs on every keypress and has to stay a pure function of
+// state for frame diffing to be sound, so a DB read cannot live inside it.
 //
 // The counts come from `SCM.Draft`, which is also what `dark status` and `dark commit` read. That's the
-// point: one owner, many mentions. If the workbench and the CLI ever disagree about your draft again, it
-// will be because something stopped going through here.
+// point: one owner, many mentions. If the workbench and the CLI disagree about your draft, it is because
+// something stopped going through here.
 
 /// What every workbench surface needs to know about SCM, read once.
 type ScmStatus =
@@ -38,7 +38,7 @@ type ScmStatus =
     ///
     /// Needed because the placeholder's `ops` is 0, which is ALSO the honest answer on a clean tree -- so
     /// without this the comparison says "nothing changed" on the very first frame and the workbench opens
-    /// showing zeroes for everything. It did exactly that until a render smoke test caught it.
+    /// showing zeroes for everything.
     loaded: Bool }
 
 let emptyScmStatus () : ScmStatus =
@@ -59,8 +59,8 @@ let emptyScmStatus () : ScmStatus =
 /// Read the whole SCM picture for <param branchId>.
 let readScmStatus (branchId: Uuid) : ScmStatus =
   let p = SCM.Draft.read ()
-  // This branch's commits, not the store's. The row says "N commits on this branch", and it used to count
-  // every commit in the store, which is the same number everywhere and wrong everywhere but main.
+  // This branch's commits, not the store's: the row says "N commits on this branch", and a store-wide
+  // count is the same number everywhere and right only on main.
   let recent = SCM.PackageOps.commitsOnBranch branchId 1000L
 
   ScmStatus

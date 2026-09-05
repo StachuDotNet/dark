@@ -9,8 +9,8 @@
 # symptom was a binary that worked perfectly inside the source tree and died outside it.
 #
 # `validate-cli-artifact` covers first run for `status`, `version`, `help`, `eval` and `ls`. It does not
-# touch SCM, which is what this branch IS. So: author, commit, branch, merge, diverge, resolve, discard,
-# on a binary a user would actually download, starting from nothing.
+# touch SCM at all. So: author, commit, branch, merge, diverge, resolve, discard, on a binary a user
+# would actually download, starting from nothing.
 #
 # Deliberately no relay: this is one machine's first day. Sync has its own gates.
 
@@ -48,10 +48,10 @@ trap 'rm -rf "$HOMEDIR"' EXIT
 failures=0
 
 # DARK_CONFIG_RUNDIR, not just HOME. The container sets that variable for every process, and it WINS over
-# the `<home>/.darklang` default a published binary would otherwise compute -- so setting HOME alone left
-# this running against the shared dev store. It passed, which was the worst part: it was asserting a first
-# day against a store with 12k ops and someone else's branches in it, and it wrote its own fixtures back
-# into that store on the way through.
+# the `<home>/.darklang` default a published binary would otherwise compute -- so HOME alone leaves this
+# running against the shared dev store. That version passes, which is the trap: it asserts a first day
+# against a store with 12k ops and someone else's branches in it, and writes its own fixtures back into
+# that store on the way through.
 dark() { ( cd "$HOMEDIR" && HOME="$HOMEDIR" DARK_CONFIG_RUNDIR="$HOMEDIR/rundir" "$ARTIFACT" "$@" 2>&1 ); }
 clean() { sed 's/\x1b\[[0-9;]*m//g'; }
 
@@ -121,9 +121,9 @@ want "and it is reported"      "overrode this|decision-superseded" --branch main
 
 # 6c. A deprecation is a commit like any other.
 #
-# `dark delete` authors a `Deprecate` op, which binds no NAME. Commit used to decide "is the draft empty"
-# from the changed-BINDINGS list, so it answered "your draft is empty" and left the deprecation
-# uncommitted forever, where it then shipped inside the release seed as somebody else's mystery op.
+# `dark delete` authors a `Deprecate` op, which binds no NAME. So "is the draft empty" cannot be answered
+# from the changed-BINDINGS list: that answer leaves the deprecation uncommitted forever, where it ships
+# inside the release seed as somebody else's mystery op.
 dark --branch main fn /FirstDay.Hello.doomed '() : Int64 = 1L' >/dev/null 2>&1 || true
 dark --branch main commit "before deleting" -y >/dev/null 2>&1 || true
 want "delete deprecates it"   "^ *[Dd]eprecated "  --branch main delete fn FirstDay.Hello.doomed -y

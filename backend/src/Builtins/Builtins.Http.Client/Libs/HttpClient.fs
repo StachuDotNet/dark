@@ -156,8 +156,8 @@ type Configuration =
     ///
     /// Per-configuration rather than global on purpose. Turning it on for the shared client makes every
     /// Dark HTTP call send `Accept-Encoding`, which is a visible change to programs that did not ask for
-    /// it (37 HttpClient tests assert on the exact headers a request carries, and they were right to).
-    /// Sync is the only path that wants it, and it is already its own configuration.
+    /// it -- and HttpClient's tests assert on the exact headers a request carries, correctly. Sync is
+    /// the only path that wants it, and it is already its own configuration.
     automaticDecompression : System.Net.DecompressionMethods
   }
 
@@ -280,9 +280,9 @@ module BaseClient =
         UseCookies = false,
 
         // Ask for compression and unwrap it transparently. A server only compresses when asked, so
-        // this is what makes the relay's gzip reachable at all; the sync pages are JSON full of hex
-        // and go about 5x smaller. Dark sees the decompressed bytes either way, so the only visible
-        // difference is a `Content-Encoding` header on responses that took it up.
+        // this is what makes the relay's compression reachable at all. Dark sees the decompressed
+        // bytes either way, so the only visible difference is a `Content-Encoding` header on
+        // responses that took it up.
         // Off for everything but sync; see `Configuration.automaticDecompression`.
         AutomaticDecompression = config.automaticDecompression,
 
@@ -461,8 +461,9 @@ let syncConfig : Configuration =
       allowedScheme = fun scheme -> scheme = "https" || scheme = "http"
       allowedHeaders =
         fun headers -> not (LocalAccess.hasInstanceMetadataHeader headers)
-      // A sync page is JSON full of hex and goes about 3x smaller on the wire. Only the relay is asked,
-      // and only the relay answers, so nothing a Dark program does is affected.
+      // A sync page is JSON full of hex, so it compresses hard (the measurements are on
+      // `HttpServer.maybeCompress`, which is what answers). Only the relay is asked, and only the relay
+      // answers, so nothing a Dark program does is affected.
       automaticDecompression =
         System.Net.DecompressionMethods.GZip
         ||| System.Net.DecompressionMethods.Deflate

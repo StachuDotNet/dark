@@ -7,14 +7,13 @@ open Prelude
 
 /// A branch's identity.
 ///
-/// DISTINCT from a branch NAME, from a content hash and from a relay url. All three are strings, and all
-/// three have been passed where this belongs; while this was a string too, the compiler could not tell
-/// them apart, so the mistakes surfaced as plausible wrong answers rather than as errors.
+/// A type, not a string, and DISTINCT from a branch NAME, a content hash and a relay url. Those are all
+/// strings, and all three have been passed where a branch id belongs; as a string this could not tell
+/// them apart, so such a mistake reads as a plausible wrong answer rather than as an error.
 ///
 /// MIRRORS `Darklang.SCM.Ids`. The rule both sides keep: an id is compared against `Main`, never against
-/// a literal. Twenty-odd literal `"main"` tests were what let the last spelling change break eleven call
-/// sites that all read as correct, and one SQL predicate was still selecting on a spelling nothing had
-/// written for months.
+/// a literal. A literal `"main"` in a test or a SQL predicate survives a spelling change silently, at
+/// call sites that all still read as correct.
 type BranchId =
   /// Named `Id`, not `BranchId`: a case with the same name as its type shadows the type for QUALIFIED
   /// access, and `PT.BranchId.Main` then fails with "'Main' is not defined". (`ProgramTypes.Hash` is
@@ -31,8 +30,8 @@ type BranchId =
   static member Main : BranchId =
     Id(System.Guid "00000000-0000-0000-0000-000000000001")
 
-  /// Main's branch NAME. What a person types and reads; resolved to an id at the edge. It used to also
-  /// BE the id, which is what made a name and an id interchangeable.
+  /// Main's branch NAME. What a person types and reads, and nothing below the edge, which resolves it
+  /// to `Main` on the way in. A name is never an id, main's included.
   static member MainName : string = "main"
 
   /// Parse an id that arrived from outside: SQL text, a wire bundle, a CLI argument, Dark. `None` rather

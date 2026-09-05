@@ -190,8 +190,8 @@ let targetExists (owner: String) (modules: String) (name: String) : Bool =
 
     (SCM.PackageOps.liveBindingAt loc) |> Stdlib.Option.isSome
   else
-    // A module: anything live under it, on the branch chain first (a module that exists only on the
-    // branch used to answer "nothing at"), then main.
+    // A module: anything live under it, on the branch chain first -- a module that exists only on the
+    // branch has no `locations` row -- then main.
     let onBranch =
       match SCM.PackageOps.currentBranch () with
       | id when SCM.Ids.isMain id -> false
@@ -341,9 +341,9 @@ let forkBaseOf
     |> Stdlib.Option.map (fun b -> b.baseHash)
 
 
-/// On a branch, the version before the live one is found in the branch's OWN history, which starts at
-/// the fork base. Main's `locations` rows after the fork are main's story, not this branch's: a pin
-/// answered from them rolled a branch back to a version main authored later.
+/// The version before the live one. On a branch that is the branch's OWN history, which starts at the
+/// fork base: main's `locations` rows after the fork are main's story, not this branch's, and answering
+/// from them rolls a branch back to a version main authored after the fork.
 let previousHash
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.Hash> =

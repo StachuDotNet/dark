@@ -264,9 +264,9 @@ let nonSuccessIsAnError =
     do!
       withServer (fun port ->
         task {
-          // Both unguarded builtins returned `Ok body` for ANY completed exchange, so
-          // a server answering 400 arrived as a successful fetch whose payload
-          // happened to be an error page. Callers here only ever want the body of a
+          // A completed exchange is not a successful one. `Ok body` for any status
+          // makes a server's 400 arrive as a successful fetch whose payload happens
+          // to be an error page, and every caller of these two wants the body of a
           // request that worked.
           let! bad =
             eval $"Builtin.httpGetUnsafeBytes \"http://127.0.0.1:{port}/nope\""
@@ -293,14 +293,13 @@ let localhostIsReachable =
       withServer (fun port ->
         task {
           // `localhost` resolves to BOTH `::1` and `127.0.0.1`, and the connection
-          // filter dials every resolved address rather than only the first it got
-          // back. Every server this repo starts binds IPv4, so dialling only the
-          // first made the most natural address anyone types the one that could not
-          // work -- and it failed as a flat "network error", which sends you looking
+          // filter has to dial every resolved address rather than only the first it
+          // got back. Every server this repo starts binds IPv4, so dialling only the
+          // first makes the most natural address anyone types the one that cannot
+          // work -- and it fails as a flat "network error", which sends you looking
           // at the server.
           //
-          // Nothing else covers this: it needs a real socket, so no unit test would
-          // catch it.
+          // Needs a real socket, so nothing but an end-to-end test can catch it.
           let! ok =
             eval $"Builtin.httpGetUnsafeBytes \"http://localhost:{port}/ok\""
           Expect.isTrue (isOk ok) "localhost connects"

@@ -293,8 +293,9 @@ let extract () : unit =
 
     // An EXISTING store keeps whatever shape the seed it was born from had: `schema.sql` never runs
     // against it, so a table or column added since is simply absent, and the top-up below is the first
-    // thing to trip over it. That took the hosted relay down on 2026-08-28 ("table locations has no
-    // column named previous"). Bring the shape forward first, in the order the statements require.
+    // thing to trip over it -- as a raw SQLite error ("table locations has no column named previous"),
+    // on a store that is otherwise fine. Bring the shape forward first, in the order the statements
+    // require.
     if File.Exists(dbPath) then
       try
         match embeddedSchema () with

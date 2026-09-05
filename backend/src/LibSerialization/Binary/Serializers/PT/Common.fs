@@ -12,13 +12,13 @@ open LibSerialization.Binary.Serializers.Common
 module Hash =
   /// Raw bytes, not hex text.
   ///
-  /// A hash is 32 bytes of entropy and was written as 64 hex characters plus a length prefix, so every
-  /// occurrence cost 65 to carry 32. Hashes are the single largest thing in the op log (43% of it after
-  /// node ids went), and there are tens of thousands of occurrences of a few thousand distinct values,
-  /// so this is the cheapest large win available and it changes nothing about what is stored.
+  /// A hash is 32 bytes of entropy; as 64 hex characters plus a length prefix it costs 65 to carry 32.
+  /// Hashes are the single largest category in the op log (`LocalExec experiments op-anatomy` measures
+  /// it), with tens of thousands of occurrences of a few thousand distinct values, so halving them is
+  /// the cheapest large win available and it changes nothing about what is stored.
   ///
-  /// Length-prefixed anyway rather than a fixed 32: a `Hash` is a string as far as the type is concerned,
-  /// and one that is not 32 bytes of hex (a test fixture, a truncated value) must round-trip rather than
+  /// Tagged rather than a bare fixed 32: a `Hash` is a string as far as the type is concerned, and one
+  /// that is not 32 bytes of hex (a test fixture, a truncated value) must round-trip rather than
   /// silently corrupt the rest of the stream.
   let write (w : BinaryWriter) (Hash h : Hash) =
     let bytes =

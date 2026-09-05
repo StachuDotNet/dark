@@ -51,15 +51,14 @@ for r in "${ROUTES[@]}"; do
   #
   # Both for the same reason: a golden that changes when the store changes cries wolf and stops being
   # read. The pills on an item page are its callers, so `Stdlib.List.map`'s list moves whenever anyone
-  # anywhere adds a function that calls it -- twice in two days here, from changes with nothing to do
-  # with rendering. The structure is what this net is for (the div is there, the cap note renders, the
-  # disclosure wraps the overflow); WHICH callers is the store's business.
+  # anywhere adds a function that calls it. The structure is what this net is for (the div is there, the
+  # cap note renders, the disclosure wraps the overflow); WHICH callers is the store's business.
   #
-  # Card grids are the same story one level up. `/owners` lists whoever has published here, so a dev
-  # store that has run the test suite a few times grows an owner and the golden goes red for a reason
-  # that has nothing to do with the page. WHO is in the store is not what this net is watching, and
-  # neither is which modules are biggest today -- the landing page's grid carries a `style` attribute,
-  # so it slipped past this until an upstream merge reshuffled the top twelve and turned the net red.
+  # Card grids are the same one level up. `/owners` lists whoever has published here, so a dev store that
+  # has run the test suite a few times grows an owner and the golden goes red for a reason that has
+  # nothing to do with the page; the landing page's grid is whichever modules are biggest today. The
+  # `[^>]*` matters: the landing grid carries a `style` attribute, and a pattern anchored on the bare
+  # `<div class="grid">` misses it.
   curl -s --max-time 15 "http://localhost:$PORT$r" \
     | sed -E 's/[0-9]+/N/g' \
     | sed -E 's|(<div class="pills">).*?(</div>)|\1PILLS\2|g' \

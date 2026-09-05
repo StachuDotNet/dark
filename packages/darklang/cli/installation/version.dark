@@ -27,9 +27,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Helpers.versionInfoWithUpdateCheck ()
 
   Stdlib.printLine line
-  // The store-format line is gone with the Release footing: there is no release_state_v0 to read, and
-  // `Darklang.Sync` is `Darklang.SCM` now. An op log needs no format coordinate -- ops are
-  // content-addressed and a binary tops its own store up.
+  // No store-format line: an op log needs no format coordinate. Ops are content-addressed and a binary
+  // tops its own store up, so there is nothing for a version number to gate.
   state
 
 

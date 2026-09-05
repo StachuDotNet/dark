@@ -96,9 +96,9 @@ let updatedItems
   : List<UpdatedItem> =
   ops
   |> Stdlib.List.filterMap (fun op ->
-    // THREE fields. `SetName` carries the predecessor as well, and a two-field pattern matches nothing
-    // here rather than failing to compile: this is a `filterMap`, so every op silently fell through to
-    // `None`, `updates` came back empty, and `module` never propagated to anything.
+    // THREE fields: `SetName` carries the predecessor as well. A two-field pattern matches nothing rather
+    // than failing to compile, and inside a `filterMap` that is silent -- every op falls through to
+    // `None`, `updates` comes back empty, and `module` propagates to nothing.
     match op with
     | SetName(location, PackageType hash, _) ->
       updatedItem branchId location hash LanguageTools.ProgramTypes.ItemKind.Type

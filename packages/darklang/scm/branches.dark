@@ -142,8 +142,8 @@ let archive (branchId: Uuid) : Stdlib.Result.Result<Unit, String> =
   // ONE transaction. This is the only place that deletes from `package_ops`, the canonical log, and it
   // needs three more statements to stay consistent with that delete. Run separately, a crash between any
   // two leaves a branch that is half-archived: ops gone with tags still pointing at them, or tags gone
-  // with the bases still there. `finishMerge` and `retagFrontierToParent` are batched for exactly this
-  // reason and this was the odd one out.
+  // with the bases still there. `finishMerge` and `retagFrontierToParent` are batched for the same
+  // reason.
   let result =
     Stdlib.Sqlite.execBatch
       (localDb ())
@@ -402,8 +402,8 @@ let nameConflicts (branchId: Uuid) : List<String> =
 /// changed since the fork; after this the branch's own ops layer on top (LWW by origin_ts) and merge is
 /// unblocked.
 ///
-/// Every base moves in ONE transaction. It used to be a statement per name, so an interrupted rebase left
-/// half the bases rewritten -- a branch neither at its old fork point nor at the new one, with nothing
+/// Every base moves in ONE transaction. A statement per name would let an interrupted rebase leave half
+/// the bases rewritten -- a branch neither at its old fork point nor at the new one, with nothing
 /// recording which.
 let rebase (branchId: Uuid) : Stdlib.Result.Result<List<String>, String> =
   let parent = SCM.PackageOps.branchParentOf branchId
@@ -558,9 +558,9 @@ let resolveTakeTheirs
   match parseFqn fqn with
   | None -> Stdlib.Result.Result.Error $"can't parse a name from \"{fqn}\""
   | Some key ->
-    // Every op that BINDS the name: a SetName, or the Override a `resolve mine` wrote. Matching SetName
-    // alone meant `resolve theirs` after `resolve mine` found nothing, reported success, and changed
-    // nothing; `opBindsKey` is the one definition of "binds".
+    // Every op that BINDS the name: a SetName, or the Override a `resolve mine` wrote. `opBindsKey` is
+    // the one definition of "binds", so `resolve theirs` after `resolve mine` finds the override too
+    // rather than reporting success over an untouched branch.
     let ids =
       ownFrontierOps branchId
       |> Stdlib.List.filterMap (fun entry ->

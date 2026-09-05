@@ -19,17 +19,17 @@ let private defaultConnString = connStringFor LibConfig.Config.dbPath
 /// under a test that repointed it.
 ///
 /// Held beside `connString` rather than parsed back out of it, and it is what `Builtin.localDbPath`
-/// answers. Before this, that builtin returned the CONFIG path while `useStoreForTesting` moved only
-/// the F# connection: so in a two-instance test every `Stdlib.Sqlite` call in Dark -- push, pull,
-/// conflict detection, resolve, every branch-aware read -- went on reading the default store while
-/// the test believed it was on instance B. The whole Dark half of sync was unreachable from the
-/// harness, and the tests that looked like they covered it were covering the F# fold alone.
+/// answers. That matters because Dark reaches the store through `Stdlib.Sqlite`, which opens the path
+/// this reports: if it answered the CONFIG path while `useStoreForTesting` moved only the F#
+/// connection, a two-instance test would run every Dark-side read -- push, pull, conflict detection,
+/// resolve -- against the default store while believing it was on instance B, and the whole Dark half
+/// of sync would be unreachable from the harness.
 let mutable currentDbPath = LibConfig.Config.dbPath
 
-// `mutable` only so tests can repoint LibDB at a fresh store (see `Sql.useStoreForTesting`). Production never
-// rebinds it. Both the Fumble `connect` AND the raw-ADO fold path (`applyOps` opens `new SqliteConnection
-// connString`) read this, so a test swap redirects ALL of LibDB — inserts, reads, and the fold — at the
-// instance store.
+// `mutable` only so tests can repoint LibDB at a fresh store (see `Sql.useStoreForTesting`). Production
+// never rebinds it. Both the Fumble `connect` AND the raw-ADO fold path (`applyOps` opens `new
+// SqliteConnection connString`) read this, so a test swap redirects ALL of LibDB -- inserts, reads, and
+// the fold -- at the instance store.
 let mutable connString = defaultConnString
 
 module Sql =
@@ -48,7 +48,7 @@ module Sql =
     props
 
   // `mutable` only so tests can repoint LibDB at a fresh store (see `useStoreForTesting`). Production
-  // never rebinds it — it stays the default `connString` store for the process's life.
+  // never rebinds it: it stays the default `connString` store for the process's life.
   let mutable connect = Sql.connect connString |> initializeConnection
 
   /// Force this module's initialization, and with it the first connection open and the PRAGMA round trip.
@@ -62,13 +62,11 @@ module Sql =
     |> Sql.executeNonQuery
     |> ignore<Result<int, exn>>
 
-  /// TEST-ONLY: repoint LibDB at the store file at `path` (created if missing), so a test can run true
-  /// multi-instance scenarios — each "instance" is its own store, and you switch the active one by
-  /// calling this. Every subsequent LibDB operation hits `path`. Call `resetStoreForTesting` to restore
-  /// the default. NOT parallel-safe (it mutates process-global state): callers must be `testSequenced`
-  /// and restore the default when done.
-  /// TEST-ONLY: repoint every LibDB reader and writer, and `Builtin.localDbPath` with them, at
-  /// <param path>.
+  /// TEST-ONLY: repoint every LibDB reader and writer, and `Builtin.localDbPath` with them, at the
+  /// store file at <param path> (created if missing). That is what lets a test run true multi-instance
+  /// scenarios: each "instance" is its own store, and you switch the active one by calling this.
+  /// `resetStoreForTesting` restores the default. NOT parallel-safe, since it mutates process-global
+  /// state, so callers must be `testSequenced` and must restore the default when done.
   ///
   /// The caller must invalidate the caches after this (`LibDB.Caching.invalidateAll`), which cannot
   /// happen here because `Caching` compiles after this module. The package manager and the branch

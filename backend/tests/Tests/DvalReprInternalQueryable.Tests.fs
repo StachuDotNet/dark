@@ -10,8 +10,6 @@ open TestUtils.TestUtils
 module RT = LibExecution.RuntimeTypes
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
-module PT = LibExecution.ProgramTypes
-
 module Exe = LibExecution.Execution
 module DvalReprInternalQueryable = LibSerialization.DvalReprInternalQueryable
 module NR = LibExecution.RuntimeTypes.NameResolution

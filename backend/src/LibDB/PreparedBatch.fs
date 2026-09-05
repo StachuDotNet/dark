@@ -96,8 +96,7 @@ let bytesOption
   }
 
 
-/// Read one optional TEXT scalar. `None` for no row or NULL.
-/// One scalar count, through the same prepared-statement cache.
+/// Read one integer scalar, through the same prepared-statement cache. `0L` for no row.
 let scalarInt (ctx : Ctx) (sql : string) (setParams : SqliteCommand -> unit) : Task<int64> =
   task {
     let cmd = command ctx sql
@@ -111,6 +110,8 @@ let scalarInt (ctx : Ctx) (sql : string) (setParams : SqliteCommand -> unit) : T
       | _ -> 0L
   }
 
+/// Read one optional TEXT scalar. `None` for no row or NULL; raises if the column holds
+/// something else, for the same reason `bytesOption` does.
 let textOption
   (ctx : Ctx)
   (sql : string)

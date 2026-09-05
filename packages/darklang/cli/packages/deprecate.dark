@@ -274,13 +274,12 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
 /// `dark undeprecate <name>` -- put something back on the shelf.
 ///
-/// `Undeprecate` has been an op case with a fold behind it the whole time, and nothing could author one.
-/// So `deprecate` and `delete` were ONE-WAY: a `delete` typed at the wrong name could be recovered only by
-/// re-authoring the item, and the docs said `undo` reversed it, which it hasn't for a while. A verb that
-/// takes something off the shelf needs a verb that puts it back.
+/// The only way to author an `Undeprecate` op, which the fold has always understood. Without it
+/// `deprecate` and `delete` are one-way: a `delete` typed at the wrong name can be undone only by
+/// re-authoring the item.
 ///
-/// The kind is inferred rather than asked for. You know the name; making you also name its kind to un-do
-/// something is the kind of question a tool asks because it's easy to implement.
+/// The kind is inferred rather than asked for. You know the name; making you also name its kind to undo
+/// something is the sort of question a tool asks because it is easy to implement.
 let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   let branchId = state.currentBranchId
   let positional = args |> Stdlib.List.filter (fun a -> Stdlib.String.startsWith a "--" |> Stdlib.Bool.not)
@@ -326,8 +325,8 @@ let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState
     state
 
 
-/// `undeprecate`'s own help. It was registered with `deprecate`'s, so `dark undeprecate --help` described
-/// the other command's flags.
+/// `undeprecate`'s own help. Registered against `undeprecate`, not shared with `deprecate`, whose flags
+/// are not this command's.
 let undeprecateHelp (_state: Cli.AppState) : String =
   [ "Put a deprecated function, type, or value back on the shelf."
     ""

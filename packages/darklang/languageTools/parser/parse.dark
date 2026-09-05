@@ -32,11 +32,11 @@ let parsePTExpr
   parsePTExprInContext SCM.Ids.mainBranchId "" [] [] [] code
 
 
-// Like `parsePTExpr`, but lowers under a real module / fn-name / parameter context.
-// The LoweringDifferential uses this so it can catch resolution-context-dependent
-// divergences (pipe callee resolves fn-first, self-recursion → ESelf, a match
-// pattern shadowing a parameter) that a context-free lowering can't surface.
-/// Lower an expression against <param branchId>.
+/// Lower an expression against <param branchId>, under a real module / fn-name / parameter context.
+///
+/// The LoweringDifferential uses this so it can catch resolution-context-dependent divergences (pipe
+/// callee resolves fn-first, self-recursion -> ESelf, a match pattern shadowing a parameter) that a
+/// context-free lowering can't surface.
 ///
 /// The branch is a PARAMETER, not the process's. Reading process state here would mean the same source
 /// lowered to different names depending on which branch the process happened to be on at that moment,

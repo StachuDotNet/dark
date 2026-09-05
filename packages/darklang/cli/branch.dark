@@ -232,9 +232,11 @@ let executeRename (state: AppState) (branchRef: String) (newName: String) : AppS
         state
 
 
-/// Merge a branch's work into its parent (gated by canMerge: has-changes / no-active-children /
-/// rebased). On success its ops become part of the parent.
-/// `dark merge <branch> --dry-run`: everything a merge would do, and nothing recorded.
+/// Everything a merge would do, and nothing recorded.
+///
+/// <param standalone> is false when this is the preview inside the confirm flow, where the next line is
+/// the question and telling someone to run the thing they are being asked to approve reads as a
+/// non-sequitur.
 let executeMergePreview
   (state: AppState)
   (branchRef: String)
@@ -287,6 +289,8 @@ let executeMergeDryRun (state: AppState) (branchRef: String) : AppState =
   executeMergePreview state branchRef true
 
 
+/// Merge a branch's work into its parent, gated by `canMerge` (has-changes / no-active-children /
+/// rebased). On success its ops become part of the parent.
 let executeMerge (state: AppState) (branchRef: String) : AppState =
   match resolveRef branchRef with
   | None -> state
@@ -325,9 +329,7 @@ let executeMerge (state: AppState) (branchRef: String) : AppState =
       printErr $"Merge failed: {e}"
       state
 
-/// Rebase a branch onto main (accept main's current state; required before merge if main changed a
-/// name the branch also changed). Reports what moved.
-/// `dark rebase <branch> --dry-run`: what a rebase would reconcile, and nothing recorded.
+/// What a rebase would reconcile, and nothing recorded.
 ///
 /// Narrower than `merge --dry-run` on purpose. A rebase brings the PARENT's changes since the fork, and
 /// Dark cannot enumerate those: a branch records per-name bases only for names it touched itself, and
@@ -368,6 +370,8 @@ let executeRebaseDryRun (state: AppState) (branchRef: String) : AppState =
     state
 
 
+/// Rebase a branch onto its parent: accept the parent's current state, which a merge requires when the
+/// parent moved a name the branch also moved. Reports what moved.
 let executeRebase (state: AppState) (branchRef: String) : AppState =
   match resolveRef branchRef with
   | None -> state
@@ -380,7 +384,6 @@ let executeRebase (state: AppState) (branchRef: String) : AppState =
 
     state
 
-/// Present everything a branch changes vs its parent (+ new, ~ changed) -- review before merge.
 /// The module part of a dotted name, for grouping. `Stachu.Thing.foo` -> `Stachu.Thing`.
 let moduleOf (dotted: String) : String =
   match Stdlib.List.dropLast (Stdlib.String.split dotted ".") with
@@ -483,10 +486,9 @@ let executeResolve
 
     state
 
-/// Archive (soft-delete) a branch, discarding its unmerged work.
-/// Archiving DISCARDS the branch's unmerged ops and then the branch leaves every listing, `--all`
-/// included. So it is asked for the same way `discard` and `merge` are: say what would go, then take an
-/// explicit yes, which a piped stdin cannot give.
+/// Archive (soft-delete) a branch: its unmerged ops are discarded and it leaves every listing, `--all`
+/// included. So it asks the same way `discard` and `merge` do: say what would go, then take an explicit
+/// yes, which a piped stdin cannot give.
 ///
 /// A branch with nothing unmerged has nothing to lose, so that case goes straight through -- the whole
 /// point of the question is the work, and there is none.
@@ -579,34 +581,33 @@ let executePush (state: AppState) (branchRef: String) (url: String) : AppState =
     | None -> state
     | Some branchId ->
       // No identity gate: an instance mints its own id on first use, so this can't be empty.
-      match SCM.PackageOps.identity () with
-      | id ->
-        let bundle = Stdlib.String.toBlob (SCM.PackageOps.exportBranch branchId)
+      let id = SCM.PackageOps.identity ()
+      let bundle = Stdlib.String.toBlob (SCM.PackageOps.exportBranch branchId)
 
-        // The relay keys on the branch ID, not the name: two machines can each have a `fix-auth`, and
-        // they are different branches. The name travels inside the bundle, for display on the far end.
-        // The id is a `Uuid`; a URL is text, so this is one of the few places it becomes a string.
-        let branchParam = Stdlib.Uuid.toString branchId
+      // The relay keys on the branch ID, not the name: two machines can each have a `fix-auth`, and
+      // they are different branches. The name travels inside the bundle, for display on the far end.
+      // The id is a `Uuid`; a URL is text, so this is one of the few places it becomes a string.
+      let branchParam = Stdlib.Uuid.toString branchId
 
-        match Sync.relayPostTo url $"/branch/push?owner={id}&branch={branchParam}" bundle with
-        | Ok reply ->
-          // Read the confirmation rather than trusting the status. A relay answering 200 with a body
-          // this cannot read has not said it stored anything, and "pushed branch X" would be a claim
-          // rather than a report. Nothing is recorded either way here, so the cost of being wrong is
-          // only the message -- but it is the same false confidence that let a broken relay eat ops on
-          // the sync path, where state IS recorded.
-          let text = Stdlib.String.trim (Stdlib.String.fromBlobWithReplacement reply)
+      match Sync.relayPostTo url $"/branch/push?owner={id}&branch={branchParam}" bundle with
+      | Ok reply ->
+        // Read the confirmation rather than trusting the status. A relay answering 200 with a body
+        // this cannot read has not said it stored anything, and "pushed branch X" would be a claim
+        // rather than a report. Nothing is recorded either way here, so the cost of being wrong is
+        // only the message -- but it is the same false confidence that let a broken relay eat ops on
+        // the sync path, where state IS recorded.
+        let text = Stdlib.String.trim (Stdlib.String.fromBlobWithReplacement reply)
 
-          if Stdlib.String.startsWith text "stored branch" then
-            printOk $"pushed branch \"{branchRef}\" to {url} as \"{id}\"."
-          else
-            printErr
-              $"{url} answered, but not with anything this build can read as a confirmation, so the branch may not be there."
+        if Stdlib.String.startsWith text "stored branch" then
+          printOk $"pushed branch \"{branchRef}\" to {url} as \"{id}\"."
+        else
+          printErr
+            $"{url} answered, but not with anything this build can read as a confirmation, so the branch may not be there."
 
-            printHint "  `dark branch push` again once the relay is healthy."
-        | Error e -> printErr $"branch push failed: {e}"
+          printHint "  `dark branch push` again once the relay is healthy."
+      | Error e -> printErr $"branch push failed: {e}"
 
-        state
+      state
 
 /// Pull branches from a relay, yours by default or someone else's with <param owner>.
 ///
@@ -620,52 +621,50 @@ let executePullFrom (state: AppState) (url: String) (owner: String) : AppState =
   if url == "" then
     printErr "no relay -- `dark connect <url>` first, or pass a url."
   else
-    match owner with
-    | id ->
-      match Sync.relayGetAuthed url $"/branch/list?owner={id}" with
-      | Ok listBody ->
-        // Every line the relay sends here goes back to it inside the next request's URL, and is printed
-        // if the import fails. A branch id is a uuid, so anything that is not one is discarded rather
-        // than echoed: the relay's own push handler refuses a non-id for the same reason ("keeps the
-        // branch table keyed on real ids"), and a broken relay answering with a page of HTML should not
-        // put a page of HTML in a URL or in your terminal.
-        let lines =
-          Stdlib.String.fromBlobWithReplacement listBody
-          |> Stdlib.String.split "\n"
-          |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
-          |> Stdlib.List.filter (fun s -> s != "")
+    match Sync.relayGetAuthed url $"/branch/list?owner={owner}" with
+    | Ok listBody ->
+      // Every line the relay sends here goes back to it inside the next request's URL, and is printed
+      // if the import fails. A branch id is a uuid, so anything that is not one is discarded rather
+      // than echoed: the relay's own push handler refuses a non-id for the same reason ("keeps the
+      // branch table keyed on real ids"), and a broken relay answering with a page of HTML should not
+      // put a page of HTML in a URL or in your terminal.
+      let lines =
+        Stdlib.String.fromBlobWithReplacement listBody
+        |> Stdlib.String.split "\n"
+        |> Stdlib.List.map (fun s -> Stdlib.String.trim s)
+        |> Stdlib.List.filter (fun s -> s != "")
 
-        let ids =
-          lines
-          |> Stdlib.List.filter (fun s ->
-            match Stdlib.Uuid.parse s with
-            | Ok _ -> true
-            | Error _ -> false)
+      let ids =
+        lines
+        |> Stdlib.List.filter (fun s ->
+          match Stdlib.Uuid.parse s with
+          | Ok _ -> true
+          | Error _ -> false)
 
-        let ignored = (Stdlib.List.length lines) - (Stdlib.List.length ids)
+      let ignored = (Stdlib.List.length lines) - (Stdlib.List.length ids)
 
-        let _ =
-          if ignored > 0 then
-            printErr
-              $"{url} listed {Stdlib.Int.toString ignored} thing(s) that are not branch ids; ignoring them."
-          else
-            ()
-
-        if Stdlib.List.isEmpty ids then
-          printOk $"no branches for \"{id}\" on {url}."
+      let _ =
+        if ignored > 0 then
+          printErr
+            $"{url} listed {Stdlib.Int.toString ignored} thing(s) that are not branch ids; ignoring them."
         else
-          ids
-          |> Stdlib.List.iter (fun bid ->
-            match Sync.relayGetAuthed url $"/branch/pull?owner={id}&branch={bid}" with
-            | Ok bundleBody ->
-              match
-                SCM.PackageOps.importBranch
-                  (Stdlib.String.fromBlobWithReplacement bundleBody)
-              with
-              | Ok msg -> printOk msg
-              | Error e -> printErr $"import {bid} failed: {e}"
-            | Error e -> printErr $"pull {bid} failed: {e}")
-      | Error e -> printErr $"branch list failed: {e}"
+          ()
+
+      if Stdlib.List.isEmpty ids then
+        printOk $"no branches for \"{owner}\" on {url}."
+      else
+        ids
+        |> Stdlib.List.iter (fun bid ->
+          match Sync.relayGetAuthed url $"/branch/pull?owner={owner}&branch={bid}" with
+          | Ok bundleBody ->
+            match
+              SCM.PackageOps.importBranch
+                (Stdlib.String.fromBlobWithReplacement bundleBody)
+            with
+            | Ok msg -> printOk msg
+            | Error e -> printErr $"import {bid} failed: {e}"
+          | Error e -> printErr $"pull {bid} failed: {e}")
+    | Error e -> printErr $"branch list failed: {e}"
 
   state
 
@@ -674,9 +673,9 @@ let executePull (state: AppState) (url: String) : AppState =
   executePullFrom state url (SCM.PackageOps.identity ())
 
 
-/// `dark merge` answers for itself. It used to borrow `dark branch`'s help, which never mentions merging,
-/// so the one question a person had -- what does this take, and what will it do -- was the one the page did
-/// not answer.
+/// `dark merge`'s own page, rather than `dark branch`'s: that one never mentions merging, so the two
+/// questions a person actually has here -- what does this take, and what will it do to a conflict --
+/// would both go unanswered.
 let mergeHelp (_state: AppState) : String =
   [ "dark merge - move a branch's work into its parent."
     ""
@@ -695,6 +694,10 @@ let mergeHelp (_state: AppState) : String =
   |> Stdlib.String.join "\n"
 
 
+/// The page for `dark branch` AND for the root commands that share this file's subject: `branches`,
+/// `switch`, `rebase`, `diff`, `log`, `resolve`. They are one thing seen from six angles, and the "Also
+/// at the root" block below is where each of them is documented. `merge` gets its own page
+/// (`mergeHelp`) because it is the one that moves work into a parent and the questions are different.
 let help (_state: AppState) : String =
   [ "dark branch - isolated lines of work; author and eval without\n  touching main."
     ""
@@ -857,7 +860,6 @@ let executeSwitchCmd (state: AppState) (args: List<String>) : AppState =
     printErr "usage: dark switch <branch>   (`dark switch main` returns to main)"
     state
 
-/// `dark merge <id>`
 /// The branch a bare `dark merge` or `dark rebase` means: the one you are standing on.
 ///
 /// On main there is no such branch, and the answer is the usage line rather than a guess. `dark diff`
@@ -953,10 +955,7 @@ let executeDiffCmd (state: AppState) (args: List<String>) : AppState =
       printHint "  `dark diff <branch>` compares a branch with its parent."
       state
     else
-      let nameWidth =
-        r.items
-        |> Stdlib.List.map (fun i -> Stdlib.String.length i.name)
-        |> Stdlib.List.fold 0 (fun acc n -> if n > acc then n else acc)
+      let nameWidth = Cli.Commit.widest (r.items |> Stdlib.List.map (fun i -> i.name))
 
       printOk $"  CHANGED ({Stdlib.Int.toString (Stdlib.List.length r.changed)})"
 

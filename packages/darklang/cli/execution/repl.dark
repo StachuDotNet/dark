@@ -218,9 +218,9 @@ let captureValue (branchId: Uuid) (v: 'a) : String =
 /// source correct for expressions that refer to earlier bindings.
 let captureExpr (bindings: List<Binding>) (branchId: Uuid) (name: String) (rhs: String) : String =
   let chain = withBindings bindings $"let {name} = {rhs}"
-  // `Stdlib.Uuid.parse ".."` rather than a bare literal: this is source text the REPL evaluates, and
-  // `captureValue` takes a Uuid. Passing the string spelling typechecked nowhere and made every binding
-  // fall back to holding its expression, which is the silent degradation the note above predicts.
+  // `Stdlib.Uuid.parse ".."` rather than a bare literal: this is SOURCE TEXT the REPL evaluates, there
+  // is no Uuid literal syntax to interpolate, and `captureValue` takes a Uuid. A string here would
+  // typecheck nowhere and land as the silent degradation `captureValue`'s note describes.
   let branch = Stdlib.Uuid.toString branchId
   $"{chain}\nDarklang.Cli.Repl.captureValue (Stdlib.Uuid.parse \"{branch}\" |> Stdlib.Result.withDefault Darklang.SCM.Ids.mainBranchId) {name}"
 

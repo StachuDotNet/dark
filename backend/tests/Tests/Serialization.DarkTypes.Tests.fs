@@ -97,10 +97,10 @@ module RoundtripTests =
           None
 
         // `fromDT` returns an option (a Dval that is not a PackageOp is not a crash, it is a `None`),
-        // so it is unwrapped here rather than given its own helper. Nothing covered these: every
-        // `Decision` kind, both `BranchEvent` kinds and a `SetName` carrying a predecessor cross this
-        // boundary whenever Dark reads the log, and the `| _ -> None` on `previous` silently accepts a
-        // mis-typed one.
+        // so it is unwrapped here rather than given its own helper. Every `Decision` kind, both
+        // `BranchEvent` kinds and a `SetName` carrying a predecessor cross this boundary whenever
+        // Dark reads the log, and the `| _ -> None` on `previous` accepts a mis-typed one silently,
+        // so each shape has to be asserted rather than inferred from its neighbours.
         testRoundtripList
           "PT.PackageOp"
           (pkg (PackageRefs.Type.LanguageTools.ProgramTypes.packageOp ()))

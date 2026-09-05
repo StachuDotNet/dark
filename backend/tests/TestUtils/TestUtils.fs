@@ -1553,3 +1553,71 @@ let parsePTExpr (code : string) : Task<PT.Expr> =
     | _ -> return Exception.raiseInternal "Error executing parsePTExpr function" []
   }
   |> Ply.toTask
+
+
+// ---------------------------------------------------------------------------
+// Authoring against the real store
+//
+// The SCM test files (BranchOverlay, Draft, Propagation) all drive the authoring
+// path rather than hand-building ops, so that what they assert about is the code
+// the CLI runs. These are that path, in the two halves those files need.
+// ---------------------------------------------------------------------------
+
+/// Parse package source into stabilized ops: the real authoring path, SCC-aware hashes
+/// and all. The ops are returned, not stored.
+let parsePackageOps (source : string) : Task<List<PT.PackageOp>> =
+  task {
+    let! parsed =
+      LibParser.Package.parse
+        (localBuiltIns pmPT)
+        pmPT
+        LibParser.NameResolver.OnMissing.ThrowError
+        source
+      |> Ply.toTask
+    match parsed with
+    | Ok ops -> return LibDB.HashStabilization.computeRealHashes ops
+    | Error errs ->
+      return
+        Exception.raiseInternal
+          "test package source failed to parse"
+          [ "errs", errs ]
+  }
+
+/// Author source into MAIN the way the CLI does: parse, stabilize, insert + fold.
+let authorIntoMain (source : string) : Task<List<PT.PackageOp>> =
+  task {
+    let! stabilized = parsePackageOps source
+    let! _ = LibDB.Inserts.insertAndApplyOpsAsWip stabilized
+    // The same second step the authoring builtin takes: re-resolve names and recompute
+    // SCC-aware hashes now that the new items exist. Skipping it leaves forward
+    // references unresolved, so the dependency edges a cascade reads are never written.
+    let! _ = LibDB.WipRefresh.refresh pmPT
+    return stabilized
+  }
+
+/// The hash a batch of authored ops BOUND to a name.
+///
+/// Read off the `SetName`, not the `AddFn`: an `AddFn` carries content and no name at
+/// all -- naming is a separate op, which is the whole point of the model.
+let hashBoundTo (ops : List<PT.PackageOp>) (name : string) : PT.Hash =
+  ops
+  |> List.tryPick (fun op ->
+    match op with
+    | PT.PackageOp.SetName(l, target, _) when l.name = name -> Some target.hash
+    | _ -> None)
+  |> Option.defaultWith (fun () ->
+    Exception.raiseInternal "no SetName for name" [ "name", name ])
+
+
+/// Run a Dark expression against main's package manager, as the CLI would.
+///
+/// The SCM's write paths live in Dark (`SCM.*`), so a test that called the F# helper
+/// underneath one would be asserting about a second copy of the logic rather than the
+/// one that runs. Callers wrap this with the result shape they expect, and decide for
+/// themselves whether a Dark-side `Error` is a test failure or an assertion.
+let evalDarkExpr (code : string) : Task<RT.ExecutionResult> =
+  task {
+    let! ptExpr = parsePTExpr code
+    let! (state : RT.ExecutionState) = executionStateFor pmPT false Map.empty
+    return! Exe.executeExpr state (PT2RT.Expr.toRT Map.empty 0 None ptExpr)
+  }

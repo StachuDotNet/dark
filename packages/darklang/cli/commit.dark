@@ -161,6 +161,12 @@ let propagateOne
       printErr $"  propagation failed for {b.name}: {e}"
       0
 
+/// The widest of a set of names, so the notes beside them line up instead of stair-stepping.
+let widest (names: List<String>) : Int =
+  names
+  |> Stdlib.List.map (fun n -> Stdlib.String.length n)
+  |> Stdlib.List.fold 0 (fun acc n -> if n > acc then n else acc)
+
 /// Everything the review needs, computed once. Both the pretty view and `--json` read this, so an agent and
 /// a human are never looking at differently-derived versions of the same commit.
 type Review =
@@ -199,6 +205,22 @@ let review (state: AppState) : Review =
         // The NAME, like everywhere else user-facing: what `--json`'s reader can pass to another command.
         SCM.PackageOps.branchName (SCM.PackageOps.currentBranch ()) }
 
+/// Repoint every dependent of every name the draft changed, and count what moved. Both commit paths run
+/// it: a repoint is a consequence of the EDIT, not of which ops you chose to stamp.
+let propagateAll (state: AppState) (r: Review) : Int =
+  r.withPrevious
+  |> Stdlib.List.map (fun entry ->
+    let (b, previous) = entry
+    propagateOne state.currentBranchId b previous)
+  |> Stdlib.List.fold 0 (fun acc n -> acc + n)
+
+/// Who a commit is recorded as. The sync identity, because that is what a peer sees the ops arrive
+/// under; the logged-in account name only when this instance has not been named yet.
+let commitAuthor (state: AppState) : String =
+  match SCM.PackageOps.identity () with
+  | "" -> state.accountName
+  | id -> id
+
 /// Commit only what `--include=` named, plus what it depends on. Two things differ from a whole-draft
 /// commit, both deliberate:
 ///
@@ -219,17 +241,8 @@ let commitSelected
       Stdlib.Result.Result.Error
         "that selection has nothing to commit -- `dark status` shows what the draft holds."
     else
-      let moved =
-        r.withPrevious
-        |> Stdlib.List.map (fun entry ->
-          let (b, previous) = entry
-          propagateOne state.currentBranchId b previous)
-        |> Stdlib.List.fold 0 (fun acc n -> acc + n)
-
-      let author =
-        match SCM.PackageOps.identity () with
-        | "" -> state.accountName
-        | id -> id
+      let moved = propagateAll state r
+      let author = commitAuthor state
 
       let parent = SCM.PackageOps.parentCommitFor state.currentBranchId
       let hash = SCM.Commits.create message author (Stdlib.List.sort opIds) parent
@@ -259,17 +272,8 @@ let commit
   (r: Review)
   (message: String)
   : (String * Int64 * Int) =
-  let moved =
-    r.withPrevious
-    |> Stdlib.List.map (fun entry ->
-      let (b, previous) = entry
-      propagateOne state.currentBranchId b previous)
-    |> Stdlib.List.fold 0 (fun acc n -> acc + n)
-
-  let author =
-    match SCM.PackageOps.identity () with
-    | "" -> state.accountName
-    | id -> id
+  let moved = propagateAll state r
+  let author = commitAuthor state
 
   // Collapse BEFORE committing. Until now every version in the draft is reachable (`undo` steps through
   // them), but a commit is what other machines read, and five namings of one function -- four of them
@@ -414,11 +418,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
 
     printOk $"  CHANGED ({Stdlib.Int.toString (Stdlib.List.length changed)})"
 
-    // Widest name sets the column, so the notes line up instead of stair-stepping.
-    let nameWidth =
-      r.items
-      |> Stdlib.List.map (fun i -> Stdlib.String.length i.name)
-      |> Stdlib.List.fold 0 (fun acc n -> if n > acc then n else acc)
+    let nameWidth = widest (r.items |> Stdlib.List.map (fun i -> i.name))
 
     r.items
     |> Stdlib.List.iter (fun item -> Stdlib.printLine (changedLine nameWidth item))
@@ -441,10 +441,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       printOk
         $"  PROPAGATES TO ({Stdlib.Int.toString (Stdlib.List.length repoints)})   (auto, reduced to final versions)"
 
-      let repointWidth =
-        repoints
-        |> Stdlib.List.map (fun r -> Stdlib.String.length r.name)
-        |> Stdlib.List.fold 0 (fun acc n -> if n > acc then n else acc)
+      let repointWidth = widest (repoints |> Stdlib.List.map (fun rp -> rp.name))
 
       repoints
       |> Stdlib.List.iter (fun rp ->
@@ -463,10 +460,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       printOk
         $"  STAYING BEHIND ({Stdlib.Int.toString (Stdlib.List.length behind)})   (pinned, so they keep the version they have)"
 
-      let behindWidth =
-        behind
-        |> Stdlib.List.map (fun r -> Stdlib.String.length r.name)
-        |> Stdlib.List.fold 0 (fun acc n -> if n > acc then n else acc)
+      let behindWidth = widest (behind |> Stdlib.List.map (fun rp -> rp.name))
 
       behind
       |> Stdlib.List.iter (fun rp ->

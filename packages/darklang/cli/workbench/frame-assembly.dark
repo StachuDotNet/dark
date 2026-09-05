@@ -22,7 +22,8 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
   // fail the same way when they're separate: the record is correct, and nobody looks. The sidebar's badge
   // stays conflicts-only, since that's the entry it marks.
   //
-  // This used to read "✓ synced", which it never was: it counted conflicts and said nothing about sync.
+  // Worded as waiting rather than as sync: this counts conflicts and findings and says nothing about
+  // whether anything has been pushed or pulled.
   let needsYou = state.scmStatus.needsYou
   // The sidebar's badge, off the same cached read as everything else on this row.
   let wip = state.scmStatus.changed
@@ -36,7 +37,7 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
   // glyph would right-align this past the edge of the row.
   let syncVisibleLen = Stdlib.String.displayWidth syncPlain
   // The context line - the workbench's `pwd`: where edits land. Account, instance, branch, and the sync
-  // glance right-aligned. Branch is here and nowhere else; it used to be on this row AND the breadcrumb.
+  // glance right-aligned. The branch is named here and nowhere else, so the breadcrumb never repeats it.
   let context =
     Stdlib.Cli.UI.Layout.fixedSize
       1
@@ -53,9 +54,10 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
         let draftPart =
           if draft == "" then "" else (Stdlib.Cli.UI.Colors.dimText ("    " ++ draft))
 
-        // So drop whole segments in priority order instead of letting the row overwrite itself. The draft
-        // split is the most valuable thing here and the branch is the second, so `instance:` goes first and
-        // the account name second. Only if it still does not fit does the draft get clipped.
+        // Narrow terminals drop whole segments in priority order rather than letting the row overwrite
+        // itself. The draft split is the most valuable thing here and the branch is second, so `instance:`
+        // goes first and the account name second. Only if it still does not fit does the draft get
+        // clipped.
         let room = Stdlib.Int.max 0 (r.cols - syncVisibleLen - 4)
 
         let widthOf (plain: String) : Int = Stdlib.String.displayWidth plain

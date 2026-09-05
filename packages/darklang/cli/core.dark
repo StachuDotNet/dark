@@ -19,7 +19,11 @@ type SubAppAction =
 type SubApp =
   { onKey: Stdlib.Cli.Stdin.Key.Key -> Stdlib.Cli.Stdin.Modifiers.Modifiers -> Stdlib.Option.Option<String> -> (SubAppAction * SubApp)
     onDisplay: Unit -> Unit
-    onSave: Unit -> Unit
+    /// Persist, and return the app as it stands afterwards.
+    ///
+    /// Returns a `SubApp` rather than `Unit` because saving can fail (a full disk, a read-only home) and
+    /// the only place that can say so is the app itself, on the frame after the write.
+    onSave: Unit -> SubApp
     /// Restore the app's terminal surface when the CLI exits on Ctrl-C,
     /// bypassing the app's own exit action. Safe when already stopped.
     onTerminate: Unit -> Unit
@@ -156,8 +160,14 @@ let restoreSessionAccount () : (Stdlib.Option.Option<Uuid> * String) =
 ///
 /// The three-tier resolution (`--branch` for this command, `DARK_BRANCH` for this shell, the
 /// `current_branch` config for this machine) happens in the CLI entry point before any Dark runs, so all
-/// that is left here is to read the answer. It gets read ONCE, into `AppState.currentBranchId`, and is
-/// passed from there: a command that wants to know which branch it is on asks its state, not the process.
+/// that is left here is to read the answer.
+///
+/// Two readers of that answer, and they are not interchangeable. `AppState.currentBranchId` is the
+/// REPL's: one long-lived process where `switch` moves you mid-session, so the state has to move with it
+/// and a command that renders (`status`, `commit`, the workbench) reads it from there.
+/// `SCM.PackageOps.currentBranch ()` is the process's, and it is what the verbs that MUTATE the store use
+/// -- `branch`, `merge`, `discard`, `push` -- because the ops they author route by the process overlay,
+/// and a state that had drifted from it would report one branch while writing to another.
 let resolveStartingBranch () : Uuid = SCM.PackageOps.currentBranch ()
 
 

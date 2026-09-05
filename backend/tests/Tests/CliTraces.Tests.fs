@@ -12,7 +12,6 @@ open Fumble
 open LibDB.Sqlite
 
 module RT = LibExecution.RuntimeTypes
-module PT = LibExecution.ProgramTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module Exe = LibExecution.Execution
 module Dval = LibExecution.Dval
@@ -97,7 +96,7 @@ let private runCliCatching
   }
 
 
-/// Helper: extract the trace ID from a `traces list 1 --json` output.
+/// The trace id in a `traces list 1 --json` output.
 let private parseTraceID (json : string) : string =
   let split = json.Split("\"traceId\":\"")
   if split.Length < 2 then
@@ -1408,29 +1407,30 @@ let private everyCommandAnswersHelp =
         Tests.failtestf "commands that don't answer `help`:\n%s" detail
     })
 
-/// Commands the sweeps must not RUN, because running them is the problem: they take over the
-/// screen, rewrite the install, end the session or reach the network.
+/// Commands the sweeps must not RUN, because running them is the problem, with the reason beside
+/// each. A bare entry is an exclusion nobody has justified, which is how a sweep stops covering
+/// what it was written for.
 ///
-/// Asserted to be registered, below. An exclusion for a command that no longer exists is how a
-/// sweep quietly stops covering the thing it was written for. `agent` is added by the
-/// bogus-argument sweep only: the bare sweep exists to catch exactly what `agent` once did.
+/// Also asserted to be REGISTERED, below: an exclusion for a command that no longer exists is the
+/// same failure by a different route. `agent` is excluded from the bogus-argument sweep only -- the
+/// bare sweep is the one that catches what `agent` does with no subcommand.
 let private notSweepable =
   Set.ofList
-    [ "quit"
-      "install"
-      "uninstall"
-      "update"
-      "install-status"
-      "serve"
-      "outliner"
-      "views"
-      "text-editor"
-      "apps"
-      "login"
-      "logout"
-      "export-seed"
-      "devices"
-      "clear" ]
+    [ "quit" // ends the session
+      "install" // rewrites the install
+      "uninstall" // ditto, destructively
+      "update" // ditto, and fetches a build
+      "install-status" // reports on the machine's install, which the harness is not
+      "serve" // binds a port and blocks
+      "outliner" // takes over the screen
+      "views" // ditto
+      "text-editor" // ditto
+      "apps" // starts and stops daemons
+      "login" // network, and writes credentials
+      "logout" // ditto
+      "export-seed" // takes its argument as a path and writes a multi-MB database there
+      "devices" // shells out to `tailscale`
+      "clear" ] // clears the screen, taking the sweep's own output with it
 
 let private everyExclusionIsReal =
   cliTest "every command excluded from the sweeps still exists" (fun state ->
@@ -1443,23 +1443,21 @@ let private everyExclusionIsReal =
 
       if not (Set.isEmpty stale) then
         Tests.failtestf
-          "excluded from the sweeps but no longer registered: %s"
+          "excluded from the sweeps but not registered: %s"
           (stale |> Set.toList |> String.concat ", ")
     })
 
 
 /// Shape 1 of the four-shape sweep in `AGENTS.md`: every command, BARE.
 ///
-/// Shape 4 (a bogus argument) was automated; shape 1 was not, and it is the one that found
-/// `dark agent`. With no subcommand it went straight into an interactive read loop and blocked on a
-/// stdin that never arrived, so with stdin closed it hung until it was killed. Every other command
-/// prints help, prints a result, or refuses.
+/// The shape that catches a command going interactive with nothing to read: with no subcommand it
+/// drops into a read loop and blocks on a stdin that never arrives. Every command must instead print
+/// help, print a result, or refuse.
 ///
 /// Safe to run here BECAUSE the harness is not a terminal: anything that would go interactive asks
-/// `TerminalSupport.current ()` first and gets `Unavailable`. Note what this does and does not catch:
-/// `runCli` has no timeout, so a command that truly blocks forever hangs the RUN rather than failing
-/// it. That is still louder than the silence it replaced, but if a third interactive command shows up
-/// this wants a bound rather than a comment.
+/// `TerminalSupport.current ()` first and gets `Unavailable`. Note the limit, though: `runCli` has no
+/// timeout, so a command that truly blocks forever hangs the RUN rather than failing it. If a second
+/// interactive command turns up, this wants a bound rather than a comment.
 let private everyCommandAnswersWhenBare =
   cliTest
     "no registered command goes silent or hangs when run with no arguments"
@@ -1541,7 +1539,7 @@ let private everyCommandSurvivesABogusArgument =
 ///
 /// Worth its own run because of the trap `AGENTS.md` names: `locations` has no `branch_id`, so a read
 /// that goes straight to it answers about MAIN while you are on a branch -- and it answers plausibly,
-/// which is why three call sites had already drifted that way before anyone noticed. A command that
+/// which is how call sites drift that way unnoticed. A command that
 /// only misbehaves on a branch is invisible to the sweeps above, all of which run on main.
 ///
 /// Both ends of the setup are asserted, not assumed. A sweep that silently failed to switch would pass
@@ -1600,10 +1598,10 @@ let private everyCommandSurvivesABranch =
 
 /// Editing something on a BRANCH repoints what calls it, there and then.
 ///
-/// Propagation runs off "what versions has this name had", and that lookup read `locations` -- main's
-/// projection, which a branch never writes to. So on a branch it found no earlier version, concluded
-/// nothing needed repointing, and left every caller on the version you had just edited past. The caller
-/// went on returning the old answer while the callee plainly said otherwise.
+/// Propagation runs off "what versions has this name had", and the branch-blind form of that lookup
+/// reads `locations` -- main's projection, which a branch never writes to. On a branch it then finds
+/// no earlier version, concludes nothing needs repointing, and leaves every caller on the version you
+/// just edited past: the caller keeps returning the old answer while the callee plainly says otherwise.
 ///
 /// Asserted by RUNNING the caller rather than by reading the draft: what a repoint is for is that the
 /// thing above you gets the new answer.
@@ -1640,9 +1638,9 @@ let private editingOnABranchRepointsItsCallers =
     })
 
 /// A branch records what put each of its bindings there (`op_branches.source`), so on a branch `status`
-/// can split what you typed from what followed, and `pin` un-stages the BRANCH's repoint. Before the
-/// column, `pin` on a branch found MAIN's staged repoint and dropped it: a pin issued on a branch reverted
-/// main, and `status` on a branch reported main's followers as the branch's.
+/// can split what you typed from what followed, and `pin` un-stages the BRANCH's repoint. Without the
+/// column `pin` on a branch finds MAIN's staged repoint and drops it -- a pin issued on a branch
+/// reverting main -- and `status` on a branch reports main's followers as the branch's.
 let private aBranchKnowsWhatFollowed =
   cliTestOnMain "status and pin on a branch act on the branch's own followers, not main's" (fun state ->
     task {
@@ -1705,8 +1703,8 @@ let private aBranchKnowsWhatFollowed =
     })
 
 
-/// `dark switch <a peer's uuid>` used to start a branch NAMED after the uuid and move you onto it, which
-/// read as success. A full id this store does not hold is refused; only a name nobody has starts one.
+/// A full branch id this store does not hold is REFUSED. Only a name nobody has starts a branch, so
+/// `dark switch <a peer's uuid>` cannot quietly mint one named after the uuid and read as success.
 let private switchRefusesAForeignId =
   cliTestOnMain "switch refuses a uuid this store does not have, rather than starting a branch named after it" (fun state ->
     task {
@@ -1745,10 +1743,10 @@ let private aBundleCarriesTheContentItsNamesPointAt =
     })
 
 
-/// A merge into main commits what it landed. The branch's ops arrived here uncommitted (a pulled branch,
-/// or one authored and never committed) and the merge event is authored uncommitted; both used to sit in
-/// main's draft afterwards, reading as "1 item changed" that nobody edited, until the next unrelated
-/// commit swept them up under its message.
+/// A merge into main commits what it landed. The branch's ops arrive uncommitted (a pulled branch, or
+/// one authored and never committed) and the merge event is authored uncommitted, so without this they
+/// sit in main's draft afterwards, reading as "1 item changed" that nobody edited, until the next
+/// unrelated commit sweeps them up under its message.
 let private aMergeCommitsWhatItLands =
   cliTestOnMain "merging a branch leaves main's draft as it was, under a merge commit" (fun state ->
     task {
@@ -1768,9 +1766,6 @@ let private aMergeCommitsWhatItLands =
     })
 
 
-/// A bundle carries the sender's commits. It did not, so a pulled branch arrived wholly uncommitted, and
-/// the puller's next `commit` swept the author's finished work under the puller's message: the same op
-/// under a different commit on each machine.
 /// An `Unbind` on a branch takes a main name away on that branch, shows in the draft as a removal, and
 /// takes it off main when the branch merges. Authored through `SCM.PackageOps.add`, since no verb writes
 /// one yet; the importer will, once the reload becomes a diff.
@@ -1813,10 +1808,11 @@ let private anUnbindRemovesANameThroughTheCli =
     })
 
 
-/// A draft holding a deprecation can be committed by both paths. Two separate bugs met here: `--include=`
-/// read the `Reference` a `Deprecate` carries as a `Hash` and died at runtime, and `commit --json` decided
-/// "nothing to commit" from the changed-NAMES list, which a deprecation is never in, so an agent could not
-/// commit one at all and it shipped in the seed as somebody's mystery op.
+/// A draft holding a deprecation can be committed by BOTH paths, and each fails differently without
+/// this. `--include=` has to read the `Reference` a `Deprecate` carries as a reference and not as a
+/// `Hash`, or it dies at runtime. And `commit --json` must not decide "nothing to commit" from the
+/// changed-NAMES list, which a deprecation is never in: an agent then cannot commit one at all, and it
+/// ships in the seed as somebody's mystery op.
 let private aDeprecationCommitsByEitherPath =
   cliTestOnMain "a deprecation-only draft commits, by --include= and by --json" (fun state ->
     task {
@@ -1843,8 +1839,8 @@ let private aDeprecationCommitsByEitherPath =
 
 /// Archiving a branch commits the event it authors. A `BranchEvent` binds no name, so `status` counts
 /// nothing and reads clean while the op sits in main's draft, waiting for the next unrelated commit to
-/// sweep it up under a message about something else. It also fails the seed guard, which is what kept
-/// catching it: a release build refused twice in one evening over an archive nobody knew was pending.
+/// sweep it up under a message about something else. It also fails the seed guard, which is where it
+/// surfaces: a release build refuses over an archive nobody knew was pending.
 let private archivingABranchCommitsItsEvent =
   cliTestOnMain "archiving a branch commits the event, leaving a genuinely clean tree" (fun state ->
     task {
@@ -1874,6 +1870,11 @@ let private archivingABranchCommitsItsEvent =
     })
 
 
+/// A bundle carries the sender's COMMITS, not just their ops.
+///
+/// Without them a pulled branch arrives wholly uncommitted, and the puller's next `commit` sweeps the
+/// author's finished work under the puller's message -- the same op filed under a different commit on
+/// each machine.
 let private aBundleCarriesItsCommits =
   cliTestOnMain "a branch bundle arrives with the author's commits, not as a draft" (fun state ->
     task {
@@ -2161,9 +2162,9 @@ let private documentedCommandsAreReal =
 
 /// A commit refuses a draft with a definite at-rest type error, and `--allow-type-errors` is the way past.
 ///
-/// The save path already PRINTS "commit will refuse it until fixed". Until this gate existed that sentence
-/// was false on this branch, which is worse than not saying it: the checker's report told you a thing the
-/// tool did not do. `-y` deliberately does not wave it through, same as `--allow-unresolved`.
+/// The save path PRINTS "commit will refuse it until fixed", so the gate has to exist or the
+/// checker's report promises something the tool does not do, which is worse than saying nothing.
+/// `-y` deliberately does not wave it through, same as `--allow-unresolved`.
 let private commitRefusesDefiniteTypeErrors =
   cliTest
     "commit refuses a definite type error, and --allow-type-errors takes it"

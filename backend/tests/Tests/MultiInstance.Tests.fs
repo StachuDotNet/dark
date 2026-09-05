@@ -3,7 +3,7 @@
 /// This is the claim the whole design rests on and the one thing a single-store test cannot reach. An op's
 /// id is its content, `origin_ts` is portable, and the fold picks a winner deterministically -- so two
 /// instances that have seen the same ops must agree on what every name means, whatever order the ops
-/// arrived in. Nothing checked that.
+/// arrived in.
 ///
 /// Each "instance" is its own SQLite file, and `Sql.useStoreForTesting` repoints all of LibDB at it, so
 /// these are real separate stores rather than two branches pretending. That swap is process-global, hence
@@ -15,11 +15,10 @@
 /// that has genuinely run ahead is not. Say "two stores" in a test name here, not "two machines"; the
 /// bash gates and a second laptop are what cover the rest.
 ///
-/// It reaches DARK as of 2026-09-04. `Builtin.localDbPath` used to answer with the config path while the
-/// swap moved only the F# connection, so every `Stdlib.Sqlite` call in `SCM.*` -- push, pull, conflict
-/// detection and recording, resolve, every branch-aware read -- went on reading the default store while
-/// a test believed it was on instance B. That is most of what this PR moved out of F#, and none of it
-/// was reachable from here.
+/// The swap reaches DARK, not only F#: `Builtin.localDbPath` answers with the swapped path, so the
+/// `Stdlib.Sqlite` calls in `SCM.*` -- push, pull, conflict detection and recording, resolve, every
+/// branch-aware read -- run against the same store the F# side is on. Without that they would read
+/// the default store while a test believed it was on instance B, which is most of the SCM.
 ///
 /// The wire is driven directly (`importOpsBulk` + fold, or the Dark fns under `SCM.*`) rather than over
 /// HTTP. HTTP has its own tests in `UnguardedOrigins`; mixing the two would mean a convergence failure
@@ -41,15 +40,12 @@ module Branches = LibDB.Branches
 module Queries = LibDB.Queries
 module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
-module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
-module Exe = LibExecution.Execution
-module RT = LibExecution.RuntimeTypes
 module Hashing = LibSerialization.Hashing.Hashing
 
 open TestUtils.TestUtils
 
 
-// ── instances ────────────────────────────────────────────────────────────────────────────────────
+// --- instances -----------------------------------------------------------------------------------
 
 type Instance = { name : string; path : string }
 
@@ -102,7 +98,7 @@ let private teardown (insts : List<Instance>) : unit =
   insts |> List.iter (fun i -> deleteStore i.path)
 
 
-// ── the wire ─────────────────────────────────────────────────────────────────────────────────────
+// --- the wire ------------------------------------------------------------------------------------
 
 /// One op as it crosses the wire: (id, hex blob, origin stamp).
 ///
@@ -175,9 +171,8 @@ let private pin
 let private policyFor (name : string) : Task<Option<string * string>> =
   let l = loc name
   Sql.query
-    // Main's id comes from the product's own constant, never a literal. Spelled by hand this asked for ''
-    // and kept passing while `dark propagate list` showed nothing; spelled by hand again it would have
-    // gone stale the moment main's id became a uuid.
+    // Main's id comes from the product's own constant, never a literal: a hand-spelled one asks for
+    // a branch nothing writes, so the query answers None and the test passes while asserting nothing.
     "SELECT policy, COALESCE(note, '') AS note FROM propagation_policy
      WHERE branch_id = @main AND owner = @o AND modules = @m AND name = @n"
   |> Sql.parameters
@@ -189,7 +184,7 @@ let private policyFor (name : string) : Task<Option<string * string>> =
     (read.string "policy", read.string "note"))
 
 
-// ── tests ────────────────────────────────────────────────────────────────────────────────────────
+// --- tests ---------------------------------------------------------------------------------------
 
 /// The base case, and the one everything else assumes: an op authored on one instance means the same thing
 /// on the other once it has crossed.
@@ -830,18 +825,16 @@ let hostedOpsAreNotThisStoresDraft =
       teardown [ a ]
   }
 
-// ── the Dark half ────────────────────────────────────────────────────────────────────────────────
+// --- the Dark half -------------------------------------------------------------------------------
 //
-// Reachable only since `Builtin.localDbPath` started following the store swap. Everything below runs
-// Dark against whichever instance is active, which is what the F#-only tests above cannot do.
+// Everything below runs DARK against whichever instance is active, which the F#-only tests above
+// cannot do. It works because `Builtin.localDbPath` follows the store swap, so `Stdlib.Sqlite` and
+// the F# connection are on the same file.
 
-/// Run <param code> against the ACTIVE instance and return it as a string.
+/// Run <param code> against the ACTIVE instance and return its answer as a string.
 let private darkOn (code : string) : Task<string> =
   task {
-    let! ptExpr = TestUtils.TestUtils.parsePTExpr code
-    let! state = TestUtils.TestUtils.executionStateFor LibDB.PackageManager.pt false Map.empty
-    let rtExpr = PT2RT.Expr.toRT Map.empty 0 None ptExpr
-    match! Exe.executeExpr state rtExpr with
+    match! evalDarkExpr code with
     | Ok dv -> return string dv
     | Error(rte, _) -> return failtest $"the Dark call failed: {rte}"
   }
@@ -849,10 +842,10 @@ let private darkOn (code : string) : Task<string> =
 /// The Dark conflict detector, run on the receiving store, over two edits to one name made
 /// independently on two stores.
 ///
-/// This is the test the harness could not hold before. `SCM.Conflicts` decides which side wins and
-/// whether the divergence is even a conflict, and it is Dark, so it read the DEFAULT store no matter
-/// which instance a test had activated. `divergenceIsRecordedNotJustResolved` above asserts on
-/// `package_ops` for exactly that reason: the row was all it could see.
+/// `SCM.Conflicts` decides which side wins and whether the divergence is even a conflict, and it is
+/// Dark. If the Dark side did not follow the store swap it would answer about the DEFAULT store
+/// whatever a test had activated, plausibly and wrongly, so this asserts the swap itself before any
+/// test leans on it.
 let private theDarkDetectorSeesTheStoreItIsOn =
   testTask "Dark reads the instance it was pointed at, not the store the process started on" {
     let a = instance "a"
@@ -867,9 +860,9 @@ let private theDarkDetectorSeesTheStoreItIsOn =
       let! _ = receive [ wireOp (setName "seen" "from-b") "2026-01-02T00:00:00.000Z" ]
 
       // A branch-aware read, in Dark, answers about the store it is on. Deliberately NOT asserted via
-      // `identity ()`: an identity someone CHOSE survives being copied, by design, so two copies of a
-      // store whose name was set by hand legitimately share it -- which the CLI sweep does in the dev
-      // store, and which made this test pass alone and fail in the suite.
+      // `identity ()`: a chosen identity survives being copied, by design, so two copies of a store
+      // whose name was set by hand legitimately share one, and the assertion would depend on whether
+      // anything else in the run had named the dev store.
       let liveHere =
         "Darklang.SCM.PackageOps.liveBindingFor Darklang.SCM.Ids.mainBranchId "
         + "(Darklang.LanguageTools.ProgramTypes.PackageLocation "
@@ -890,9 +883,9 @@ let private theDarkDetectorSeesTheStoreItIsOn =
 ///
 /// `dark pull` (main, which carries the event) and `dark branch pull` (the bundle) are separate
 /// commands, and that order is the natural one. Folded against a store with none of the branch's ops
-/// tagged, the event used to flip nothing, mark itself applied, and never be looked at again: the
-/// merger's main had the work, this store did not, and `dark branches` went on showing the branch as
-/// live. Nothing said so on either side.
+/// tagged, the event has nothing to flip; marking itself applied there would retire it for good, so
+/// the merger's main would hold the work, this store would not, and `dark branches` would go on
+/// showing the branch as live with nothing saying otherwise on either side.
 let private aMergeEventWaitsForItsBranch =
   testTask "a merge event that arrives before its branch applies when the branch lands" {
     let b = instance "b"

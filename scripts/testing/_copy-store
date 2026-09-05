@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Copy the dev store to a gate's own rundir, WITHOUT writing to the dev store.
 #
-# `cp rundir/data.db` is wrong and every gate was doing it. The store is WAL mode
+# `cp rundir/data.db` is the obvious thing to reach for and it is wrong. The store is WAL mode
 # (LibDB/Sqlite.fs sets journal_mode=WAL), so the main file holds whatever the last
 # automatic checkpoint left there and the recent tail is in `data.db-wal`. Copying
 # the main file alone gives a fixture that varies by machine and by how recently

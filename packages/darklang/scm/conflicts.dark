@@ -102,8 +102,9 @@ let stringGt (a: String) (b: String) : Bool =
 
 /// Does the INCOMING binding beat the LOCAL one?
 ///
-/// THIS RULE EXISTS TWICE. `PackageOpPlayback.isStale` decides the same question during the fold, and the
-/// two must agree or a recorded conflict names a winner the fold did not pick. Change one, change both.
+/// THIS RULE EXISTS TWICE. `LibDB.Lww.isStale` decides the same question during the fold (the fold reaches
+/// it through `PackageOpPlayback.applySetNameFrom`), and the two must agree or a recorded conflict names a
+/// winner the fold did not pick. Change one, change both.
 /// Both say: later stamp wins, an exact tie goes to the higher hash (portable, so every instance
 /// converges), and a local binding with no stamp never defends itself.
 ///
@@ -140,15 +141,20 @@ let conflictId
 
 // THE DETECTOR
 
-/// A name conflicts iff BOTH sides moved it since the recorded base:
-///   incoming != local, incoming != base, local != base, and a base was actually RECORDED for the name.
+/// A name conflicts when BOTH sides moved it, and there are two ways to establish that.
 ///
-/// The four rejections matter as much as the acceptance:
-///   - no recorded base   -> we can't prove both sides moved. Guessing here is what false-alarms on every
-///                           ordinary peer update, so it is NOT a conflict.
+/// WITH a recorded base, the base decides: incoming != local, incoming != base, local != base.
 ///   - same hash          -> not a divergence at all (a re-pull, or both sides authored identical bytes).
 ///   - only local moved   -> our own update; the peer is simply behind.
 ///   - only incoming moved-> an ordinary peer update of a name we never touched. Take it, quietly.
+///
+/// WITHOUT one, the BINDINGS still say enough on their own, so this does not simply decline:
+///   - both replaced the SAME predecessor -> two people editing one parent (`bothMovedTheSameParent`).
+///   - both replaced NOTHING              -> two independent creations of one name
+///                                           (`bothCreatedFromNothing`).
+/// Anything else with no base is not a conflict. `None` also means "no predecessor recorded", so both
+/// rules require both sides to say it; guessing from one side is what false-alarms on ordinary peer
+/// updates.
 let detect
   (localLabel: String)
   (incomingLabel: String)
@@ -311,7 +317,8 @@ let bindingFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Opti
 /// SQLite caps bound parameters per statement at a compile-time constant of whatever build is linked
 /// (32,766 here, 999 on anything older). Crossing it ERRORS, and every caller here turns an error into
 /// `[]`, which reads downstream as "no conflict" -- so nothing in this module builds an unbounded IN-list.
-/// 900 stays under even the old cap, and nothing here is on a hot path.
+/// 900 stays under even the old cap, which costs nothing on these paths since none is hot. The import
+/// loop chunks larger (`PackageOps.unknownRecords`), where round trips are what the size buys.
 val inChunkSize = 900
 
 /// Split <param values> into IN-list-sized chunks. Falls back to one chunk rather than dropping
@@ -450,7 +457,9 @@ let conflictFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Opt
     |> Stdlib.Option.Option.Some
   | None -> Stdlib.Option.Option.None
 
-/// Record conflicts against <param branchId> as `pending`. Returns how many rows it wrote.
+/// Record conflicts against <param branchId> as `pending`. Returns how many of them the store accepted
+/// without error -- one per conflict, since each is its own batch, and an `INSERT OR IGNORE` that
+/// deduped counts as accepted.
 ///
 /// INSERT OR IGNORE on the content-derived id, so re-detecting the same divergence is a no-op and an
 /// already-acked conflict is never quietly reopened. When the id already exists on a DIFFERENT branch
@@ -463,7 +472,7 @@ let conflictFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Opt
 /// folds into the PARENT of the branch being merged.
 ///
 /// Counted rather than discarded, because the CLI promises "the losing version is kept, not dropped" off
-/// the back of this.
+/// the back of this: a caller compares the count against what it handed in and warns when they differ.
 let record (branchId: Uuid) (conflicts: List<Conflict>) : Int =
   conflicts
   |> Stdlib.List.fold 0 (fun written c ->

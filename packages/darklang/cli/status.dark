@@ -14,34 +14,6 @@ let plural (n: Int) (word: String) : String =
   let count = Stdlib.Int.toString n
   if n == 1 then $"{count} {word}" else $"{count} {word}s"
 
-/// What the draft is, as numbers: names changed, names that would repoint, conflicts waiting.
-type Summary =
-  { changed: Int
-    /// Of `changed`, how many FOLLOWED something rather than being edited by you. `changed` counts both,
-    /// since both get committed, but they are not the same fact and one number for both hides propagation.
-    followed: Int
-    /// Names the draft removes. Separate from `changed`, which counts bindings.
-    removed: Int
-    repoints: Int
-    conflicts: Int64
-    /// A COUNT, never a list. A list in status is a thing you learn to scroll past; a count is a pointer to
-    /// a command. Constraints are a standing property of the STORE rather than of your draft, so this shows
-    /// even on a clean tree -- which is the point of finding them at rest.
-    constraints: Int
-    ops: Int64 }
-
-let summarise (unit: Unit) : Summary =
-  let c = SCM.Draft.counts ()
-
-  Summary
-    { changed = c.changed
-      followed = c.followed
-      removed = c.removed
-      repoints = c.repoints
-      conflicts = c.conflicts
-      constraints = c.constraints
-      ops = c.ops }
-
 /// The full structured view. `dark status` prints a line of it; `--json` hands over all of it.
 let statusJson (state: AppState) : ScmJson.StatusJson =
   let p = SCM.Draft.read ()
@@ -85,7 +57,14 @@ let branchLine (state: AppState) : Unit =
     Stdlib.printLine (Stdlib.Cli.UI.Colors.hint $"On branch {handle}")
 
 let executePretty (state: AppState) : AppState =
-  let s = summarise ()
+  // `SCM.Draft.counts`, not a `Picture`: this runs on every invocation and only ever prints numbers.
+  //
+  // `changed` counts what you edited AND what followed your edit, since both get committed; `followed`
+  // is how many of them propagation did, and one number for both would hide it. `removed` counts names
+  // the draft takes away, which are bindings gone rather than bindings changed. `constraints` is a
+  // COUNT and never a list: they are a standing property of the STORE rather than of your draft, so
+  // they show even on a clean tree, and a list here is a thing you learn to scroll past.
+  let s = SCM.Draft.counts ()
   branchLine state
 
   if (s.changed == 0) && (s.removed == 0) && (s.conflicts == 0L) then

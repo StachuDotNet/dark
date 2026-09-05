@@ -22,18 +22,14 @@ open LibExecution.RuntimeTypes
 open LibExecution.Builtin.Shortcuts
 
 module Dval = LibExecution.Dval
-module D = LibExecution.DvalDecoder
 module PT = LibExecution.ProgramTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module RT2DT = LibExecution.RuntimeTypesToDarkTypes
-module PackageRefs = LibExecution.PackageRefs
-module C2DT = LibExecution.CommonToDarkTypes
 module VT = LibExecution.ValueType
 module NR = LibExecution.RuntimeTypes.NameResolution
 module RTPM = LibDB.RuntimeTypes
 module PMPT = LibDB.ProgramTypes
-module Branches = LibDB.Branches
 module Execution = LibExecution.Execution
 
 
@@ -41,7 +37,6 @@ let private repointListKT =
   KTList(ValueType.Known(PT2DT.PropagateRepoint.knownType ()))
 
 
-// TODO: review/reconsider the accessibility of these fns
 /// A branch parameter as the PM layer wants it.
 ///
 /// The branch is a PARAMETER here rather than process state, so a caller can ask about a branch it isn't
@@ -52,6 +47,67 @@ let private branchOfParam (branchIdGuid : System.Guid) : PT.BranchId =
   PT.BranchId.Id branchIdGuid
 
 
+/// `pmGetLocationsBy{Type,Value,Fn}`: every name a hash is bound to, seen from <param branchId>.
+///
+/// One shape, three item kinds. Three answers, in order, because a hash with no live name still has to
+/// render as something better than `<hash:d6f972b3>`:
+///
+/// 1. main's `locations`, via the PM;
+/// 2. the branch overlay -- a branch's SetNames never fold into `locations`, so a branch-authored item
+///    has no row there at all;
+/// 3. a name it USED to have, main's record first and then the branch's. Reached when viewing a
+///    superseded version, whose live name has moved on to the newer one.
+let private locationsByHashFn
+  (builtinName : string)
+  (itemWord : string)
+  (kind : PT.ItemKind)
+  (fromMain : PT.Hash -> Ply<List<PT.PackageLocation>>)
+  (everNamedOnMain : PT.Hash -> Ply<List<PT.PackageLocation>>)
+  : BuiltInFn =
+  { name = fn builtinName 0
+    typeParams = []
+    parameters =
+      [ Param.make
+          "branchId"
+          TUuid
+          "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+        Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
+    returnType = TList(TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
+    description = $"Returns all locations of a package {itemWord} by its hash"
+    fn =
+      (function
+      | _, _, _, [| DUuid branchIdGuid; hashDval |] ->
+        uply {
+          let branch = branchOfParam branchIdGuid
+          let hash = PT2DT.Hash.fromDT hashDval
+
+          let! onMain = fromMain hash
+          let named = LibDB.PackageManager.locationsFor branch kind hash onMain
+
+          let! result =
+            if List.isEmpty named then
+              uply {
+                match! everNamedOnMain hash with
+                | [] ->
+                  return LibDB.PackageManager.branchLocationsEverNamed branch kind hash
+                | everNamed -> return everNamed
+              }
+            else
+              Ply named
+
+          return
+            result
+            |> List.map PT2DT.PackageLocation.toDT
+            |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
+        }
+      | _ -> incorrectArgs ())
+    sqlSpec = NotQueryable
+    previewable = Impure
+    capabilities = LibExecution.Capabilities.noCaps
+    deprecated = NotDeprecated }
+
+
+// TODO: review/reconsider the accessibility of these fns
 let fns (pm : PT.PackageManager) : List<BuiltInFn> =
   [ // types
     { name = fn "pmFindType" 0
@@ -456,7 +512,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmSearchNames" 0
       typeParams = []
       parameters =
-        [ Param.make "branchId" TUuid "the branch to search on; \"\" is main"
+        [ Param.make
+            "branchId"
+            TUuid
+            "the branch to search on; main is `SCM.Ids.mainBranchId`"
           Param.make
             "query"
             (TCustomType(NR.ok (PT2DT.Search.SearchQuery.typeName ()), []))
@@ -520,7 +579,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     { name = fn "pmSearchNamesAndHashes" 0
       typeParams = []
       parameters =
-        [ Param.make "branchId" TUuid "the branch to search on; \"\" is main"
+        [ Param.make
+            "branchId"
+            TUuid
+            "the branch to search on; main is `SCM.Ids.mainBranchId`"
           Param.make
             "query"
             (TCustomType(NR.ok (PT2DT.Search.SearchQuery.typeName ()), []))
@@ -630,169 +692,28 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "pmGetLocationsByType" 0
-      typeParams = []
-      parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
-          Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
-      returnType = TList(TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
-      description = "Returns all locations of a package type by its hash"
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; hashDval |] ->
-          uply {
-            let hash = PT2DT.Hash.fromDT hashDval
-            let! fromMain = pm.getTypeLocations hash
-            // Branch overlay next: a branch's SetNames never fold into `locations`, so without this a
-            // branch-authored item has no name to render.
-            let named =
-              LibDB.PackageManager.locationsFor
-                (branchOfParam branchIdGuid)
-                PT.ItemKind.Type
-                hash
-                fromMain
-            // Last resort, a name it USED to have. Reached when viewing a superseded version, whose name
-            // has moved on to the newer one -- `<hash:d6f972b3>` says nothing about what you're looking at.
-            let! result =
-              if List.isEmpty named then
-                uply {
-                  // Main's record of what this hash was ever called, then the BRANCH's. A branch never
-                  // writes `locations`, so main cannot answer for a version authored on one.
-                  match! PMPT.Type.getLocationsEverNamed hash with
-                  | [] ->
-                    return
-                      LibDB.PackageManager.branchLocationsEverNamed
-                        (branchOfParam branchIdGuid)
-                        PT.ItemKind.Type
-                        hash
-                  | everNamed -> return everNamed
-                }
-              else
-                Ply named
-            return
-              result
-              |> List.map PT2DT.PackageLocation.toDT
-              |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
+    locationsByHashFn
+      "pmGetLocationsByType"
+      "type"
+      PT.ItemKind.Type
+      pm.getTypeLocations
+      PMPT.Type.getLocationsEverNamed
+
+    locationsByHashFn
+      "pmGetLocationsByValue"
+      "value"
+      PT.ItemKind.Value
+      pm.getValueLocations
+      PMPT.Value.getLocationsEverNamed
+
+    locationsByHashFn
+      "pmGetLocationsByFn"
+      "function"
+      PT.ItemKind.Fn
+      pm.getFnLocations
+      PMPT.Fn.getLocationsEverNamed
 
 
-    { name = fn "pmGetLocationsByValue" 0
-      typeParams = []
-      parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
-          Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
-      returnType = TList(TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
-      description = "Returns all locations of a package value by its hash"
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; hashDval |] ->
-          uply {
-            let hash = PT2DT.Hash.fromDT hashDval
-            let! fromMain = pm.getValueLocations hash
-            // Branch overlay next: a branch's SetNames never fold into `locations`, so without this a
-            // branch-authored item has no name to render.
-            let named =
-              LibDB.PackageManager.locationsFor
-                (branchOfParam branchIdGuid)
-                PT.ItemKind.Value
-                hash
-                fromMain
-            // Last resort, a name it USED to have. Reached when viewing a superseded version, whose name
-            // has moved on to the newer one -- `<hash:d6f972b3>` says nothing about what you're looking at.
-            let! result =
-              if List.isEmpty named then
-                uply {
-                  // Main's record of what this hash was ever called, then the BRANCH's. A branch never
-                  // writes `locations`, so main cannot answer for a version authored on one.
-                  match! PMPT.Value.getLocationsEverNamed hash with
-                  | [] ->
-                    return
-                      LibDB.PackageManager.branchLocationsEverNamed
-                        (branchOfParam branchIdGuid)
-                        PT.ItemKind.Value
-                        hash
-                  | everNamed -> return everNamed
-                }
-              else
-                Ply named
-            return
-              result
-              |> List.map PT2DT.PackageLocation.toDT
-              |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    { name = fn "pmGetLocationsByFn" 0
-      typeParams = []
-      parameters =
-        [ Param.make
-            "branchId"
-            TUuid
-            "the branch to resolve against. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
-          Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
-      returnType = TList(TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
-      description = "Returns all locations of a package function by its hash"
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; hashDval |] ->
-          uply {
-            let hash = PT2DT.Hash.fromDT hashDval
-            let! fromMain = pm.getFnLocations hash
-            // Branch overlay next: a branch's SetNames never fold into `locations`, so without this a
-            // branch-authored item has no name to render.
-            let named =
-              LibDB.PackageManager.locationsFor
-                (branchOfParam branchIdGuid)
-                PT.ItemKind.Fn
-                hash
-                fromMain
-            // Last resort, a name it USED to have. Reached when viewing a superseded version, whose name
-            // has moved on to the newer one -- `<hash:d6f972b3>` says nothing about what you're looking at.
-            let! result =
-              if List.isEmpty named then
-                uply {
-                  // Main's record of what this hash was ever called, then the BRANCH's. A branch never
-                  // writes `locations`, so main cannot answer for a version authored on one.
-                  match! PMPT.Fn.getLocationsEverNamed hash with
-                  | [] ->
-                    return
-                      LibDB.PackageManager.branchLocationsEverNamed
-                        (branchOfParam branchIdGuid)
-                        PT.ItemKind.Fn
-                        hash
-                  | everNamed -> return everNamed
-                }
-              else
-                Ply named
-            return
-              result
-              |> List.map PT2DT.PackageLocation.toDT
-              |> Dval.list (KTCustomType((PT2DT.PackageLocation.typeName ()), []))
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    // Get ALL previous (deprecated) hashes at a location - used for propagation
     // Bind a name back to content that ALREADY exists in the store.
     //
     // This is the primitive under the propagation toggle. Propagation runs on every edit, so pinning
@@ -800,11 +721,12 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // pointing the name back at the version it had, which is still in the store because nothing is ever
     // deleted.
     //
-    // It emits a RESOLVE op, not a SetName, and that is not an implementation detail. Ops are
-    // content-addressed, so `SetName(name -> the old hash)` is byte-identical to the op that first bound it:
-    // it INSERT-OR-IGNOREs and folds NOTHING, so the rollback silently doesn't happen. Resolve exists
-    // precisely to say "this binding again, but now I mean it", and a pin is the same act as a conflict
-    // override -- a human overruling what the machine picked.
+    // Despite the name, it emits a `Decision`/`Override` op rather than a `SetName`, and that is not an
+    // implementation detail. Ops are content-addressed, so `SetName(name -> the old hash)` is
+    // byte-identical to the op that first bound it: it INSERT-OR-IGNOREs and folds NOTHING, so the
+    // rollback silently doesn't happen. `Override` exists precisely to say "this binding again, but now I
+    // mean it", and a pin is the same act as a conflict override -- a human overruling what the machine
+    // picked.
     //
     // Emitting an op rather than touching `locations` is what makes the undo sync, audit and conflict like
     // any other authoring. Deleting ops instead would do none of that, and would be unsafe besides: a pinned
@@ -826,7 +748,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             "Existing content to bind the name to" ]
       returnType = TypeReference.result TUnit TString
       description =
-        "Binds a name to content already in the store, as a SetName op. Errors if the content isn't there."
+        "Binds a name to content already in the store, as a Decision/Override op. Errors if the content isn't there."
       fn =
         (function
         | _, _, _, [| locationDval; itemKindDval; hashDval |] ->
@@ -1023,7 +945,6 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-
     // Deprecation info used by ls/tree/search in a single DB round-trip:
     // (allDeprecatedHashes, hiddenHashes). Hidden = deprecated AND has no
     // live direct caller (a caller is "live" iff it's not itself deprecated).
@@ -1039,8 +960,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       description =
         "Tuple (allDeprecated, hidden) of package hashes. Not branch-scoped: "
         + "deprecation keys on CONTENT, so it applies to a hash wherever that hash is "
-        + "named."
-        + "hidden ⊆ allDeprecated — deprecated items with no live direct caller."
+        + "named. `hidden` is a subset of `allDeprecated`: the deprecated items with no "
+        + "live direct caller."
       fn =
         (function
         | _, _, _, [| DUnit |] ->
@@ -1061,10 +982,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // Current deprecation state for a package item on a branch chain.
-    // None = not deprecated on this chain (or explicitly un-deprecated by a
-    // child branch). Some (kind, message) returns the Dark-side
-    // DeprecationKind enum so callers can format it however they want.
+    // Some (kind, message) returns the Dark-side DeprecationKind enum, so callers
+    // format it however they want rather than parsing a string tag.
     { name = fn "pmGetCurrentDeprecation" 0
       typeParams = []
       parameters =
@@ -1084,8 +1003,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       description =
         "Current deprecation state for an item, by hash. Not branch-scoped: "
         + "deprecation keys on CONTENT, so two names holding the same bytes are "
-        + "deprecated together."
-        + "None = not deprecated. Some ((kind, message)) otherwise."
+        + "deprecated together. None = not deprecated; Some (kind, message) otherwise."
       fn =
         (function
         | _, _, _, [| hashDval; itemKindDval |] ->

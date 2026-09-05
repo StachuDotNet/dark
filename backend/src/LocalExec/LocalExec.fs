@@ -11,7 +11,6 @@ open Fumble
 open LibDB.Sqlite
 
 module RT = LibExecution.RuntimeTypes
-module PT = LibExecution.ProgramTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module Execution = LibExecution.Execution
 module BS = LibSerialization.Binary.Serialization
@@ -36,9 +35,8 @@ module HandleCommand =
       print "Purging ..."
       do! LibDB.Purge.purge ()
 
-      // There is no CreateBranch op and no `branches` row for main, so a store with an empty
-      // `branches` table is a store
-      // on main. Re-folding `package_ops` is the whole rebuild.
+      // Main has no CreateBranch op and no `branches` row, so a store with an empty `branches`
+      // table is a store on main. Re-folding `package_ops` is the whole rebuild.
 
       print "Filling ..."
       // Load all packages from disk as live ops (commit-free authoring: no init commit).
@@ -49,7 +47,6 @@ module HandleCommand =
       // every `dark status` would open on the whole package tree as uncommitted
       // work.
       let! _ = LibDB.Inserts.commitAllAsBaseline "package reload (baseline)"
-
 
       // Generate hash file BEFORE evaluating values, so that PackageRefs
       // lookups resolve correctly during value evaluation.

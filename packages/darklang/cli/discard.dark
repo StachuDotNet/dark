@@ -25,12 +25,6 @@ let help (_state: AppState) : String =
   |> Stdlib.String.join "\n"
 
 let execute (state: AppState) (args: List<String>) : AppState =
-  match args with
-  | [ "help" ] ->
-    Stdlib.printLine (help state)
-    state
-  | _ ->
-
   let autoConfirm =
     (Stdlib.List.member args "-y") || (Stdlib.List.member args "--yes")
 
@@ -125,7 +119,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     state
 
 let complete
-  (state: AppState)
-  (args: List<String>)
+  (_state: AppState)
+  (_args: List<String>)
   : List<Completion.CompletionItem> =
   []

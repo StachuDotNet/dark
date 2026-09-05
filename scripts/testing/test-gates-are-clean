@@ -79,7 +79,7 @@ for g in "${GATES[@]}"; do
   else
     # A gate that FAILS is a separate problem, but a red gate cannot vouch for anything: it may have died
     # before the step that writes, so "clean" would be a claim about code that did not run. Counted apart
-    # from a DIRTY gate, and it fails this run too; it used to be printed and then dropped.
+    # from a DIRTY gate, and it fails this run too.
     if [[ "$rc" -ne 0 ]]; then
       echo "  BROKEN $g (exit $rc -- run it directly; its cleanliness is unknown)"
       broken=$((broken + 1))

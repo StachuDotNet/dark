@@ -6,8 +6,8 @@
 # reachable from the test suite: the views can be rendered directly (and are, in the Dark tests), but
 # keyboard handling, the alternate screen and resize need a terminal.
 #
-# Every step asserts. The harness this replaces sent keys and ended with a bare `expect eof`, which
-# passes just as happily when the process has crashed.
+# Every step asserts. A run that only sends keys and ends on a bare `expect eof` passes just as happily
+# against a process that has crashed, so every step below names something the view actually draws.
 #
 # Two things about asserting against this program, both learned the hard way:
 #
@@ -37,7 +37,7 @@ proc want {pattern what} {
 spawn ./backend/Build/out/Cli/Debug/net10.0/Cli
 
 # 1. it opens on the workbench rather than the classic prompt
-# The context row, not a greeting: upstream's Home shows the welcome panel only on a genuine first run.
+# The context row, not a greeting: Home shows the welcome panel only on a genuine first run.
 want "instance:" "the workbench on startup"
 want "(?i)(needs you|uncommitted|branches)" "the Home sections"
 
@@ -50,7 +50,7 @@ want "(?i)(needs you|uncommitted|branches)" "the Home sections"
 send "2"
 want "(?i)(darklang|packages)" "the Code view"
 
-# 3, not 4: upstream renumbered the views when Home gained its sections.
+# 3 is Changes: views are numbered by position in the visible list, not by view index.
 send "3"
 want "(?i)(changes|conflict)" "the Changes view"
 
@@ -62,8 +62,9 @@ send "6"
 want "(?i)(trace)" "the Activity view after a resize"
 
 # 4. below a usable size the workbench degrades to a message rather than a garbled frame, and the
-#    message has to carry the size you need. The single-line version was 44 columns wide and the guard
-#    fires from 24, so the canvas clipped exactly the part that told you what to resize to.
+#    message has to carry the size you need. It has to WRAP to carry it: the guard fires from 24 columns
+#    and the message is 44 wide, so on one line the canvas clips exactly the part that says what to
+#    resize to.
 stty rows 24 columns 40 < $spawn_out(slave,name)
 exec kill -WINCH [exp_pid]
 want "terminal too small" "the too-small guard"
@@ -74,9 +75,9 @@ stty rows 30 columns 100 < $spawn_out(slave,name)
 exec kill -WINCH [exp_pid]
 want "instance:" "a full repaint once the terminal is big enough again"
 
-# 6. Escape leaves from wherever you are, and leaving exits the CLI: there is no classic prompt behind
-#    the workbench to fall back to. A non-zero status would mean the alternate screen was left on a throw.
-# `q`: Escape steps back inside a view now rather than leaving.
+# 6. `q` leaves, and leaving exits the CLI: there is no classic prompt behind the workbench to fall back
+#    to. `q` rather than Escape, which steps back one level inside a view and never quits. A non-zero
+#    status would mean the alternate screen was left on a throw.
 send "q"
 expect {
   eof { }

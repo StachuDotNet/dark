@@ -23,9 +23,8 @@ set env(DARK_CONFIG_RUNDIR) $rundir
 proc fail {msg} { puts "FAIL: $msg"; exit 1 }
 
 # key: the digit that selects the view. Devices is absent: it is gated to the two people building it,
-# so for any other account it drops out of the tab bar and every later digit shifts down one.
-# Renumbered and renamed upstream: Matter is Code, SCM is Changes and moved to 3, and Run/Activity are
-# their own views. Taken from the sidebar the workbench actually draws rather than from memory.
+# so for any other account it drops out of the tab bar and every later digit shifts down one. These
+# numbers are taken from the sidebar the workbench actually draws, not from the view indices.
 set views {
   {1 "Home"     "(?i)(needs you|uncommitted|recent commits|branches)"}
   {2 "Code"     "(?i)(darklang|packages)"}

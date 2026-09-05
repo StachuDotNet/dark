@@ -2,8 +2,8 @@
 ///
 /// A seed is a copy of data.db with the projection tables emptied and its ops marked unapplied (it carries
 /// the full schema, so it works directly as a data.db). Export copies data.db, strips derived data, VACUUMs;
-/// grow folds the unapplied ops back into the projections + evaluates values — runs on CLI startup, a single
-/// SELECT COUNT when nothing's pending.
+/// grow folds the unapplied ops back into the projections and evaluates values. Grow runs on CLI startup,
+/// and is a single SELECT COUNT when nothing is pending.
 ///
 /// The op log (`package_ops`) is canonical; the package tables are regenerable projections folded from it.
 /// `applyUnappliedOps` folds pending ops (the `applied` flag is the append/fold seam); `rebuildProjections`
@@ -23,6 +23,9 @@ open LibDB.Sqlite
 
 module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
+module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
+module Execution = LibExecution.Execution
+module BS = LibSerialization.Binary.Serialization
 
 
 /// Whether this process has already said that the store holds ops it cannot read.
@@ -30,18 +33,14 @@ module RT = LibExecution.RuntimeTypes
 /// Said once per process, not once per fold: a single command folds more than once, and the note is
 /// context for whatever the command was asked to do, not an event worth repeating before every answer.
 let mutable private warnedAboutUnreadableOps = false
-module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
-module Execution = LibExecution.Execution
-module Blob = LibExecution.Blob
-module BS = LibSerialization.Binary.Serialization
 
 
 // ---------------------
 // Export
 // ---------------------
 
-/// Export a seed database to the given output path.
-/// Copies the full source DB, then strips derived data and archived branches.
+/// Export a seed database to the given output path: copy the full source DB, then strip everything
+/// that belongs to the machine that built it rather than to the package set (see the DELETEs below).
 let export (outputPath : string) : Task<unit> =
   task {
     let sourcePath = LibConfig.Config.dbPath
@@ -91,9 +90,10 @@ let export (outputPath : string) : Task<unit> =
       DELETE FROM branches;
 
       -- Ownership is a RELAY's index of which instance pushed which op, and it is per-instance by
-      -- definition: a fresh install has never been pushed to. It is also the biggest thing here that nobody
-      -- notices, because every reader joins through to `package_ops` and a stale row simply fails to join --
-      -- 351,299 rows of a build machine's history were shipping in the seed unremarked.
+      -- definition: a fresh install has never been pushed to. It is also the biggest thing here that
+      -- nobody notices, because every reader joins through to `package_ops` and a stale row simply
+      -- fails to join, so hundreds of thousands of rows of a build machine's history ride along in
+      -- silence.
       DELETE FROM op_owners;
       DELETE FROM relay_branches;
 
@@ -101,31 +101,25 @@ let export (outputPath : string) : Task<unit> =
       -- below: inheriting the builder's would be inheriting an argument between machines you have never met.
       DELETE FROM conflicts;
 
-      -- Execution traces are dev telemetry, never part of a seed. Leaving them in bloats the shipped seed
-      -- (trace_fn_calls alone was 268 MB of a 305 MB dev store); strip them so the seed is just canon.
+      -- Execution traces are dev telemetry, never part of a seed. They dominate a dev store by size
+      -- (`trace_fn_calls` alone runs to hundreds of MB), so strip them and the seed is just canon.
       DELETE FROM trace_fn_calls;
       DELETE FROM traces;
 
       -- ALL of it. `config_v0` is per-install by construction -- the builtin that writes it says "Local +
       -- unsynced" -- so there is nothing in here a stranger should inherit, and an allow-list of what to
-      -- keep would be empty.
+      -- keep would be empty. Nothing needs a value here to boot: `entry_point` unset falls back to the
+      -- shipped CLI, which is also the recovery path for a bad pointer.
       --
-      -- It was a deny-list of three keys, and a deny-list was never going to hold: the sync keys are named
-      -- after the peer (`sync.cursor.<url>`, `sync.head.<url>`, `sync.relay-instance.<url>`), so the set of
-      -- keys is not knowable in advance. A seed built here shipped `sync.cursor.http://<my tailnet ip>:9090`
-      -- along with `current_branch`, which is how a fresh install ends up announcing that its current branch
-      -- is gone before the user has done anything.
-      --
-      -- What each of those would have cost, since the reasons differ: an INSTANCE ID makes every install
-      -- grown from the seed claim to be the machine that built it, and two peers sharing an id cannot sync,
-      -- cannot record a conflict against each other, and cannot be told apart in any provenance (found by
-      -- hand-running the two-box runbook, where the second machine reported the first machine's id and
-      -- every assertion after that was quietly watching one instance talk to itself). A CURSOR makes it
-      -- believe it has already pulled ops it has never seen, so it skips them. A CURRENT BRANCH points at a
-      -- branch that does not exist. And all of them leak the builder's addresses.
-      --
-      -- Nothing needs a value here to boot: `entry_point` unset falls back to the shipped CLI, which is
-      -- also the recovery path for a bad pointer.
+      -- A deny-list cannot do this job, because the sync keys are named after the peer
+      -- (`sync.cursor.<url>`, `sync.head.<url>`, `sync.relay-instance.<url>`) and the set of keys is not
+      -- knowable in advance. What each kind costs if it ships, since the reasons differ: an INSTANCE ID
+      -- makes every install grown from the seed claim to be the machine that built it, and two peers
+      -- sharing an id cannot sync, cannot record a conflict against each other, and cannot be told apart
+      -- in any provenance -- one instance talking to itself, with every assertion still passing. A CURSOR
+      -- makes an install believe it has already pulled ops it has never seen, so it skips them. A CURRENT
+      -- BRANCH points at a branch that does not exist, and the install announces so before its owner has
+      -- done anything. And all of them leak the builder's addresses.
       DELETE FROM config_v0;
 
       -- A sync base is a RELATIONSHIP with a specific peer. A fresh install has none, and inheriting the
@@ -141,10 +135,10 @@ let export (outputPath : string) : Task<unit> =
       -- are: whatever the builder happened to be part-way through reads as "1 item changed" on a
       -- stranger's first run, under a name they have never heard of.
       --
-      -- Stripped HERE rather than left to the builder to notice. The guard caught it three times in one
-      -- evening, always after a test run, because the F# suite leaves its own fixtures in main's draft:
-      -- so a release build refused depending on what you had last run, which is not a property a build
-      -- should have. The bindings these wrote need no separate delete; every projection went above.
+      -- Stripped HERE rather than left to the builder to notice, because the F# suite leaves its own
+      -- fixtures in main's draft. Left to the guard, a release build would refuse or not depending on
+      -- what you happened to have run last, which is not a property a build should have. The bindings
+      -- these wrote need no separate delete; every projection went above.
       DELETE FROM package_ops
       WHERE commit_hash IS NULL AND id NOT IN (SELECT op_id FROM op_branches);
 
@@ -223,9 +217,8 @@ let foldRead (rawOps : List<System.Guid * byte[]>) : Task<int64> =
             None)
 
       // ONE line, not one per op. These ops are deliberately left unapplied so a later build can read
-      // them, which means they are re-examined on every startup: a line each turned into a wall of
-      // warnings before every command's real output, on every command, forever. After pulling a peer's
-      // older ops that was five lines of noise ahead of every answer.
+      // them, which means they are re-examined on every startup: a line each would put a wall of
+      // warnings ahead of every command's real output, on every command, forever.
       match skipped with
       | [] -> ()
       | _ when warnedAboutUnreadableOps -> ()
@@ -330,6 +323,14 @@ let foldRead (rawOps : List<System.Guid * byte[]>) : Task<int64> =
   }
 
 
+/// One pass: fold everything currently unapplied-and-effective. `applyUnappliedOps` repeats this,
+/// because folding an op can make OTHER ops effective.
+let private applyUnappliedOpsPass () : Task<int64> =
+  task {
+    let! pending = readPending ()
+    return! foldRead pending
+  }
+
 /// Fold every op that is unapplied and effective, until there are none left.
 ///
 /// Repeats because folding an op can MAKE other ops effective: a merge event arriving from another machine
@@ -340,14 +341,6 @@ let foldRead (rawOps : List<System.Guid * byte[]>) : Task<int64> =
 /// Terminates because every pass marks what it read as applied (quarantined ops included), so the set
 /// strictly shrinks. The bound is a backstop against a future op kind that makes work faster than this
 /// drains it, not an expected case; it is deliberately loud rather than silent if it is ever hit.
-/// One pass: fold everything currently unapplied-and-effective. `applyUnappliedOps` repeats this,
-/// because folding an op can make OTHER ops effective.
-let private applyUnappliedOpsPass () : Task<int64> =
-  task {
-    let! pending = readPending ()
-    return! foldRead pending
-  }
-
 let applyUnappliedOps () : Task<int64> =
   task {
     let mutable total = 0L
@@ -371,10 +364,10 @@ let applyUnappliedOps () : Task<int64> =
   }
 
 
-/// The regenerable projections — every table the op-fold writes. `deprecations` is one: it's folded
+/// The regenerable projections: every table the op-fold writes. `deprecations` is one: it's folded
 /// from `Deprecate`/`Undeprecate` ops (its `annotation_blob` reconstructs from the op), so it's
-/// regenerable and `export` strips it like the others. NOT `package_blobs` (canonical content —
-/// op-playback never writes it), nor the op log / branch / commit / account state.
+/// regenerable and `export` strips it like the others. NOT `package_blobs` (canonical content that
+/// op-playback never writes), nor the op log / branch / commit / account state.
 let projectionTables : List<string> =
   [ "package_functions"
     "package_types"
@@ -553,10 +546,10 @@ let growIfNeeded
     use _span = Telemetry.span "seed.growIfNeeded" []
     let! appliedCount =
       Telemetry.timeTask "seed.applyOps" [] (fun () -> applyUnappliedOps ())
-    // A store can have every op applied yet still hold unevaluated values (rt_dval NULL) — e.g. after a
+    // A store can have every op applied yet still hold unevaluated values (rt_dval NULL): after a
     // migration that re-marks ops applied without evaluating, or a store copied/built without a final grow
     // (the test seed does exactly this). Gating evaluation on `appliedCount > 0` alone leaves those values
-    // NULL forever, so the value is unusable ("value not found" — or, before the null-safe read in
+    // NULL forever, so the value is unusable ("value not found", or, before the null-safe read in
     // RuntimeTypes.Value.get, an internal NULL crash). Evaluate whenever any value is unevaluated so the
     // store self-heals on startup. Refs only need regenerating when we actually applied new ops.
     let! hasUnevaluatedValues =
@@ -580,7 +573,7 @@ let growIfNeeded
         Telemetry.timeTask "seed.walCheckpoint" [] (fun () ->
           Sql.query "PRAGMA wal_checkpoint(TRUNCATE);" |> Sql.executeStatementAsync)
       // Announce only when we grew from real op work; a pure self-heal (evaluating stray unevaluated values
-      // with no new ops) is silent maintenance — it must not print to stdout, or it pollutes captured CLI
+      // with no new ops) is silent maintenance, and must not print to stdout, or it pollutes captured CLI
       // output (e.g. a caller comparing exact command output).
       if appliedCount > 0L then log "Package DB ready"
       return true

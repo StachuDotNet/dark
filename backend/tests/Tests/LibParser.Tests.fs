@@ -645,8 +645,6 @@ let private toPTWithInModule
   (context : WT2PT.Context)
   (e : WT.Expr)
   : PT.Expr =
-  // main's constructor (the record shape changed there); our argument list (the parser
-  // takes no branchId on this branch). If that pairing is wrong the compiler says so.
   let emptyBuiltins : RTT.Builtins = LibExecution.Builtin.make [] []
   (WT2PT.Expr.toPT emptyBuiltins pm NR.OnMissing.Allow currentModule context e
    |> Ply.toTask)

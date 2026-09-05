@@ -3,14 +3,14 @@
 // errors: each `match` simply takes its branch arm on main. `discard` and `collapse` then no-op silently,
 // name lookups route through an empty overlay and still answer correctly, and the suite stays green.
 //
-// That happened, twice, at two different spellings. These assertions are the cheap version of catching it.
+// So the disagreement has to be asserted directly. These are the cheap version of that.
 
 // The constant IS what a process on main reports.
 Darklang.SCM.PackageOps.currentBranch () = Darklang.SCM.Ids.mainBranchId
 
-// An ID is not a NAME. This is the property the whole type carries: main's id used to be the string
-// "main", so an id and a name were interchangeable and passing one where the other belonged was correct
-// by accident. Anything that prints the id where it means the name now reads as a raw uuid, visibly.
+// An ID is not a NAME. That is the property the type carries: while an id spells the same as a name,
+// passing one where the other belongs is correct by accident. With a uuid, anything printing the id
+// where it means the name reads as a raw uuid, visibly.
 (Stdlib.Uuid.toString Darklang.SCM.Ids.mainBranchId == Darklang.SCM.Ids.mainBranchName) = false
 
 // ...and it is a Uuid, which is a different TYPE from a name, not merely a differently-shaped string.

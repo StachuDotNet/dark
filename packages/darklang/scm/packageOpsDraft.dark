@@ -2,6 +2,11 @@ module Darklang.SCM.PackageOps
 
 /// What is UNCOMMITTED on the branch you are standing on, and the decisions a later edit undid.
 ///
+/// Live-on-write means a draft is not "pending work" -- it is already running. It is the set of ops you
+/// have not reviewed and committed yet, which is exactly what `dark status` reports and `dark commit`
+/// acts on. On a branch it is that branch's own uncommitted frontier instead; `draftWhere` is the one
+/// place that difference is spelled out.
+///
 /// Same module as `packageOps.dark`; see the note there.
 
 
@@ -162,7 +167,7 @@ let propagatedNames () : List<String> =
     | Error _ -> []
   | branchId ->
     // The branch's own record, `op_branches.source`: the LAST op binding each name decides. Main's
-    // followers are not this branch's, and were reported as such from here before the column existed.
+    // followers are not this branch's, so `locations.source` cannot answer for a branch.
     SCM.Branches.ownFrontierOpsWithSource branchId
     |> Stdlib.List.filterMap (fun entry ->
       match entry with

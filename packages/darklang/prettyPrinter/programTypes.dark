@@ -1548,8 +1548,8 @@ module PackageOp =
 
         $"Propagation {name} -> {p}{why}"
 
-    // A commit that lands a branch carries this op, so leaving it out crashed `dark show` and
-    // `dark commits` on exactly the commits a person most wants to read.
+    // A commit that lands a branch carries this op, so without an arm here `dark show` and
+    // `dark commits` raise on exactly the commits a person most wants to read.
     | BranchEvent(eventBranchId, event, _at) ->
       let what =
         match event with

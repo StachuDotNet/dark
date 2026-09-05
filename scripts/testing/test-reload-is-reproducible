@@ -8,12 +8,12 @@
 # two machines authoring the same fn made two ops. An Add op is identified by its content now; this is
 # what keeps it that way.
 #
-# Runs against its OWN rundir, not the shared dev store. It used to reload the dev store twice, which
-# is a purge-and-refill: it wipes `conflicts`, `sync_bases` and the rest, and drops whatever draft was
-# open. `test-gates-are-clean` could not see it, because two reloads leave the same op and location
-# COUNTS behind and that is what the fingerprint compares -- so the damage showed up later, attributed
-# to whichever gate happened to run while it was noticed. Main's ops only: a branch's ops are whatever
-# the developer has on their branches.
+# Runs against its OWN rundir, never the shared dev store. A reload is a purge-and-refill: it wipes
+# `conflicts`, `sync_bases` and the rest, and drops whatever draft was open. `test-gates-are-clean`
+# cannot catch that, because two reloads leave the same op and location COUNTS behind and counts are what
+# the fingerprint compares -- so damage done here surfaces later, attributed to whichever gate was
+# running when somebody noticed. Main's ops only: a branch's ops are whatever the developer has on their
+# branches.
 set -euo pipefail
 
 WORK=rundir/reload-reproducible

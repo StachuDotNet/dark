@@ -100,6 +100,18 @@ let previewLine (branchId: Uuid) (itemType: String) (hash: String) (name: String
     Stdlib.Cli.Tui.Text.clipToWidth flattened 72
 
 
+/// Whose version a candidate is, in the words all three views use.
+///
+/// Off `side` and the recorded author, never off the candidate's position, so it stays true if the
+/// candidate order ever stops being local-first. A peer that named itself keeps its name; one that
+/// didn't is "theirs". <param me> is this instance's identity, read ONCE by the caller: it is a store
+/// read, and the alternative is one per candidate row.
+let whoseCandidate (me: String) (cand: SCM.Conflicts.Candidate) : String =
+  if cand.side == "local" then "yours"
+  else if cand.author == "" then "theirs"
+  else if cand.author == me then "yours"
+  else cand.author
+
 /// Indent a rendered block so it sits under its candidate line.
 let indentBlock (s: String) : String =
   s
@@ -125,20 +137,12 @@ let executeList (state: AppState) : AppState =
       Stdlib.printLine (SCM.Conflicts.summaryLine c)
 
       // BOTH sides inline, in the order `override` takes them, so the list answers "does this matter"
-      // without a second command.
-      // The row says WHOSE and WHAT HAPPENED, rather than leaving both to a legend printed after the
-      // rows it explains. `whose` comes off `side` and not off the index, so it stays true even if the
-      // candidate order ever stops being local-first, and it names the author when the record carries
-      // one -- the same rule `executeShow` uses, so the two views agree.
+      // without a second command. Each row says WHOSE and WHAT HAPPENED, rather than leaving both to a
+      // legend printed after the rows it explains.
       c.candidates
       |> Stdlib.List.indexedMap (fun i cand ->
         let label = if i == 0 then "A" else "B"
-
-        let whose =
-          if cand.side == "local" then "yours"
-          else if cand.author == "" then "theirs"
-          else if cand.author == me then "yours"
-          else cand.author
+        let whose = whoseCandidate me cand
 
         // "lost", not "over": the summary above already promises the losing version is kept rather than
         // dropped, and an abbreviation nobody expands is not a word.
@@ -168,19 +172,16 @@ let executeShow (state: AppState) (idPrefix: String) : AppState =
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
     printOk $"#{c.id}  {dotted}  [{c.itemType}] -- two live versions"
 
+    // Once for both candidates, not once each: it is a store read.
+    let me = SCM.PackageOps.identity ()
+
     c.candidates
     |> Stdlib.List.indexedMap (fun i cand ->
       let label = if i == 0 then "A" else "B"
       let mark = if cand.hash == c.autoResolvedTo then "kept" else "lost"
-      // "yours" is a rendering decision made HERE, by comparing the stored author against who this
-      // instance is. The record keeps the identity, so `--json` can tell two machines apart and a person
-      // still reads a word rather than their own name.
-      let me = SCM.PackageOps.identity ()
-
-      let who =
-        if cand.author == "" then cand.side
-        else if cand.author == me then "yours"
-        else cand.author
+      // "yours"/"theirs" is a rendering decision made HERE, against who this instance is. The record
+      // keeps the raw identity, so `--json` can still tell two machines apart.
+      let who = whoseCandidate me cand
 
       let header =
         $"  {label} ({mark})  {who}  hash {SCM.Conflicts.shortHash cand.hash}  stamped {cand.originTs}"
@@ -326,7 +327,7 @@ let jsonFailure (id: String) (msg: String) : Unit =
     )
   )
 
-let failureUnknown (state: AppState) (args: List<String>) : AppState =
+let failureUnknown (state: AppState) : AppState =
   Stdlib.printLine (
     ScmJson.conflictActionJson (
       ScmJson.ConflictActionJson
@@ -458,8 +459,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
           jsonFailure id e
           state
 
-  | _ ->
-    failureUnknown state args
+  | _ -> failureUnknown state
 
 /// One conflict, presented for a decision, then whatever the answer was applied.
 ///
@@ -471,11 +471,14 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
   Stdlib.printLine ""
   printOk $"  [{pos}]  {dotted}  [{c.itemType}]"
 
+  // Once for both candidates; see `whoseCandidate`.
+  let me = SCM.PackageOps.identity ()
+
   c.candidates
   |> Stdlib.List.indexedMap (fun i cand ->
     let label = if i == 0 then "A" else "B"
     let mark = if cand.hash == c.autoResolvedTo then "kept by the fold" else "the other one"
-    let who = if cand.author == "" then cand.side else cand.author
+    let who = whoseCandidate me cand
     let header = $"    {label} ({mark})  {who}  stamped {cand.originTs}"
     $"{header}\n{indentBlock (renderItem state.currentBranchId c.itemType cand.hash c.name)}")
   |> Stdlib.List.iter (fun block -> Stdlib.printLine block)

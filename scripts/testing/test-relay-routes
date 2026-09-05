@@ -9,8 +9,8 @@
 #
 # Two things are asserted. Nothing may leak an interpreter error to a caller -- a stack trace in an HTTP
 # response is both an information leak and a crash by another name. And a page that says "not found" must
-# ANSWER 404: these used to say it in the body and return 200, which reads correctly to a person and lies
-# to every link checker, monitor and script.
+# ANSWER 404: saying it in the body over a 200 reads correctly to a person and lies to every link checker,
+# monitor and script.
 #
 # `/nope` is deliberately not asserted: the relay composes the DarkPackages API onto the same server, and
 # that API has a `/:location` catch-all which legitimately answers "no such location" with an empty
@@ -26,8 +26,9 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 scripts/testing/_copy-store "$WORK/data.db"
 
-# The secret deliberately CONTAINS "Bearer " and a space. Both used to break authentication: the header
-# parser stripped every occurrence of "Bearer " anywhere in the value, and split the credential on space.
+# The secret deliberately CONTAINS "Bearer " and a space -- the two shapes a naive header parser breaks
+# on, by stripping every occurrence of "Bearer " anywhere in the value and by splitting the credential on
+# the first space.
 SECRET='relay-test-Bearer secret'
 
 DARK_CONFIG_RUNDIR="$PWD/$WORK" DARK_MATTER_WRITE_SECRET="$SECRET" \
@@ -36,10 +37,14 @@ DARK_CONFIG_RUNDIR="$PWD/$WORK" DARK_MATTER_WRITE_SECRET="$SECRET" \
 SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
 
+# Every check below is a curl, and a relay that never bound answers all of them the same way. Without
+# this the whole gate reports a wall of connection failures rather than the one fact that explains them.
+up=false
 for _ in $(seq 1 40); do
-  [[ "$(curl -s --max-time 2 "http://localhost:$PORT/ping" 2>/dev/null)" == "pong" ]] && break
+  [[ "$(curl -s --max-time 2 "http://localhost:$PORT/ping" 2>/dev/null)" == "pong" ]] && { up=true; break; }
   sleep 1
 done
+[[ "$up" == "true" ]] || { echo "the relay never came up on $PORT (see $WORK/serve.log)" >&2; exit 2; }
 
 U="http://localhost:$PORT"
 failures=0

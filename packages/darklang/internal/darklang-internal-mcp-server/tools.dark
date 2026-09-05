@@ -8,7 +8,6 @@ let executeDarklang () : ModelContextProtocol.ServerBuilder.Tool =
     description = "Execute Darklang code and return the result"
     handler =
       fun code ->
-        // Upstream's wrapper, this branch's constant: `SCM.Ids.mainBranchId` moved to `SCM.Ids`.
         match
           Cli.Eval.evaluateRaw (Stdlib.Option.Option.None) SCM.Ids.mainBranchId code [] false
         with

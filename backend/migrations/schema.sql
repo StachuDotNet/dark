@@ -216,13 +216,13 @@ CREATE INDEX IF NOT EXISTS idx_conflicts_name ON conflicts(owner, modules, name)
 -- module, then each parent module, then the default), the same shape name resolution has;
 -- name = '' means a MODULE-level choice covering everything beneath it.
 --
--- BRANCH-SCOPED, like everything else a branch can change. Main's id is the well-known uuid in
--- `ProgramTypes.BranchId.main`; do not spell it here. A branch
--- inherits main's choices and can override them. Sharing one row would leak branch state into main,
--- and silently, since nothing about a pin says which branch it came from.
+-- BRANCH-SCOPED, like everything else a branch can change. A branch inherits main's choices and can
+-- override them; sharing one row would leak branch state into main, and silently, since nothing
+-- about a pin says which branch it came from. The default below is main's well-known uuid, which
+-- code spells as `ProgramTypes.BranchId.Main` and never as a literal.
 --
--- Derived: folded from `Decide` ops and nothing else writes here, so this is a projection listed in
--- `Seed.projectionTables`. Drop it and the log rebuilds it.
+-- Derived: folded from `Decision` ops and nothing else writes here, so this is a projection listed
+-- in `Seed.projectionTables`. Drop it and the log rebuilds it.
 CREATE TABLE IF NOT EXISTS propagation_policy (
   branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
   owner TEXT NOT NULL,

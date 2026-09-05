@@ -229,11 +229,10 @@ jobs:
           name: Check the reference workload is within its allocation budget
           command: scripts/perf/gate --published
 
-      # Three of the gate scripts, which until now ran only when someone remembered to. They cover
-      # what the F# suite structurally cannot: the relay's HTTP surface given input a person would
-      # not send (a stack trace in a response is an information leak and a crash by another name),
-      # and the workbench, whose views are Dark and so resolve at RUNTIME -- two of its screens have
-      # shipped a type error that every test in the suite was green through.
+      # Three gate scripts, covering what the F# suite structurally cannot: the relay's HTTP surface
+      # given input a person would not send (a stack trace in a response is an information leak and
+      # a crash by another name), and the workbench, whose views are Dark and so resolve at RUNTIME
+      # -- a type error in one of its screens is invisible to a green suite.
       #
       # `expect` and `sqlite3` are both in the image already. Each takes its own rundir, so they do
       # not tread on the store the steps above built; `test-gates-are-clean` is the assertion for

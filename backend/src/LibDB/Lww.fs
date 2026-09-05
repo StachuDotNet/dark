@@ -3,9 +3,11 @@
 /// Distributed instances editing the same name must pick the SAME winner without coordinating. A candidate
 /// is stale (loses) when its authoring stamp is older, or -- on an exact tie -- when its content hash is the
 /// lower of the two (a portable, instance-independent tiebreak). An identical binding already live is
-/// stale too: there is nothing to win, and the fold keeps what it has with its earliest stamp. Two places apply it: the op-fold
-/// (`PackageOpPlayback.applySetNameFrom`) and divergence detection (`SCM.Conflicts.incomingWins`, in
-/// Dark). Keeping the rule here means the F# copy cannot drift; `Tests.Lww` holds the Dark one to it.
+/// stale too: there is nothing to win, and the fold keeps what it has with its earliest stamp.
+///
+/// Two places apply it: the op-fold (`PackageOpPlayback.applySetNameFrom`) and divergence detection
+/// (`SCM.Conflicts.incomingWins`, in Dark). Keeping the rule here means the F# copy cannot drift;
+/// `Tests.Lww` holds the Dark one to it.
 ///
 /// Stamps are `yyyy-MM-ddTHH:mm:ss.fffZ` strings, so lexical `<` is already chronological -- no parsing.
 module LibDB.Lww

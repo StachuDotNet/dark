@@ -56,11 +56,16 @@ let launchdPlist (app: Model.App) : String =
   $"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\n  <key>Label</key><string>com.darklang.{app.slug}</string>\n  <key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string><string>{daemonCommand app}</string></array>\n  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><true/>\n</dict></plist>\n"
 
 /// Register `app` as an OS service by writing its unit, then activating it.
+///
+/// Every value that reaches a unit file is checked HERE rather than at authoring, and before anything is
+/// written: apps are DISCOVERED from packages, and packages sync, so none of this was necessarily
+/// written on this machine. Checking once here also covers both platforms with one guard.
+///
+/// Two fields land in the file, the name and the entrypoint, and each gets two checks: an allowlist for
+/// what the field is FOR, and a substring check for what a unit file and a plist can survive.
 let enable (app: Model.App) : EnableResult =
   if Stdlib.Bool.not (Model.isValidSlug app.slug) then
     EnableResult.Failed $"invalid app slug '{app.slug}'"
-  // Checked HERE rather than at authoring: a discovered app comes from a package, and packages sync,
-  // so the value this writes into a unit file was not necessarily written on this machine.
   else if Stdlib.Bool.not (Model.isValidAppName app.name) then
     EnableResult.Failed
       $"'{app.slug}' has a name that can't go in a unit file (control characters)"
@@ -68,10 +73,12 @@ let enable (app: Model.App) : EnableResult =
     EnableResult.Failed $"'{app.slug}' has an entrypoint that isn't a plain function name"
   else if Stdlib.Bool.not (Model.isDaemon app.target) then
     EnableResult.Failed $"'{app.slug}' is a foreground app -- only daemons can auto-start"
-  // Checked here rather than at the interpolation, so both platforms are covered by one guard and
-  // nothing gets written when it fails.
+  // `isValidAppName` rules out control characters, which is the systemd half. `<` and `&` are printable
+  // and pass it, and they are what breaks the plist.
   else if Stdlib.Bool.not (isSafeForUnitFile app.name) then
     EnableResult.Failed $"'{app.slug}' has a name that can't go in a service file"
+  // The entrypoint and the slug are already allowlisted above, so the part of `daemonCommand` this still
+  // covers is the launcher path it splices in.
   else if Stdlib.Bool.not (isSafeForUnitFile (daemonCommand app)) then
     EnableResult.Failed $"'{app.slug}' has an entrypoint that can't go in a service file"
   else

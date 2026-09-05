@@ -173,9 +173,9 @@ let conflictDetail (state: State) : String =
   match selectedConflict state with
   | Some c ->
     // A conflict holds its competing versions in `candidates`, with the fold's pick named separately by
-    // hash. The pre-SCM shape had flat `localHash`/`incomingHash`/`chosenHash` fields, and this pane was
-    // still reading those: opening Conflicts with an actual conflict in the store took the workbench
-    // down with "Tried to access field `location`".
+    // hash -- not as flat local/incoming/chosen fields. A field that isn't there is a runtime error, and
+    // this pane only draws once a conflict exists, so getting the shape wrong here is invisible on an
+    // empty store.
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
 
     let sides =

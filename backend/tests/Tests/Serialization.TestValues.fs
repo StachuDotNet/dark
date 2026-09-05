@@ -744,10 +744,9 @@ module ProgramTypes =
 
   /// Every `PackageOp` case, and every shape within a case that the writer branches on.
   ///
-  /// There was no roundtrip test for ANY of them. This is the format two machines must agree on byte
-  /// for byte to converge, and it was covered only indirectly, by storing an op and reading it back
-  /// through the fold: so a case the fold never reaches (a `Decision` kind, a `BranchEvent`, a
-  /// `SetName` carrying a predecessor) was covered by nothing at all.
+  /// This is the format two machines must agree on byte for byte to converge, and the fold covers it
+  /// only indirectly: a case the fold never reaches (a `Decision` kind, a `BranchEvent`, a `SetName`
+  /// carrying a predecessor) needs its value here or it is asserted nowhere.
   ///
   /// The shapes that matter, beyond one of each case: `SetName`/`Unbind` with and without `previous`,
   /// which is a presence byte rather than a sentinel hash; all three `DecisionKind`s; both

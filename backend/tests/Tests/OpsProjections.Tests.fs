@@ -40,15 +40,14 @@ let private itemHashes () : Task<string> =
 /// is still live, what calls what, and which propagation decisions stand.
 ///
 /// `itemHashes` above compares the ITEMS a fold produced. Two folds can agree on every item and disagree
-/// about what the names point at, and it is the names that decide which code runs. That half was not
-/// compared anywhere.
+/// about what the names point at, and it is the names that decide which code runs.
 ///
 /// `locations.source` is deliberately NOT in here. It records what PUT a binding there -- an op you
 /// typed, propagation following your edit, a human resolving a conflict -- and is passed in by whoever
 /// calls the fold rather than derived from the ops, so a re-fold marks everything `op`. Measured on a
-/// store carrying edits, propagation, a pin, a branch, a merge and a deprecation: that column is the
-/// ONLY thing a re-fold changes, one row out of 35,954. It is written up as an open item; putting it in
-/// this fingerprint would assert a property the design does not currently have.
+/// store carrying edits, propagation, a pin, a branch, a merge and a deprecation, that column is the
+/// ONLY thing a re-fold changes, one row out of 35,954. Putting it in this fingerprint would assert a
+/// property the design does not have.
 let private bindingFingerprint () : Task<string> =
   task {
     let! locs =
@@ -187,11 +186,10 @@ let opHashingIsStable =
 
     Expect.equal
       actual
-      // Moved 2026-08-29, deliberately, and the reason is the point of the golden: a `Hash` is written
-      // as 32 raw bytes rather than 64 hex characters now. Content hashes are computed over the same
-      // encoding, so an encoding change re-hashes the whole tree. Old data is disposable here, but if
-      // this literal ever moves WITHOUT someone having changed the format on purpose, that is the bug
-      // this test exists to catch.
+      // Pinned against the current encoding: a `Hash` is written as 32 raw bytes, not 64 hex
+      // characters, and content hashes are computed over that same encoding, so an encoding change
+      // re-hashes the whole tree. Moving this literal deliberately, alongside such a change, is
+      // fine. Moving without one is the bug this test exists to catch.
       "bfeacb4169905ee16297bf3eb231af8402fa1391ff6bb60197a9452362d236e6"
       "op hashing changed. See this test's comment before updating the literal."
   }
@@ -207,8 +205,8 @@ let opHashingIsStable =
 /// Derives the expected id from `Hashing.computeOpHash` and the documented truncation, NOT by calling
 /// `Inserts.computeOpHash`. That distinction is the whole test: the store is re-folded before every run, so
 /// every id in it was minted by `Inserts.computeOpHash` moments earlier, and a test that recomputes with
-/// that same function compares it against itself. Breaking the truncation deliberately left the
-/// self-comparing version passing.
+/// that same function compares it against itself: break the truncation and the self-comparing form
+/// still passes.
 ///
 /// It cannot catch a change to `Hashing.computeOpHash` itself, since the store would be rebuilt under the
 /// new definition. `opHashingIsStable` pins that against a literal.
@@ -321,9 +319,8 @@ let durableReleaseCarriesForward =
   }
 
 let registryCoversProjections =
-  // The COUNT is in the name on purpose: adding a projection without adding it here is exactly the drift
-  // this catches. It caught it, too -- `propagation_policy` was added to the registry on the kernel-substrate
-  // branch while this test sat disabled, and re-enabling the file surfaced it immediately.
+  // The COUNT is in the name on purpose: adding a projection to the registry without adding it here
+  // is exactly the drift this catches.
   test "the projection registry covers exactly the 7 regenerable projections" {
     Expect.equal
       (List.sort Seed.projectionTables)
@@ -340,9 +337,9 @@ let registryCoversProjections =
 
 /// Two bodies under one NAME in a single authored batch.
 ///
-/// Ported from main's `testfiles/execution/cli/authoring-duplicates.dark`, which called the Matter
-/// builtin `pmDuplicateDeclarations`; the LibExecution testfile harness does not load Matter, so the
-/// same assertions live here against the F# they wrap.
+/// Asserted here rather than in a `.dark` testfile because the question is answered by a Matter
+/// builtin (`pmDuplicateDeclarations`), and the testfile harness does not load Matter. This drives
+/// the F# that builtin wraps.
 ///
 /// It matters because stabilization keys by name: a batch declaring one name twice would store one
 /// body under the other's hash, and whichever landed second would silently become the first.
@@ -397,8 +394,8 @@ let noCanonicalInDropSet =
         "toplevels_v0"
         "scripts_v0" ]
 
-    // A name that no longer exists asserts nothing, and reads exactly like one that does. Four dead
-    // names sat in this list before anyone asked the schema.
+    // A name that does not exist asserts nothing, and reads exactly like one that does, so the
+    // list is checked against the schema before it is used.
     let! live =
       Sql.query
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
@@ -438,12 +435,10 @@ let schemaChangeKeepsWork =
   }
 
 
-// testSequenced because the rebuild cases DELETE + refold the *shared* projection tables and mark all ops
-// unapplied — they must not race other DB tests' reads/writes mid-rebuild. The pure cases ride along.
 /// Every `PackageOp` case has an arm in the Dark pretty-printer.
 ///
 /// Reflection over the F# DU on one side, text on the other, because the Dark side has no exhaustiveness
-/// check to hook. Adding a 10th case fails this until the printer learns it.
+/// check to hook. Adding a case fails this until the printer learns it.
 let everyPackageOpCaseIsPrintable =
   testTask "every PackageOp case has a pretty-printer arm" {
     let printer =
@@ -490,6 +485,8 @@ let everyPackageOpCaseIsPrintable =
 
 
 let tests =
+  // The rebuild cases DELETE and re-fold the SHARED projection tables and mark every op unapplied,
+  // so they must not race another DB test's reads mid-rebuild. The pure cases ride along.
   testSequenced
   <| testList
     "OpsProjections"

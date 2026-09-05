@@ -873,4 +873,3 @@ let testWorkbenchViewsShowTheirChrome (): TestResult =
     TestResult.Pass
   else
     TestResult.Fail $"Missing from the rendered frame: {Stdlib.String.join missing ", "}"
-

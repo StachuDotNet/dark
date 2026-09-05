@@ -13,10 +13,10 @@
 # identity -- and then visits every view. A view that throws takes the process down, so an EOF where
 # content was expected is the failure that matters; each step also names something only that view draws.
 #
-# Scope, stated plainly: this opens each view on its DEFAULT section. It would not have caught the
-# conflict-pane crash, which needs the Conflicts section selected -- that is `test-workbench-scm`, and the
-# two are complementary rather than one subsuming the other. The sections moved into the sidebar upstream,
-# so reaching them is navigation now rather than a Tab press.
+# Scope, stated plainly: this opens each view on its DEFAULT section. It would not catch the conflict-pane
+# crash above, which needs the Conflicts section selected -- that is `test-workbench-scm`, and the two are
+# complementary rather than one subsuming the other. Sections live in the sidebar, so reaching one is
+# navigation rather than a Tab press.
 
 set -euo pipefail
 

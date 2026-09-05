@@ -9,9 +9,8 @@ module Darklang.Cli.PropagateApp
 //
 // TOGGLING APPLIES IMMEDIATELY, and the footer says so. This is the one real design decision here and the
 // alternative is worse: staging choices and applying on Enter would show you a preview that isn't the state
-// you're in, which is the same lie late binding would have told (see propagation-policy.md). Propagation has
-// ALREADY run by the time this opens, and a pin's rollback is one op, so live is both the honest option and
-// the cheap one.
+// you're in. Propagation has ALREADY run by the time this opens, and a pin's rollback is one op, so live is
+// both the honest option and the cheap one.
 //
 // There is therefore NO CANCEL, deliberately. A cancel that can't actually undo is worse than none. What
 // makes that fine is that nothing is destroyed: toggling back is a complete undo, every version is still in
@@ -36,26 +35,12 @@ let load (branchId: Uuid) (message: String) : State =
       message = message }
 
 
-let shortHash (h: LanguageTools.ProgramTypes.Hash) : String =
-  LanguageTools.ProgramTypes.hashToString h |> Stdlib.String.slice 0 8
-
-
-let fqn (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
-  let mods = SCM.Propagation.modulesOf loc
-  if mods == "" then $"{loc.owner}.{loc.name}" else $"{loc.owner}.{mods}.{loc.name}"
-
-
-let padTo (s: String) (n: Int) : String =
-  let len = Stdlib.String.length s
-  if len >= n then s else s ++ (Stdlib.String.repeat " " (n - len))
-
-
 let renderRow (idx: Int) (selected: Int) (r: SCM.Propagation.ImpactRow) : String =
   let cursor = if idx == selected then ">" else " "
   let policy = if r.following then "follow" else "pinned"
-  let name = padTo (fqn r.item) 40
-  let because = fqn r.because
-  $"  {cursor} {policy}  {name}  {shortHash r.at}   <- {because}"
+  let name = ScmJson.pad (PropagateCmd.dotted r.item) 40
+  let because = PropagateCmd.dotted r.because
+  $"  {cursor} {policy}  {name}  {PropagateCmd.shortHash r.at}   <- {because}"
 
 
 let render (state: State) : String =

@@ -24,12 +24,10 @@ set exe [lindex $argv 0]
 set env(DARK_CONFIG_RUNDIR) [lindex $argv 1]
 spawn $exe
 
-# Home is the SCM summary now: upstream moved the sections (needs you / uncommitted / recent commits /
-# branches) onto the landing screen and made them sidebar entries rather than Tab-cycled panes. That makes
-# Home the honest place to assert the DATA path, which is what this branch changed: every one of those rows
-# comes from an SCM API this branch rewrote (`SCM.Conflicts.pending`, `SCM.Draft.read`, `SCM.Commits.recent`,
-# `SCM.Branch.list`). If any of them is wired wrong, the workbench dies on startup, which is exactly how the
-# first version of that port was caught.
+# Home IS the SCM summary: needs you / uncommitted / recent commits / branches all render on the landing
+# screen, each from its own SCM API (`SCM.Conflicts.pending`, `SCM.Draft.read`, `SCM.Commits.recent`,
+# `SCM.Branch.list`). That makes Home the place to assert the DATA path -- one of those wired wrong takes
+# the workbench down on startup, so the assertions below are as much about the queries as the drawing.
 #
 # The startup marker is the context row, not a greeting: the welcome panel only appears on a genuine first
 # run, and this store has work in it.
@@ -42,7 +40,7 @@ want "recent commits" "and the commits"
 want "workbench scm fixtur" "including the one this fixture made (the row is clipped to the pane)"
 want "branches" "and the branches"
 
-# 3 is the Changes view upstream (it was 4). It must show the draft rather than an empty state.
+# 3 is the Changes view. It must show the draft rather than an empty state.
 press "3"
 want "WbScm.T.draft" "the draft item in the Changes view"
 
@@ -52,7 +50,7 @@ want "WbScm.T.draft" "the draft item in the Changes view"
 press "u"
 want "(?i)no relay" "u offers to sync and says why it cannot"
 
-# `q`, not Escape: Escape means "step back" inside a view now, so it no longer leaves from here.
+# `q`, not Escape: Escape means "step back" inside a view, so it does not leave from here.
 press "q"
 expect {
   eof { puts "workbench: Home shows real SCM work, Changes lists the draft, and sync is actionable." }

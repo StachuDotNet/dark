@@ -295,13 +295,10 @@ let private handleRequest
           for (key, value) in respHeaders do
             ctx.Response.Headers.Add(key, value)
 
-          // Compress when the client asked for it. A sync page is JSON full of hex, which is 16
-          // symbols, so it compresses about 5x; on a first sync that is the difference between
-          // shipping hundreds of megabytes and shipping tens. Only when asked, so nothing that
-          // does not send Accept-Encoding sees any change.
-          //
-          // The floor exists because compressing a small body costs more than it saves once the
-          // header is counted, and every route here answers small bodies except the sync pages.
+          // Compress when the client asked for it, and only then, so nothing that does not send
+          // `Accept-Encoding` sees any change. On a first sync this is the difference between
+          // shipping hundreds of megabytes and shipping tens; `maybeCompress` has the ratios and
+          // the reason for the size floor.
           let body, encoding = maybeCompress ctx.Request response.body
 
           match encoding with

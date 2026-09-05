@@ -115,18 +115,17 @@ let private infixDispatched : Set<string> =
 
 /// Builtins intentionally referenced from more than one place in `packages/`.
 ///
-/// EMPTY, and worth keeping that way. It held 38 entries; every one of them turned out to be a
-/// wrapper that already existed with a caller going around it, a doc comment naming the raw builtin
-/// where it should have named the wrapper, or thirteen copies of the same one-line wrapper (one per
-/// module) where one would do. None was a case where wrapping did not work, which is why the
-/// argument each entry carried ("a wrapper would name the thing it already is") was wrong every time.
+/// EMPTY, and worth keeping that way: when a builtin picks up a second caller, wrap it. The three
+/// things that actually look like a need for an entry here are a wrapper that already exists with a
+/// caller going around it, a doc comment naming the raw builtin where it should name the wrapper,
+/// and a one-line wrapper copied once per module where one would do. So before adding an entry,
+/// check whether the wrapper exists somewhere and the new caller simply has not been pointed at it.
 ///
-/// So: when a builtin picks up a second caller, wrap it. If you are about to add an entry here, the
-/// thing to check first is whether the wrapper already exists somewhere and the new caller simply
-/// has not been pointed at it.
+/// "A wrapper would just name the thing it already is" is not a reason -- that is what a wrapper is.
 let private multiUseAllowlist : Set<string> = Set.empty
 
 
+/// The repo root: the first directory at or above CWD holding `packages/darklang/`.
 let private findRepoRoot () : string =
   let rec walk (dir : string) : string option =
     if System.String.IsNullOrEmpty dir then
@@ -176,7 +175,6 @@ let private packagesText : Lazy<string> =
 /// `packagesText`: it also covers test files, perf workloads and sample
 /// scripts, which is the difference between "shipped once" and "dead".
 let private repoDarkText : Lazy<string> = lazy (darkTextUnder (findRepoRoot ()))
-
 
 
 /// Count textual references to `Builtin.<name>` (or `Builtin.<name>_v<n>`)
@@ -303,6 +301,7 @@ let descriptionsAreJoined =
             "integer overflow wraps around"
             "the line break should have become a single space"
       } ]
+
 
 /// `Builtin.<name>` spellings that are NOT a builtin call. Dark has its own `Builtin`
 /// modules and cases; the lookbehind below drops the qualified ones, and these bare

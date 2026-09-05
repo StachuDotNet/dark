@@ -23,12 +23,11 @@
 # The build context IS the payload directory, which is why the COPY below is a bare `.`. It lives under
 # `rundir/` so it needs no .gitignore entry of its own -- rundir is already ignored, and a build artifact
 # does not deserve a line in the repo's ignore file.
-#   fly deploy --config deploy/fly.toml
 
 # `runtime`, not `runtime-deps`: this publish is framework-dependent, so the image has to carry .NET
-# itself. (A self-contained publish would let this be `runtime-deps` and shave ~50MB; the repo already has
-# `scripts/build/build-release-cli-exes.sh` for that, and it is worth doing when image size starts to
-# matter rather than tonight.)
+# itself. A self-contained publish would let this be `runtime-deps` and shave ~50MB, and
+# `scripts/build/build-release-cli-exes.sh` already produces one -- worth switching to once image size
+# matters.
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble
 
 RUN useradd --create-home --shell /bin/bash dark

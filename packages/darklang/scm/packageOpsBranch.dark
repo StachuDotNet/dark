@@ -206,9 +206,9 @@ let branchName (branchId: Uuid) : String =
 /// Text a person or an editor supplied, as a branch id. THE boundary: a ref may be a name, a full id, or
 /// the start of one, and this is the single place that knows all three.
 ///
-/// It lives here rather than in the CLI because the LSP needs the same answer, and when it had its own
-/// version the two drifted: the LSP's could not resolve `main` at all, because main has no `branches`
-/// row and only the special case below finds it.
+/// It lives here rather than in the CLI because the LSP needs the same answer, and a second copy drifts:
+/// main has no `branches` row, so only the special case below finds it, and a resolver written without
+/// that case cannot resolve `main` at all.
 let resolveBranchRef (branchRef: String) : BranchRefResult =
   let asId =
     match Stdlib.Uuid.parse branchRef with
@@ -309,11 +309,8 @@ let branchHashHistoryFor
   match
     Stdlib.Sqlite.queryP
       (localDb ())
-      // `@p1` is main's id, not the literal "main". `SCM.Ids` exists to enforce exactly that, and its
-      // own comment records the rule drifting twice already -- once when main's id was "" and once when
-      // it was "main". SQL is where it drifts unnoticed, because no type checker reads a string.
-      // Against a current store this comparison was simply dead: `parent_id` holds main's UUID, so
-      // `!= 'main'` was true for every row and the recursion walked past main instead of stopping at it.
+      // The parent-chain walk, as `chainBindingEntries` writes it; its note explains why `@p1` is
+      // main's bound id rather than the literal "main".
       "WITH RECURSIVE chain(bid) AS (
          SELECT @p0
          UNION

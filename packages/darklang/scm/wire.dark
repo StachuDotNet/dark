@@ -206,7 +206,6 @@ let exportOwnedSince
 val relayPageSize = 2000L
 
 
-
 /// Where this instance last got to with <param sourceId>. Per-source, because two relays have unrelated
 /// arrival orders and one cursor for both would skip ops from whichever is behind.
 let pullCursor (sourceId: String) : Int64 =
@@ -234,9 +233,11 @@ let rememberRelayInstance (sourceId: String) (relayInstance: String) : Unit =
   let _ = Stdlib.LocalStore.configSet $"sync.relay-instance.{sourceId}" relayInstance
   ()
 
-/// The max origin_ts in the local log -- the puller's own cursor ("" if the log is empty).
-/// Pulling `since` this means "give me everything newer than what I already have", so no
-/// bookmark needs to be stored anywhere.
+/// The max origin_ts in the local log ("" when the log is empty). Half of `SyncHead`, and derived from
+/// the log every time it is asked, so it describes what this store holds right now.
+///
+/// Not a pull position: paging is by the relay's arrival order and its cursor is stored per source
+/// (`pullCursor`). A stamp cannot serve as one -- see `exportOwnedSince`.
 let localMaxOriginTs () : String =
   match
     Stdlib.Sqlite.queryOneP
@@ -335,8 +336,8 @@ let importFrom
 
   match Builtin.scmImportOps importCommit records with
   | Ok n ->
-    // Kept, not dropped: the wire says who wrote each op and a client used to discard it, which is why
-    // `op_owners` was empty on every client and provenance was unanswerable locally.
+    // The wire says who wrote each op, and that is the only place a client can learn it: keep it, or
+    // `op_owners` stays empty here and provenance is unanswerable locally.
     PackageOps.recordOpAuthors ops
     PackageOps.finishSyncImport sourceId plan
     // What came from the source, the source holds; the next push to it has no reason to send these back.

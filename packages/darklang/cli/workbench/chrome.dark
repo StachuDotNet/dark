@@ -174,8 +174,8 @@ let hintsForView (state: State) (width: Int) : String =
         [ ("↑↓", "move"), ("o", "ours"), ("t", "theirs"), ("a", "ack") ]
       else
         // merge/rebase are in `?` - eight verbs plus the globals didn't fit a
-        // 120-column footer. `u/d` stay, because sync used to be the one part of SCM this view could only
-        // WATCH, and a key nobody can see is a key nobody uses.
+        // 120-column footer. `u/d` stay: they are the only way to sync from in here, and a key nobody
+        // can see is a key nobody uses.
         Stdlib.List.flatten
           [ [ ("↑↓", "move"), ("⏎", "open"), ("c", "commit"), ("x", "discard"), ("b", "branch"), ("s", "switch"), ("u/d", "push/pull") ]
             paneHint ]

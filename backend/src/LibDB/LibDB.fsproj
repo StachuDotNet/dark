@@ -51,7 +51,6 @@
     <Compile Include="CapabilityGrants.fs" />
     <Compile Include="PackageCaps.fs" />
 
-
     <!-- ex-LibCloud SQLite-bound modules /-->
     <Compile Include="Tracing.fs" />
     <Compile Include="UserDB.fs" />

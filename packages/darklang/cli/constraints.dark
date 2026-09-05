@@ -2,9 +2,9 @@ module Darklang.Cli.ConstraintsCmd
 
 // `dark constraints` -- standing checks over the store, and what you've decided about them.
 //
-// One kind exists today: a live item still calling a version that is no longer current. A KIND rather than
-// its own command, because the others sketched alongside it want the same detect / record / ack lifecycle,
-// so the next should be a case and not another top-level noun.
+// Three kinds today (`SCM.Constraints.Kind`), all of them cases of one command rather than commands of
+// their own, because they share the whole detect / record / ack lifecycle and differ only in what a
+// resolution would mean. The next one should be a case too.
 //
 // Checks you RUN rather than warnings at commit: in a distributed store, usages on non-current versions are
 // the normal steady state. Another machine's caller of your fn cannot be propagated to and must not
@@ -134,12 +134,11 @@ let executeList (state: AppState) (args: List<String>) : AppState =
       (Stdlib.Cli.UI.Colors.hint
         "  dark constraints resolve <id>... [--as <how>]   fix it now, naming the fix")
 
-    // A pin says a REFERENCE is deliberate, so it only earns a mention when something is on screen for it
-    // to answer.
-    if Stdlib.Bool.not (Stdlib.List.isEmpty findings) then
-      Stdlib.printLine
-        (Stdlib.Cli.UI.Colors.hint
-          "  dark propagate pin <name>          leave it for good; a pin is already a durable ack")
+    // A pin says a REFERENCE is deliberate, which is what every finding here describes, so it belongs
+    // beside the other two verbs whenever there is anything on screen for it to answer.
+    Stdlib.printLine
+      (Stdlib.Cli.UI.Colors.hint
+        "  dark propagate pin <name>          leave it for good; a pin is already a durable ack")
 
     state
 
@@ -151,11 +150,13 @@ let executeList (state: AppState) (args: List<String>) : AppState =
 let selectTargets
   (ids: List<String>)
   : (List<SCM.Constraints.Finding> * List<String>) =
-  let all = SCM.Constraints.detectAll ()
-
+  // `detectAll` re-runs detection so a prefix can match a finding that has never been listed; `pending`
+  // is enough for `--all`, which means "everything currently outstanding".
   if Stdlib.List.member ids "--all" then
     (SCM.Constraints.pending (), [])
   else
+    let all = SCM.Constraints.detectAll ()
+
     // Findings are printed as `#1d8740cd`, so a pasted id arrives with the `#`. Accept what we print.
     let normalize (i: String) : String =
       if Stdlib.String.startsWith i "#" then Stdlib.String.dropFirst i 1 else i
@@ -229,10 +230,8 @@ let executeAck (state: AppState) (args: List<String>) : AppState =
         | Error e -> printErr $"couldn't ack #{f.id}: {e}")
 
       // Both lines are about REFERENCES, which is what every finding here describes.
-      if Stdlib.Bool.not (Stdlib.List.isEmpty targets) then
-        printHint "  an ack comes back if that item later moves to some other old version."
-        printHint "  `dark propagate pin` instead, if it's deliberate for good."
-
+      printHint "  an ack comes back if that item later moves to some other old version."
+      printHint "  `dark propagate pin` instead, if it's deliberate for good."
       state
 
 
@@ -353,9 +352,14 @@ let help (_state: AppState) : String =
     "                   store: another machine's caller of your fn cannot"
     "                   be propagated to, and must not silently repoint"
     "                   when you sync. Usually you ack it, or pin it."
+    "                   The only kind resolve can fix: --as repoint."
     "    kind-changed   the name is a different KIND of thing now, so"
-    "                   the usage cannot be repointed at all."
-    "    type-mismatch  the item cannot run. Found without running it."
+    "                   the usage cannot be repointed at all. Ack it, or"
+    "                   edit the usage yourself."
+    "    decision-superseded"
+    "                   a conflict override of yours was undone by a"
+    "                   later ordinary edit. Ack it, or override again"
+    "                   with `dark conflicts override`."
     ""
     "  dark constraints                     what's outstanding"
     "  dark constraints --kind <kind>       just one kind"
@@ -377,8 +381,7 @@ let help (_state: AppState) : String =
 /// under a noun makes an agent type a subcommand to say "seen it".
 let executeAckCmd (state: AppState) (args: List<String>) : AppState =
   match args with
-  | []
-  | [ "help" ] ->
+  | [] ->
     printErr "which findings? `dark ack <id>...`, or `dark ack --all`."
     printHint "  `dark constraints` lists them."
     state
@@ -398,9 +401,6 @@ let listingUnderstands (args: List<String>) : Bool =
 
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
-  | [ "help" ] ->
-    Stdlib.printLine (help state)
-    state
   | "resolve" :: rest -> executeResolve state rest
   | "ack" :: rest -> executeAck state rest
   | _ ->

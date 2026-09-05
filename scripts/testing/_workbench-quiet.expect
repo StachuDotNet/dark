@@ -1,8 +1,7 @@
 #!/usr/bin/expect -f
 # The workbench on a store where nothing needs you: commits, no conflicts, no draft. Home's selection
-# then lands on a COMMIT, and the commit-detail pane renders on open. That path crashed on a real store
-# (`hashToString` handed a String) while `_workbench-scm.expect`, whose fixture always has a conflict to
-# select first, stayed green.
+# then lands on a COMMIT, and the commit-detail pane renders on open -- a path `_workbench-scm.expect`
+# never reaches, because its fixture always has a conflict to select first.
 set timeout 45
 log_user 0
 proc fail {msg} { puts "FAIL: $msg"; exit 1 }
@@ -20,8 +19,8 @@ spawn $exe
 want "instance:" "the workbench on startup"
 want "recent commits" "Home lists the commits"
 want "workbench quiet fixtur" "including the one this fixture made"
-# `refreshCommitDetail` ran for the selected commit on open, which is where the crash was. A runtime
-# error prints instead of the frame, so two seconds of no such text is the assertion.
+# `refreshCommitDetail` runs for the selected commit on open. A runtime error prints instead of the
+# frame, so two seconds with no such text is the assertion.
 set timeout 3
 expect {
   -re "Runtime Error|expects .* but got" { fail "the home screen printed a runtime error" }

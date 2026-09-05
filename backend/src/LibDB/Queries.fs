@@ -13,18 +13,14 @@ module PT = LibExecution.ProgramTypes
 module BS = LibSerialization.Binary.Serialization
 
 
-/// Render one page of the sync wire format straight from the database.
+/// Render one page of the sync wire format straight from the database: the relay's whole answer to
+/// `/sync/pull`. Returns the JSON and the cursor to hand back, which is the largest rowid on the page
+/// (or `sinceSeq` when the page is empty, so a client at the end does not rewind).
 ///
-/// This is the relay's whole answer to `/sync/pull`, and it is native for the reason AGENTS.md gives:
-/// count operations, not rows. In Dark it is tens of thousands of interpreted operations per page, which
-/// costs 2.8s per page under sustained paging and only shows up under load.
-///
-/// The DECISIONS stay in Dark: which ops (the cursor), how many (the page size), and who we say we are.
-/// This does the part that is only mechanism.
-///
-/// Returns the JSON and the cursor to hand back, which is the largest rowid on the page (or `sinceSeq`
-/// when the page is empty, so a client at the end does not rewind).
-/// One page of the sync wire format, rendered straight from the rows.
+/// Native for the reason AGENTS.md gives: count operations, not rows. A page in Dark means
+/// hex-encoding 2,000 blobs and serialising 2,000 records, tens of thousands of interpreted operations
+/// per request, and 2.8s per page under sustained paging. The DECISIONS stay in Dark -- which ops (the
+/// cursor), how many (the page size), and who we say we are -- and only the encoding is here.
 ///
 /// Serves ops NOT TAGGED TO A BRANCH, which is the line between two populations that both sit at
 /// `effective = 0` and cannot be told apart by that column: ops a client PUSHED, which a relay stores
@@ -36,9 +32,6 @@ module BS = LibSerialization.Binary.Serialization
 /// between them per request, so a client meets both on the same endpoint. They have to agree field for
 /// field. `backend/testfiles/execution/scm/sync-wire.dark` compares the two envelopes; change one shape
 /// and change the other.
-///
-/// It exists at all because building a page in Dark meant hex-encoding 2,000 blobs and serialising 2,000
-/// records per request. What to send is still decided in Dark; only the encoding is here.
 let exportPageJson
   (sinceSeq : int64)
   (limit : int64)
@@ -230,9 +223,9 @@ let private getDependentsByLocationsChunk
       let hashFallbackClause =
         match hashParams with
         | [] ->
-          // `locations`, main-scoped, which is what this whole query is. It said `visible_locations`,
-          // a CTE that went with the old SCM, so this arm was a "no such table" waiting for a caller
-          // that did not pre-filter the empty case. Every one of them does today, by luck.
+          // `locations`, main-scoped, which is what this whole query is. This arm is unreachable in
+          // practice, since every caller pre-filters the empty-target case, and it must still name a
+          // real table so that stops being load-bearing.
           $"""
           pd.depends_on_hash IN (
             SELECT tl.item_hash FROM locations tl
@@ -344,11 +337,10 @@ let getDependentHashesByTargets
 
 
 /// Main's DRAFT: the ops not yet committed and not tagged to a branch. This is what
-/// `WipRefresh` re-resolves and rewrites. It deliberately excludes committed ops: the
-/// hash-stabilization it feeds keys items by name and keeps one version per name, which is
-/// right for a draft (the newest edit is the draft) and destroys history if committed ops go
-/// through it. They did, once: an ordinary authoring session deleted every earlier committed
-/// version of every name from the canonical log.
+/// `WipRefresh` re-resolves and rewrites. It deliberately excludes committed ops, because the
+/// hash-stabilization it feeds keys items by name and keeps ONE version per name. That is right for
+/// a draft, whose newest edit is the one that counts, and it destroys history the moment committed
+/// ops go through it: every earlier committed version of every name disappears from the log.
 let getDraftOps () : Task<List<PT.PackageOp>> =
   task {
     let! rows =
@@ -453,9 +445,9 @@ let getWipOpOriginTs () : Task<Map<System.Guid, string>> =
 ///
 /// Ordered by `origin_ts` then rowid rather than `created_at`: `created_at` is local insert time, so a
 /// synced commit's ops would come back in arrival order rather than the order they were authored in.
-/// The ops in a commit, oldest-first. Skips what this build cannot decode, like every other reader of
-/// the log: a commit can hold a peer's op on a newer format, and a listing is the last thing that should
-/// die because one of them is in the way.
+///
+/// Skips what this build cannot decode, like every other reader of the log: a commit can hold a peer's
+/// op on a newer format, and a listing is the last thing that should die because one is in the way.
 let getCommitOps (commitHash : Hash) : Task<List<PT.PackageOp>> =
   task {
     let (Hash commitHashStr) = commitHash
@@ -472,7 +464,6 @@ let getCommitOps (commitHash : Hash) : Task<List<PT.PackageOp>> =
         BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob"))
     return decoded |> List.choose (fun o -> o)
   }
-
 
 
 /// Current deprecation state for a single item.
@@ -636,8 +627,8 @@ let getHarmfulFnHashes () : Task<Set<Hash>> =
 ///
 /// The whole CHAIN, not just (this branch, main). A branch off a branch inherits its parent's pins
 /// the same way a first-level branch inherits main's: it forked from that state, so a pin the parent
-/// made applies until the child says otherwise. Reading only main's meant a child silently followed
-/// something its parent had deliberately pinned.
+/// made applies until the child says otherwise. Reading main's alone would let a child silently
+/// follow something its parent had deliberately pinned.
 let private getPropagationPolicy
   (branchId : PT.BranchId)
   (policy : string)

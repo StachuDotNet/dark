@@ -7,8 +7,8 @@ module Darklang.LanguageTools.LspServer.Branches
 // can rename or reuse. This surface sends both on every branch, so the editor displays names and echoes
 // ids back, and never has to know how either is formed.
 //
-// Two methods here answer "not supported by this build" rather than being absent. That's deliberate: a
-// method that explains itself is a surface someone can see and finish, where a missing one is a
+// A few methods here answer "not supported by this build" rather than being absent. That's deliberate:
+// a method that explains itself is a surface someone can see and finish, where a missing one is a
 // timeout and an afternoon of reading.
 
 
@@ -19,7 +19,8 @@ let idJson (id: Uuid) : Json = Json.String(Stdlib.Uuid.toString id)
 
 /// What the client sent, as an id. The editor echoes back whatever `dark/getBranches` gave it, and a
 /// person may have typed a name, so both are accepted -- through the same resolver the CLI uses, which
-/// is the point: this file had its own version and it could not resolve `main`.
+/// is the point. A second resolver drifts, and the first thing it loses is `main`, which has no
+/// `branches` row to find.
 let resolveRef (ref: String) : Stdlib.Option.Option<Uuid> =
   match SCM.PackageOps.resolveBranchRef ref with
   | Found id -> Stdlib.Option.Option.Some id
@@ -391,10 +392,9 @@ let handleGetWipSummaryRequest
   (state: LspState)
   (requestID: JsonRPC.RequestID)
   : LspState =
-  // `SCM.Draft.read` is the one description of the draft, and what `dark status` reads. Two things came
-  // out of assembling this by hand instead: the numbers a person acts on were missing, and every entry
-  // looked authored. A name propagation repointed is otherwise indistinguishable from one you edited --
-  // that split is the whole point of the draft view, and the editor could not make it.
+  // `SCM.Draft.read` is the one description of the draft, and what `dark status` reads. Assembling it
+  // here instead costs both halves the editor needs: the counts a person acts on, and the authored /
+  // followed split. A name propagation repointed is otherwise indistinguishable from one you edited.
   let p = SCM.Draft.read ()
 
   let items =
@@ -466,7 +466,7 @@ let handleRenameBranchRequest
         state
 
 
-/// The old no-argument form, for a client that calls it without saying what to rename.
+/// The no-argument form, for a client that calls `dark/renameBranch` without saying what to rename.
 let handleRenameBranchUnsupported
   (state: LspState)
   (requestID: JsonRPC.RequestID)

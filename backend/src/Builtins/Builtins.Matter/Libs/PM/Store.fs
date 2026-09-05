@@ -25,8 +25,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         // `LibDB.Sqlite.currentDbPath`, not `Config.dbPath`: the two differ under a test that
-        // repointed the store, and answering with the config path is how Dark's SQL used to read a
-        // different store from the F# it was interleaved with.
+        // repointed the store, and Dark's SQL has to reach the same file as the F# it is
+        // interleaved with.
         | _, _, _, [| DUnit |] -> uply { return DString LibDB.Sqlite.currentDbPath }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

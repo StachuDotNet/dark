@@ -31,8 +31,8 @@ export DARK_CONFIG_RUNDIR="$PWD/$WORK"
 "$PWD/$CLI" branch create lsp-gate >/dev/null 2>&1
 "$PWD/$CLI" --branch lsp-gate fn LspGate.T.f '() : Int64 = 5L' >/dev/null 2>&1
 
-# A branch with an ACTIVE CHILD, which the merge gate refuses. The editor used to be told it could
-# merge this, because `canMerge` here answered "has it changed any names" instead of asking the gate.
+# A branch with an ACTIVE CHILD, which the merge gate refuses. `canMerge` has to ask the gate: answering
+# "has it changed any names" instead offers the editor a merge the very next request would refuse.
 "$PWD/$CLI" branch create lsp-parent >/dev/null 2>&1
 "$PWD/$CLI" --branch lsp-parent fn LspGate.P.f '() : Int64 = 1L' >/dev/null 2>&1
 "$PWD/$CLI" --branch lsp-parent branch create lsp-child >/dev/null 2>&1

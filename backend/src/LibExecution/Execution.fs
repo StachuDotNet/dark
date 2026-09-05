@@ -6,7 +6,6 @@ open FSharp.Control.Tasks
 open Prelude
 
 module RT = RuntimeTypes
-module PT = ProgramTypes
 module RTE = RT.RuntimeError
 module RT2DT = RuntimeTypesToDarkTypes
 module Dval = LibExecution.Dval
@@ -56,7 +55,7 @@ let createState
 
     // The base default is permissive -- `createState` is RT-level and can't read the
     // on-disk grant, so the gate is a no-op here. The CLI host narrows it per entry
-    // point (`eval`/host → the configured grant; `dark run` → NONE) before executing
+    // point (`eval`/host -> the configured grant; `dark run` -> NONE) before executing
     // user code; tests run permissive.
     grantedCaps = LibExecution.Capabilities.allCaps
 
@@ -100,7 +99,7 @@ let execute
     try
       try
         // TODO: handle secrets and DBs by explicit references instead of relying on
-        // symbol table vm.symbolTable <- Interpreter.withGlobals state inputVars
+        // the symbol table.
 
         let! result = Interpreter.execute exeState vm
         return Ok result

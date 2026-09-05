@@ -57,7 +57,11 @@ let loadItems (branchId: Uuid) (location: Packages.PackageLocation) : List<BodyI
       BodyItem { name = f.location.name; kind = "fn"; isModule = false; desc = sig_ })
   Stdlib.List.flatten [ moduleItems, typeItems, valItems, fnItems ]
 
-/// The names your draft touches, as body items.
+/// How many names the draft touches -- the same number the Changes list shows.
+///
+/// Items, not ops: authoring one value emits two ops (AddValue + SetName), so an op count would say
+/// "2 changes" above a list titled "Changes . 1". Ops are the right unit for a commit's size; items
+/// are the right unit for "how much have I changed".
 let wipItemCount (branchId: Uuid) : Int =
   Stdlib.List.length (SCM.Draft.read ()).bindings
 
@@ -98,8 +102,8 @@ let commitOpsText (branchId: Uuid) (selected: Int) : String =
   | None -> "(no commit selected)"
   | Some c ->
     let hashStr = c.hash
-    // Fetch the 20 we show, not all of them. The seed commit has ~17k ops, and deserializing every blob to
-    // display twenty of them froze this pane for as long as it took.
+    // Fetch the 20 we show, not all of them: the seed commit holds ~17k ops, and deserializing every blob
+    // to display twenty of them freezes this pane for as long as that takes.
     let opCount = Stdlib.Int.fromInt64 (SCM.PackageOps.opCountIn hashStr)
     let shown = SCM.PackageOps.opsInCommitLimited hashStr 20L
     let opLines =
@@ -313,7 +317,7 @@ let depsText (state: State) : String =
       | None -> "(not found)"
       | Some((hash, loc, kind)) ->
         // Dependencies - what this item uses.
-        let deps = Packages.Query.getDependencies state.branchId hash
+        let deps = Packages.Query.getDependencies hash
         let depLines =
           if Stdlib.List.isEmpty deps then [ Stdlib.Cli.UI.Colors.dimText "  (none)" ]
           else
@@ -324,9 +328,7 @@ let depsText (state: State) : String =
                 (deps |> Stdlib.List.map (fun p -> let (h, _) = p in h))
             deps |> Stdlib.List.map (fun p -> let (th, _rt) = p in "  " ++ (Darklang.Cli.Deps.getName namesDict th))
         // Dependents - what uses this item.
-        // `Builtin.depsGetDependents` went with the other per-query builtins; `SCM.Deps.dependentsOf` is
-        // the Dark-side replacement, and it's what `dark deps` has been using all along. A missing builtin
-        // only throws when called, so this pane errored while the build stayed green.
+        // The same Dark-side query `dark deps` uses, so the pane and the command cannot disagree.
         let dependents = SCM.Deps.dependentsOf [ (loc, kind) ]
         let dependentLines =
           if Stdlib.List.isEmpty dependents then [ Stdlib.Cli.UI.Colors.dimText "  (none)" ]
@@ -360,7 +362,7 @@ let readBadges (state: State) : (List<String> * List<String>) =
     ([], [])
   else
     // The draft names come off the cached SCM status rather than a read of their own: the tree's pink dot
-    // and Home's "N changed" are the same fact, and they used to be two reads that could disagree.
+    // and Home's "N changed" are the same fact, and two reads of it could disagree.
     let wip = state.scmStatus.wipNames
     let sets = Packages.Query.loadDeprecationSets state.branchId
     let results = Packages.Query.allDirectDescendants state.branchId (modulePathOf state.location)
@@ -402,8 +404,9 @@ let refreshBadges (previous: State) (next: State) : State =
 /// question the op log can answer.
 ///
 /// The op count is not enough on its own: an ACK writes no op, and a pull can land nothing but committed
-/// ops, so the context row went on saying "N need you" for work you had just answered. `forceScmRefresh`
-/// is for those, and it is a separate function rather than a flag so that a caller has to mean it.
+/// ops, so on those paths the comparison would carry a stale "N need you" over work you have just
+/// answered. `forceScmRefresh` covers them, and it is a separate function rather than a flag so a caller
+/// has to mean it.
 let refreshScmStatus (previous: State) (next: State) : State =
   let unchanged =
     next.scmStatus.loaded

@@ -146,10 +146,9 @@ let write (w : BinaryWriter) (op : PackageOp) : unit =
   | PackageOp.Undeprecate target ->
     w.Write(5uy)
     Reference.write w target
-  // 11, not the freed 6/7/8/9. Recycling a tag makes an old blob decode as a DIFFERENT
-  // op rather than failing, and silently decoding as something else is the worst thing
-  // a format can do. Cheap to avoid: tags are arbitrary and there is no shortage of
-  // them.
+  // 11, not one of the retired 6-9. A retired tag is never recycled: an old blob would then decode
+  // as a DIFFERENT op rather than failing, and silently decoding as something else is the worst
+  // thing a format can do. Cheap to avoid -- tags are arbitrary and there is no shortage of them.
   | PackageOp.Decision(id, location, reason, kind) ->
     w.Write(11uy)
     String.write w id

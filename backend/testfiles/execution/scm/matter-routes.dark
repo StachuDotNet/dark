@@ -53,8 +53,8 @@ module ModulePage =
 
 
 module ItemPage =
-  // The regression. This handler raised rather than responded, and every function page on the deployed
-  // relay was a 500, because nothing here had ever called it.
+  // The handler has to RESPOND, not raise: it is only reached on the deployed relay, so a raise here
+  // is every function page answering 500 with nothing local saying so.
   (Helpers.status "/p?name=Darklang.Stdlib.List.map" Darklang.Matter.itemHandlerFn) = 200
 
   // Rendering the source is the entire point of the page; a 200 holding "not found here" would pass a

@@ -14,9 +14,6 @@ module AuthoringChecker = Builtins.Matter.Libs.PM.AtRestTypeChecker
 module HashStabilization = LibDB.HashStabilization
 module CheckerRefs = LibExecution.PackageRefs.Type.LanguageTools.AtRestTypeChecker
 
-// `Tests.MultiInstanceHarness` is not on this branch: it depends on `LibDB.Resolutions`, which the
-// Decision/Override op replaced. The tests that used it are noted where they were removed.
-
 let private parameter
   (name : string)
   (typ : PT.TypeReference)
@@ -1215,8 +1212,8 @@ let private unitTests =
           | Error errors ->
             failtestf "Could not construct builtin environment: %A" errors
 
-        // The old checker special-cased this name. A normal signature under the
-        // same name is now trusted because policy, not spelling, controls it.
+        // Policy, not spelling, decides what the checker trusts: a builtin named
+        // `unwrap` with an ordinary signature is checked like any other.
         let declaredRTName = RT.FQFnName.builtin "unwrap" 0
         let declaredBuiltins =
           LibExecution.Builtin.make [] [ { addFn with name = declaredRTName } ]
@@ -2104,10 +2101,9 @@ let private unitTests =
       } ]
 
 
-// The end-to-end authoring/commit policy tests lived here. They drove the CLI through
-// `Tests.MultiInstanceHarness`, which is gone; commit-time at-rest gating is covered instead by
-// `CliTraces.commitRefusesDefiniteTypeErrors`, which drives the real verb. What went with them and
-// has NOT come back is the "after this update, N dependents have definite type errors" report.
+// Commit-time at-rest gating is covered by `CliTraces.commitRefusesDefiniteTypeErrors`, which
+// drives the real verb rather than the checker directly. Not covered anywhere: the "after this
+// update, N dependents have definite type errors" report.
 
 let private mirrorTests =
   let fsharpCases (typ : System.Type) : Set<string> =
