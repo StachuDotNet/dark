@@ -625,8 +625,17 @@ let fns () : List<BuiltInFn> =
                   return
                     resultError (ExecutionError.toDT (ExecutionError.Runtime rte))
                 | Error(e, callStack) ->
-                  let! csString = Exe.callStackString exeState callStack
-                  print $"Error when executing Script. Call-stack:\n{csString}\n"
+                  // The Dark caller prints the error itself. The stack is printed here because it is
+                  // not part of the error value, and only when there is one: an expression that
+                  // failed before any call has an empty stack, and a header over nothing reads
+                  // like a crash in the tool.
+                  let! csString =
+                    if List.isEmpty callStack then
+                      Ply ""
+                    else
+                      Exe.callStackString exeState callStack
+                  if csString <> "" then
+                    print $"Error when executing Script. Call-stack:\n{csString}\n"
                   return resultError (ExecutionError.toDT (ExecutionError.Runtime e))
               | Error pe ->
                 return resultError (ExecutionError.toDT (ExecutionError.Parse pe))
@@ -759,8 +768,15 @@ let fns () : List<BuiltInFn> =
                         result
                     return okSome asString
                 | Error(e, callStack) ->
-                  let! csString = Exe.callStackString exeState callStack
-                  print $"Error when executing expression. Call-stack:\n{csString}\n"
+                  // As for scripts above: the stack only when there is one.
+                  let! csString =
+                    if List.isEmpty callStack then
+                      Ply ""
+                    else
+                      Exe.callStackString exeState callStack
+                  if csString <> "" then
+                    print
+                      $"Error when executing expression. Call-stack:\n{csString}\n"
                   return resultError (ExecutionError.toDT (ExecutionError.Runtime e))
               | Error pe ->
                 return resultError (ExecutionError.toDT (ExecutionError.Parse pe))

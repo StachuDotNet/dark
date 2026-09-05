@@ -2107,6 +2107,35 @@ let private statusSeparatesTheDraftsConstraintsFromStandingOnes =
       })
 
 
+/// A name that does not resolve fails before any call is made, so its stack is empty, and the host
+/// used to print the stack header over nothing. One line for a one-line mistake; a real stack, from
+/// a fn that failed inside another, still prints.
+let private aMissingNameIsOneLineNotAStackHeader =
+  cliTest
+    "eval of a name that does not exist prints the error and no empty call stack"
+    (fun state ->
+      task {
+        let! missing = runCli state [ "eval"; "Tests.Nope.missing 1L" ]
+        Expect.stringContains missing "not found" $"the error itself: {missing}"
+        Expect.isFalse
+          (missing.Contains "Call-stack")
+          $"and no stack header over an empty stack: {missing}"
+
+        let! _ =
+          runCli
+            state
+            [ "fn"; "Tests.Stk.boom"; "() : Int64 = Stdlib.Int64.divide 1L 0L" ]
+        let! deep = runCli state [ "eval"; "Tests.Stk.boom ()" ]
+        Expect.stringContains
+          deep
+          "Call-stack"
+          $"a failure inside a call still shows where: {deep}"
+        Expect.stringContains deep "Stk.boom" $"naming the frame: {deep}"
+        let! _ = runCli state [ "discard"; "-y" ]
+        ()
+      })
+
+
 let private aBundleCarriesItsCommits =
   cliTestOnMain
     "a branch bundle arrives with the author's commits, not as a draft"
@@ -3980,6 +4009,7 @@ let tests =
        aBranchLearnsThatMainMovedItsDependency
        fnReadsItsDefinitionFromAFile
        statusSeparatesTheDraftsConstraintsFromStandingOnes
+       aMissingNameIsOneLineNotAStackHeader
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses
