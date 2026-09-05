@@ -1817,6 +1817,20 @@ let private aMergeCommitsWhatItLands =
           $"and a merge commit names it: {commits}"
         let! evaluated = runCli state [ "eval"; "Tests.MergeCommit.f ()" ]
         Expect.stringContains evaluated "6006" "and the work is live on main"
+
+        // The merge deleted the branch's tags, so `log` and `diff` read the merge event
+        // instead of reporting a branch that never held anything.
+        let! log = runCli state [ "log"; "mergecommit" ]
+        Expect.stringContains
+          log
+          "merged from branch \"mergecommit\""
+          $"log of a merged branch reads its merge event: {log}"
+        Expect.stringContains log "AddFn f" $"and lists the ops it carried: {log}"
+        let! diff = runCli state [ "diff"; "mergecommit" ]
+        Expect.stringContains
+          diff
+          "is merged"
+          $"diff of a merged branch says so rather than 'changes nothing': {diff}"
       })
 
 

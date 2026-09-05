@@ -401,7 +401,14 @@ let executeDiff (state: AppState) (branchRef: String) (withSource: Bool) : AppSt
   | Some branchId ->
     match SCM.PackageOps.branchDiffEntries branchId with
     | [] ->
-      printOk $"\"{branchRef}\" changes nothing vs its parent."
+      if SCM.PackageOps.branchIsMerged branchId then
+        let n =
+          Stdlib.Int.toString
+            (Stdlib.List.length (SCM.PackageOps.mergedOpsOf branchId))
+        printOk $"\"{branchRef}\" is merged: its {n} op(s) are its parent's now."
+        printHint $"  `dark log {branchRef}` lists them."
+      else
+        printOk $"\"{branchRef}\" changes nothing vs its parent."
       state
     | entries ->
       let n = Stdlib.Int.toString (Stdlib.List.length entries)
@@ -455,17 +462,26 @@ let executeLog (state: AppState) (branchRef: String) : AppState =
   | None -> state
   | Some branchId ->
     let ops = SCM.PackageOps.branchOps branchId
+    // A merged branch's tags are gone; its merge events still say what it carried.
+    let merged =
+      if Stdlib.List.isEmpty ops then SCM.PackageOps.mergedOpsOf branchId else []
+    let n = Stdlib.Int.toString (Stdlib.List.length ops)
+    let m = Stdlib.Int.toString (Stdlib.List.length merged)
 
-    if Stdlib.List.isEmpty ops then
-      printOk $"branch \"{branchRef}\" has no ops (empty, merged, or unknown)."
-    else
-      printOk
-        $"{Stdlib.Int.toString (Stdlib.List.length ops)} op(s) on branch \"{branchRef}\" (oldest first):"
-
+    if Stdlib.Bool.not (Stdlib.List.isEmpty ops) then
+      printOk $"{n} op(s) on branch \"{branchRef}\" (oldest first):"
       ops
       |> Stdlib.List.iter (fun op ->
         Stdlib.printLine
           (PrettyPrinter.ProgramTypes.PackageOp.packageOp branchId op))
+    else if Stdlib.Bool.not (Stdlib.List.isEmpty merged) then
+      printOk $"{m} op(s) merged from branch \"{branchRef}\" into its parent (oldest first):"
+      merged
+      |> Stdlib.List.iter (fun op ->
+        Stdlib.printLine
+          (PrettyPrinter.ProgramTypes.PackageOp.packageOp branchId op))
+    else
+      printOk $"branch \"{branchRef}\" has no ops (empty or unknown)."
 
     state
 

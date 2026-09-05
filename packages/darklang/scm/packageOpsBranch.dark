@@ -280,6 +280,60 @@ let branchIsMerged (branchId: Uuid) : Bool =
   | _ -> false
 
 
+/// The ops a merge moved off <param branchId>, read back off its merge events.
+///
+/// A merge deletes the branch's tags (the ops are its parent's now), so after it the tag
+/// table says the branch never held anything. The `Merged` event is the one record of
+/// which ops were its, and there can be several: a branch merged in two rounds has two.
+/// Oldest first, like `branchOps`. Empty for a branch that has not merged.
+let mergedOpsOf (branchId: Uuid) : List<LanguageTools.ProgramTypes.PackageOp> =
+  let decodeRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<LanguageTools.ProgramTypes.PackageOp> =
+    rows
+    |> Stdlib.List.filterMap (fun row ->
+      match
+        (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
+      with
+      | (Some idStr, Some blob) ->
+        match Stdlib.Uuid.parse idStr with
+        | Ok id -> tryDecodeOp id blob
+        | Error _ -> Stdlib.Option.Option.None
+      | _ -> Stdlib.Option.Option.None)
+
+  // Byte 9 of the blob is the op tag; 0x0A is BranchEvent. There are few of these, so
+  // decoding them all to find this branch's is cheaper than a column would be worth.
+  let events =
+    match
+      Stdlib.Sqlite.query
+        (localDb ())
+        "SELECT id, op_blob FROM package_ops WHERE substr(op_blob, 9, 1) = X'0A'"
+    with
+    | Ok rows -> decodeRows rows
+    | Error _ -> []
+
+  let ids =
+    events
+    |> Stdlib.List.map (fun op ->
+      match op with
+      | BranchEvent(b, Merged ops, _) -> if b == branchId then ops else []
+      | _ -> [])
+    |> Stdlib.List.flatten
+    |> Stdlib.List.map Stdlib.Uuid.toString
+
+  if Stdlib.List.isEmpty ids then
+    []
+  else
+    match
+      Stdlib.Sqlite.queryP
+        (localDb ())
+        "SELECT id, op_blob FROM package_ops
+         WHERE id IN (SELECT value FROM json_each(@p0))
+         ORDER BY origin_ts, rowid"
+        [ Stdlib.Json.serialize<List<String>> ids ]
+    with
+    | Ok rows -> decodeRows rows
+    | Error _ -> []
+
+
 /// Turn a branch NAME into its id, starting the branch if that name has none. Returns (id, wasCreated);
 /// callers announce a creation, because silently running on a branch you didn't mean to start reads
 /// exactly like running on the one you did.
