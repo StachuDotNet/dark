@@ -238,7 +238,8 @@ let private fnHashTests =
       test "unresolved references to different names hash differently" {
         let callUnresolved (names : List<string>) : PT.Expr =
           let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
-            { originalName = names; resolved = Error PT.NameResolutionError.NotFound }
+            { originalName = names
+              resolved = Error PT.NameResolutionError.NotFound }
           PT.EApply(gid (), PT.EFnName(gid (), nr), [], NEList.singleton (eVar "x"))
         let h1 = h [ "x" ] (callUnresolved [ "Tests"; "UnresT"; "missing" ])
         let h2 = h [ "x" ] (callUnresolved [ "TwoStore"; "Cascade"; "base" ])
