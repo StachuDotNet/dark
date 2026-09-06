@@ -1,11 +1,10 @@
 #!/usr/bin/expect -f
 # Driven by test-workbench-views, which builds the store. See that file for why.
 #
-# ONE SESSION PER VIEW, deliberately. The workbench paints as a DIFF, and after two or three switches in
-# a single session the renderer stops re-emitting enough for a pattern to catch -- I watched the same
-# assertion pass as the second switch and time out as the third, whichever view it was. Asserting deeper
-# than that measures the renderer, not the view. A fresh session and one switch is reliable, and it still
-# catches what this is for: a view that throws takes the process down, which shows up as EOF.
+# ONE SESSION PER VIEW, deliberately. The workbench paints as a DIFF, and after two or three switches
+# in a single session the renderer stops re-emitting enough for a pattern to catch. Asserting deeper
+# than that measures the renderer, not the view. A fresh session and one switch is reliable, and it
+# still catches what this is for: a view that throws takes the process down, which shows up as EOF.
 #
 # Scope, measured rather than assumed: this draws each view's LIST. The PREVIEW pane is not reached by
 # opening a view -- with the Traces detail pane deliberately broken, every assertion here still passed.

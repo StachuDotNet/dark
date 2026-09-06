@@ -80,7 +80,6 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
 
 let complete (_state: AppState) (_args: List<String>) : List<Completion.CompletionItem> =
-  // For eval completion, we could potentially complete function names, but for now keep it simple
   []
 
 

@@ -12,7 +12,6 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     let inlineDefinition = Packages.definitionFromArgs definitionParts
 
     if Stdlib.String.isEmpty inlineDefinition then
-      // No inline definition provided - show error
       [
         (Stdlib.Cli.UI.Colors.error "Error: Inline value expression required")
         ""
@@ -38,7 +37,6 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
       state
     else
-      // Parse and create value immediately
       createValueInline
         state.packageData.currentLocation
         location
@@ -52,10 +50,8 @@ let createValueInline
   (expression: String)
   (state: Cli.AppState)
   : Cli.AppState =
-  // Parse location relative to current position
   match Location.parseRelativeTo currentLocation locationStr with
   | Ok location ->
-    // Build full source code for parsing
     let fullSource = $"val {location.name} = {expression}"
 
     // Parse the value definition with the unified (ranged) parser
@@ -75,7 +71,6 @@ let createValueInline
 
       match found with
       | Some(Value writtenValue) ->
-        // Convert to ProgramTypes.PackageValue
         let pm = LanguageTools.PackageManager.pm ()
 
         let ctx =
@@ -91,16 +86,12 @@ let createValueInline
             ctx
             writtenValue
 
-        // Check for unresolved names
         if Errors.reportUnresolvedNames state.currentBranchId unresolvedNames then
           state
-        // no unresolved names - keep going
         else
-          // Check if this is an update (has previous versions)
           let previousHashes = Propagate.getAllPreviousHashes state.currentBranchId location LanguageTools.ProgramTypes.ItemKind.Value
           let isUpdate = (Stdlib.List.isEmpty previousHashes) |> Stdlib.Bool.not
 
-          // Create ops: AddValue and SetName
           let ops =
             [ LanguageTools.ProgramTypes.PackageOp.AddValue packageValue
               LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageValue packageValue.hash, Stdlib.Option.Option.None) ]
@@ -109,7 +100,6 @@ let createValueInline
           | Ok report ->
             AtRestCheck.printSaveReport state.currentBranchId report
 
-            // Show success message
             let fullPath = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation location
             let action = if isUpdate then "Updated" else "Created"
 

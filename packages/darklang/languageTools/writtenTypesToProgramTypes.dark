@@ -957,9 +957,7 @@ module Expr =
       (ProgramTypes.Expr.EInfix(gid (), infix, left, right), unresolvedNames)
 
     | ELambda(_, pats, body, _, _) ->
-      // Start with a clean argMap to prevent lambda params from being converted
-      // to EArg. Enclosing function args become locals so this lambda closes over
-      // them and they continue to shadow package names.
+      // Same clean-argMap treatment as the EPipeLambda case above.
       let lambdaContext =
         Context
           { currentFnName = context.currentFnName

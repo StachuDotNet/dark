@@ -52,7 +52,7 @@ let private readRequestBodyWithLimit
       while read < body.Length && not eof do
         let! n = req.InputStream.ReadAsync(body, read, body.Length - read)
         if n = 0 then eof <- true else read <- read + n
-      // A client that declared more than it sent gets what arrived, same as before.
+      // A client that declared more than it sent gets what arrived.
       return Ok(if read = body.Length then body else Array.sub body 0 read)
     }
   else
@@ -92,11 +92,6 @@ let private compressionFloor = 1024
 ///     raw          2,883,465
 ///     gzip         499,655   5.8x   14ms
 ///     brotli       280,064  10.3x   19ms
-///
-/// Counting transfer at the ~10MB/s these pages actually move at, that is 64ms per page against 47ms.
-/// It is the same repetition a per-bundle hash dictionary would remove, obtained without a format
-/// change and, more importantly, without the relay transcoding every op on every page, which is what
-/// keeps the native page renderer at its 0.47s per page.
 let private maybeCompress
   (req : HttpListenerRequest)
   (body : byte[])
@@ -219,8 +214,7 @@ let private executeHandler
   (arg : Dval)
   : Task<Dval> =
   task {
-    // `executeApplicable` returns a `Ply` now, so that a lambda which does not await costs no
-    // builder; this caller is a `task`, so it needs the conversion.
+    // Ply -> Task: this caller is a `task` builder.
     let! result =
       Execution.executeApplicable exeState handler (NEList.singleton arg)
       |> Ply.toTask
@@ -295,13 +289,9 @@ let private handleRequest
           for (key, value) in respHeaders do
             ctx.Response.Headers.Add(key, value)
 
-          // Compress when the client asked for it, and only then, so nothing that does not send
-          // `Accept-Encoding` sees any change. On a first sync this is the difference between
-          // shipping hundreds of megabytes and shipping tens; `maybeCompress` has the ratios and
-          // the reason for the size floor.
-          // Never on a body the handler already encoded (a pre-gzipped asset would be wrapped
-          // twice), and always with `Vary`, or a shared cache may hand a brotli body to a client
-          // that did not ask for one.
+          // Only when the client asked (`maybeCompress` has the ratios and floor).
+          // Never on a body the handler already encoded (double-wrap), and always
+          // with `Vary`, or a shared cache hands brotli to a client that didn't ask.
           let alreadyEncoded =
             respHeaders
             |> List.exists (fun (k, _) ->

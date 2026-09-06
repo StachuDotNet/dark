@@ -340,13 +340,9 @@ let extract () : unit =
       Directory.CreateDirectory(logsDir) |> ignore
 
       printfn "CLI data directory setup complete"
-    // An existing store gets this binary's OWN package code topped up, then `growIfNeeded` folds it.
-    // Without it, upgrading the binary would mean wiping the store: the new build pins package refs
-    // by hash and the old store holds the previous build's hashes, with nothing to reconcile them.
-    //
-    // Topping up is additive: ops are content-addressed, so only genuinely-new ops are inserted. It
-    // does not delete, it does not rebind by itself, and a store already current does no work. No
-    // numbered migration is needed either, since `package_ops` is canonical and projections re-fold.
+    // Top up an existing store with this binary's own package code (see
+    // `reseedFromEmbedded`: additive, content-addressed), then `growIfNeeded` folds
+    // it; without this, upgrading the binary would mean wiping the store.
     else
       // The backup happens inside the top-up, once it knows there is something to top up.
       timed "extract.topUpStore" (fun () -> reseedFromEmbedded dbPath)

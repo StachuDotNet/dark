@@ -170,8 +170,7 @@ let showTransitiveDependents
     Stdlib.printLine $"Found {Stdlib.Int.toString count} items that could break if {entityName} changes:"
     Stdlib.printLine ""
 
-    // Grouped by module and capped. Four hundred flat rows whose only difference is the last segment
-    // is a list you scroll past, not one you read.
+    // Grouped by module and capped, same reasoning as `showDependents`.
     deps
     |> Stdlib.List.map (fun (sourceLoc, _refType) ->
       PrettyPrinter.ProgramTypes.PackageLocation.packageLocation sourceLoc)

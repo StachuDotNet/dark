@@ -14,10 +14,8 @@ proc want {pattern what} {
   }
 }
 
-# Give each key a moment to land. A key pressed while a frame is still painting is dropped, and the
-# symptom is not "the key did nothing" but "the NEXT assertion times out" -- so it reads as a broken view
-# rather than a lost keystroke. It surfaced when the first frame stopped being repainted a moment later:
-# the text these wait for started arriving mid-paint instead of after it.
+# Give each key a moment to land: a key pressed while a frame is still painting is dropped, and the
+# symptom is the NEXT assertion timing out, not "the key did nothing".
 proc press {key} { sleep 1; send $key }
 
 set exe [lindex $argv 0]

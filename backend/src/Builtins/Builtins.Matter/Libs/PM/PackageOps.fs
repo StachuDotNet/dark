@@ -652,9 +652,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // Idempotent on arrival (the fold sets `archived_at` only while it is NULL), which is what makes it
     // safe for the authoring machine to fold its own event too.
     //
-    // Separate from the merge path rather than one builtin taking an event, because these are the only
-    // two events there are, and a `BranchEventKind` crossing the boundary as data would need the DU
-    // marshalled for one caller each.
+    // Separate from the merge path: only two events exist, and a `BranchEventKind`
+    // crossing the boundary would need DU marshalling for one caller each.
     { name = fn "scmRecordBranchArchived" 0
       typeParams = []
       parameters = [ Param.make "branchId" TUuid "the branch that was archived" ]
@@ -895,11 +894,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 // Re-derive bases against THIS instance's parent state (the bundle's bases don't travel).
                 do! LibDB.Branches.recordNameBases branchId parent ops
 
-                // Fold the CONTENT (Add*, never SetName) exactly as authoring onto a branch does. An
-                // overlay binds names to hashes and holds no bodies, so without this the branch imports
-                // "successfully" and is unusable: `branch list` and `diff` show the name, and evaluating it
-                // fails with "Value couldn't be found", because the hash it resolves to was never written
-                // to the content tables. Propagation needs the dependency edges for the same reason.
+                // Fold the content ops (Add*, never SetName) exactly as authoring
+                // onto a branch does -- see scmAddOps: the overlay binds names, not
+                // bodies, so without this the imported branch is unusable.
                 let contentOps =
                   ops
                   |> List.filter (fun op ->

@@ -2,18 +2,14 @@
 . ./scripts/devcontainer/_assert-in-container "$0" "$@"
 # Two reloads of one tree must agree on every op id.
 #
-# They did not: the parser mints ephemeral node ids into every expression, `Add*` ops serialized the
-# item with them, and an op's id was the hash of its serialization, so 5,466 of 12,876 ids changed on
-# every reload of an unchanged tree. Every binary upgrade then grew every store by that many ops, and
-# two machines authoring the same fn made two ops. An Add op is identified by its content now; this is
-# what keeps it that way.
+# The trap: the parser mints ephemeral node ids into every expression, so an Add op whose id hashes a
+# serialization carrying them changes id on every reload -- every upgrade grows every store, and two
+# machines authoring the same fn make two ops. Add ops are identified by content; this keeps it that way.
 #
 # Runs against its OWN rundir, never the shared dev store. A reload is a purge-and-refill: it wipes
 # `conflicts`, `sync_bases` and the rest, and drops whatever draft was open. `test-gates-are-clean`
-# cannot catch that, because two reloads leave the same op and location COUNTS behind and counts are what
-# the fingerprint compares -- so damage done here surfaces later, attributed to whichever gate was
-# running when somebody noticed. Main's ops only: a branch's ops are whatever the developer has on their
-# branches.
+# cannot catch that: two reloads leave the same op and location COUNTS behind, and counts are what the
+# fingerprint compares. Main's ops only: a branch's ops are whatever the developer has on their branches.
 set -euo pipefail
 
 WORK=rundir/reload-reproducible

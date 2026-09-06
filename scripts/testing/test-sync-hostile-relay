@@ -3,10 +3,7 @@
 
 # The sync and branch clients, against a relay that answers badly.
 #
-# `test-relay-routes` checks the relay when the CLIENT misbehaves. This is the mirror, and it is the half
-# that was wrong: a relay answering 200 with a body the client could not read got "Pushed N ops (0 new)",
-# after which the push was RECORDED as done. Point the client at a working relay afterwards and it says
-# "Already up to date" while your work is not there, and never asks again.
+# `test-relay-routes` checks the relay when the CLIENT misbehaves; this is the mirror.
 #
 # Three kinds of thing are asserted, in order of how much it would cost to get wrong:
 #
@@ -150,10 +147,9 @@ echo "  ok   a peer on a newer wire format is refused, naming both versions"
 
 # 6. A relay that never answers: the client must give up rather than wedge.
 #
-#    `sync status` rather than `sync`, deliberately. A full sync makes four requests in sequence and the
-#    per-request timeout is 30s, so it reports correctly after about two minutes, which reads as a hang
-#    and is not one. One request proves the timeout works and costs a quarter as much, and a gate that
-#    takes two minutes to say something it could say in thirty seconds is a gate people start skipping.
+#    `sync status` rather than `sync`, deliberately: a full sync makes four sequential requests at a
+#    30s per-request timeout, so it reports correctly after ~2 minutes, which reads as a hang and is
+#    not one. One request proves the timeout works.
 start_relay 9086
 dir=$(client "chang")
 start=$(date +%s)

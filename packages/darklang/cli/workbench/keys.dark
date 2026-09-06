@@ -14,7 +14,6 @@ let handleEditorKey
   (modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers)
   (keyChar: Stdlib.Option.Option<String>)
   : Step =
-  // Editor mode. Ctrl+S saves; other Ctrl combos are ignored (so they don't insert control chars).
   if modifiers.ctrl && key == Stdlib.Cli.Stdin.Key.Key.S then
     saveEditing state es
   else if modifiers.ctrl && key == Stdlib.Cli.Stdin.Key.Key.K then

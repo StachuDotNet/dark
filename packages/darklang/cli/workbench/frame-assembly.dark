@@ -42,13 +42,10 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
     Stdlib.Cli.UI.Layout.fixedSize
       1
       (fun r ->
-        // The draft, split, on the row you always have on screen. This is the highest-value thing in the
-        // SCM work and it deliberately does NOT live in the SCM view: "what moved because of what I just
-        // did" is asked many times an hour, while you're looking at code, and if the only way to answer it
-        // is to switch views then people stop asking and lose track of their own draft.
-        //
-        // The split rather than the total, because "3 changed" right after you edited one thing is either
-        // completely fine or a disaster and the number alone cannot tell you which.
+        // The draft split lives on the always-visible row, deliberately NOT in the SCM
+        // view: "what moved because of what I just did" is asked while looking at code,
+        // and if answering means switching views, people stop asking. The split rather
+        // than the total: "3 changed" after one edit can't tell fine from disaster.
         let draft = scmStatusLine state.scmStatus
 
         // Two forms of one segment: the plain text is what gets MEASURED, the dim one is what gets
@@ -143,13 +140,10 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
                 if Stdlib.Bool.not (Stdlib.List.isEmpty state.search.hits) then
                   Frame.formatHints [ ("↑↓", "move"), ("⏎", "jump"), ("esc", "close"), ("q", "quit") ]
                 else hintsForView state r.cols
-        // A toast sits *beside* the hints, right-aligned, rather than
-        // replacing the row. It used to take the whole row, so every message
-        // cost you the shortcuts until you pressed a key to clear it -
-        // exactly when a new arrival is most likely to be looking for them. A
-        // failure/guidance toast reads pink with ✗; a success reads green
-        // with ✓. Drawn as a segment (dark text on green, or on pink for a
-        // failure), like the status row's.
+        // A toast sits beside the hints, right-aligned -- taking the whole row would
+        // cost the shortcuts exactly when a new arrival needs them. Failure reads pink
+        // with an x-mark, success green with a check, drawn as a segment like the
+        // status row's.
         let toastPlain =
           if state.message == "" then
             ""

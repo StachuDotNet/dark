@@ -8,10 +8,6 @@
 /// authoring session (a forward reference, then the thing it referred to) takes every earlier
 /// committed version of every name out of the canonical log. `Draft.rebuild` is the path that
 /// handles the whole log, and it does not stabilize.
-///
-/// When items are added incrementally, earlier items may have unresolved
-/// references to items added later. This module walks all WIP items,
-/// re-resolves what's now resolvable, and recomputes SCC-aware hashes.
 module LibDB.WipRefresh
 
 open System.Threading.Tasks
@@ -155,12 +151,10 @@ let refresh (pm : PT.PackageManager) : Task<int64> =
       // 3. Re-resolve unresolved names
       let! reResolvedOps = reResolveAllItems pm compactedOps
 
-      // If re-resolution changed nothing, computeRealHashes below is provably a no-op: the
-      // ops were already stabilized before insert (scmAddOps), so re-hashing the same
-      // fully-resolved ops gives the same hashes and the `oldHashes = newHashes` guard
-      // returns 0L -- after an SCC rehash of the whole log. Skip it. Whenever a dependent
-      // DOES exist, its reference re-resolves to the updated hash, so the full path below
-      // runs and does the repointing.
+      // If re-resolution changed nothing, stabilization is a no-op: the ops were
+      // stabilized before insert (scmAddOps), so re-hashing gives the same hashes --
+      // after an SCC rehash of the whole log. Skip it; any dependent that exists
+      // re-resolves to a new hash and takes the full path.
       if reResolvedOps = compactedOps then
         return 0L
       else

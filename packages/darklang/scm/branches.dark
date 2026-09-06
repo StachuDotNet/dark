@@ -250,10 +250,8 @@ let mergedCount () : Int64 =
   |> Stdlib.Int.toInt64
   |> Stdlib.Option.withDefault 0L
 
-/// The branch list, one line each. <param includeMerged> false drops the ones already merged,
-/// which is the default because they accumulate forever and nothing removes them: a store used
-/// for a few weeks of real work had 163 branches, 83 of them merged, and the list stopped being
-/// readable long before that.
+/// The branch list, one line each. <param includeMerged> false drops the ones already merged -- the
+/// default, because merged branches accumulate forever and nothing removes them.
 let listLines (includeMerged: Bool) : List<String> =
   // Fetched ONCE: `parentLabel` reads its parent out of this list, so rendering n branches is one query
   // rather than n+1.

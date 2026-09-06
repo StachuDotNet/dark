@@ -98,11 +98,9 @@ let hashClashes (ops : List<PT.PackageOp>) : List<string> =
 /// last-writer-wins. That asymmetry is deliberate: this guard is UX, not an invariant, and anything
 /// that reaches the fold is still handled.
 ///
-/// <param _branchId> is not consulted. This reads `locations` directly, so it answers about MAIN,
-/// and a branch is an overlay with no `locations` rows of its own: a fn-over-value clash is refused
-/// on main and accepted silently on a branch. The parameter is there because the branch-aware
-/// version is the one callers will eventually want, and the fold handles what gets past here either
-/// way.
+/// <param _branchId> is not consulted: this reads `locations` directly, so it
+/// answers about MAIN, and a branch overlay has no `locations` rows of its own -- a
+/// fn-over-value clash on a branch is accepted silently and left to the fold.
 let kindClashes
   (_branchId : PT.BranchId)
   (ops : List<PT.PackageOp>)

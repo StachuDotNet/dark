@@ -1160,12 +1160,9 @@ module WrittenTypesToDarkTypes =
 
   /// A declaration the `SourceFileDeclaration` DT has a case for, or None.
   ///
-  /// `DExpr` / `DTypeDB` / `DTest` have no case, and returning None DROPS them rather than raising.
-  /// This serializer feeds the syntax highlighter and the LSP, both of which are documented
-  /// best-effort over whatever tokenized: they exist to colour text, so the worst acceptable outcome
-  /// is a span that doesn't get highlighted. Raising here turns "this line isn't coloured" into an
-  /// internal exception that takes down the command that asked -- and the callers are `dark view` and
-  /// an editor, neither of which can do anything about it.
+  /// `DExpr` / `DTypeDB` / `DTest` have no case; returning None DROPS them rather
+  /// than raising: this feeds the highlighter and LSP, which are best-effort -- an
+  /// uncoloured span beats an internal exception.
   let private sourceFileDeclarationToDT (d : WT.Declaration) : Option<Dval> =
     let t = tn WTRefs.sourceFileDeclaration
     match d with
@@ -1180,18 +1177,12 @@ module WrittenTypesToDarkTypes =
   let parsedFileToDT (pf : WT.ParsedFile) : Dval =
     match pf with
     | WT.SourceFile sf ->
-      // The Dark-side `SourceFileDeclaration` covers functions, values, types and modules and nothing else.
-      // Three WT.Declaration cases fall outside it, and serializing any of them used to raise — an uncaught
-      // internal exception, which killed the whole CLI when someone hit ^s in the authoring editor.
-      //
-      // The comment that used to sit on that raise said these "never reach the highlighter serializer". They
-      // do. `vanewValue = 1` — a plausible typo while authoring, and the shape you get from mistyping a
-      // `val` — parses as DTest, because a test assertion is spelled `actual = expected` and is
-      // indistinguishable from an assignment until post-parse validation decides whether this is Test
-      // source. So route each to the nearest thing the Dark type can hold rather than throwing:
-      //   DExpr  -> exprsToEval, which is where a file-level expression belongs anyway
-      //   DTest  -> both of its sides as expressions, so the highlighter still colours the line
-      //   DTypeDB -> its type declaration; `[<DB>] type X = …` is a type as far as highlighting cares
+      // Three WT.Declaration cases have no `SourceFileDeclaration` case; route each
+      // to the nearest thing the Dark type holds instead of raising (why they reach
+      // here: see `moduleItemsToDT`):
+      //   DExpr   -> exprsToEval
+      //   DTest   -> both sides as exprs
+      //   DTypeDB -> its type declaration
       let asExprs (d : WT.Declaration) : List<WT.Expr> =
         match d with
         | WT.DExpr e -> [ e ]

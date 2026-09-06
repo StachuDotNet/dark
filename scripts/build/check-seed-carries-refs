@@ -69,9 +69,8 @@ def main() -> int:
         if n:
             dirty.append((table, n))
 
-    # Uncommitted ops are your DRAFT. Whatever you happen to be part-way through when the release is
-    # cut ships to every install and shows up as "1 item changed" on someone else's first run, which is
-    # how a scratch function reaches `test-first-day`'s supposedly-empty home.
+    # Uncommitted ops are your DRAFT. Whatever you are part-way through when the release is cut
+    # ships to every install and reads as "1 item changed" on someone else's first run.
     wip = db.execute(
         "SELECT count(*) FROM seed.package_ops WHERE commit_hash IS NULL"
     ).fetchone()[0]

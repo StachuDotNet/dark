@@ -29,10 +29,7 @@
 /// the file changed), then run any new incremental migrations
 /// against the post-bootstrap DB.
 ///
-/// Note that we don't use Tasks in here because migrations run in
-/// order — easier to execute synchronously than have a bunch of code
-/// to use tasks and then extra code to ensure the tasks run
-/// synchronously.
+/// Synchronous on purpose: migrations run strictly in order.
 ///
 /// CLEANUP maybe move this to LibDB?
 module LocalExec.Migrations
@@ -133,21 +130,16 @@ let private runSchemaBootstrap () : unit =
   match storedHash () with
   | Some have when have = want -> ()
   | Some have ->
-    // Preserve-and-refold (not kill-and-fill): drop only the regenerable projections; the canonical op
-    // log + blobs + branch/commit/account state survive. Replaying schema.sql recreates the dropped
-    // projections in their new shape and is a no-op for the surviving canonical tables
-    // (CREATE TABLE IF NOT EXISTS). Marking ops unapplied makes the next `growIfNeeded` re-fold them.
-    // NOTE: a canonical-table SHAPE change can't go through this path (CREATE IF NOT EXISTS won't
-    // alter an existing table) — it needs a data-preserving incremental (the Release migrator).
+    // Preserve-and-refold: drop only regenerable projections, replay schema.sql,
+    // mark ops unapplied for the next `growIfNeeded`. Shape changes to canonical
+    // tables can't take this path -- see the module doc.
     let ops = opCount ()
     print
       $"schema.sql changed (hash {have[0..7]} → {want[0..7]}); preserving {ops} op(s), \
         rebuilding projections."
     dropProjectionTables ()
-    // A canonical-table SHAPE change (a new column on package_ops, say) lands here as a raw SQLite error
-    // like "no such column", because CREATE TABLE IF NOT EXISTS won't alter the existing table. Say what
-    // that means and what to do about it, rather than surfacing the bare error: the op log is the source of
-    // truth and it's still intact, so this is recoverable -- but only if you export before resetting.
+    // A canonical-table shape change surfaces here as a raw SQLite error; say what
+    // it means and how to recover instead of the bare error.
     try
       Sql.query sql |> Sql.executeStatementSync
     with e ->

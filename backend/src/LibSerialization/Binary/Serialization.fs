@@ -60,7 +60,6 @@ let makeSerializer<'T, 'ID>
       let header =
         { Version = CurrentVersion; DataLength = uint32 payloadBytes.Length }
 
-      // Write header
       Header.write finalWriter header
       finalWriter.Write(payloadBytes)
       finalWriter.Flush()
@@ -84,7 +83,6 @@ let makeDeserializerV<'T, 'ID>
       use stream = new MemoryStream(data)
       use r = new BinaryReader(stream)
 
-      // Read header
       let header = Header.read r
 
       // Validate remaining data length
@@ -144,18 +142,14 @@ module PT =
     let serialize id value = makeSerializer PT.PackageOp.write id value
     let deserialize id data = makeDeserializer PT.PackageOp.read id data
 
-    /// The op, or None when THIS BUILD cannot read it.
+    /// The op, or None when THIS BUILD cannot read it. Nearly every reader wants this
+    /// one rather than `deserialize`: a synced store's own log legitimately holds ops
+    /// a peer authored on a newer format -- stored and left unapplied so a later
+    /// build can apply them -- so local readers meet unreadable ops routinely.
     ///
-    /// Nearly every reader wants this one rather than `deserialize`. A synced store's own log holds ops
-    /// a peer authored on a newer format: they are stored and left unapplied on purpose, so a later
-    /// build can apply them, which means they sit in the local log where every local reader meets them.
-    /// "The wire may be garbage but the LOCAL log is ours, so raise" is false, and believing it cost two
-    /// bugs -- `dark propagate pin` dying on a raw `BinaryFormatException` and staying dead, and a draft
-    /// rewrite that would have deleted the ops it could not read.
-    ///
-    /// The rule is ONE decoder returning an Option, every reader tolerating, and no writer deleting what
-    /// it could not decode. Skipping an op for READING must never become dropping it for WRITING, which
-    /// is why `Inserts.wholeMainDeletes` excludes them BY ID rather than by whether they parse.
+    /// One decoder returns an Option, every reader tolerates, and no writer deletes
+    /// what it could not decode: `Inserts.wholeMainDeletes` excludes them BY ID,
+    /// never by whether they parse.
     let tryDeserialize (id : System.Guid) (data : byte[]) : Option<PT.PackageOp> =
       try
         Some(deserialize id data)

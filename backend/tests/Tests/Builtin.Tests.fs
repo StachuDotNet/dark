@@ -115,13 +115,10 @@ let private infixDispatched : Set<string> =
 
 /// Builtins intentionally referenced from more than one place in `packages/`.
 ///
-/// EMPTY, and worth keeping that way: when a builtin picks up a second caller, wrap it. The three
-/// things that actually look like a need for an entry here are a wrapper that already exists with a
-/// caller going around it, a doc comment naming the raw builtin where it should name the wrapper,
-/// and a one-line wrapper copied once per module where one would do. So before adding an entry,
-/// check whether the wrapper exists somewhere and the new caller simply has not been pointed at it.
-///
-/// "A wrapper would just name the thing it already is" is not a reason -- that is what a wrapper is.
+/// EMPTY, and worth keeping that way: when a builtin picks up a second caller, wrap it.
+/// Before adding an entry, check whether a wrapper already exists and the new caller
+/// simply has not been pointed at it. "A wrapper would just name the thing it already
+/// is" is not a reason -- that is what a wrapper is.
 let private multiUseAllowlist : Set<string> = Set.empty
 
 

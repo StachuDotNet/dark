@@ -12,7 +12,6 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     let inlineDefinition = Packages.definitionFromArgs definitionParts
 
     if Stdlib.String.isEmpty inlineDefinition then
-      // No inline definition provided - show error
       [
         (Stdlib.Cli.UI.Colors.error "Error: Inline type definition required")
         ""
@@ -37,7 +36,6 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
       state
     else
-      // Parse and create type immediately
       createTypeInline
         state.packageData.currentLocation
         location
@@ -51,13 +49,10 @@ let createTypeInline
   (definition: String)
   (state: Cli.AppState)
   : Cli.AppState =
-  // Parse location relative to current position
   match Location.parseRelativeTo currentLocation locationStr with
   | Ok location ->
-    // Build full source code for parsing
     let fullSource = $"type {location.name} = {definition}"
 
-    // Parse the type definition
     match LanguageTools.Parser.Parse.toWrittenTypes fullSource with
     | Some(SourceFile sourceFile) ->
       // The parser may recover a tree after errors; do not save it.
@@ -74,7 +69,6 @@ let createTypeInline
 
       match found with
       | Some(Type writtenType) ->
-        // Convert to ProgramTypes.PackageType
         let pm = LanguageTools.PackageManager.pm ()
 
         let ctx =
@@ -90,16 +84,12 @@ let createTypeInline
             ctx
             writtenType
 
-        // Check for unresolved names
         if Errors.reportUnresolvedNames state.currentBranchId unresolvedNames then
           state
-        // no unresolved names - keep going
         else
-          // Check if this is an update (has previous versions)
           let previousHashes = Propagate.getAllPreviousHashes state.currentBranchId location LanguageTools.ProgramTypes.ItemKind.Type
           let isUpdate = (Stdlib.List.isEmpty previousHashes) |> Stdlib.Bool.not
 
-          // Create ops: AddType and SetName
           let ops =
             [ LanguageTools.ProgramTypes.PackageOp.AddType packageType
               LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageType packageType.hash, Stdlib.Option.Option.None) ]
@@ -108,7 +98,6 @@ let createTypeInline
           | Ok report ->
             AtRestCheck.printSaveReport state.currentBranchId report
 
-            // Show success message
             let fullPath = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation location
             let action = if isUpdate then "Updated" else "Created"
 
@@ -201,11 +190,7 @@ let help (_state: Cli.AppState) : String =
   ] |> Stdlib.String.join "\n"
 
 
-/// CLEANUP could offer useful completions:
-/// - when on the LHS of the =,
-///   - help in the same way that nav-like commands do
-/// - when on the RHS of the =,
-///   - probably nothing,
-///   - but _could_ offer some suggested impls via AI...
+/// CLEANUP could offer useful completions: nav-style help on the LHS of the `=`;
+/// probably nothing on the RHS.
 let complete (_state: Cli.AppState) (_args: List<String>) : List<Cli.Completion.CompletionItem> =
   []

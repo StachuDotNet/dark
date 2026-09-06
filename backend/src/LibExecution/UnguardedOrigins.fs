@@ -1,26 +1,14 @@
 /// The origins this instance may reach with the SSRF guards OFF.
 ///
-/// `httpGetUnsafeBytes` turns the guards off so a server behind loopback, RFC-1918
-/// or a tailnet is reachable at all, which the guarded client bans. It sits in the
-/// GENERAL builtin set, so any Dark the CLI runs can call it, including code that
-/// arrived from somewhere else. That is a real hole rather than a theoretical
-/// one: a function someone else wrote, run here, can read services on this machine's
-/// own loopback.
+/// `httpGetUnsafeBytes` disables the guards so servers on loopback/RFC-1918/a tailnet
+/// are reachable; it is in the general builtin set, so any Dark the CLI runs
+/// (including fetched code) can call it. So the guards come off only towards origins
+/// this machine was pointed at: the relay stored in local config (written by
+/// `dark sync setup`) and URLs on this process's command line. Fetched code can
+/// influence neither. The stored side is a hook, not a snapshot, so an origin added
+/// during this process counts immediately.
 ///
-/// So the guards come off only towards origins this machine was pointed at, and a
-/// url anywhere else is refused outright rather than fetched. Ordinary HTTP is
-/// unaffected: `httpClientRequest` is a different builtin, and still guards all of
-/// its own traffic.
-///
-/// What counts as pointed at:
-///
-///   - the relay stored in local config, which `dark sync setup` writes, and
-///   - a URL typed on the command line of the running process.
-///
-/// Neither is something fetched code can influence: it cannot rewrite argv, and
-/// storing a relay is a local act. The stored side is read through a hook rather than
-/// a snapshot, so an origin added DURING this process counts immediately -- which is
-/// what `dark sync setup` does before its first push.
+/// `httpClientRequest` is separate and stays fully guarded.
 module LibExecution.UnguardedOrigins
 
 /// scheme://host:port, lowercased, with the default port made explicit so `http://h`
@@ -54,10 +42,8 @@ let isAllowed (url : string) : bool =
     Set.contains origin fromArgv
     || (stored () |> List.choose originOf |> List.contains origin)
 
-/// What a refusal should say. Names the origin asked for, since the caller may not
-/// have built the URL itself, and then both of the things that would change the
-/// answer. No "refused:" prefix: every caller here wraps errors in its own words, and
-/// two prefixes read like two failures.
+/// Names the origin (the caller may not have built the URL) and both ways to allow
+/// it. No "refused:" prefix: callers wrap errors in their own words.
 let refusalMessage (url : string) : string =
   let where = originOf url |> Option.defaultValue url
   $"{where} is not the relay you sync with, so it cannot be fetched with the "

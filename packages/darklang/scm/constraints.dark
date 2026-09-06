@@ -37,8 +37,7 @@ type Kind =
   /// losing side SILENTLY, and with sync running as a daemon that can happen while you are asleep. This
   /// is how you find out.
   ///
-  /// Only an override qualifies. A pin can only be displaced by another propagation decision, which is
-  /// deliberate-beating-deliberate and not a surprise; an override is the one a plain edit can undo.
+  /// Only an override qualifies (see `SCM.PackageOps.supersededOverrides`).
   | DecisionSuperseded
 
 let kindToString (k: Kind) : String =
@@ -80,11 +79,9 @@ let offersResolution (k: Kind) (choice: String) : Bool =
 
 /// Does a `pin` on the usage already answer a finding of this kind?
 ///
-/// Per kind, not uniform, because a pin says one specific thing: "this REFERENCE is deliberate, I am on
-/// this version on purpose". That IS the answer to a stale usage. It is not an answer to a kind change,
-/// which is not about which version you are on at all -- the name became a different sort of item, and
-/// staying put deliberately does not address that. Suppressing it there hides a finding its own doc says
-/// "wants opposite advice" behind a decision about something else.
+/// Per kind, because a pin says one specific thing: "this REFERENCE is deliberate, I am on this version
+/// on purpose". That IS the answer to a stale usage, and no answer to a kind change, which is not about
+/// versions at all.
 let pinSuppresses (k: Kind) : Bool =
   match k with
   | StaleUsage -> true
@@ -253,8 +250,8 @@ let detectSupersededDecisions () : List<Finding> =
   |> Stdlib.List.map (fun entry ->
     let (loc, chosen, live) = entry
 
-    // The item's REAL kind, asked of the live binding: hardcoding fn here fed the wrong kind to
-    // `--json` and to anything resolving by it, for a superseded decision on a type or a value.
+    // The item's REAL kind, from the live binding: a hardcoded Fn feeds `--json` the wrong kind for a
+    // decision on a type or value.
     let kind =
       SCM.Propagation.kindAt loc
       |> Stdlib.Option.withDefault LanguageTools.ProgramTypes.ItemKind.Fn

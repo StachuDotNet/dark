@@ -37,11 +37,9 @@ let takeFlagValue (args: List<String>) (flag: String) : (Stdlib.Option.Option<St
 /// refuses an ambiguous one). By the time argv reaches this fn the flag is gone, and `initState` reads the
 /// answer off the process.
 ///
-/// So this only fires when something calls the Dark entry point directly, which in practice is the test
-/// harness. It used to re-resolve the name here and set `AppState.currentBranchId` from its own answer:
-/// a SECOND branch rule, by name only, that could disagree with the F# one, and that moved the state
-/// without moving the process the reads go through. Dropping the value rather than acting on it keeps one
-/// rule; a caller that wants a branch calls `switch`.
+/// So this only fires when something calls the Dark entry point directly -- in practice the test
+/// harness. Deliberately not acted on: resolving it here would be a second branch rule that can
+/// disagree with the F# one. A caller that wants a branch calls `switch`.
 let parseBranchFlag (args: List<String>) : (Stdlib.Option.Option<Uuid> * List<String>) =
   let (_ignored, rest) = takeFlagValue args "branch"
   (Stdlib.Option.Option.None, rest)
@@ -52,7 +50,6 @@ let executeCliCommand (args: List<String>) : Int =
   let initialState = initState ()
 
   match remainingArgs with
-  // If someone runs `dark` without args, start the interactive loop
   | [] ->
     if initialState.telemetryEnabled then
       Telemetry.logSessionStart ()
@@ -63,8 +60,8 @@ let executeCliCommand (args: List<String>) : Int =
     // one hidden escape hatch back to the classic prompt (scripts / muscle memory); everything else lands in
     // the workbench.
     //
-    // No screen clear and no scroll region here any more: the prompt is an inline Tui region that keeps
-    // scrollback, and the workbench owns the alternate screen through its own terminal session.
+    // No screen clear or scroll region: the prompt is an inline Tui region that keeps scrollback,
+    // and the workbench owns the alternate screen through its own terminal session.
     let classic =
       match Stdlib.Env.get "DARK_CLASSIC" with
       | Some "1" -> true

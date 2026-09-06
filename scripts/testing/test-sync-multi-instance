@@ -27,9 +27,8 @@ PORT=$(( 9200 + RANDOM % 300 ))
 pass=0; fail=0
 
 # No pkill: `pkill -f Matter.router` would take out every relay in the container, including one a
-# developer is running by hand in tmux to poke at `/m`. The problem that would be for -- a leftover relay
-# on the port we wanted, with a secret we had forgotten -- is what the random port above solves, and this
-# gate traps its own $RPID on the way out. So check the port instead.
+# developer is poking at by hand. The random port above covers leftovers, and this gate traps its own
+# $RPID; so check the port instead.
 if command -v ss > /dev/null && ss -ltn 2>/dev/null | grep -q ":$PORT "; then
   echo "port $PORT is already in use; re-run (the port is random per run)" >&2
   exit 2

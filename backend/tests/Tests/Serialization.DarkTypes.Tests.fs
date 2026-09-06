@@ -213,10 +213,8 @@ module RoundtripTests =
           (Some Expect.RT.equalDval)
 
 
-        // CLEANUP consider adding roundtrip tests here around
-        // RuntimeErrors, which consume these types.
-        // We don't always have F# models for these types, though,
-        // so it's not clear how to do this or if it's even useful
+        // CLEANUP: consider roundtripping RuntimeErrors here; blocked on F#
+        // models existing for them.
         ]
 
 

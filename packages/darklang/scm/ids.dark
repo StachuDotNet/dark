@@ -17,8 +17,7 @@ module Darklang.SCM.Ids
 /// against (`ProgramTypes.BranchId.Main`), so the two cannot disagree.
 val mainBranchId = Builtin.scmMainBranchId
 
-/// Main's branch NAME. What a person types and reads; resolved to an id at the edge. It is not an id,
-/// which is the whole point of ids being `Uuid` and names being `String`.
+/// Main's branch NAME: what a person types and reads; resolved to an id at the edge.
 val mainBranchName = "main"
 
 /// Whether <param branchId> is main.

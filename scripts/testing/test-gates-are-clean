@@ -3,20 +3,14 @@
 
 # No gate may disturb the shared dev store.
 #
-# The gates here all build their own store and point the CLI at it. One of them did not, and the way that
-# went wrong is why this exists: the container sets `DARK_CONFIG_RUNDIR` for every process, and it BEATS
-# the `<home>/.darklang` path a published binary computes for itself. `test-first-day` set only `HOME`,
-# so it ran its whole "first day" against `rundir/data.db` -- passing, while asserting a fresh-store
-# workflow against a store with 17k ops in it -- and wrote its fixtures back into the shared store.
+# Every gate builds its own store and points the CLI at it, and one mistake defeats that: the
+# container sets `DARK_CONFIG_RUNDIR` for every process, and it BEATS the `<home>/.darklang` path a
+# published binary computes -- setting only HOME is not isolation. A gate that leaks writes turns up
+# later as unrelated flakes in other gates, so: fingerprint the store, run each gate, require the
+# fingerprint identical afterwards.
 #
-# Three OTHER gates then went red: the render golden (an owner appeared on `/owners`), the workbench SCM
-# gate (it copies the dev store, and the stray conflict shifted what the view listed), and first-day
-# itself on its next run. One cause, three symptoms, and two of them looked like unrelated flakes.
-#
-# So: fingerprint the store, run each gate, and require the fingerprint to be identical afterwards.
-#
-# This is a META-gate and it is SLOW -- it runs every other gate end to end. Run it when you add or change
-# one, not on every loop.
+# META-gate, SLOW (runs every other gate end to end); run it when you add or change one, not on
+# every loop.
 
 set -uo pipefail
 
@@ -30,11 +24,9 @@ FINGERPRINT="
       || ' config='   || (SELECT COUNT(*) FROM config_v0);
 "
 
-# The capability GRANT is part of "the shared state a gate must not disturb", and it is not in the store:
-# it lives at `$HOME/.darklang/capabilities.bin`, keyed on HOME rather than on DARK_CONFIG_RUNDIR. Every
-# gate sets the rundir and none of them set HOME, so a gate that runs `dark caps ...` writes the real one.
-# Its ABSENCE is what makes the host permissive, so creating it narrows every later process: doing that by
-# hand turned ten suite tests red with "capability denied: `sqliteQuery` needs file (read)".
+# The capability grant is shared state too, and not in the store: `$HOME/.darklang/capabilities.bin`,
+# keyed on HOME rather than DARK_CONFIG_RUNDIR. Its ABSENCE is what makes the host permissive, so a
+# gate that creates it narrows every later process.
 grant_state() {
   local f="$HOME/.darklang/capabilities.bin"
   if [[ -f "$f" ]]; then echo "grant=$(md5sum "$f" | cut -d' ' -f1)"; else echo "grant=absent"; fi

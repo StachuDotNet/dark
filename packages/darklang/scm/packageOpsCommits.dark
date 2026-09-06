@@ -212,11 +212,9 @@ let commitsArrivedRecently (limit: Int64) : List<Commits.Commit> =
   | Error _ -> []
 
 
-/// The commit a new one on <param branchId> follows: the newest commit among the ops this branch can see.
-///
-/// `commits` has no branch column and cannot answer this -- a commit is not ON a branch, its OPS are -- so
-/// the question goes to the log. A branch that has committed nothing yet answers with main's latest, which
-/// is what makes the chain continuous across a fork rather than restarting at each branch.
+/// The commit a new one on <param branchId> follows: the newest commit among the ops this branch can see
+/// (a commit is not ON a branch, its ops are -- see `commitsOnBranch`). A branch that has committed
+/// nothing answers with main's latest, keeping the chain continuous across a fork.
 ///
 /// Ordered by rowid, which is INSERTION order, and not by `origin_ts`. The stamp is a portable authoring
 /// counter rather than a clock (see `Commits.nextStamp`), so an op authored just now can carry a stamp

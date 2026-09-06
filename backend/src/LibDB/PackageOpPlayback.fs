@@ -36,12 +36,9 @@ open LibDB.PreparedBatch
 /// Record what an item's body calls: one row per callee, by hash AND by the name this parse resolved
 /// it through.
 ///
-/// ADDS, never replaces. Content is immutable, so a hash's callees never change; what can change is
-/// the NAME a callee was reached by, because two names can hold one body and a caller written against
-/// either has the same content hash. Replacing the hash's rows on each fold meant the second name's
-/// parse deleted the first's, and `deps usedby <first name>` said nobody. Accumulating keeps every
-/// name the content was ever resolved through; readers join `locations` for what is live, and a name
-/// that no longer binds matches nothing.
+/// ADDS, never replaces: content is immutable so a hash's callees never change, but
+/// two names can hold one body, and each name it was resolved through must survive.
+/// Readers join `locations` for what is live.
 let updateDependencies
   (ctx : Ctx)
   (itemHash : string)
@@ -126,10 +123,6 @@ let private ensureExistingBodyMatches
 
 /// Write one content-addressed projection row: insert it, or, if the hash is already
 /// present, check the stored body matches before refreshing its metadata.
-///
-/// The three item kinds differ only in which table and columns they use and how their
-/// canonical fingerprint is computed, so they share this and keep only their own
-/// serialization.
 ///
 /// <param columns> carries the body and metadata, and is written on both paths.
 /// <param insertOnlyNulls> names columns the insert must mention but this path never
@@ -285,8 +278,8 @@ let private applyAddFn (ctx : Ctx) (fn : PT.PackageFn.PackageFn) : Task<unit> =
 
 /// The `origin_ts` the log stamped on <param opId>, or None when the log does not hold it.
 ///
-/// By id alone, which is the whole key: `package_ops` holds one row per op, and a branch's claim on it
-/// lives in `op_branches`. There is no other branch's stamp to read by mistake.
+/// Id alone is the whole key: `package_ops` has one row per op; branch claims live
+/// in `op_branches`.
 let private originTsOf (ctx : Ctx) (opId : System.Guid) : Task<Option<string>> =
   task {
     use cmd = ctx.conn.CreateCommand()
@@ -352,19 +345,14 @@ let private applySetNameFrom
       | PT.PackageOp.SetName(_, _, Some(Hash h)) -> Some h
       | _ -> None
 
-    // Timestamp-LWW: order this binding by the op's CREATION time, not its arrival. Compare this op's
-    // `origin_ts` against the current binding's. An op created BEFORE the current binding's is stale --
-    // an old op arriving late by sync -- so the existing binding stays and this one lives in the log
-    // without being the active name. Computed identically everywhere, so every instance converges on the
-    // same hash regardless of arrival order.
+    // Timestamp-LWW: order by the op's CREATION time (`origin_ts`), not arrival, so
+    // every instance converges on the same binding. Unknown stamps fall through to
+    // last-writer, leaving non-sync playback unchanged. Reads run on ctx.conn so
+    // they see writes from earlier ops in this same transaction.
     //
-    // Unknown stamps fall through to last-writer, leaving non-sync playback unchanged. Reads run on
-    // ctx.conn so they see writes from earlier ops in this same transaction.
-    //
-    // THIS op is handed in rather than rebuilt from (location, hash, kind). A resolution and the SetName
-    // it resembles are different ops with different content hashes, so a reconstruction hashes to an op
-    // that is not in the log, the stamp reads as unknown, and the staleness check silently degrades to
-    // last-writer-wins for every binding.
+    // THIS op is handed in rather than rebuilt from (location, hash, kind): a
+    // resolution and the SetName it resembles hash differently, so a reconstruction
+    // would read as unknown and silently degrade to last-writer-wins.
     let thisOpId = Hashing.computeOpRowId opForStamp
     let! thisTs = originTsOf ctx thisOpId
 
@@ -393,14 +381,10 @@ let private applySetNameFrom
 
     let isStale =
       match curBinding, thisTs with
-      // On an EXACT TIE (two DIFFERENT ops for one name stamped the same millisecond -- a genuine
-      // cross-instance race), break by item hash: the higher wins. That tie-break is PORTABLE (content,
-      // not arrival/rowid), so every instance converges on the same winner. Local sequential authoring
-      // never ties -- `Inserts` self-stamps each op with a strictly-increasing origin_ts.
+      // Different hash, both stamped: the LWW rule (incl. the portable higher-hash
+      // tie-break) lives in `LibDB.Lww`, shared with `SCM.Conflicts.incomingWins`;
+      // `Tests.Lww` asserts they agree.
       | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
-        // THE rule lives in `LibDB.Lww`, so this cannot drift from the copy that decides the same
-        // question when a conflict is recorded (`SCM.Conflicts.incomingWins`, in Dark). If those two
-        // disagree, two machines converge on different winners. `Tests.Lww` asserts they agree.
         Lww.isStale t itemHashStr curTs curHash
       // Same content re-applied: keep the EARLIEST origin_ts, so the binding's stamp is identical on every
       // instance regardless of arrival order. Re-stamping with a later equal-hash op would let a
@@ -434,11 +418,9 @@ let private applySetNameFrom
           p cmd "$modules" modulesStr
           p cmd "$name" location.name)
 
-      // 2. Nothing else is touched. A `SetName` binds ITS OWN name and says nothing about any other
-      //    name on the same hash, however it arrived. Identical content is one item, so a hash is
-      //    routinely live at several names, and deprecating the others would take out a colleague's
-      //    name because you renamed yours. No op in the model says "this is a rename"; a rename that
-      //    needs to retire the old name wants an op that NAMES the old location.
+      // 2. Nothing else is touched: a SetName binds its own name only. A hash is
+      //    routinely live at several names, and retiring the others needs an op that
+      //    names them.
 
       // 3. Insert new location entry (with origin_ts for cross-instance timestamp-LWW).
       do!
@@ -480,9 +462,8 @@ let private serializeAnnotation
 
 /// Apply a Deprecate op: supersede any prior un-superseded row for (item_hash, item_kind).
 ///
-/// Identity is hash-keyed, because `Reference` carries only a Hash, so two unrelated FQNs that share a
-/// hash deprecate together. Narrowing that means carrying a location on `Reference` and on the
-/// `deprecations` table, and filtering by it.
+/// Identity is hash-keyed: `Reference` carries only a Hash, so two FQNs sharing a
+/// hash deprecate together.
 let private applyDeprecate
   (ctx : Ctx)
   (target : PT.Reference)
@@ -628,10 +609,9 @@ let private applyDecision
           ctx
           "INSERT INTO conflicts
              (id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status, origin_ts)
-           -- item_type is left EMPTY rather than guessed. The op doesn't carry the usage's kind, and
-           -- an ack row's kind isn't read by anything (`ackedIds` selects on id + status); writing 'fn' for
-           -- what might be a type or a value would be asserting something false into a column someone will
-           -- eventually trust.
+           -- item_type left empty, not guessed: the op doesn't carry the usage's
+           -- kind, and nothing reads an ack row's kind (`ackedIds` selects on
+           -- id + status).
            VALUES ($id, $owner, $modules, $name, '', 'stale-usage', '[]', '', $reason, 'acked', $ts)
            ON CONFLICT(id) DO UPDATE SET
              status = 'acked', reason = excluded.reason, origin_ts = excluded.origin_ts"
@@ -647,10 +627,9 @@ let private applyDecision
 
 /// Apply a branch event: what happened to a BRANCH, as opposed to what happened to a name.
 ///
-/// Only the MONOTONIC events. "merged" and "archived" can be applied twice, in either order, by any number
-/// of instances, and land in the same place -- which is what lets them travel with no stamp column on
-/// `branches` to guard them. A rename is last-writer-wins and would need one; `branches` has no `origin_ts`
-/// and adding one is a shape change to a canonical table, so rename is deliberately not here yet.
+/// Only the MONOTONIC events: "merged" and "archived" can be applied twice in any
+/// order and land in the same place, so they need no stamp column. Rename is LWW and
+/// would need one; it isn't here.
 ///
 /// An event naming a branch this store does not have updates nothing, which is the right answer rather than
 /// an error: branch ids travel with a bundle, so the branches you share match, and the ones you never
@@ -665,20 +644,14 @@ let private applyBranchEvent
   task {
     match event with
     | PT.Merged mergedOps ->
-      // Marking it merged is not enough on its own. If this store already HOLDS the branch -- which it
-      // does whenever the two of you shared it -- its ops are sitting here effective=0, inert. The push
-      // that carried the merge could not deliver them, because they are content-addressed and already
-      // present, so the only thing that crossed was this event. Setting the flag and stopping leaves a
-      // branch that reads `[merged]` next to a main that does not have its code.
-      //
-      // So do here what a local merge does, for EXACTLY the ops the merger moved, which the event
-      // names. This store may hold more of the branch than the merger saw (its own unpushed edits), and
-      // those stay on the branch. And the merge went where the branch's PARENT is: into main the ops
-      // flip effective and the fold takes them; into another branch they are retagged onto it, with the
-      // child's name bases, as the local merge does, and nothing folds into main that nobody merged
-      // there. The ids are bound once as a JSON array, so this stays one prepared statement per step.
-      // Built by hand: the reflection-based serializer is disabled in the published (AOT) binary, and
-      // a guid needs no escaping.
+      // The push that carried this merge could not deliver the branch's ops
+      // (content-addressed, already present here whenever the branch was shared), so
+      // setting merged_at alone leaves them effective=0 and main without the
+      // branch's code. So do what a local merge does, for EXACTLY the ops the event
+      // names (this store may hold more -- its own unpushed edits stay on the
+      // branch): into main they flip effective; into another parent they retag onto
+      // it with the child's name bases. Ids bind once as a JSON array (built by
+      // hand: the reflection serializer is disabled under AOT).
       let ids =
         "["
         + (mergedOps
@@ -698,17 +671,11 @@ let private applyBranchEvent
         | None -> true
         | Some pid -> PT.BranchId.Parse pid = Some PT.BranchId.Main || pid = ""
 
-      // Does this store hold the branch at all yet? `dark pull` and `dark branch pull` are separate
-      // commands and pulling main first is the natural order, so a merge event routinely arrives
-      // BEFORE the bundle whose ops it names. Folded then, it flips nothing, marks itself applied,
-      // and nothing re-examines it when the ops do land: the merger's main has the work, this one
-      // does not, and the branch goes on reading as live. So an event whose branch has no ops here
-      // stays unapplied and the next fold takes it -- `scmImportBranchOps` runs one after a bundle,
-      // and `growIfNeeded` does at every startup.
-      //
-      // Only when the branch EXISTS here. An event for a colleague's private branch names ops this
-      // store will never see, and waiting for those forever would re-decode it on every boot; the
-      // model says such an event folds to nothing, and that is still right.
+      // A merge event routinely arrives BEFORE the bundle whose ops it names
+      // (`dark pull` before `dark branch pull`); folded then it would flip nothing
+      // and never be re-examined. So an event whose branch has no ops yet stays
+      // deferred and the next fold takes it. Only when the branch EXISTS here: an
+      // event for a never-shared branch folds to nothing, correctly.
       let! tagged =
         scalarInt
           ctx
@@ -736,11 +703,10 @@ let private applyBranchEvent
                AND id IN (SELECT value FROM json_each($ids))
                AND id IN (SELECT op_id FROM op_branches WHERE branch_id = $b)"
             bindB
-        // What the event landed is committed the way the event itself was: a merge event arrives
-        // through a sync import, which commits it on the way in, and the ops it flips came by a branch
-        // bundle, which carries no commits. Left uncommitted, they sat in main's draft as "1 item
-        // changed" that nobody here edited. (On the merger's own store the event is uncommitted at
-        // this point, and the Dark merge commits both together right after.)
+        // Stamp the flipped ops with the event's own commit: the branch bundle
+        // carried no commits, and uncommitted they'd show up in main's draft. (On
+        // the merger's own store the event is itself uncommitted at this point; the
+        // Dark merge commits both together right after.)
         do!
           exec
             ctx
@@ -901,17 +867,15 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
         // An override answers ONE name, so it binds one name. Unlisting every other location that
         // happens to share the hash would be collateral damage.
         do! applySetNameFrom ctx "resolution" op target.hash loc target.kind
-        // Close the local record for that name too. The op converges the BINDING on every machine, and
-        // without this the machine that didn't make the choice keeps listing the conflict as pending and
-        // `show` keeps reporting an auto-pick that is no longer what's live -- an answered question that
-        // still looks open, on the side that didn't answer it.
+        // Close the local conflict record too: the op converges the BINDING
+        // everywhere, but without this the non-choosing machine keeps listing the
+        // conflict as pending.
         do!
           exec
             ctx
-            // Scoped to the item KIND as well as the name. One location can hold a fn AND a value at
-            // once, so matching on the name alone closes a conflict nobody answered: overriding the fn
-            // marks the value's conflict overridden too, and it disappears from `dark conflicts` with
-            // its binding still contested.
+            // Scoped to item KIND as well as name: one location can hold a fn AND a
+            // value, and overriding the fn must not close the value's
+            // still-contested conflict.
             "UPDATE conflicts SET status = 'overridden', resolved_by = $op
              WHERE owner = $owner AND modules = $modules AND name = $name
                AND item_type = $kind AND status = 'pending'"
@@ -942,9 +906,6 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
 /// for a bulk-replay, or use auto-commit for a small commit-time batch. A
 /// fresh prepared-statement cache (Ctx) is created and disposed per call,
 /// so the cache lifetime matches a single `applyOpsOnConnection` invocation.
-///
-/// Dep-edge location columns come straight from each `Dependency`'s `location`, stashed on
-/// `NameResolution` at resolve time, so there is no post-hoc backfill.
 let applyOpsOnConnectionFrom
   (conn : SqliteConnection)
   (source : string)
@@ -958,9 +919,8 @@ let applyOpsOnConnectionFrom
     finally
       disposeCtx ctx
 
-    // The fold just changed what names mean. Anything holding a cached answer from before now holds a
-    // wrong one, and in a long-lived process (the REPL, the LSP, a daemon) that answer never expires on
-    // its own. See `Caching.invalidateAll`.
+    // Names just changed meaning; long-lived processes hold cached answers that
+    // never expire on their own -- see `Caching.invalidateAll`.
     Caching.invalidateAll ()
   }
 

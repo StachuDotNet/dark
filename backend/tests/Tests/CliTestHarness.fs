@@ -209,4 +209,3 @@ let looksLikeARuntimeFailure (output : string) : Option<string> =
 /// The sweeps differ in what they hand a command, never in how they judge what comes back: it must
 /// not throw, it must say something, and it must not print a runtime error it caught. The `help`
 /// sweep is the exception -- it asks a further question of the text -- so it judges its own.
-/// sweep is the exception -- it asks a further question of the text -- so it judges its own.

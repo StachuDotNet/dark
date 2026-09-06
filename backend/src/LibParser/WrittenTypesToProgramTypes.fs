@@ -1117,8 +1117,3 @@ module DB =
       let! typ = TypeReference.toPT pm onMissing currentModule db.typ
       return { tlid = gid (); name = db.name; version = db.version; typ = typ }
     }
-
-
-// Handler removed — see notes/wrap-up/handler-toplevel-deletion-plan.md
-// for the cutover. Worker / Cron / REPL had no production constructors;
-// HTTP went earlier with the BwdServer rewrite.

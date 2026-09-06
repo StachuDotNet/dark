@@ -72,8 +72,8 @@ let parseArgs (args: List<String>) : Args =
     (Stdlib.List.member args "-y") || (Stdlib.List.member args "--yes")
 
   // `-m` is accepted as a no-op marker: the message is positional, but a decade of git muscle
-  // memory types `commit -m "msg"`, and rejecting it once cost a person their commit message (the
-  // failed commit put a sync ahead of the commit). The token after `-m` is simply the message.
+  // memory types `commit -m "msg"`, and refusing it risks the message. The token after `-m` is
+  // simply the message.
   let args = args |> Stdlib.List.filter (fun a -> a != "-m" && a != "--message")
 
   // Everything that isn't a flag is the message, so the flags have to come out first or they land in it.

@@ -80,9 +80,8 @@ let draftAddedHashes () : List<String> =
 /// Reads the recorded edges rather than the bodies: `package_dependencies` is written by the same fold that
 /// wrote the content, so it can't disagree with what the item actually references.
 ///
-/// `added` is a parameter rather than a call because this runs once per closure round and computing it
-/// decodes every blob in the draft. The set cannot change while the closure runs, so reading it per round
-/// would make a partial commit quadratic in blob decodes for nothing.
+/// `added` is a parameter: computing it decodes every draft blob, and the set can't change mid-closure
+/// (see `closeOverDeps`).
 let draftDepsOf (added: List<String>) (hashes: List<String>) : List<String> =
   if Stdlib.List.isEmpty hashes then
     []
@@ -188,8 +187,7 @@ let plan
 
     let namingIds = keptNamings |> Stdlib.List.map (fun s -> s.opId)
 
-    // Content and deprecations for the same hashes. `Deprecate`/`Undeprecate` are keyed on content, so they
-    // travel with it rather than with a name.
+    // Content and deprecations for the same hashes (see `contentIdIfWanted`).
     let otherIds =
       SCM.PackageOps.draftEntries ()
       |> Stdlib.List.filterMap (fun e -> contentIdIfWanted wantedHashes e)

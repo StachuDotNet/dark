@@ -239,10 +239,8 @@ let targetExists (owner: String) (modules: String) (name: String) : Bool =
 /// Goes in the LOG rather than straight into the table: a decision that does not travel is half a decision,
 /// and the fold writes `propagation_policy` from the op, keeping that table derived like every projection.
 ///
-/// A `Decision`, not a `SetName`, for the reason spelled out on `SCM.PackageOps.applyResolution`: a re-
-/// authored SetName is content-identical to the op already there. The stamp keeps successive decisions
-/// distinct -- `pin -> follow -> pin` is three decisions, and without it the third dedups against the
-/// first and the pin silently does not take.
+/// A `Decision`, not a `SetName` (see `SCM.PackageOps.applyResolution`); stamped so repeated decisions
+/// stay distinct ops.
 let setPolicy
   (branchId: Uuid)
   (owner: String)

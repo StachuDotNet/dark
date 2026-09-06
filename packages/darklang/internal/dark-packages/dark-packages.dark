@@ -15,10 +15,8 @@
 ///   /value/find/:name, /value/get/:hash, /value/get/with-location/:hash
 ///   /function/find/:name, /function/get/:hash, /function/get/with-location/:hash
 ///
-/// Within the single-segment routes, literal paths (`/ping`, `/ops`, `/stats`,
-/// `/search`) must precede `/:location`, which would otherwise swallow them.
-/// Multi-segment routes (`/type/...`, etc.) can appear anywhere in the list
-/// since they can never match a single-segment path.
+/// Within the single-segment routes, literals must precede `/:location` -- see the
+/// note at `router`.
 ///
 /// SECURITY: POST /ops mutates the package store with no authentication. The
 /// old canvas sat behind canvas auth; under `darklang serve` it's reachable
@@ -300,11 +298,7 @@ val locationHandler =
 
 
 // ───── per-kind find / get / get-with-location ─────
-//
-// `:hash` carries a hex SHA-256 (the `Hash` content). The old canvas exposed
-// these as UUID `:id` segments because hashes were UUIDs back then; the
-// schema moved to content-addressed hashes, so we accept the hash hex
-// directly with no parse step.
+// `:hash` is hex SHA-256 (the `Hash` content), accepted directly with no parse step.
 
 val typeFindRoute = "/type/find/:name"
 let typeFindHandlerFn (req: HttpRequest) : HttpResponse =

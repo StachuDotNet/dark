@@ -333,13 +333,10 @@ let fileReadMemoryBound =
     let! bytes = System.IO.File.ReadAllBytesAsync path
     let _dv = Blob.newEphemeral bytes
     let delta = System.GC.GetTotalAllocatedBytes(precise = false) - before
-    // Old List<UInt8> path allocated ~200× file size (10 MB → ~2 GB). Blob
-    // path drops by ~100×; the bound is generous so any list-boxing
-    // regression hits orders of magnitude over. Bound is 8× rather than
-    // 3× because GC measurement noise + adjacent-test bleed-over
-    // routinely lands the delta in the 30–60 MB range without any
-    // regression. The list-boxing regression we care about catching is
-    // the >2 GB pattern, which is well beyond any of these bounds.
+    // Old List<UInt8> path allocated ~200x file size (10 MB -> ~2 GB). The bound
+    // is 8x rather than 3x because GC noise plus adjacent-test bleed routinely
+    // adds 30-60 MB; the list-boxing regression worth catching is the >2 GB
+    // pattern, far beyond any bound.
     Expect.isLessThan
       delta
       80_000_000L

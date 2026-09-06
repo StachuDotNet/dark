@@ -9,26 +9,16 @@ module VT = ValueType
 module D = LibExecution.DvalDecoder
 module C2DT = LibExecution.CommonToDarkTypes
 
-/// Probe for remaining stack before recursing into persisted input.
-///
-/// The `fromDT` walks below read Dvals back out of the package store, so how deep they
-/// nest is a property of what was written, not something this code chose. Running out
-/// of stack there would be a real .NET stack overflow, which cannot be caught and takes
-/// the whole process down: no error to report, nothing to recover, the CLI or server
-/// just dies. `EnsureSufficientExecutionStack` throws an ordinary
-/// `InsufficientExecutionStackException` while there is still headroom, which turns an
-/// unrecoverable crash into an exception the surrounding error boundary can report
-/// against the item that caused it. Nothing catches it here specifically; that is the
-/// whole gain.
-///
-/// `AtRestTypeChecker.ensureStack` is the same technique for the same reason, and does
-/// catch it, converting the throw into an `Incomplete` verdict.
+/// Probe for remaining stack before recursing into persisted input: fromDT depth is a
+/// property of what was written, and a real .NET stack overflow is uncatchable and
+/// kills the process. `EnsureSufficientExecutionStack` throws an ordinary exception
+/// while there is headroom, which the surrounding error boundary reports against the
+/// offending item. `AtRestTypeChecker.ensureStack` is the same technique, and does
+/// catch it.
 let private ensureSufficientExecutionStack () : unit =
   System.Runtime.CompilerServices.RuntimeHelpers.EnsureSufficientExecutionStack()
 
 
-// This isn't in PT but I'm not sure where else to put it...
-// maybe rename this file to InternalTypesToDarkTypes?
 module Sign =
   let typeName () = FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.sign ())
 

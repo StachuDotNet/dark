@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Two REAL machines and a relay: the setup, a smoke, and the shells for the rest.
 #
-# The rest of the two-machine walk is BY HAND, from the notes repo's runbook. That is
-# deliberate: scripting the whole walk was tried and produced more harness failures than product ones.
-# What is worth scripting is the twenty minutes of setup that used to be reconstructed from shell
-# history each time, and a smoke that proves the two boxes and the relay can talk at all.
+# The rest of the two-machine walk is BY HAND, from the notes repo's runbook; scripting the full walk
+# yields more harness failures than product ones. This covers the setup and a smoke proving the two
+# boxes and the relay can talk.
 #
 #   scripts/testing/cross-machine ship  <host>              ship the newest published binary, wipe B's store
 #   scripts/testing/cross-machine smoke <host> <relay-url>  both connect, A authors, B pulls, B evaluates

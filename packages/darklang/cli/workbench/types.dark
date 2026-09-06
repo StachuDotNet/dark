@@ -32,10 +32,6 @@ type SearchHit =
     display: String }
 
 /// Which part of the SCM view is showing. Picked in the sidebar.
-///
-/// These were 0, 1, 2 and 3, compared as numbers in five files with the mapping written down in a comment
-/// here. A reader had to hold "2 means conflicts" in their head to follow `if state.scm.section == ScmSection.Conflicts then
-/// resolveConflict ...`.
 type ScmSection =
   | Changes
   | History
@@ -54,9 +50,6 @@ type AiState =
   { section: AiSection }
 
 /// What the Matter view is showing: the whole tree, or values only (the Values lens, `L`).
-///
-/// This was a String compared against "values", which meant every other string was a silently valid state
-/// that behaved like "all".
 type Lens =
   | WholeTree
   | ValuesOnly
@@ -319,9 +312,8 @@ val gatedViewAccounts = [ "stachu", "feriel" ]
 
 /// Does this account see the gated views?
 ///
-/// This was a per-key config lookup, so each gated view could be switched on by name or for everyone. That
-/// was machinery ahead of a need: there is exactly one rule today, which is "is this one of the two people
-/// building it". A config key can come back when someone actually wants a third answer.
+/// One rule today: "is this one of the two people building it". A per-key config can
+/// come back when someone wants a third answer.
 let gateEnabled (accountName: String) : Bool =
   Stdlib.List.member gatedViewAccounts (Stdlib.String.toLowercase accountName)
 

@@ -3,10 +3,9 @@
 
 # The `dark/*` branch surface, driven as an editor drives it.
 #
-# Nothing else reaches this code. The CLI sweeps drive commands; the F# suite tests the store; the LSP
-# sits between them and is only exercised by a real editor. So when branch ids became uuids, every
-# handler here kept a `(branchId: Uuid)` parameter while the dispatcher went on handing it the STRING it
-# parsed out of JSON, and every branch request killed the server with a type error. Nothing failed.
+# Nothing else reaches this code: the CLI sweeps drive commands, the F# suite tests the store, and the
+# LSP sits between them, exercised only by a real editor. A dispatcher/handler type mismatch takes the
+# whole server down and no other test notices.
 #
 # The client legitimately sends either form -- a name a person typed, or an id it got back from
 # `dark/getBranches` -- so both are tested.
@@ -20,10 +19,8 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
-# ALL the config, not just `current_branch`: a copy of the dev store inherits `sync.relay` and the write
-# secret, so one sync-shaped command in here would reach the REAL relay. Note this makes the store look
-# like a first run to the SETUP check, so no wizard blocks startup. The greeting is a separate question:
-# it follows commits/changes/relay, so a store with work in it still greets "Welcome back".
+# Strip ALL config: a copy of the dev store inherits `sync.relay` and the write secret, and one
+# sync-shaped command would reach the REAL relay (see _copy-store).
 scripts/testing/_copy-store "$WORK/data.db"
 sqlite3 "$WORK/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
 

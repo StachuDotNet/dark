@@ -86,12 +86,9 @@ module Registry =
       ("logout", "Clear the active account", [], Auth.Logout.execute, Auth.Logout.help, Auth.Logout.complete)
       ("caps", "View + control this instance's capability grant (default NONE)", [ "capabilities" ], Caps.Command.execute, Caps.Command.help, Caps.Command.complete)
       ("devices", "Your tailnet devices (status / serve / ping), over the `tailscale` CLI", [], Devices.execute, Devices.help, Devices.complete)
-      // CLEANUP(instances-command): `sync` currently mixes the VERB (sync now) with instance MANAGEMENT
-      // (connect / disconnect / status / fetch). Those belong in a dedicated `instances` command with
-      // subcommands — `instances add <url>` / `remove <name|url>` / `list` / `rename <name>` (the `--as`
-      // custom-name idea) — so `dark sync` is just "pull now" and the instance list has one clear home. It
-      // would also fix the connect/disconnect help reading `<url>` while everything else deals in names
-      // (disconnect already resolves a name via `resolvePeer`; connect stays URL-only since the instance is new).
+      // CLEANUP(instances-command): `sync` mixes the verb (sync now) with instance management
+      // (connect / disconnect / status / fetch); those belong in a dedicated `instances` command so
+      // `dark sync` is just "pull now".
       ("sync", "Push then pull against a relay (`sync setup` to get started)", [], Cli.Setup.executeSyncCmd, Cli.Sync.help, Cli.Sync.complete)
       ("ops", "Read this instance's op log", [], Ops.execute, Ops.help, Ops.complete)
       ("apps", "List, install, and manage apps (daemons, foreground, UI)", [], Apps.Command.execute, Apps.Command.help, Apps.Command.complete)
@@ -188,7 +185,6 @@ module Registry =
       ("Apps", [ "apps" ])
       ("Utilities", [ "clear", "help", "docs", "quit", "builtins", "export-seed", "views", "workbench" ]) ]
 
-  // Helper function to format a group of commands with details
   let formatCommandGroup (groupName: String) (commandNames: List<String>) (commands: List<CommandHandler>) : String =
     let formattedCommands =
       commandNames
@@ -204,7 +200,6 @@ module Registry =
     let commandLines = Stdlib.String.join formattedCommands "\n"
     $"{groupName}:\n{commandLines}"
 
-  // Helper function to format a group of commands compactly (just names)
   let formatCompactGroup (groupName: String) (cmdNames: List<String>) : String =
     let namesList = Stdlib.String.join cmdNames ", "
     $"{groupName}: {namesList}"
@@ -234,13 +229,11 @@ module Registry =
     let commands = allCommands ()
     let groups = commandGroups ()
 
-    // Format command groups with details
     let formattedGroups =
       groups
       |> Stdlib.List.map (fun (groupName, cmdNames) ->
         formatCommandGroup groupName cmdNames commands)
 
-    // Find any ungrouped commands
     let allGroupedCommands =
       groups
       |> Stdlib.List.map (fun (_groupName, cmdNames) -> cmdNames)
@@ -350,13 +343,11 @@ module Registry =
         | Some lastArg -> (Stdlib.List.dropLast parsed.args, lastArg)
         | None -> ([], "")
 
-      // Get all completions for the current position
       let completions = completeFunc state completedArgs
 
       if Stdlib.String.isEmpty partial then
         completions
       else
-        // Filter by what the user has typed so far
         let filtered =
           completions
           |> Stdlib.List.filter (fun item ->

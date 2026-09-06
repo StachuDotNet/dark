@@ -87,9 +87,8 @@ let testConflictWalkthrough (): TestResult =
   let afterJson = runWithCommand [ "--branch", parent, "conflicts", "--json" ]
   let onMain = runWithCommand [ "--branch", "main", "eval", fnName ++ " ()" ]
 
-  // Archive before asserting, not after: every arm below returns, so a cleanup at the end runs only
-  // when the test passes. These branches are otherwise permanent -- a dev store had 79 of them, all
-  // empty, all from tests, which is most of what `dark branches` had to say.
+  // Archive before asserting, not after: every arm below returns, so a trailing cleanup only runs
+  // on the passing path, and these branches are otherwise permanent.
   let _ = runWithCommand [ "branch", "archive", child, "-y" ]
   let _ = runWithCommand [ "branch", "archive", parent, "-y" ]
 
@@ -113,8 +112,7 @@ let testConflictWalkthrough (): TestResult =
 let testHelpCommand (): TestResult =
   let output = runWithCommand ["help"]
 
-  // Help is grouped by category now, so assert on the groups and a command from a few of them rather than
-  // on a heading that no longer exists.
+  // Assert on the groups and a command from a few of them.
   //
   // Assert the RENDERED ROW, not the bare word. `contains output "nav"` passed on the word "navigable" in
   // the workbench's description, so it would have stayed green with the `nav` command deleted; "help",
@@ -475,10 +473,9 @@ let testViewFunction (): TestResult =
 
 /// The harmful gate, end to end, through a real CLI process.
 ///
-/// This guard existed only in `CliTraces.Tests.fs`, which is commented out of the suite, so it guarded
-/// nothing. It also could not have worked there: that harness builds an RT-level state, and the RT default
-/// is permissive by design ("tests run permissive" in `Execution.createState`) -- the CLI HOST is what
-/// narrows it per entry point. So the gate has to be tested where it lives, which is a real invocation.
+/// Tested via a real invocation because the gate lives in the CLI HOST: the RT default is
+/// permissive by design ("tests run permissive" in `Execution.createState`), so an in-harness
+/// RT-level test guards nothing.
 let testHarmfulGate (): TestResult =
   let suffix = Stdlib.Int.toString (Stdlib.Int.random 100000 999999)
   let fnName = $"Tests.HarmGate.g{suffix}"

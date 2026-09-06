@@ -627,11 +627,10 @@ let executePush (state: AppState) (branchRef: String) (url: String) : AppState =
 
       match Sync.relayPostTo url $"/branch/push?owner={id}&branch={branchParam}" bundle with
       | Ok reply ->
-        // Read the confirmation rather than trusting the status. A relay answering 200 with a body
-        // this cannot read has not said it stored anything, and "pushed branch X" would be a claim
-        // rather than a report. Nothing is recorded either way here, so the cost of being wrong is
-        // only the message -- but it is the same false confidence that let a broken relay eat ops on
-        // the sync path, where state IS recorded.
+        // Read the confirmation rather than trusting the status: a 200 with a body this cannot
+        // read has not said it stored anything, and "pushed branch X" would be a claim rather than
+        // a report. Nothing is recorded either way here, so the cost of being wrong is only the
+        // message.
         let text = Stdlib.String.trim (Stdlib.String.fromBlobWithReplacement reply)
 
         if Stdlib.String.startsWith text "stored branch" then
@@ -840,9 +839,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine (help state)
       state
     else if Stdlib.List.member commandShapedWords id then
-      // A question-shaped word must not CHANGE STATE: `dark branch status` from a git reflex used to
-      // start a branch named "status" and switch onto it -- the "what is going on" probe adding one
-      // more thing that is going on.
+      // A question-shaped word must not CHANGE STATE: `dark branch status` from a git reflex would
+      // otherwise start a branch named "status" and switch onto it.
       printErr $"\"{id}\" reads like a command, not a branch name, so nothing was created."
       printHint "  the current branch:      dark branch"
       printHint $"  really start \"{id}\":    dark switch {id}"
@@ -1003,10 +1001,9 @@ let executeDiffCmd (state: AppState) (args: List<String>) : AppState =
   let refs = args |> Stdlib.List.filter (fun a -> Stdlib.Bool.not (Stdlib.String.startsWith a "-"))
 
   match refs with
-  // No branch named: the draft. `dark diff` reading as "compare a branch" and nothing else meant the
-  // most common question -- what have I changed and not committed -- had no answer under the name every
-  // other tool gives it. `dark commit` reviews the same list, but reviewing is not what you wanted when
-  // you typed `diff`.
+  // No branch named: the draft. The commonest question -- what have I changed and not committed --
+  // gets the name every other tool gives it. `dark commit` reviews the same list, but reviewing is
+  // not what `diff` asks for.
   | [] ->
     let r = Cli.Commit.review state
 

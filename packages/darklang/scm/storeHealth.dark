@@ -92,16 +92,10 @@ let problems () : List<Problem> =
         true
         "op(s) that never folded (the fold stopped partway, or they don't parse)"
 
-      // NOT refoldable, despite living in a projection. The reachable cause is a missing op rather than a
-      // damaged row: a bundle carrying a name's `SetName` without the `AddX` that carries its content
-      // binds the name to something this store has never held, and re-folding replays that SetName and
-      // rebinds it exactly the same way. Measured -- pushing a SetName-only bundle produces this line, and
-      // a reload leaves it standing.
-      //
-      // It IS refoldable in the other direction, when the op is in the log and the projection row was
-      // lost, but nothing reaches that except editing the tables by hand. Classifying by the cause people
-      // actually hit is what stops `status` sending them to spend a full rebuild on watching this line
-      // come back, which is the cost the advice in `Cli.Status` exists to avoid.
+      // NOT refoldable, despite living in a projection: the reachable cause is a missing op (a `SetName`
+      // arrived without the `AddX` carrying its content), and a re-fold replays that SetName and rebinds
+      // it identically. The lost-projection-row direction would refold, but only hand-edited tables
+      // reach it, so classify by the cause people hit.
       countedProblem
         danglingBindings
         false

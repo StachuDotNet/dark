@@ -5,15 +5,11 @@ module LibExecution.Branching
 
 open Prelude
 
-/// A branch's identity.
+/// A branch's identity. A type, not a string: distinct from a branch NAME, a content
+/// hash and a relay url, which are all strings.
 ///
-/// A type, not a string, and DISTINCT from a branch NAME, a content hash and a relay url. Those are all
-/// strings, and all three have been passed where a branch id belongs; as a string this could not tell
-/// them apart, so such a mistake reads as a plausible wrong answer rather than as an error.
-///
-/// MIRRORS `Darklang.SCM.Ids`. The rule both sides keep: an id is compared against `Main`, never against
-/// a literal. A literal `"main"` in a test or a SQL predicate survives a spelling change silently, at
-/// call sites that all still read as correct.
+/// MIRRORS `Darklang.SCM.Ids`. Rule on both sides: compare against `Main`, never
+/// against a literal "main".
 type BranchId =
   /// Named `Id`, not `BranchId`: a case with the same name as its type shadows the type for QUALIFIED
   /// access, and `PT.BranchId.Main` then fails with "'Main' is not defined". (`ProgramTypes.Hash` is

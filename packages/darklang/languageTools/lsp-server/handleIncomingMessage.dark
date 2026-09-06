@@ -202,29 +202,7 @@ let handleIncomingMessage
       log $"got hover request for {requestParams.textDocument.uri}"
       Hover.handleHoverRequest state requestId requestParams
 
-    // // -- The server should exit with success code 0 if the shutdown request has been received before; otherwise with error code 1
-    // | Exit ->
-    //   log "Exit notification received"
-    //   if state.shouldShutdown then
-    //     log "Exiting with success code 0 (shutdown request received)"
-    //     //TODO
-    //   else
-    //     log "Exiting with error code 1 (shutdown request not received)"
-    //     //TODO
-    //   state
-
-    // | _ when state.shouldShutdown ->
-    //   log "Request received after shutdown, responding with InvalidRequest"
-    //   let response =
-    //     (JsonRPC.Response.Error.make
-    //       (Stdlib.Option.Option.Some r.id)
-    //       JsonRPC.Response.Error.KnownErrorCodes.invalidRequest
-    //       "Invalid request: server is shutting down"
-    //       Stdlib.Option.Option.None)
-    //     |> Stdlib.AltJson.format
-
-    //   logAndSendToClient response
-    //   state
+    // TODO: handle Exit and the after-shutdown InvalidRequest guard
 
     // -- other
     | Other jsonRpcRequest ->
@@ -283,9 +261,7 @@ let handleIncomingMessage
           PendingOps.handleGetPendingOpsRequest state requestId params
 
         // branches
-        // A branch id is a UUID; its NAME is the readable string (`feat`, `review`), and the two are not
-        // the same thing. The editor echoes back whatever `dark/getBranches` gave it, so it never has to
-        // know which is which.
+        // Branch ids are UUIDs, names are the readable strings -- see branches.dark's header.
         | ("dark/getBranches", Some requestId, _) ->
           Branches.handleGetBranchesRequest state requestId
 

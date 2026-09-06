@@ -121,10 +121,8 @@ let unresolvedInDraft (branchId: Uuid) : List<(String * List<String>)> =
     match bindings |> Stdlib.List.findFirst (fun b -> b.hash == hash) with
     | Some b -> Stdlib.Option.Option.Some((Conflicts.fqn b.owner b.modules b.name, names))
     | None ->
-      // An Add with NO surviving SetName is content nothing names. It reaches here two ways: authoring
-      // has not bound it yet, or `dark discard <name>` dropped the binding and left the content, which
-      // is deliberate -- a dependent references content by HASH, so an Add can be live with nothing
-      // naming it, and deleting it would leave a store a re-fold could not reproduce.
+      // An Add with NO surviving SetName is content nothing names: authoring hasn't bound it yet, or
+      // `dark discard <name>` dropped the binding and kept the content on purpose (see `Draft.collapse`).
       let reachable =
         Stdlib.Sqlite.scalarIntP
           (localDb ())
@@ -312,10 +310,8 @@ let supersededPolicies
 ///
 /// Returns (location, the hash the override chose, the hash bound now) per name.
 ///
-/// Last-writer-wins is working as designed when this happens: a later `SetName` beats an earlier
-/// `Decision`. What is missing is that the losing side goes silently, and with sync running as a daemon
-/// it can go while nobody is at the keyboard. `SCM.Constraints` turns these into standing findings so
-/// they wait for you.
+/// Last-writer-wins is working as designed here; what is missing is that the losing side goes silently.
+/// `SCM.Constraints` turns these into standing findings.
 ///
 /// Only an OVERRIDE counts. A propagation policy can only be displaced by another propagation decision,
 /// which is one deliberate act beating another and not a surprise; an override is the one an ordinary

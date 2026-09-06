@@ -56,7 +56,6 @@ let testCanvasWideGlyphOccupiesTwoColumns (): TestResult =
         Darklang.Stdlib.Cli.UI.Layout.at region 0 2 "X" ]
   let row = canvasRow spans
 
-  // A double-width glyph eats two cells, so the next span still lands where it was asked to.
   // The wide glyph eats two cells, so the next span still lands where it was asked to: no gap, no overlap.
   if row == "界X" then
     TestResult.Pass
@@ -296,10 +295,9 @@ let rendersView (viewIndex: Int) : Bool =
 
 /// Render the SCM view in one of its sections, and report whether it produced a plausible frame.
 ///
-/// `rendersView` only ever draws a view's DEFAULT section, which is how the Conflicts pane shipped
-/// reading a conflict shape that had moved underneath it: nothing rendered that section at all. The
-/// data-dependent half of that needs a store with a conflict in it (`scripts/testing/test-workbench-scm`
-/// builds one); this is the cheap half, and it costs nothing to keep.
+/// `rendersView` only ever draws a view's DEFAULT section, so a non-default section can rot
+/// unrendered. The data-dependent half needs a store with a conflict in it
+/// (`scripts/testing/test-workbench-scm`); this is the cheap half.
 let rendersScmSection (section: Darklang.Cli.Workbench.ScmSection) : Bool =
   let base = workbenchState ()
 
@@ -432,13 +430,10 @@ let testWorkbenchSectionsRender (): TestResult =
 
 
 let testWorkbenchEveryViewRenders (): TestResult =
-  // The cheap guard against the failure that actually happened: a renderer that type-checks, loads clean,
-  // and then dies the moment you open that view. Rendering is a pure function of state now, so this needs
-  // no terminal and no key simulation.
-  //
-  // A renderer that throws takes the whole suite down with it rather than failing this test cleanly, since
-  // the harness does not catch runtime errors. Verified by deliberately breaking one: it is caught either
-  // way, just louder than it looks.
+  // Cheap guard for a renderer that type-checks and loads clean, then dies when the view opens.
+  // Rendering is a pure function of state, so this needs no terminal. NB: a renderer that throws
+  // takes the whole suite down (the harness does not catch runtime errors) -- caught either way,
+  // just louder.
   let broken =
     Stdlib.List.range 0 12
     |> Stdlib.List.filter (fun i -> Stdlib.Bool.not (rendersView i))

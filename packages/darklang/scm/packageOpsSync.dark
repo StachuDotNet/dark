@@ -120,17 +120,14 @@ let planSyncImport
 
       SyncPlan { conflicts = conflicts; bulk = false; detected = true }
     else
-      // A first reconciliation cannot compare against an agreed base, having never agreed. It CAN still
-      // notice that both sides replaced the same parent, which needs no base at all: the two ops say so
-      // themselves. That is the case an instance which pushed but never pulled lands in -- `dark connect`
-      // pushes without pulling -- where its own edit would otherwise be superseded without it being told,
-      // while the colleague who happened to pull once IS told about the same event.
+      // A first reconciliation has no agreed base, but "both sides replaced the same parent" needs none:
+      // the two ops say so themselves. That is the case an instance which pushed but never pulled lands
+      // in (`dark connect` pushes without pulling).
       //
-      // Filtered to `same-name-different-hash`, which is the kind the same-parent rule produces. The
-      // independent-creation rule is deliberately NOT run here: it fires on two bindings that both record
-      // no predecessor, and "no predecessor" also means "none recorded", so on a first contact against a
-      // store full of unfamiliar names it would file conflicts by the thousand. That is what declining
-      // detection wholesale protects against.
+      // Filtered to `same-name-different-hash`, the kind the same-parent rule produces. The
+      // independent-creation rule deliberately does NOT run here: it fires on two bindings recording no
+      // predecessor, and "no predecessor" also means "none recorded", so first contact against a store
+      // of unfamiliar names would file conflicts by the thousand.
       let diverged =
         Conflicts.detect me sourceId local incoming []
         |> Stdlib.List.filter (fun c -> c.kind == "same-name-different-hash")
@@ -188,9 +185,7 @@ let recordSyncBases (sourceId: String) : Unit =
 /// it on import costs one insert per batch and is what makes "a decision of YOURS was superseded"
 /// answerable locally; drop it and `op_owners` is empty on every client, for every op.
 ///
-/// A locally-authored op gets no row, so "no row" means "mine" and a row means "arrived from them". That
-/// is implicit rather than stated, and the honest version records the local identity too; this is the
-/// half that needs no change to authoring.
+/// A locally-authored op gets no row, so "no row" means "mine" and a row means "arrived from them".
 let recordOpAuthors (records: List<Wire.SyncOp>) : Unit =
   let me = identity ()
 

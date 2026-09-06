@@ -20,9 +20,7 @@
 # context, not the working directory: passing `deploy/Dockerfile.matter` fails with "dockerfile
 # '<context>/deploy/Dockerfile.matter' not found", which reads like the file is missing.
 #
-# The build context IS the payload directory, which is why the COPY below is a bare `.`. It lives under
-# `rundir/` so it needs no .gitignore entry of its own -- rundir is already ignored, and a build artifact
-# does not deserve a line in the repo's ignore file.
+# The build context IS the payload directory, hence the bare `COPY .` below.
 
 # `runtime`, not `runtime-deps`: this publish is framework-dependent, so the image has to carry .NET
 # itself. A self-contained publish would let this be `runtime-deps` and shave ~50MB, and

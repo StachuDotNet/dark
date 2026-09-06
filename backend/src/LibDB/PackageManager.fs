@@ -304,16 +304,11 @@ let createInMemoryOver
             || (qualified loc).ToLowerInvariant().Contains t
         let itemMatches (loc : PT.PackageLocation) =
           moduleMatches loc && nameMatches loc
-        // One entry per LOCATION, bound to what that location currently binds -- never one per hash.
-        //
-        // Enumerating the hash map instead yields every version a branch has ever bound, in HASH
-        // order, and callers take the head: `dark view` on a branch would show whichever version
-        // happens to hash lowest, while `eval`, `diff` and `log` all run the newest. Reading one
-        // thing and running another is the worst shape that mistake can take.
-        //
-        // Going through the location maps is also what makes search agree with `findFn` BY
-        // CONSTRUCTION rather than by two pieces of code happening to fold the same ops the same way,
-        // and it matches main, whose SQL search reads `locations` and so only ever sees live bindings.
+        // One entry per LOCATION, bound to what it currently binds -- never one per
+        // hash: enumerating the hash map yields every version ever bound, in hash
+        // order, so `view` could show one version while `eval` runs another. Going
+        // through the location maps makes search agree with `findFn` by
+        // construction, and matches main's SQL search, which reads `locations`.
         let liveAt
           (locMap : Map<PT.PackageLocation, Hash>)
           (items : Map<Hash, 'item>)
@@ -653,14 +648,12 @@ let branchLocationsFor
   |> Map.toList
   |> List.choose (fun (_, (loc, h)) -> if h = hash then Some loc else None)
 
-/// Has this branch bound anything under <param owner>?
+/// Has this branch bound anything under <param owner>? Main's answer comes from
+/// `locations`, which a branch never writes, so branch-only work must be counted
+/// here or the caller treats the owner as empty.
 ///
-/// Main's answer comes from an index seek on `locations`, which a branch never writes to, so the first
-/// item someone authors on a branch does not count as having any -- and the workbench goes on offering
-/// them the "you have nothing yet" panel while their work sits on the branch.
-///
-/// A list scan rather than a query, deliberately: the caller runs it per frame, the branch's ops are
-/// already in memory, and a branch holds few of them. It is only ever asked after main has said no.
+/// A list scan, deliberately: called per frame, the ops are already in memory and
+/// few, and only after main said no.
 let branchOwnerHasItems (branchId : PT.BranchId) (owner : string) : bool =
   opsForBranch branchId
   |> List.exists (fun op ->
@@ -671,17 +664,13 @@ let branchOwnerHasItems (branchId : PT.BranchId) (owner : string) : bool =
     | _ -> false)
 
 
-/// Every location this branch has EVER bound <param hash> to, live or since superseded.
+/// Every location this branch has EVER bound <param hash> to, live or superseded.
+/// `branchLocationsFor` answers only "what does this hash hold NOW"; superseded
+/// versions on a branch have no other name source (`getLocationsEverNamed` reads
+/// `locations`, which a branch never writes).
 ///
-/// `branchLocationsFor` folds last-wins per location, so it answers "what does this hash hold NOW",
-/// which is what naming a live item wants. It cannot answer for a version that has been edited past,
-/// and on a branch nothing else can either: main's `getLocationsEverNamed` reads `locations`, which a
-/// branch never writes to. Without this, `dark log` on a branch renders every superseded version as
-/// `<hash:...>` while the newest shows its name -- one listing, two spellings, and the hash says
-/// nothing about what you are looking at.
-///
-/// Strictly a FALLBACK, for when the live lookup found nothing. Offering these alongside live names
-/// would let a version the branch has moved off keep answering to the name that moved on.
+/// Strictly a FALLBACK for when the live lookup found nothing, or a moved-off
+/// version would keep answering to the name that moved on.
 let branchLocationsEverNamed
   (branchId : PT.BranchId)
   (kind : PT.ItemKind)

@@ -389,14 +389,10 @@ module ExecutionError =
 
 let pmRT = LibDB.PackageManager.rt
 
-// The `cliEvaluateExpression` and `cliParseAndExecuteScript` builtins
-// build child execution states (a different branch, a fresh PM with
-// the script's own fns/types grafted in, a tracer, etc.). Rather than
-// re-`createState` from scratch — which would force us to know the
-// full builtin set here and would cycle into `fns ()` below — we
-// derive the child state from `parentState`. The parent already
-// includes our own builtins (it was constructed by Cli/Cli.fs) so
-// nested `eval` / `run` dispatches automatically.
+// Child states for `cliEvaluateExpression`/`cliParseAndExecuteScript` derive from
+// `parentState` rather than a fresh `createState`: that would cycle into `fns ()`
+// below, and the parent (built by Cli/Cli.fs) already carries our builtins, so
+// nested eval/run dispatches.
 
 let childState
   (parentState : RT.ExecutionState)
@@ -597,12 +593,9 @@ let fns () : List<BuiltInFn> =
             let branchState = createBranchState exeState allowHarmful
 
             try
-              // A parse failure surfaces a precise diagnostic as a `ParseError`
-              // No module for the script's own declarations. A module named after
-              // the file put the whole path into every name the runtime prints
-              // back (`CliScript.rundir/tmp/x.dark.Celsius`), and it buys nothing:
-              // one script runs per process, and two that declare the same thing
-              // share a hash anyway. The filename reaches traces via `RunScript`.
+              // No module for the script's own declarations: a filename-derived
+              // module puts the whole path into every printed name, and one script
+              // runs per process anyway. The filename reaches traces via `RunScript`.
               let! parseResult = parseCliScript branchState "CliScript" "" code
               let! parsedScript =
                 match parseResult with
@@ -623,11 +616,10 @@ let fns () : List<BuiltInFn> =
                 // that grant) -- the same posture as `eval`, so the grant you set is
                 // the grant scripts obey. `--sandbox` drops to NO capabilities for
                 // running untrusted scripts (any effectful builtin then raises).
-                // TODO product decision, revisit: this favors "run my own script"
-                // over "run an untrusted script" (sandbox is opt-IN). If `dark run
-                // <url>` / piping untrusted code becomes common, a deny-all default
-                // + `--trust`/`--apply-host-caps` opt-in may be safer. See also the
-                // trust-boundary TODO in `LanguageTools.Capabilities.all`.
+                // TODO product decision: sandbox is opt-IN (favors running your own
+                // script); if piping untrusted code becomes common, a deny-all
+                // default + `--trust` opt-in may be safer. See trust-boundary TODO
+                // in `LanguageTools.Capabilities.all`.
                 let runCaps =
                   if sandbox then
                     LibExecution.Capabilities.noCaps

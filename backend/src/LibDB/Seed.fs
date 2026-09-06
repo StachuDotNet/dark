@@ -89,11 +89,10 @@ let export (outputPath : string) : Task<unit> =
       -- All of them: main is not a row here, so there is nothing to preserve.
       DELETE FROM branches;
 
-      -- Ownership is a RELAY's index of which instance pushed which op, and it is per-instance by
-      -- definition: a fresh install has never been pushed to. It is also the biggest thing here that
-      -- nobody notices, because every reader joins through to `package_ops` and a stale row simply
-      -- fails to join, so hundreds of thousands of rows of a build machine's history ride along in
-      -- silence.
+      -- Ownership is a RELAY's index of which instance pushed which op: per-instance
+      -- by definition, and a fresh install has never been pushed to. Readers join
+      -- through package_ops, so stale rows fail to join silently -- and they are
+      -- large.
       DELETE FROM op_owners;
       DELETE FROM relay_branches;
 
@@ -106,20 +105,13 @@ let export (outputPath : string) : Task<unit> =
       DELETE FROM trace_fn_calls;
       DELETE FROM traces;
 
-      -- ALL of it. `config_v0` is per-install by construction -- the builtin that writes it says "Local +
-      -- unsynced" -- so there is nothing in here a stranger should inherit, and an allow-list of what to
-      -- keep would be empty. Nothing needs a value here to boot: `entry_point` unset falls back to the
-      -- shipped CLI, which is also the recovery path for a bad pointer.
+      -- ALL of it: `config_v0` is per-install by construction, and nothing needs a
+      -- value to boot (`entry_point` unset falls back to the shipped CLI).
       --
-      -- A deny-list cannot do this job, because the sync keys are named after the peer
-      -- (`sync.cursor.<url>`, `sync.head.<url>`, `sync.relay-instance.<url>`) and the set of keys is not
-      -- knowable in advance. What each kind costs if it ships, since the reasons differ: an INSTANCE ID
-      -- makes every install grown from the seed claim to be the machine that built it, and two peers
-      -- sharing an id cannot sync, cannot record a conflict against each other, and cannot be told apart
-      -- in any provenance -- one instance talking to itself, with every assertion still passing. A CURSOR
-      -- makes an install believe it has already pulled ops it has never seen, so it skips them. A CURRENT
-      -- BRANCH points at a branch that does not exist, and the install announces so before its owner has
-      -- done anything. And all of them leak the builder's addresses.
+      -- A deny-list can't work: sync keys are named per peer (`sync.cursor.<url>`,
+      -- ...), unknowable in advance. Costs if shipped: a shared INSTANCE ID means
+      -- two peers that cannot sync or be told apart; a CURSOR skips ops the install
+      -- has never seen; a CURRENT BRANCH dangles; all leak the builder's addresses.
       DELETE FROM config_v0;
 
       -- A sync base is a RELATIONSHIP with a specific peer. A fresh install has none, and inheriting the
@@ -130,15 +122,12 @@ let export (outputPath : string) : Task<unit> =
       -- relay. Shipped, every fresh install would believe that relay already had its ops and never push.
       DELETE FROM sync_pushed;
 
-      -- The builder's DRAFT. A seed is committed history by definition -- `check-seed-carries-refs`
-      -- asserts exactly that -- and an uncommitted op is instance state in the same way the rows above
-      -- are: whatever the builder happened to be part-way through reads as "1 item changed" on a
-      -- stranger's first run, under a name they have never heard of.
-      --
-      -- Stripped HERE rather than left to the builder to notice, because the F# suite leaves its own
-      -- fixtures in main's draft. Left to the guard, a release build would refuse or not depending on
-      -- what you happened to have run last, which is not a property a build should have. The bindings
-      -- these wrote need no separate delete; every projection went above.
+      -- The builder's DRAFT: a seed is committed history by definition
+      -- (`check-seed-carries-refs` asserts it), and an uncommitted op is instance
+      -- state like the rows above. Stripped HERE rather than left to the guard: the
+      -- F# suite leaves fixtures in main's draft, so a release build would otherwise
+      -- refuse or not depending on what ran last. The bindings need no separate
+      -- delete; every projection went above.
       DELETE FROM package_ops
       WHERE commit_hash IS NULL AND id NOT IN (SELECT op_id FROM op_branches);
 
@@ -333,10 +322,8 @@ let private applyUnappliedOpsPass () : Task<int64> =
 
 /// Fold every op that is unapplied and effective, until there are none left.
 ///
-/// Repeats because folding an op can MAKE other ops effective: a merge event arriving from another machine
-/// flips that branch's frontier, and those ops are not in the pass that folded the event. One pass would
-/// leave them sitting there until the next command happened to run a fold, which is a store that is
-/// correct eventually and wrong in the meantime.
+/// Repeats because folding an op can MAKE other ops effective: a merge event flips
+/// its branch's frontier, and those ops are not in the pass that folded the event.
 ///
 /// Terminates because every pass marks what it folded as applied, so the set strictly shrinks; an op
 /// this build cannot read stays pending but counts as nothing folded, so a pass that meets only those

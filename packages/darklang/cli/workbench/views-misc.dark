@@ -159,7 +159,7 @@ let builtinHints (state: State) : List<(String * String)> =
 
 /// The internal-tier Builtins view - every F# builtin (real data, not mock), for the Darklang-internal
 /// experience. Gated on `internal.enabled` (config), so `config set internal.enabled stachu,feriel` turns the
-/// whole tier on for those two accounts and nobody else. This is the dev-tools surface #4.B asked for.
+/// whole tier on for those two accounts and nobody else.
 let loadBuiltinItems () : List<BodyItem> =
   LanguageTools.allBuiltinFns ()
   |> Stdlib.List.map (fun fn -> fn.name.name)

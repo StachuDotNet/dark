@@ -94,15 +94,10 @@ let private getItemLocations
 
 /// Every name this hash has EVER had, live ones first.
 ///
-/// Separate from `getItemLocations` because the two answer different questions and
-/// only one of them is safe for logic. "What is bound here now" must be live-only: a
-/// cascade that repointed a superseded name would undo someone's rename. "What do I
-/// call this thing on screen" is the other question, and there a name the item used
-/// to have beats a bare 64-character hash every time.
-///
-/// The case is ordinary: viewing an OLD version of an item. Its name moved on to the
-/// newer version, so it has no live row, and rendering it as `<hash:d6f972b3>` tells
-/// you nothing about what you're looking at.
+/// Separate from `getItemLocations` because only live-only is safe for logic: a
+/// cascade repointing a superseded name would undo a rename. This one is for
+/// DISPLAY -- viewing an old version whose name moved on, where a former name beats
+/// a bare hash.
 let private getItemLocationsEverNamed
   (itemType : string)
   (hash : Hash)
@@ -324,9 +319,8 @@ let search (query : PT.Search.SearchQuery) : Ply<PT.Search.SearchResults> =
       + $"  AND l.item_type = '{itemType}'\n"
       + $"  AND ({locationCondition})\n"
       + $"  AND {nameCondition}\n"
-      // Without this the order is whatever SQLite happens to produce, which is rowid order and therefore
-      // shifts whenever the package set changes. That made results reshuffle between runs for no reason
-      // the reader could see, and made any before/after diff of `search` output pure noise.
+      // Deterministic order; SQLite's default is rowid order, which shifts whenever
+      // the package set changes.
       //
       // No branch filter: `locations` has no branch_id on this branch. A branch is an overlay, and a
       // branch-scoped read goes through the overlay helpers rather than through this SQL.

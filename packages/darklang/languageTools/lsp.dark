@@ -1,12 +1,5 @@
-// this module could be forked into something usable to build _other_ language servers,
-// but that feels like a premature optimization at this point - let's see how this pans out.
-//
-// some of these types are somewaht general to the LSP spec,
-// others are specific to our implementation
-//
-// Note: this was written as a backend to support a middle-man Node LSP server. This
-// should all be migrated elsewhere shortly, as we remove that server in favor of
-// one written in Darklang. TODO
+// Some of these types are general to the LSP spec, others specific to our implementation.
+// TODO: written to back the old middle-man Node LSP server; migrate as that server is removed.
 module Darklang.LanguageTools.LanguageServerProtocol
 
 

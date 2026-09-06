@@ -17,10 +17,9 @@ module BS = LibSerialization.Binary.Serialization
 /// `/sync/pull`. Returns the JSON and the cursor to hand back, which is the largest rowid on the page
 /// (or `sinceSeq` when the page is empty, so a client at the end does not rewind).
 ///
-/// Native for the reason AGENTS.md gives: count operations, not rows. A page in Dark means
-/// hex-encoding 2,000 blobs and serialising 2,000 records, tens of thousands of interpreted operations
-/// per request, and 2.8s per page under sustained paging. The DECISIONS stay in Dark -- which ops (the
-/// cursor), how many (the page size), and who we say we are -- and only the encoding is here.
+/// Native per AGENTS.md's operations-per-frame rule: a page in Dark hex-encodes
+/// 2,000 blobs through interpreted calls. The DECISIONS (cursor, page size,
+/// identity) stay in Dark; only the encoding is here.
 ///
 /// Serves ops NOT TAGGED TO A BRANCH, which is the line between two populations that both sit at
 /// `effective = 0` and cannot be told apart by that column: ops a client PUSHED, which a relay stores
@@ -389,10 +388,7 @@ let getDraftOps () : Task<List<PT.PackageOp>> =
         """
         SELECT id, op_blob
         FROM package_ops
-        -- `effective = 1`: ops a client PUSHED to this store sit at effective = 0, untagged, and
-        -- uncommitted (`Inserts.storeOpsWithOwner`), which is the same shape as main's draft. They are
-        -- DATA a relay serves back, never this store's work, and reading them as a draft is how they
-        -- would get folded into the code this store runs.
+        -- effective = 1: excludes client-pushed inert ops; see Inserts.draftDeletes.
         WHERE effective = 1
           AND commit_hash IS NULL
           AND id NOT IN (SELECT op_id FROM op_branches)
@@ -421,9 +417,7 @@ let getWipOps () : Task<List<PT.PackageOp>> =
         -- Excluding them keeps main authoring's WIP-refresh from sweeping a branch's ops into
         -- main (re-inserting them effective=1 + folding). Branch isolation.
         --
-        -- `effective = 1` excludes the OTHER inert population, which carries no tag to be excluded by:
-        -- ops a client pushed to this store when it is also a relay. Same argument, same consequence
-        -- if it is missed -- a peer's ops re-inserted effective and folded into what this store runs.
+        -- effective = 1: excludes client-pushed inert ops; see Inserts.draftDeletes.
         WHERE effective = 1
           AND id NOT IN (SELECT op_id FROM op_branches)
         -- rowid breaks ties: created_at is second-resolution and a batch shares it, and the pairing

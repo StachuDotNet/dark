@@ -229,12 +229,8 @@ module ConsistentSerializationTests =
   let nameFor (f : Format) (version : string) = $"{f.prefix}-{version}{f.suffix}"
 
 
-  /// Generates timestamped test files for binary serialization. These files are used
-  /// to prove that the binary serialization format is compatible.  When we change the
-  /// format, we should still be able to read the old files in addition to the new ones
-  /// (though they will not necessarily have the same output). If we make changes to
-  /// the binary serialization format (or to the test cases), we generate the files
-  /// and commit them.
+  /// Generates the timestamped fixture files that pin the binary format. Regenerate
+  /// and commit them alongside any deliberate format or test-value change.
   let generateTestFiles () : unit =
     formats
     |> List.iter (fun f ->

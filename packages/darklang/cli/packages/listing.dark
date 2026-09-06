@@ -39,7 +39,6 @@ let listModule
   let values = Query.filterDeprecatedPairs rawValues depSets includeDeprecated
   let fns = Query.filterDeprecatedPairs rawFns depSets includeDeprecated
 
-  // Display module path
   let locationStr = Packages.formatLocation location
   Stdlib.printLine $"Contents of {locationStr}:"
   Stdlib.printLine ""
@@ -95,11 +94,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
       (a != "--include-deprecated") && (a != "--versions"))
   match positional with
   | [] ->
-    // No args - list current location
     listModule branchId state.packageData.currentLocation includeDeprecated showVersions
     state
   | [pathArg] ->
-    // Navigate to the path and list
     match Traversal.traverse branchId state.packageData.currentLocation pathArg with
     | Error errorMsg ->
       Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Cannot list {pathArg}: {errorMsg}")

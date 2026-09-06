@@ -13,7 +13,6 @@ primary_region = "iad"
   dockerfile = "Dockerfile.matter"
 
 [env]
-  # The relay serves on 9090 inside the container; Fly terminates TLS and forwards to it.
   DARK_CONFIG_RUNDIR = "/data"
 
 # The hosted op log. Losing it is survivable -- every client holds the whole log and re-pushes -- but it

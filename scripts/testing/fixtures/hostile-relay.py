@@ -13,9 +13,8 @@ at once and each test names the failure it wants:
   9088 dies mid-pull: page 1 lands, the connection drops on page 2, and it is back for the next pull
   9089 speaks a wire format from the future (formatVersion 99): the peer that upgraded before you did
 
-The empty-body mode is the one that matters most: a relay answering 200 with nothing readable must not
-get a cheerful "Pushed N ops" out of the client, which would then record the push as done and never send
-those ops again.
+An empty 200 must not get "Pushed N ops" out of the client, which would record the push as done and
+never resend.
 
 Every mode answers /ping before it consults the mode, so a caller can wait for the fixture to bind.
 """

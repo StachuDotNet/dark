@@ -297,7 +297,6 @@ let executeQuery (state: Cli.AppState) (args: List<String>) : Cli.AppState =
               entityTypes = parsed.entityTypes
               exactMatch = parsed.exactMatch }
 
-        // Execute search, then apply deprecation visibility filter
         let rawResults = LanguageTools.PackageManager.Search.search state.currentBranchId query
         let depSets = Query.loadDeprecationSets state.currentBranchId
         let results = Query.filterDeprecated rawResults depSets parsed.includeDeprecated
@@ -437,7 +436,6 @@ let executeQuery (state: Cli.AppState) (args: List<String>) : Cli.AppState =
                 ()
             | _ -> ())
 
-          // show hint about --with-docs if results have descriptions but weren't shown
           if (Stdlib.Bool.not parsed.withDocs) && (Stdlib.Bool.not parsed.batch) then
             Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "  (add --with-docs to show doc comments)")
           else

@@ -181,10 +181,8 @@ let private testRegistryDoesNotDisplaceStoredNames =
   }
 
 
-/// A script's expressions used to be started as a list, with only the last one awaited, so an error
-/// in any earlier one was dropped: the statement ran, its failure vanished, and the script carried on
-/// and reported the last expression's success. That is silent, and it hid a broken row in a perf
-/// workload for long enough to be worth a test.
+/// Each script expression is awaited as it runs. Awaiting only the last one drops an
+/// earlier failure silently -- it hid a broken perf-workload row.
 let private testMiddleStatementErrorStopsTheScript =
   testTask "an error in a middle statement ends the script" {
     let code =

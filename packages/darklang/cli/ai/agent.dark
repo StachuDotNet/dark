@@ -392,9 +392,9 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   else
     match options.args with
     | [] ->
-      // A bare `dark agent` used to drop straight into the interactive read loop, which blocks on a
-      // stdin that may never arrive: with stdin closed it hung until it was killed, where every other
-      // command in the CLI prints help or refuses. Ask the same question the workbench asks.
+      // A bare `dark agent` must not block reading a stdin that may never arrive (closed stdin =
+      // a hang, where every other command prints help or refuses). Ask the same question the
+      // workbench asks.
       match Stdlib.Cli.Tui.TerminalSupport.current () with
       | Unavailable reason ->
         Stdlib.printLine (Stdlib.Cli.Tui.TerminalSupport.unavailableMessage reason)

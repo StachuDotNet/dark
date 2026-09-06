@@ -19,10 +19,8 @@ WORK=rundir/workbench-scm-test
 
 rm -rf "$WORK"
 mkdir -p "$WORK"
-# ALL the config, not just `current_branch`: a copy of the dev store inherits `sync.relay` and the write
-# secret, so one sync-shaped command in here would reach the REAL relay. Note this makes the store look
-# like a first run to the SETUP check, so no wizard blocks startup. The greeting is a separate question:
-# it follows commits/changes/relay, so a store with work in it still greets "Welcome back".
+# Strip ALL config: a copy of the dev store inherits `sync.relay` and the write secret, and one
+# sync-shaped command would reach the REAL relay (see _copy-store).
 scripts/testing/_copy-store "$WORK/data.db"
 sqlite3 "$WORK/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
 

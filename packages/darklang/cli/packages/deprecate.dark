@@ -108,8 +108,7 @@ let parseKind
 /// not name, so deprecating one deprecates ALL of these — for a trivial value (0/1/true/"") that can be many
 /// unrelated names, including stdlib constants (deprecating a `= 1` retires `Errno.eperm`). We surface the
 /// full set before the confirm so the collateral is never a surprise. A normal fn/type has a near-unique
-/// hash, so this is a single name and no heads-up fires. (The real per-name fix is a canonical op change and
-/// is Stachu's call; this is only the guard.)
+/// hash, so this is a single name and no heads-up fires.
 let namesAtContent (branchId: Uuid) (hashStr: String) (itemType: String) : List<String> =
   SCM.PackageOps.namesAtContent branchId hashStr itemType
 

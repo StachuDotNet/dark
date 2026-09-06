@@ -285,8 +285,8 @@ let homeBranchDetail (state: State) : List<String> =
     let isCurrent = b.id == state.branchId
     let own = SCM.PackageOps.commitsOnBranch b.id 5L
     let ownCount = Stdlib.List.length (SCM.PackageOps.commitsOnBranch b.id 200L)
-    // No "behind" marker: "is this branch behind its parent" is a diff, and this pane redraws on every
-    // keypress. `dark rebase --dry-run` is where that question gets answered honestly.
+    // No "behind" marker -- same reason as the branch rows above: a diff per keypress;
+    // `dark rebase --dry-run` answers it.
     let standing =
       if b.merged then
         "merged"

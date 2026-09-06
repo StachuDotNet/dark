@@ -249,9 +249,8 @@ let performInputAction (state: State) (inp: InputState) : Step =
     // `let a = 21L` binds, then `a * 2L` sees it and prints 42. Indented lines continue the one above, so a
     // wrapped expression is still one statement (see `Repl.splitStatements`).
     let body = Stdlib.String.trimEnd inp.field.text
-    // Continuation lines keep the indentation you typed, and get two spaces if you typed none: `splitStatements`
-    // treats an indented line as part of the one above, so this is what makes a typed multi-line statement land
-    // as one statement - the same shape pasting those lines would have had.
+    // Two spaces when you typed none, so `splitStatements` sees the typed line as the
+    // continuation it is.
     let addLine (pending: String) (line: String) : String =
       if pending == "" then Stdlib.String.trim line
       else if Stdlib.String.startsWith line " " || Stdlib.String.startsWith line "\t" then pending ++ "\n" ++ line

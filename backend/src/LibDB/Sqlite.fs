@@ -51,11 +51,8 @@ module Sql =
   // never rebinds it: it stays the default `connString` store for the process's life.
   let mutable connect = Sql.connect connString |> initializeConnection
 
-  /// Force this module's initialization, and with it the first connection open and the PRAGMA round trip.
-  ///
-  /// Exists so the cost is attributable. It happens on whatever query runs first, which made it look like
-  /// part of `growIfNeeded`'s op check -- a check that is index-covered and takes 0.0 ms against this
-  /// store. Calling this first moves the cost into a span of its own rather than removing it.
+  /// Force this module's initialization (first connection open + PRAGMA round trip)
+  /// so the cost lands in its own span instead of inside whatever query runs first.
   let warm () : unit =
     connect
     |> Sql.query "SELECT 1"
@@ -120,15 +117,12 @@ module Sql =
 
   let query (sql : string) : Sql.SqlProps = connect |> Sql.query sql
 
-  /// A store that can't be read or written is an ENVIRONMENT, not a bug: a read-only mount, a store owned
-  /// by another user, a disk with nothing left on it. SQLite says exactly which, then .NET buries it under
-  /// an AggregateException and the callers below stringify it into a message, so the cause reached the
-  /// user as a stack trace that named neither the store nor the problem. Worse, writes went through
-  /// `Result.unwrap`, which prints the raw exception to stdout and raises "TODO: failed to unwrap".
-  ///
-  /// So: every query path funnels through here first. Only these three codes are translated, because only
-  /// these three are things the person running the command can act on. Anything else keeps its own
-  /// exception, stack and all, and is a bug worth seeing in full.
+  /// A store that can't be read or written is an ENVIRONMENT, not a bug: a read-only
+  /// mount, another user's store, a full disk. SQLite says which; .NET buries it
+  /// under an AggregateException. Every query path funnels through here first. Only
+  /// these three codes are translated, because only these three are actionable by
+  /// the person running the command; anything else keeps its exception, stack and
+  /// all.
   let private storeCondition (e : exn) : string option =
     // The SqliteException arrives wrapped -- an AggregateException from the async boundary, sometimes an
     // InnerException under that -- so this looks through the chain rather than testing the top of it.

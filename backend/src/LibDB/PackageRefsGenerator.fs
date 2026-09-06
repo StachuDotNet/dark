@@ -65,17 +65,11 @@ let generate () : Ply<unit> =
         buildKey "fn" (String.concat "." modules) name)
       |> Set.ofList
 
-    // Union in whatever the existing file already knew about.
-    //
-    // `_lookup` is only populated as each `PackageRefs` nested module initializes, which happens when
-    // something touches it. A process that regenerates before touching them all -- or an older binary that
-    // predates a ref entirely -- would otherwise silently write a *shorter* file, dropping refs. That is
-    // not a theoretical concern: `growIfNeeded` regenerates on any startup that applies ops, so running a
-    // previous release inside the source tree was enough to truncate the file, after which the next build
-    // produced a binary that raised "PackageRefs: hash not found" on startup.
-    //
-    // Keys that no longer resolve are dropped below by the `List.choose` against the DB, so this
-    // accumulates known refs without letting deleted ones linger.
+    // Union in whatever the existing file already knew. `_lookup` populates only as
+    // each `PackageRefs` module initializes, so a process that regenerates before
+    // touching them all (or an older binary predating a ref) would write a SHORTER
+    // file and drop refs. Keys that no longer resolve are dropped below by the
+    // `List.choose` against the DB.
     let existingKeys =
       readExistingFile () |> Map.toList |> List.map fst |> Set.ofList
 

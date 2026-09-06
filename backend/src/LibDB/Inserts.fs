@@ -46,14 +46,12 @@ let insertAndApplyOpsWith
           let opBlob = BS.PT.PackageOp.serialize opId op
           (opId, op, opBlob, tsFor opId, commitFor opId))
 
-      // Two statements per op, one transaction. The id is the content hash, so an identical op is one
-      // row; a re-add of something main already runs affects 0 rows and is skipped below. But the row
-      // can also exist at `effective = 0`: authored on a branch (tagged in `op_branches`), or synced
-      // in for review. Main authoring it now is main saying it runs here, so the conflict clause
-      // flips that row effective and it folds like a fresh insert -- a plain `INSERT OR IGNORE` would
-      // skip it, and the author's op would do nothing while the CLI reported success. The tag goes in
-      // the same breath: an effective op is never tagged (see Branches.storeDeltaOpsStamped), and the
-      // branch that held it no longer differs from main on it.
+      // Two statements per op, one transaction. The id is the content hash: an
+      // identical op main already runs affects 0 rows and is skipped below. But the
+      // row can also exist at effective=0 (branch-authored, or synced for review);
+      // main authoring it now means it runs here, so the conflict clause flips it
+      // effective and it folds like a fresh insert. The untag goes in the same
+      // breath: an effective op is never tagged (see Branches.storeDeltaOpsStamped).
       let statements =
         opsWithIds
         |> List.collect (fun (opId, _op, opBlob, originTs, commitHash) ->
@@ -194,8 +192,7 @@ let wholeMainDeletes (keep : Set<System.Guid>) : List<string> =
       $" AND id NOT IN ({quoted})"
   [ "DELETE FROM locations WHERE source <> 'resolution'"
     "DELETE FROM deprecations"
-    // `effective = 1`, as in `draftDeletes`: hosted ops are inert and untagged, and this store is only
-    // holding them.
+    // `effective = 1`: excludes client-pushed inert ops; see `draftDeletes`.
     $"DELETE FROM package_ops WHERE effective = 1 AND id NOT IN (SELECT op_id FROM op_branches){keepUnreadable}" ]
 
 /// Main's op ids this build cannot decode. What `wholeMainDeletes` keeps.

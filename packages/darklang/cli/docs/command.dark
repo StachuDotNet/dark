@@ -207,7 +207,6 @@ module Topics =
     let topics = allTopics ()
     let lowerName = Stdlib.String.toLowercase name
 
-    // Check exact name match
     let byName =
       topics
       |> Stdlib.List.findFirst (fun t -> Stdlib.String.toLowercase t.name == lowerName)
@@ -215,7 +214,6 @@ module Topics =
     match byName with
     | Some t -> Stdlib.Option.Option.Some t
     | None ->
-      // Check aliases
       topics
       |> Stdlib.List.findFirst (fun t ->
         t.aliases
@@ -312,13 +310,11 @@ let complete
   : List<Cli.Completion.CompletionItem> =
   match args with
   | [] ->
-    // Complete topic names
     let topics = Topics.allTopics ()
 
     topics
     |> Stdlib.List.map (fun t -> Cli.Completion.withDescription t.name t.description)
   | [ partial ] ->
-    // Filter topics by partial match
     let topics = Topics.allTopics ()
     let lowerPartial = Stdlib.String.toLowercase partial
 

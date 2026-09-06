@@ -7,45 +7,18 @@
 ///   `body : Stream<UInt8>` — lazy/chunked; for large bodies, SSE,
 ///   etc.
 ///
-/// TODO collapse into a single builtin. The intended end state is:
-///   - `httpClientRequest` is gone from the F# side.
-///   - `httpClientStream` is the only F# builtin, and it takes a
-///     `body : Blob` (currently always sends `[||]`).
-///   - `Stdlib.HttpClient.request` is a Dark-side wrapper: call
-///     `HttpClient.stream`, drain the body via `Stream.toBlob`,
-///     repack into a `Response`. ~5 lines of Dark.
-///
-/// Four gates need to land in this file before the collapse stops
-/// regressing existing callers:
-///   (1) Add `body : Blob` to the stream builtin's parameters and
-///       thread it into `openStreamingRequest`.
-///   (2) Body-read timeout. Today the stream path uses
-///       `HttpCompletionOption.ResponseHeadersRead`, so the cancel
-///       token only fires on header-arrival lag — body reads can
-///       hang indefinitely. The buffered path's whole-request
-///       timeout has to be re-applied to the drain (carry the
-///       CancellationToken through the FromIO closure and pass it
-///       into `responseStream.ReadAsync`).
-///   (3) Drain-time error translation. `makeRequest` catches
-///       IOException at the top and returns `Result.Error
-///       NetworkError`; on the streaming path that exception
-///       happens during `Stream.toBlob` and bubbles up as an
-///       uncaught RuntimeError. Need a `Stream.toBlob`-style
-///       primitive that returns `Result<Blob, NetworkError>` —
-///       either a new builtin or a wrapping helper that catches
-///       inside the FromIO closure.
-///   (4) Telemetry parity. `makeRequest` wraps the whole call in
-///       `telemetryInitialize` (one coherent span) and tags
-///       `request.content_type`, `request.content_length`,
-///       `response.version`. `openStreamingRequest` inlines tags
-///       and only records `response.status_code`. The collapse
-///       wants the streaming span to extend through the drain
-///       (span ends at toBlob completion / streamClose) and to
-///       record the same set of tags on errors.
-///
-/// Until those four are in, the buffered builtin stays. Header /
-/// URL / request-message construction are shared via the helpers
-/// below so the duplication that does remain is small.
+/// TODO collapse into a single builtin: `httpClientStream` becomes the only F#
+/// builtin, and `Stdlib.HttpClient.request` a Dark-side wrapper that streams,
+/// drains via `Stream.toBlob`, and repacks into a `Response`. Four gates before
+/// the collapse stops regressing existing callers:
+///   (1) a `body : Blob` param on the stream builtin (today it always sends `[||]`);
+///   (2) a body-read timeout (`ResponseHeadersRead` means the cancel token only
+///       covers header arrival, so a drain can hang indefinitely);
+///   (3) drain-time error translation (an IOException during the drain must become
+///       `Result.Error NetworkError`, not an uncaught RuntimeError);
+///   (4) telemetry parity with `makeRequest` (one span through the drain, same tags).
+/// Until those land, the buffered builtin stays; request construction is shared via
+/// the helpers below, so the remaining duplication is small.
 module Builtins.Http.Client.Libs.HttpClient
 
 open System.IO
@@ -162,38 +135,16 @@ type Configuration =
   }
 
 module BaseClient =
-  // There are a number of different configuration options we want to enable:
-  // WASM:
-  //   when using Blazor/WASM, dotnet doesn't allow using a SocketsHttpHandler
-  //   (errors at runtime). So we need to use a HttpClientHandler instead.
-  // Cloud:
-  //   when in the cloud, we want to include telemetry, as well as security measures
-  //   to prevent access to local infrastructure (this is defense-in-depth: obvi we
-  //   also use a firewall)
-  // Local:
-  //   when running locally, we want to use SocketsHttpHandler and no cloud
-  //   features/restrictions.
-  //
-  // We enable these in two ways:
-  // - if SocketsHttpHandler is avaiable (cloud and local), we use that
-  // - we provide a Configuration record when initializing, that allows
-  //   telemetry/etc. (emptyConfig can be used for no telemetry/etc)
+  // Handler choice: SocketsHttpHandler where supported (cloud + local); Blazor/WASM
+  // errors on it at runtime, so HttpClientHandler there. Telemetry and SSRF
+  // restrictions come in via the Configuration record (defense-in-depth alongside
+  // the firewall).
 
 
   module SocketBasedHandler =
-    // There has been quite a history of .NET's HttpClient having problems,
-    // including socket exhaustion and DNS results not expiring.
-    // The history is outlined well here:
-    // https://www.stevejgordon.co.uk/httpclient-connection-pooling-in-dotnet-core
-    //
-    // As of .NET 6 it seems we no longer need to worry about either socket
-    // exhaustion or DNS issues. It appears that we can use either multiple HTTP
-    // clients or just one, we use just one for efficiency.
-    // See
+    // One shared client: as of .NET 6, socket exhaustion and DNS-expiry are handled
+    // with pooled-connection timeouts (below). See
     // https://docs.microsoft.com/en-us/aspnet/core/fundamentals/http-requests?view=aspnetcore-7.0#alternatives-to-ihttpclientfactory
-    //
-    // Note that the number of sockets was verified manually, with: `sudo netstat
-    // -apn | grep _WAIT`
     let handler (config : Configuration) : HttpMessageHandler =
       let connectionFilter
         (context : SocketsHttpConnectionContext)
@@ -213,12 +164,9 @@ module BaseClient =
               // Use this to hide more specific errors when looking at loopback
               Exception.raiseInternal "Could not connect" []
 
-            // TRY EVERY resolved address, not just the first. A name routinely
-            // resolves to more than one (`localhost` is ::1 AND 127.0.0.1), only
-            // some of which have anything listening, and the order is the resolver's
-            // to choose. Connecting to ips[0] alone makes `http://localhost:<port>`
-            // fail against a server bound to IPv4, and report it as a flat "network
-            // error".
+            // TRY EVERY resolved address, not just the first: a name routinely
+            // resolves to more than one (`localhost` is ::1 AND 127.0.0.1), and
+            // only some have anything listening.
             //
             // Every address was already checked against the allow-list above, so
             // trying the rest widens nothing: the DNS-rebinding guard is that we
@@ -650,11 +598,8 @@ let makeRequest
         return Error(RequestError.BadUrl BadUrl.BadUrlDetails.InvalidUri)
       | :? IOException -> return Error(RequestError.NetworkError)
       | :? HttpRequestException as e ->
-        // This is a bit of an awkward case. I'm unsure how it fits into our model.
-        // We've made a request, and _potentially_ (according to .NET) have a status
-        // code. That should return some sort of Error - but our Error case type
-        // doesn't have a good slot to include the status code. We could have a new
-        // case of `| ErrorHandlingResponse of statusCode: int` but that feels wrong.
+        // A response may exist here, but RequestError has no slot for a status code;
+        // record it in telemetry and report NetworkError.
         let statusCode = if e.StatusCode.HasValue then int e.StatusCode.Value else 0
 
         config.telemetryAddException [ "error.status_code", statusCode ] e
@@ -797,8 +742,6 @@ let fns (config : Configuration) : List<BuiltInFn> =
           _,
           [| DString method; DString uri; DList(_, reqHeaders); DBlob bodyRef |] ->
           uply {
-            // precise check: this exact method+URL must be covered (the gate only
-            // checked http presence).
             LibExecution.CapabilityCheck.requireHttp state.grantedCaps method uri
             let! reqBodyBytes = Blob.readBytes state bodyRef
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
@@ -893,23 +836,6 @@ let fns (config : Configuration) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // ——————————————————————————————————————————————————————————
-    // Streaming HTTP.
-    //
-    // The body is not buffered into a byte[]; instead the response's
-    // readable Stream is wrapped in a chunked DStream. Bulk consumers
-    // (`streamToBlob`) pull whole buffers via `nextChunk`; byte-wise
-    // consumers (`streamNext`) see one `DUInt8` at a time synthesised
-    // from the same buffer — no boxing until a byte-wise consumer
-    // actually asks for bytes.
-    //
-    // The disposer tears down the HttpResponseMessage + response
-    // stream when the consumer drains to EOF or calls
-    // `Builtin.streamClose`. Abandoning a stream mid-drain falls back
-    // to the GC-triggered finalizer on `Dval.StreamFinalizer`, which
-    // runs the same disposer chain when the DStream becomes
-    // unreachable.
-    // ——————————————————————————————————————————————————————————
     // GET with SSRF guards OFF, returning raw BYTES: the server wanted sits behind
     // loopback/RFC-1918/tailnet, which the safe path bans. The body comes as bytes
     // for the caller to decode -- `Stdlib.Blob.toString` for the JSON wire.
@@ -1094,13 +1020,9 @@ let fns (config : Configuration) : List<BuiltInFn> =
       capabilities = LibExecution.Capabilities.Needs.http
       deprecated = NotDeprecated }
 
-    // POST with SSRF guards OFF (syncConfig), returning raw BYTES -- the push half of the sync
-    // transport, mirror of httpGetUnsafeBytes. A relay/peer sits behind
-    // loopback/RFC-1918/tailnet, which the safe client bans; syncConfig reaches
-    // those but still blocks cloud-metadata. Body is sent as application/json (the
-    // wire codec). Registered in the general set like the GET twin, and gated the same way: the guards are
-    // only off towards origins `LibExecution.UnguardedOrigins` knows about (the stored relay, or a URL typed on
-    // the command line), so pulled code cannot point it at anything of yours.
+    // The push half of the sync transport, mirror of `httpGetUnsafeBytes`: same
+    // syncConfig reach, same `UnguardedOrigins` gate. Body is sent as
+    // application/json (the wire codec).
     { name = fn "httpPostUnsafeBytes" 0
       typeParams = []
       parameters =
@@ -1146,8 +1068,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
                   (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
             else
 
-              // The credential is attached HERE, not passed in: the write secret must not reach Dark,
-              // where `configGet` has no capability and a pulled package could read it.
+              // Credential attached here, not passed in -- see `httpGetUnsafeBytesWithHeaders`.
               let auth = LibExecution.UnguardedOrigins.authHeadersFor uri
 
               let request : Request =
@@ -1191,8 +1112,6 @@ let fns (config : Configuration) : List<BuiltInFn> =
         (function
         | state, vm, _, [| DString method; DString uri; DList(_, reqHeaders) |] ->
           uply {
-            // precise check: this exact method+URL must be covered (the gate only
-            // checked http presence).
             LibExecution.CapabilityCheck.requireHttp state.grantedCaps method uri
             let! (reqHeaders : Result<List<string * string>, BadHeader.BadHeader>) =
               reqHeaders
@@ -1263,10 +1182,9 @@ let fns (config : Configuration) : List<BuiltInFn> =
                       return Some trimmed
                   }
 
-                // Released on drain-to-EOF or streamClose. Ordered
-                // response first so the stream is closed before the
-                // message — Dispose chains naturally either way, but
-                // this mirrors idiomatic .NET cleanup.
+                // Released on drain-to-EOF or streamClose; an abandoned stream
+                // falls back to the finalizer on `Dval.StreamFinalizer`, which
+                // runs the same disposer.
                 let disposer () =
                   responseStream.Dispose()
                   response.Dispose()

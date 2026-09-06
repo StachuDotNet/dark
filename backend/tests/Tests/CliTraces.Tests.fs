@@ -717,9 +717,7 @@ let private testTracesTruncatedStillShowsRoot =
 ///
 ///     DARK_FAST_TESTS=1 ./scripts/run-backend-tests     # ~34s cheaper, and blind to those four
 ///
-/// Measured rather than guessed. An earlier version of this skipped the workbench frame-rendering cases
-/// instead, on a cold-run ranking that made them look like 22 seconds; warm they are 2.5, and they cover
-/// ground the Dark-side render tests and the pty gates do not reach in the same way.
+/// Ranked on warm runs: the frame-rendering cases look like 22s cold but are 2.5s warm.
 let private slowCliTests =
   if System.Environment.GetEnvironmentVariable "DARK_FAST_TESTS" = "1" then
     []

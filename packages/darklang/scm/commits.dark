@@ -39,11 +39,9 @@ let nextStamp () : String =
 /// A content-derived commit id: the same work, committed onto the same history, computes the same id on two
 /// machines rather than each inventing its own. Short: it's a handle you type, not a security boundary.
 ///
-/// The op ids and the parent are both IN the material, so an id says what the commit HOLDS and where it
-/// SITS, not only who typed what and when -- without them, two commits of entirely different work by the
-/// same author in the same second collide in principle. Two machines that commit identical ops onto
-/// different histories therefore get different ids, which is the honest answer: those are not the same
-/// commit. The ops arrive sorted (see `draftOpIdsFor`).
+/// Op ids and parent are IN the material, so the id says what the commit holds and where it sits:
+/// identical ops committed onto different histories get different ids. Ops arrive sorted (see
+/// `draftOpIdsFor`).
 let mintHash
   (message: String)
   (author: String)

@@ -239,9 +239,8 @@ let rewriteBy
 /// Only `SetName` goes. The NAME is what makes an item exist in `locations`, so dropping its bindings
 /// reverts the name to its last committed binding, or to not existing.
 ///
-/// The `Add` carrying the content STAYS. Dropping it too left `package_functions` holding content no op
-/// provided, which is a store a re-fold would not reproduce; deciding an Add is unreachable needs a real
-/// reachability check, and a name binding is not one, since a dependent references content by HASH.
+/// The `Add` carrying the content STAYS; dropping content needs a real reachability check (see
+/// `collapse`).
 let discardName
   (owner: String)
   (modules: List<String>)

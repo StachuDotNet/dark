@@ -219,10 +219,8 @@ module Blob =
   /// promote racing the delete, which the foreign-key-style orphan
   /// check prevents (content-addressed re-insert is cheap).
   ///
-  /// For a package set with N values and M blobs, cost is O(N+M)
-  /// deserialise passes plus one DELETE per orphan. Good enough for
-  /// CLI-triggered sweeps at current scale; a reverse-index table
-  /// is the natural next step when the DB grows past it.
+  /// O(N+M) deserialise passes plus one DELETE per orphan; fine for CLI-triggered
+  /// sweeps at current scale.
   let sweepOrphans () : Ply<int64> =
     uply {
       // Pull every materialised rt_dval — deserialise and collect

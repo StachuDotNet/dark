@@ -176,12 +176,8 @@ let detect
   |> Stdlib.List.filterMap (fun inc ->
     let k = bindingKey inc.owner inc.modules inc.name
 
-    // No base at all means the name was created after the last agreement with this source. Only what a
-    // binding REPLACED tells the two cases apart: each side invented the name from nothing (a real
-    // conflict), or one side edited the other's version (its binding names that hash, so taking it is
-    // collaborating). Only the first is reported, and only when BOTH sides say they replaced nothing --
-    // `None` also means "no predecessor recorded", so requiring it from both sides keeps that weaker
-    // reading from manufacturing conflicts.
+    // No base: the name postdates the last agreement. Only what a binding REPLACED tells
+    // creation-collision apart from one side editing the other's version; the doc above has the rule.
     let bothCreatedFromNothing =
       (inc.previous == Stdlib.Option.Option.None)
       && (inc.hash != "")
@@ -191,9 +187,7 @@ let detect
     // is not always the version you both agreed on -- an instance that has pushed but never pulled
     // records its bases from what it is holding, its own edit included, and then reads as unchanged.
     //
-    // `Some h` on BOTH sides, never None: `None` also means "no predecessor recorded", so firing on it
-    // would manufacture conflicts between unrelated items. The independent-creation arm below keeps
-    // that reading.
+    // `Some` on BOTH sides, never None -- `None` also means "no predecessor recorded" (see the fn doc).
     //
     // An ordinary update does not match. If they edited the version you hold, their `previous` is your
     // CURRENT hash while yours is whatever came before it.

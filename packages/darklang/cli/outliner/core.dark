@@ -183,10 +183,8 @@ let setChildren
 
 // --- List helpers ---
 
-/// Insert `newId` directly after `afterId`, or at the end when `afterId` isn't there.
-///
-/// The old version dropped `newId` on the floor in that case, leaving a node in the dicts that no list
-/// pointed at: invisible, unreachable, and saved to disk forever.
+/// Insert `newId` directly after `afterId`, or at the end when `afterId` isn't there -- never
+/// dropped, or the node would sit in the dicts unlisted: invisible, unreachable, saved to disk forever.
 let insertIdAfter (ids: List<Int>) (afterId: Int) (newId: Int) : List<Int> =
   if Stdlib.List.member ids afterId then
     ids

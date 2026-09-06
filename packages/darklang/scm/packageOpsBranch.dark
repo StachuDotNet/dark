@@ -50,10 +50,8 @@ let branchExists (branchId: Uuid) : Bool =
     | None -> false
 
 
-/// A branch's registered parent, or MAIN's id when the branch has no registered parent.
-///
-/// Main's ID, not the string "main". The distinction is the one `SCM.Ids` exists to hold: the id is a
-/// Uuid and the name is text, and this column carries the id.
+/// A branch's registered parent, or MAIN's id when it has none. The id, not the name "main"
+/// (see `SCM.Ids`).
 let branchParentOf (branchId: Uuid) : Uuid =
   match
     Stdlib.Sqlite.queryOneP

@@ -1,20 +1,9 @@
 /// Builtin functions for working with the dev-time Package Manager
 ///   (_not_ the run-time PM)
 ///
-/// A ProgramTypes Package Manager is taken as a parameter, so that:
-/// - the Cloud runtime can use the Cloud PM (just accessing DB directly)
-/// - the CLI runtime can use the HTTP-bound PM
-///   (which calls upon endpoints in the dark-packages canvas)
-///
-/// Previously, the non-Cloud package manager was supported by Dark package fns that
-/// made HTTPClient calls to the Cloud-hosted PM, but: since Darklang doesn't really
-/// have a caching mechanism, it made more sense to have the HTTP-access be inside
-/// of builtin functions.
-///
-/// At run-time, we use the PM to support the parser flow, and pretty-printing (i.e.
-/// to grab the name of a package type). We do those operations quite a lot, so it's
-/// important that the operations are reasonably fast, which we can't curently do
-/// without some sort of such caching.
+/// The PM is taken as a parameter so each runtime supplies its own. It backs the
+/// parser flow and pretty-printing, which run constantly, so lookups need to be
+/// reasonably fast.
 module Builtins.Matter.Libs.PM.Packages
 
 open Prelude
@@ -378,9 +367,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // Resolve a package fn's dotted name to a callable value (Applicable), so a name that only exists as a
     // STRING (a CLI arg) can be passed as a function without eval'ing a source string. This is what lets
     // `dark serve` hand a router to `Stdlib.HttpServer.serve` directly (no `cliEvaluateExpression`).
-    // CLEANUP(applicableByName): `dark eval` already resolves a dotted name to a runnable value, so this builtin
-    // can eventually fold into eval and be deleted (one fewer builtin — the fewer-builtins rule). ~1hr; the one
-    // wrinkle is keeping an expression that produces nothing printing nothing. Left for a tidy pass.
+    // CLEANUP(applicableByName): fold into eval and delete this builtin; wrinkle: an
+    // expression that produces nothing must keep printing nothing.
     { name = fn "applicableByName" 0
       typeParams = []
       parameters =
@@ -773,8 +761,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               // ops rather than one. That's deliberate and it's where a pin differs from a conflict
               // resolution: resolving conflict #7 the same way twice is one decision stated twice, but
               // pin -> follow -> pin is genuinely three, and the third has to fold or the rollback silently
-              // doesn't happen. Without the stamp the op is byte-identical to the first pin's, and
-              // content-addressed ops dedup.
+              // doesn't happen.
               let decisionId =
                 let mods = String.concat "." loc.modules
                 let now = System.DateTime.UtcNow.ToString("o")

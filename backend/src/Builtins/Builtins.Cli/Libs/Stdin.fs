@@ -417,9 +417,6 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [| DUnit |] ->
-          // Nothing is echoed, so nothing reaches the scrollback, and taking it at a prompt keeps it
-          // out of shell history too -- which an argument cannot manage.
-          //
           // Redirected input has no key to intercept, so fall back to a plain read: a secret piped in
           // was never on screen to begin with.
           if Console.IsInputRedirected then

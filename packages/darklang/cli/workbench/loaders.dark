@@ -68,10 +68,9 @@ let loadItems (branchId: Uuid) (location: Packages.PackageLocation) : List<BodyI
 let wipItemCount () : Int =
   Stdlib.List.length (SCM.Draft.read ()).bindings
 
-/// Feeds two surfaces that are the same list seen from two angles: the SCM view's changes list, and
-/// Matter's Changed lens. The lens is the interesting one -- it makes the draft a view of YOUR CODE
-/// filtered to what moved, rather than a separate screen listing names, so it comes with the real tree
-/// renderer, the real item page and edit-in-place for nothing.
+/// Feeds the SCM changes list and Matter's Changed lens -- one list, two angles. The
+/// lens shows the draft as your code filtered to what moved, with the real tree
+/// renderer and edit-in-place.
 ///
 /// Flat and fully qualified, like the Values lens, because a draft is scattered across modules and
 /// filtering a tree to five leaves in five places is worse than a list.
@@ -431,24 +430,17 @@ let forceScmRefresh (state: State) : State =
 
 /// Run the selected `render` fn and hold its output, for the tree-native view peek.
 ///
-/// Here rather than in `detailLines` because this evaluates *user code*, and the renderer has to stay a pure
-/// function of state for frame diffing to be sound. Doing it on the transition also halves the cost: from
-/// `detailLines` it ran twice per keypress, since `navDown` calls `previewLines` again just for a scroll bound.
+/// This evaluates user code, so it happens here on the transition, not in `detailLines`:
+/// the renderer stays a pure function of state, which frame diffing requires.
 ///
-/// Deliberately NOT cached across transitions, unlike the badges above. The only key available is where you
-/// are and what's under the cursor, and editing the selected `render` fn changes neither: `saveEditing`
-/// reloads the list and lands you back on the same row, and a `BodyItem` carries name/kind/isModule, so the
-/// list compares equal. A cache on that key can't tell "you edited this" from "nothing happened". Re-running
-/// costs one eval per transition, and only while the cursor is actually sitting on a `render` fn.
+/// Deliberately NOT cached across transitions: the only key available (location +
+/// cursor) doesn't change when you edit the selected `render` fn, so a cache can't tell
+/// "you edited this" from "nothing happened".
 ///
-/// Note that re-running still won't show you your own edit within one session: the runtime resolves package
-/// items through an in-process cache, so a `render` edited here keeps rendering its pre-edit output until the
-/// CLI restarts. That's above this function - verified by evaluating the same fn from a second process, which
-/// gives the new output - so the peek isn't the place to fix it, but it is why not caching here buys less than
-/// it looks like it should.
+/// Your own edit won't show within a session anyway -- the runtime's in-process package
+/// cache serves the pre-edit fn until the CLI restarts. That's above this fn.
 ///
-/// The `vMatter` test matches `detailLines`' - the peek is a Matter-tree affordance, and elsewhere the module
-/// path this builds would have nothing to do with the selected row.
+/// The `vMatter` test matches `detailLines`'.
 let refreshPeek (next: State) : State =
   let peek =
     if (next.activeView != vMatter) || (next.matter.lens == Lens.ValuesOnly) then

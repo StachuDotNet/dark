@@ -42,10 +42,8 @@ val profiles =
        "llm" ]) ]
 
 
-// The three caps builtins, each behind a single wrapper so callers (this command, the app) go through
-// one call site. The builtins exchange the STRUCTURED `Capabilities` value; the grant-spec LANGUAGE
-// (parse/render) is applied HERE at the boundary, so the rest of this command + the pretty-printer keep
-// working on spec strings.
+// The three caps builtins, each behind a single wrapper so every caller goes through one call site.
+// Spec-language boundary: see the header.
 let currentSpecs () : List<String> =
   (Builtin.pmCapsGet ()) |> LanguageTools.Capabilities.render
 

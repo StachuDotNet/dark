@@ -205,11 +205,9 @@ let executeReviewImport (state: AppState) (path: String) (queue: String) : AppSt
 
 /// Drain every page, staging each on <param queue>. Returns the total staged, or -1 if a page failed.
 ///
-/// This has to exist for the reason `executePullPages` gives: the relay serves in its OWN arrival order,
-/// so page 1 routinely holds nothing new while the ops you want sit on page 7. `review pull` asked for a
-/// single page and stopped, so against any store with history behind it -- the shipped baseline alone is
-/// seven pages -- it staged nothing and said "Nothing new to stage", which reads exactly like being up to
-/// date. A coworker's first day is the case: their queue is empty and it looks correct.
+/// Every page, because the relay serves in its OWN arrival order (see `executePullPages`): page 1
+/// routinely holds nothing new while the ops you want sit on page 7, so a one-page pull stages
+/// nothing and reads as up to date.
 ///
 /// <param since> is threaded rather than re-read per page, because the cursor is only PERSISTED on an
 /// unfiltered drain. Advancing the shared cursor after staging one person's ops with `--from` would skip
@@ -634,17 +632,12 @@ let executePull (state: AppState) (url: String) : AppState =
         // A cursor with no provenance at all is just a number, and equally untrustworthy.
         let unattributed = (seen == "") && (since > 0L)
 
-        // The relay-instance check above catches a relay REPLACED at this address. It cannot catch the
-        // other way a cursor goes wrong: the relay is the very one we have been talking to, and our own
-        // log lost ops that sit BEHIND the cursor. A rebuild is enough to do it -- `discardWipOps`
-        // deletes main's log and re-inserts what it could reconstruct -- and the cursor is untouched, so
-        // the ops it skipped past are unreachable from then on. The symptom is a store that pulls zero
-        // forever while `dark sync status` says, correctly, that it is far behind.
-        //
-        // Asking for nothing past the cursor while holding fewer ops than the relay is exactly that
-        // state, and it is not otherwise reachable: an in-sync store is not behind, and a store that is
-        // behind has something to pull. Rewinding costs one re-pull and nothing else, since ops are
-        // content-addressed and dedup on arrival.
+        // The instance check above catches a relay REPLACED at this address, not the other way a
+        // cursor goes wrong: same relay, but our own log lost ops BEHIND the cursor (a rebuild can
+        // do it), leaving them unreachable -- the store pulls zero forever while `sync status`
+        // correctly says it is behind. Fewer ops than the relay plus an empty page past the cursor
+        // is exactly that state and not otherwise reachable; rewind is the same cheap re-pull as
+        // above.
         let behindTheRelay =
           match relayHead with
           | Some h -> h.count > (SCM.Wire.localHead ()).count
@@ -1030,9 +1023,8 @@ let executeReviewCmd (state: AppState) (args: List<String>) : AppState =
   | [ "pull", url, queue, "--from", who ] ->
     executeReviewPullFrom state url queue who
   | [ "pull" ] -> executeReviewPull state (SCM.PackageOps.relay ()) "review"
-  // A single argument that is not a url is the QUEUE, against the remembered relay: `helpReview`
-  // says `review pull [url] [queue]`, and following it without a url used to hand the queue name
-  // to the network. Same guard `branch pull` uses.
+  // A single argument that is not a url is the QUEUE, against the remembered relay (`helpReview`:
+  // `review pull [url] [queue]`). Same guard `branch pull` uses.
   | [ "pull", arg ] ->
     if Cli.Branch.looksLikeRelayUrl arg then
       executeReviewPull state arg "review"
@@ -1045,14 +1037,12 @@ let executeReviewCmd (state: AppState) (args: List<String>) : AppState =
   | [ "reject", queue ] -> executeReject state queue false
   | [ "reject", queue, "-y" ] | [ "reject", queue, "--yes" ] ->
     executeReject state queue true
-  // The queue defaults to "review" everywhere else here, and the help says so. Without these arms a bare
-  // `dark review approve` fell through to the single-word arm below, which reads the word as a QUEUE NAME
-  // and answered `no branch "approve"` -- an error about a queue nobody asked for.
+  // A bare `approve`/`reject` gets the default queue "review" (as the help says); without these
+  // arms the verb itself is read as a queue name by the single-word arm below.
   | [ "approve" ] -> executeApprove state "review"
   | [ "reject" ] -> executeReject state "review" false
   | [ "reject", "-y" ] | [ "reject", "--yes" ] -> executeReject state "review" true
-  // `import` has no default to fall back on: it takes a file, and the same fall-through turned a missing
-  // one into `no branch "import"`.
+  // `import` has no default queue to fall back on: it takes a file, so refuse a missing one here.
   | [ "import" ] ->
     printErr "dark review import <file> [queue] -- which file?"
     state

@@ -208,16 +208,12 @@
     <Exec Command="gzip -9 -c ../../../rundir/seed.db &gt; ../../../rundir/seed.db.gz" />
   </Target>
 
-  <!-- Make the compile itself depend on the seed, so a regenerated one actually reaches the binary.
-       `CompressDatabase` above keeps seed.db.gz current, but nothing else tells CoreCompile that the
-       embedded resource changed, and an incremental publish that reuses the previous assembly ships the
-       OLD seed. That fails silently and in the worst possible way: `reload-packages` succeeds, the
-       publish succeeds, and the exe still has the previous packages, so a `.dark` fix looks shipped and
-       is not. Listing it here puts it in CoreCompile's inputs, where MSBuild looks for staleness.
+  <!-- Make the compile itself depend on the seed: `CompressDatabase` keeps seed.db.gz current, but
+       nothing tells CoreCompile that the embedded resource changed, so an incremental publish that
+       reuses the previous assembly ships the OLD seed. Listing it here puts it in CoreCompile's
+       inputs, where MSBuild looks for staleness.
 
-       How far this goes: it declares the dependency. `dotnet build -c Release` rebuilds this assembly on
-       every invocation regardless, so the effect is not observable there, and it has not been confirmed
-       against the AOT `publish` path; each reproduction there is a ~15 minute publish. -->
+       This declares the dependency only; it has not been confirmed against the AOT publish path. -->
   <ItemGroup Condition="'$(Configuration)' == 'Release' And Exists('../../../rundir/seed.db.gz')">
     <CustomAdditionalCompileInputs Include="../../../rundir/seed.db.gz" />
   </ItemGroup>

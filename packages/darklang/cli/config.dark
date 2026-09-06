@@ -1,15 +1,13 @@
 module Darklang.Cli.Config
 
-// The config lives next to this instance's store (`localDbPath`), so the path is absolute and its directory
-// always exists — independent of the process CWD and of install mode. (The old portable path,
-// "rundir/cli-config.json", was CWD-relative: `login` silently no-op'd — printed "Logged in" but persisted
-// nothing — whenever the CLI ran from a directory without a `rundir/` subdir, e.g. a released exe run from $HOME.)
+// The config lives next to this instance's store (`localDbPath`), so the path is absolute and its
+// directory always exists -- independent of the process CWD and of install mode. A CWD-relative
+// path here makes `login` silently persist nothing.
 let configFilePath () : String =
   let dbPath = Stdlib.LocalStore.path ()
   let dir = Stdlib.String.join (Stdlib.List.dropLast (Stdlib.String.split dbPath "/")) "/"
   $"{dir}/cli-config.json"
 
-// Read config from disk
 let readConfig () : Dict<String, String> =
   match Stdlib.Cli.FileSystem.pathExists (configFilePath ()) with
   | true ->
@@ -26,7 +24,6 @@ let readConfig () : Dict<String, String> =
   | false -> Dict {}
 
 
-// Write config to disk
 let writeConfig (config: Dict<String, String>) : Unit =
   let json = Stdlib.Json.serialize<Dict<String, String>> config
   let jsonBytes = Stdlib.String.toBlob json
@@ -34,7 +31,6 @@ let writeConfig (config: Dict<String, String>) : Unit =
   ()
 
 
-// Helper to get a single config value
 let get (key: String) : Stdlib.Option.Option<String> =
   let config = readConfig ()
   Stdlib.Dict.get config key

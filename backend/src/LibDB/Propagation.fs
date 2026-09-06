@@ -112,16 +112,10 @@ let private discoverDependents
           let! mainLocations = PMQueries.getLiveLocationsForHashes hashes
 
           // The UNION of where the branch says a hash lives and where main says it
-          // does, not one or the other. One hash is live at several names whenever
-          // two items have identical content -- which is routine, since
-          // content-addressing makes `x + 1L` in two modules literally the same item
-          // -- and every one of those names is a dependent that has to repoint.
-          //
-          // Either one alone loses names: the branch's answer alone drops a dependent
-          // that exists only in main, and main's alone drops one the branch
-          // introduced. On a branch a repoint of a main name is a branch-local one (it
-          // lands as a branch op), which is exactly what a branch should do with a name
-          // it changed the meaning of.
+          // does. One hash is routinely live at several names (content-addressing
+          // makes `x + 1L` in two modules literally one item), and each is a
+          // dependent that has to repoint: branch-alone drops main-only dependents,
+          // main-alone drops branch-introduced ones.
           let batchDependents =
             hashes
             |> List.collect (fun h ->
@@ -401,14 +395,11 @@ let private createAllItems
     else
       let sourceFqn = PackageLocation.toFQN sourceLocation
 
-      // The source's CURRENT hash beats whatever the caller passed, because the CLI sometimes passes a
-      // parser-time placeholder.
-      //
-      // The placeholder can be EMPTY, and an empty source hash seeds the substitution mapping with
-      // "rewrite every reference to this item to nothing" -- dependents get bodies pointing at no hash
-      // and fail at runtime with `Function  couldn't be found`, an empty name because there is no hash
-      // to name. Resolving through the branch's own package manager gives the branch's binding where it
-      // has one and main's where it doesn't, which is what "current" means on a branch.
+      // The source's CURRENT hash beats whatever the caller passed: the CLI
+      // sometimes passes a parser-time placeholder, and an EMPTY one would seed the
+      // substitution map with "rewrite every reference to nothing", leaving
+      // dependents pointing at no hash. Resolving through the branch's own PM gives
+      // the branch's binding where it has one and main's where it doesn't.
       let! resolvedSourceHash =
         resolveCurrentHash branch sourceLocation sourceItemKind toSourceHash
 

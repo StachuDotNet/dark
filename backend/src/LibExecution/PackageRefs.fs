@@ -170,10 +170,8 @@ module Type =
           if Map.isEmpty h then
             "" // Hash file not yet populated (CI before reload-packages)
           else
-            // Non-empty hash file that doesn't know this ref means the file is stale, which happens
-            // whenever a ref is added (or an older binary regenerates the file in-place -- `growIfNeeded`
-            // rewrites it, so running a previous release inside the source tree is enough). The fix is
-            // always the same, so say it rather than making the next person find it in AGENTS.md.
+            // A non-empty file missing this ref is stale: a ref was added, or an older
+            // binary regenerated it in place (`growIfNeeded` rewrites it).
             Exception.raiseInternal
               "PackageRefs: type hash not found. The hash file is stale; regenerate it with `> backend/src/LibExecution/package-ref-hashes.txt && ./scripts/build/reload-packages`"
               [ "fqn", fqn ]

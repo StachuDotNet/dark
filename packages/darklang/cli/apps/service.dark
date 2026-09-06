@@ -57,12 +57,9 @@ let launchdPlist (app: Model.App) : String =
 
 /// Register `app` as an OS service by writing its unit, then activating it.
 ///
-/// Every value that reaches a unit file is checked HERE rather than at authoring, and before anything is
-/// written: apps are DISCOVERED from packages, and packages sync, so none of this was necessarily
-/// written on this machine. Checking once here also covers both platforms with one guard.
-///
-/// Two fields land in the file, the name and the entrypoint, and each gets two checks: an allowlist for
-/// what the field is FOR, and a substring check for what a unit file and a plist can survive.
+/// Every value that reaches a unit file is checked HERE, not at authoring: apps sync
+/// from other machines. Name and entrypoint each get an allowlist (what the field is
+/// FOR) plus `isSafeForUnitFile` (what the file format survives).
 let enable (app: Model.App) : EnableResult =
   if Stdlib.Bool.not (Model.isValidSlug app.slug) then
     EnableResult.Failed $"invalid app slug '{app.slug}'"

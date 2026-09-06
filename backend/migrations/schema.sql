@@ -101,10 +101,9 @@ CREATE TABLE IF NOT EXISTS branches (
   merged_at TIMESTAMP NULL,            -- set when the branch's work is merged into its parent
   archived_at TIMESTAMP NULL           -- set when the branch is archived (soft delete)
 );
--- Deliberately NOT unique, not even among live branches. Two instances can each start a `fix-auth`
--- and after a sync BOTH rows live here: different branches that share a label, which is the entire
--- reason a branch id is a uuid, and a unique-name constraint would turn a sync into a failed import.
--- `resolveOrCreate` handles the local "don't start two under one name" race instead.
+-- Deliberately NOT unique, even among live branches: two instances can each start a `fix-auth`,
+-- and after a sync both rows live here. `resolveOrCreate` handles the local
+-- don't-start-two-under-one-name race.
 CREATE INDEX IF NOT EXISTS idx_branches_name ON branches(name) WHERE name != '';
 CREATE INDEX IF NOT EXISTS idx_branches_parent ON branches(parent_id);
 
@@ -198,9 +197,8 @@ CREATE TABLE IF NOT EXISTS conflicts (
   resolved_by TEXT,                 -- resolution op id, set on override
   origin_ts TEXT,                   -- cross-instance LWW of the conflict record itself
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  -- Which branch this divergence is ON, spelled the way a branch id is spelled
-  -- everywhere. Without it, settling a conflict from a branch would close a store-wide record while
-  -- the fix lives in an overlay that does nothing until merge.
+  -- Which branch this divergence is ON (default main). Without it, settling a conflict from a branch
+  -- would close a store-wide record while the fix lives in an unmerged overlay.
   branch_id TEXT NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'
 );
 CREATE INDEX IF NOT EXISTS idx_conflicts_status ON conflicts(status);
@@ -217,9 +215,8 @@ CREATE INDEX IF NOT EXISTS idx_conflicts_name ON conflicts(owner, modules, name)
 -- name = '' means a MODULE-level choice covering everything beneath it.
 --
 -- BRANCH-SCOPED, like everything else a branch can change. A branch inherits main's choices and can
--- override them; sharing one row would leak branch state into main, and silently, since nothing
--- about a pin says which branch it came from. The default below is main's well-known uuid, which
--- code spells as `ProgramTypes.BranchId.Main` and never as a literal.
+-- override them. The default below is main's well-known uuid, which code spells as
+-- `ProgramTypes.BranchId.Main` and never as a literal.
 --
 -- Derived: folded from `Decision` ops and nothing else writes here, so this is a projection listed
 -- in `Seed.projectionTables`. Drop it and the log rebuilds it.
@@ -277,10 +274,8 @@ CREATE TABLE IF NOT EXISTS package_blobs (
 );
 
 
--- Op ids that arrived from a BUILD's embedded seed rather than being authored here or pulled from a
--- peer. Append-only and local: it records where an op came from, which no later fold can re-derive.
--- Comparing against the seed currently held answers a different question, and would call the whole
--- previous package set locally authored.
+-- Op ids that arrived from a BUILD's embedded seed rather than authored here or pulled from a peer.
+-- Append-only and local: provenance that no later fold can re-derive.
 CREATE TABLE IF NOT EXISTS seed_ops (
   op_id TEXT PRIMARY KEY
 );
@@ -312,13 +307,10 @@ CREATE TABLE IF NOT EXISTS locations (
   -- "is this binding committed yet". This is what `pin` uses to tell a staged repoint from a
   -- committed one.
   op_id TEXT NOT NULL DEFAULT '',
-  -- The hash this binding REPLACED, as the `SetName` op recorded it, or NULL when the op named no
-  -- predecessor. Projected here because conflict detection needs it from BOTH sides: the incoming side
-  -- reads it off the op, and without this column the local side always answered "none recorded", so the
-  -- rule that two bindings replacing the SAME hash have diverged could never fire on a real pair.
-  --
-  -- Distinct from walking back through `origin_ts`: what an op SAYS it replaced is the lineage, and the
-  -- previous row by stamp is only the previous row by stamp.
+  -- The hash this binding REPLACED, as the `SetName` op recorded it; NULL when the op named no
+  -- predecessor. Conflict detection needs it from BOTH sides (incoming reads it off the op, local
+  -- reads it here). What an op SAYS it replaced is the lineage; the previous row by origin_ts is
+  -- only the previous row by stamp.
   previous TEXT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_locations_branch_lookup
