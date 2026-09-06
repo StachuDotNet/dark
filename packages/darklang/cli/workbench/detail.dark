@@ -178,15 +178,30 @@ let conflictDetail (state: State) : String =
     // empty store.
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
 
+    // "ours"/"theirs", matching the footer's `o ours · t theirs` keys: two vocabularies for the
+    // same two sides on one screen made the o/t choice a translation exercise. Relative times,
+    // like every other pane.
     let sides =
       c.candidates
       |> Stdlib.List.map (fun cand ->
         let mark = if cand.hash == c.autoResolvedTo then "kept" else "other"
-        let who = if cand.author == "" then cand.side else cand.author
-        $"  {mark}   {who}  {SCM.Conflicts.shortHash cand.hash}  {cand.originTs}")
+
+        let who =
+          if cand.side == "local" then "ours"
+          else if cand.author == "" then "theirs"
+          else $"theirs ({cand.author})"
+
+        $"  {mark}   {who}  {SCM.Conflicts.shortHash cand.hash}  {agoText cand.originTs}")
       |> Stdlib.String.join "\n"
 
-    let why = if c.reason == "" then "" else $"\nwhy:        {c.reason}"
+    // The reason, as a sentence rather than the fold's internal token.
+    let whyText =
+      match c.reason with
+      | "later-origin-ts" -> "both sides changed it; the newer edit was kept"
+      | "tie-break-by-hash" -> "both sides changed it at the same stamp; the tie broke deterministically"
+      | other -> other
+
+    let why = if c.reason == "" then "" else $"\nwhy:        {whyText}"
 
     let by =
       if c.resolvedBy == "" then

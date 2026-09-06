@@ -92,7 +92,9 @@ let scmStatusLine (s: ScmStatus) : String =
   else
     let parts =
       Stdlib.List.flatten
-        [ (if s.authored > 0 then
+        [ // When every change is mine, "4 changed: 4 mine" restates itself in the most prominent
+          // line of the app; the clause earns its place only when someone else's changes exist.
+          (if (s.authored > 0) && (s.authored != s.changed) then
              [ $"{Stdlib.Int.toString s.authored} mine" ]
            else
              [])

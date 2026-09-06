@@ -234,7 +234,14 @@ let route (m: String) (path: String) (what: String) : String =
 /// The landing page. Written for someone who has never heard of this: what's here, then how to get it, and
 /// only then the machine-facing endpoints -- which live behind a fold, because a relay's HTTP surface is
 /// what a MACHINE wants and almost nobody arrives wanting it first.
-let landingHandlerFn (_req: HttpRequest) : HttpResponse =
+let landingHandlerFn (req: HttpRequest) : HttpResponse =
+  // The copy-paste command names the relay THIS page came from: a hardcoded hostname failed for
+  // anyone who tried it against a differently-named deployment (which is every deployment so far).
+  let selfUrl =
+    match Stdlib.Http.Request.header req "host" with
+    | Some h -> $"https://{h}"
+    | None -> "https://<your-relay>"
+
   let featBlock =
     (feature "No setup" "Point a machine here and pull. No tailscale, no infra, nothing exposed to the internet.")
     ++ (feature "Pick up where you left off" "Write on your laptop, keep going on your desktop. Your packages follow you.")
@@ -258,10 +265,10 @@ let landingHandlerFn (_req: HttpRequest) : HttpResponse =
 
   page
     "matter.darklang.com"
-    ("<h1>Simple, easy code sync.</h1>"
-     ++ "<p class=\"lede\">Code hosting and sharing that loops into the rest of your dev life. Write on one "
-     ++ "machine, pick up on another -- your Darklang packages follow you, with nothing exposed to the "
-     ++ "internet and no tailscale to set up.</p>"
+    // Lead with the strongest true thing, concretely; adjectives are where a product hides.
+    ("<h1>Your packages, on every machine.</h1>"
+     ++ "<p class=\"lede\">Commit on one machine, pull on another. Every version is kept forever, "
+     ++ "content-addressed, and nothing runs until you approve it.</p>"
      ++ "<h2>What's here</h2>"
      ++ $"<div class=\"stat\"><div><span class=\"k\">{itemsStr}</span><span class=\"l\">items</span></div>"
      ++ $"<div><span class=\"k\">{pubsStr}</span><span class=\"l\">publishers</span></div></div>"
@@ -272,10 +279,9 @@ let landingHandlerFn (_req: HttpRequest) : HttpResponse =
      ++ "<h2>Why matter</h2>"
      ++ $"<div class=\"feats\">{featBlock}</div>"
      ++ "<h2>Try it</h2>"
-     ++ "<p>Point a machine here and pull for review. Changes land <strong>pending</strong> until you approve "
-     ++ "them, so nothing runs just because it showed up. Reading never needs a secret; pushing does, and "
-     ++ "whoever runs the relay hands it out.</p>"
-     ++ "<pre><code>dark connect https://matter.darklang.com --secret &lt;secret&gt;\ndark review pull\ndark review approve</code></pre>"
+     ++ "<p>Pulled changes land <strong>pending</strong> until you approve them. Reading needs no "
+     ++ "secret; pushing does, from whoever runs the relay.</p>"
+     ++ $"<pre><code>dark connect {selfUrl} --secret &lt;secret&gt;\ndark review pull\ndark review approve</code></pre>"
      ++ "<h2>Or keep it local</h2>"
      ++ "<p>Your Matter -- all your packages -- lives on your own machine no matter what. Syncing it "
      ++ "<em>through matter.darklang.com</em> is the optional part: point your machines at your own "
@@ -1068,7 +1074,7 @@ let searchHandlerFn (req: HttpRequest) : HttpResponse =
 
       page
         $"Search: {q}"
-        ($"<h1>{num total} matches</h1>"
+        ($"<h1>{num total} {(if total == 1L then "match" else "matches")}</h1>"
          ++ (Stdlib.Html.p
                [ Stdlib.Html.classes [ "lede" ] ]
                [ Stdlib.Html.text "for ", Stdlib.Html.code [] [ Stdlib.Html.text q ] ]

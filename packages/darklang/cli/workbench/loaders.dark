@@ -97,7 +97,7 @@ let loadCommitBodyItems () : List<BodyItem> =
       { name = c.message
         kind = "commit"
         isModule = false
-        desc = short ++ " · " ++ ops ++ " ops" })
+        desc = short ++ " · " ++ ops ++ (if ops == "1" then " op" else " ops") })
 
 /// The ops of the selected commit, rendered for the reader. Capped - a seed commit can have 10k+ ops.
 let commitOpsText (branchId: Uuid) (selected: Int) : String =
@@ -128,12 +128,14 @@ let commitSummary (selected: Int) : String =
   match Stdlib.List.getAt commits selected with
   | None -> "(no commit selected)"
   | Some c ->
-    c.hash
+    // Message first: it answers "what is this commit"; the hash is only for copy/paste, so it sits
+    // dimmed underneath rather than in the brightest slot.
+    c.message
     ++ "\n\n"
-    ++ c.message
+    ++ (Stdlib.Cli.UI.Colors.dimText c.hash)
     ++ "\n\n"
     ++ (Stdlib.Int64.toString c.ops)
-    ++ " ops  ·  press ⏎ to view them"
+    ++ (if c.ops == 1L then " op  ·  press ⏎ to view it" else " ops  ·  press ⏎ to view them")
 
 /// Render diff lines as syntax-highlighted code with a faint wash behind what
 /// changed: green behind added lines, red behind removed, nothing behind

@@ -61,7 +61,7 @@ let loadHomeItems (branchId: Uuid) : List<BodyItem> =
           // No author in the row. On one machine it is the same value on every line, and it is an instance
           // id rather than a name unless you set one, which eats the width the time and size need. The
           // detail pane says who.
-          desc = (agoText c.originTs) ++ " · " ++ ops ++ " ops" })
+          desc = (agoText c.originTs) ++ " · " ++ ops ++ (if ops == "1" then " op" else " ops") })
   let allBranches = SCM.Branch.list ()
   let open_ =
     allBranches
@@ -91,7 +91,7 @@ let loadHomeItems (branchId: Uuid) : List<BodyItem> =
     allBranches |> Stdlib.List.filter (fun b -> b.merged) |> Stdlib.List.length
   let merged =
     if mergedCount == 0 then []
-    else [ BodyItem { name = "+ " ++ (plural mergedCount "merged branch"); kind = "home-merged"; isModule = false; desc = "" } ]
+    else [ BodyItem { name = "+ " ++ (Stdlib.Int.toString mergedCount ++ (if mergedCount == 1 then " merged branch" else " merged branches")); kind = "home-merged"; isModule = false; desc = "" } ]
   // A blank spacer row (an empty header - the cursor skips it too) before
   // each section but the first, so the sections read as sections rather than
   // one run of rows.
@@ -179,19 +179,21 @@ let isFirstRun (state: State) : Bool =
     Stdlib.Bool.not (LanguageTools.PackageManager.ownerHasItems state.branchId owner)
 
 let welcomeLines (state: State) : List<String> =
-  let name = if state.accountName == "" then "there" else state.accountName
+  // No name recorded: greet plainly and use a neutral example -- "Welcome, there" and
+  // `:new fn there.hello` both read as a template with the variable unfilled.
+  let name = state.accountName
   let key = fun k -> Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.white k
   // Computed, not written down: with Builtins gated in, the REPL is the third
   // row of Code, so "2 2 2".
   let replKeys = keysTo state (mkDest vScratch 0)
-  [ Stdlib.Cli.UI.Colors.boldText ("Welcome, " ++ name)
+  [ Stdlib.Cli.UI.Colors.boldText (if name == "" then "Welcome" else "Welcome, " ++ name)
     ""
     Stdlib.Cli.UI.Colors.dimText "Dark Matter is a package tree. What you write lives in it, under your"
     Stdlib.Cli.UI.Colors.dimText "name, and syncs. This is your branch."
     ""
     (key "2") ++ "    " ++ (Stdlib.Cli.UI.Colors.boldText "look around") ++ (Stdlib.Cli.UI.Colors.dimText "     the tree - Darklang.Stdlib first")
     (key (replKeys ++ " ⏎")) ++ "  " ++ (Stdlib.Cli.UI.Colors.boldText "try something") ++ (Stdlib.Cli.UI.Colors.dimText " REPL - Stdlib.List.map (fun x -> x + 1) [1, 2]")
-    (key ":") ++ "    " ++ (Stdlib.Cli.UI.Colors.boldText "make something") ++ (Stdlib.Cli.UI.Colors.dimText "  :new fn " ++ name ++ ".hello")
+    (key ":") ++ "    " ++ (Stdlib.Cli.UI.Colors.boldText "make something") ++ (Stdlib.Cli.UI.Colors.dimText ("  :new fn " ++ (if name == "" then "scratch" else name) ++ ".hello"))
     (key "b") ++ "    " ++ (Stdlib.Cli.UI.Colors.boldText "branch first") ++ (Stdlib.Cli.UI.Colors.dimText "    if you'd rather not work on main") ]
 
 /// A padded label and value for a detail pane.

@@ -145,7 +145,10 @@ let clipToWidth (text : string) (maxWidth : int) : string =
 /// Break a row into terminal-width rows at the column, keeping any styling it carries.
 ///
 /// Styling active at a wrap is restated on the next row, since the frame renderer resets after each
-/// one. Clusters are never split. Empty input yields one empty row.
+/// one. Clusters are never split, and neither are WORDS when a space offers a break point: the wrap
+/// prefers the last space in the row, and falls back to the exact column only for a word wider than
+/// the whole row. ("branc / h." on the welcome screen is what the exact-column version produced, in
+/// every prose pane at once.) Empty input yields one empty row.
 let wrapAtColumn (text : string) (maxWidth : int) : string list =
   let width = max 1 maxWidth
   let completed = ResizeArray<string>()
@@ -153,6 +156,10 @@ let wrapAtColumn (text : string) (maxWidth : int) : string list =
   let mutable activeStyle = ""
   let mutable currentWidth = 0
   let mutable wrapPending = false
+  // Where the row could break at a word boundary: the builder index just past the last space, and
+  // the display width consumed up to and including it. -1 = no space in this row yet.
+  let mutable lastSpaceEnd = -1
+  let mutable widthAtSpaceEnd = 0
   let mutable i = 0
 
   while i < text.Length do
@@ -186,16 +193,39 @@ let wrapAtColumn (text : string) (maxWidth : int) : string list =
         wrapPending || (currentWidth > 0 && currentWidth + charWidth > width)
 
       if shouldWrap then
-        completed.Add(current.ToString())
-        current.Clear() |> ignore<System.Text.StringBuilder>
-        current.Append(activeStyle) |> ignore<System.Text.StringBuilder>
+        // Break at the row's last space when one exists (and it is not the very end, which would
+        // carry nothing): the head keeps everything before the space, the tail moves down with the
+        // active styling restated. A row with no space -- one word wider than the pane -- still
+        // breaks at the column.
+        if lastSpaceEnd > activeStyle.Length && lastSpaceEnd < current.Length then
+          let whole = current.ToString()
+          let head = whole.Substring(0, lastSpaceEnd - 1) // drop the break space itself
+          let tail = whole.Substring(lastSpaceEnd)
+          completed.Add head
+          current.Clear() |> ignore<System.Text.StringBuilder>
+          current.Append(activeStyle) |> ignore<System.Text.StringBuilder>
+          current.Append(tail) |> ignore<System.Text.StringBuilder>
+          currentWidth <- currentWidth - widthAtSpaceEnd
+        else
+          completed.Add(current.ToString())
+          current.Clear() |> ignore<System.Text.StringBuilder>
+          current.Append(activeStyle) |> ignore<System.Text.StringBuilder>
+          currentWidth <- 0
+
+        lastSpaceEnd <- -1
+        widthAtSpaceEnd <- 0
 
       if plain then
         current.Append(c) |> ignore<System.Text.StringBuilder>
       else
         current.Append(cluster) |> ignore<System.Text.StringBuilder>
 
-      currentWidth <- if shouldWrap then charWidth else currentWidth + charWidth
+      currentWidth <- currentWidth + charWidth
+
+      if plain && c = ' ' then
+        lastSpaceEnd <- current.Length
+        widthAtSpaceEnd <- currentWidth
+
       wrapPending <- currentWidth >= width
       i <- i + (if plain then 1 else cluster.Length)
 

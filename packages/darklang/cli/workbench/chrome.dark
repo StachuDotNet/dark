@@ -39,7 +39,15 @@ let renderViewBody (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<S
   else if state.activeView == vApps then
     splitListPreview state region "Apps" "Detail" (Stdlib.Cli.UI.Colors.dimText "no apps registered")
   else if state.activeView == vTraces then
-    splitListPreview state region "Traces" "Detail" (Stdlib.Cli.UI.Colors.dimText "no traces yet - eval or run an app to record")
+    // Sample rows must SAY so in the title, not only in the detail pane: the first sample is the
+    // REPL's own "try:" example, which someone who just ran it will believe tracing recorded.
+    let tracesTitle =
+      if state.items |> Stdlib.List.any (fun it -> it.kind == "trace-sample") then
+        "Traces · (sample)"
+      else
+        "Traces"
+
+    splitListPreview state region tracesTitle "Detail" (Stdlib.Cli.UI.Colors.dimText "no traces yet - eval or run an app to record")
   else if state.activeView == vDocs then
     splitListPreview state region "Docs" "Topic" (Stdlib.Cli.UI.Colors.dimText "(no topics)")
   else
@@ -149,7 +157,9 @@ let hintsForView (state: State) (width: Int) : String =
   let ctx =
     if sidebarFocused state then
       // Home exposes the shortcut back to the command prompt.
-      if view == vHome then [ ("↑↓", "move"), ("⏎", "go"), ("1-9", "workspace"), ("→", "to view"), ("p", "prompt") ]
+      // `p prompt` lives in secondaryGlobal already; repeating it here printed the footer's one
+      // duplicate entry.
+      if view == vHome then [ ("↑↓", "move"), ("⏎", "go"), ("1-9", "workspace"), ("→", "to view") ]
       else [ ("↑↓", "move"), ("⏎", "go"), ("→", "to view") ]
     else if view == vMatter then
       Stdlib.List.flatten
