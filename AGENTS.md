@@ -129,7 +129,7 @@ fall-through arm answers plausibly instead of refusing, so `dark commits zzznope
 main's commits as though nothing had been asked, and `dark branch rename` created a branch
 called "rename".
 
-Shapes 2 and 4 are automated in `CliTraces.Tests.fs`, driven off the command registry rather
+Shapes 2 and 4 are automated in `CliSurface.Tests.fs`, driven off the command registry rather
 than a list, so a new command is swept the day it is registered. A command that must not be
 RUN goes in `notSweepable` there, with the reason; a name in that list that is no longer
 registered fails its own test, because an exclusion nobody revisits is how a sweep quietly

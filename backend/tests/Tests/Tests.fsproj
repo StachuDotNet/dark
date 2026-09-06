@@ -43,6 +43,9 @@
     <!-- cloud stuff /-->
     <Compile Include="HttpServer.Tests.fs" />
     <Compile Include="Toplevels.Tests.fs" />
+    <Compile Include="CliTestHarness.fs" />
+    <Compile Include="CliSurface.Tests.fs" />
+    <Compile Include="CliScm.Tests.fs" />
     <Compile Include="CliTraces.Tests.fs" />
     <Compile Include="CliScriptLowering.Tests.fs" />
     <Compile Include="DvalReprInternalQueryable.Tests.fs" />
