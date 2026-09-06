@@ -55,6 +55,25 @@ failures=0
 dark() { ( cd "$HOMEDIR" && HOME="$HOMEDIR" DARK_CONFIG_RUNDIR="$HOMEDIR/rundir" "$ARTIFACT" "$@" 2>&1 ); }
 clean() { sed 's/\x1b\[[0-9;]*m//g'; }
 
+wantnot() {  # wantnot <name> <pattern> <command...> -- the pattern must NOT appear
+  local name="$1" pat="$2"; shift 2
+  local out
+  out=$(dark "$@" | clean) || true
+  if grep -qE "Encountered a Runtime Error|No matching case found|couldn't be found" <<<"$out"; then
+    echo "  FAIL $name: the command errored:"
+    while IFS= read -r line; do printf '         %s
+' "$line"; done <<<"$out" | head -4
+    failures=$((failures + 1))
+  elif grep -qE "$pat" <<<"$out"; then
+    echo "  FAIL $name: /$pat/ appeared:"
+    while IFS= read -r line; do printf '         %s
+' "$line"; done <<<"$out" | head -4
+    failures=$((failures + 1))
+  else
+    echo "  ok   $name"
+  fi
+}
+
 want() {  # want <name> <pattern> <command...>
   local name="$1" pat="$2"; shift 2
   local out
@@ -107,17 +126,19 @@ dark --branch main fn /FirstDay.Hello.greet '(name: String) : String = "hey " ++
 want "merge records a conflict" "[0-9]+ conflict" --branch clash merge clash
 want "conflicts --json lists it" '"pending":[1-9]' --branch main conflicts --json
 
-# 6b. An override you made, undone by a later ordinary edit, becomes a standing finding.
+# 6b. An override you made, then YOUR OWN later edit: last-writer-wins as designed, and NOT a finding.
 #
-# Last-writer-wins is working as designed when a later `SetName` beats an earlier `Decision`. What was
-# missing is that the losing side went SILENTLY, and with sync running as a daemon it can go while nobody
-# is at the keyboard. This is the one path where a deliberate act of yours disappears with nothing shown.
+# The superseded-decision report is for the daemon case: a PEER's edit beats your override while nobody
+# is at the keyboard (`supersededOverrides` checks authorship through `op_owners`, which only a sync
+# import writes). Your own later edit is a change of mind, and reporting you to yourself was the noise
+# a first `dark status` on a synced store was full of. The peer case needs two stores and lives in
+# `MultiInstance.Tests.fs` (`supersededReportsCheckAuthorship`).
 CID=$(dark --branch main conflicts --json 2>/dev/null | grep -oE '"id":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
 dark --branch main conflicts override "$CID" B >/dev/null 2>&1 || true
 want "the override holds"      "yo "        --branch main eval 'FirstDay.Hello.greet "x"'
 dark --branch main fn /FirstDay.Hello.greet '(name: String) : String = "later " ++ name' >/dev/null 2>&1 || true
 want "a later edit wins"       "later "     --branch main eval 'FirstDay.Hello.greet "x"'
-want "and it is reported"      "overrode this|decision-superseded" --branch main constraints
+wantnot "and your own change of mind is not reported" "overrode this|decision-superseded" --branch main constraints
 
 # 6c. A deprecation is a commit like any other.
 #

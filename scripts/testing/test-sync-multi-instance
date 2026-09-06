@@ -254,7 +254,7 @@ wantnot "and does not call it deprecated" "DEPRECATED" "$bview"
 x A deprecate fn SM.T.old --kind obsolete -m "moved on" --yes > /dev/null
 x A commit "deprecate it" -y > /dev/null
 want "A shows it deprecated" "DEPRECATED \(obsolete\)" "$(x A view SM.T.old)"
-want "A pushes the deprecation" "^Pushed 1 ops" "$(x A push)"
+want "A pushes the deprecation" "^Pushed 1 op " "$(x A push)"
 want "B pulls it" "^Pulled 1 new op" "$(x B pull)"
 want "and B shows it deprecated too" "DEPRECATED \(obsolete\)" "$(x B view SM.T.old)"
 want "with the reason" "^   moved on$" "$(x B view SM.T.old)"
