@@ -196,15 +196,16 @@ let commitsOnBranch (branchId: Uuid) (limit: Int64) : List<Commits.Commit> =
   | Error _ -> []
 
 
-/// The newest few commits by INSERTION order, whoever authored them: what a pull just landed, since
-/// arriving commit rows are inserted as the import adopts them. Insertion order rather than stamp,
-/// because a peer's stamp can be older than the pull that delivered it.
+/// The newest few commits by AUTHORING stamp, whoever authored them: what a pull just landed. The
+/// stamp, not the local rowid -- one pull adopts a batch of commit rows in whatever order the wire
+/// listed them, so rowid order within a pull is arbitrary, and the story led with housekeeping while
+/// the commit a person was waiting for sat below the fold.
 let commitsArrivedRecently (limit: Int64) : List<Commits.Commit> =
   match
     Stdlib.Sqlite.queryP
       (localDb ())
       "SELECT c.hash, c.message, c.author, c.origin_ts, c.created_at, c.parent
-       FROM commits c ORDER BY c.rowid DESC LIMIT @p0"
+       FROM commits c ORDER BY c.origin_ts DESC LIMIT @p0"
       [ Stdlib.Int64.toString limit ]
   with
   | Ok rows -> rows |> Stdlib.List.filterMap (fun row -> Commits.commitFromRow row)

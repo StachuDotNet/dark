@@ -143,14 +143,22 @@ let candidateLabels
   (hereName: String)
   (c: SCM.Conflicts.Conflict)
   : List<String> =
+  // A merge conflict names the BRANCH as the incoming candidate's author (a sync conflict names a
+  // peer identity there). When the other side is one of this store's own branches, both versions
+  // are yours, and "yours vs tune" reads as three people; say WHERE instead: main vs the branch.
+  let localBranchNames = SCM.Branches.list () |> Stdlib.List.map (fun b -> b.name)
+
   let isMergeShaped =
     c.candidates
-    |> Stdlib.List.any (fun cand -> (cand.side != "local") && (cand.side != "incoming"))
+    |> Stdlib.List.any (fun cand ->
+      (cand.author != "") && (Stdlib.List.member localBranchNames cand.author))
 
   c.candidates
   |> Stdlib.List.map (fun cand ->
     if isMergeShaped then
-      if cand.side == "local" then hereName else cand.side
+      (if cand.side == "local" then hereName
+       else if cand.author != "" then cand.author
+       else cand.side)
     else
       whoseCandidate me cand)
 
@@ -184,6 +192,27 @@ let executeList (state: AppState) : AppState =
       // legend printed after the rows it explains.
       let whoseLabels = candidateLabels me hereName c
 
+      // The previews exist to SHOW the difference. Clipping both at the same column cut them at an
+      // identical prefix (identical text labeled kept/lost reads as a tool bug), so the pair is
+      // windowed at its first divergence -- and when the two sides render to IDENTICAL text (same
+      // source whose dependency reference moved), the hash rides along as the only visible difference.
+      let flats =
+        c.candidates
+        |> Stdlib.List.map (fun cand ->
+          previewFlat state.currentBranchId c.itemType cand.hash c.name)
+
+      let (windowStart, textsEqual) =
+        match flats with
+        | [ a, b ] ->
+          // Equal texts have no divergence to window (firstDivergence returns their full length);
+          // the hash suffix is their story, from the start of the line.
+          if a == b then
+            (0, true)
+          else
+            let d = firstDivergence a b
+            ((if d > 48 then d - 24 else 0), false)
+        | _ -> (0, false)
+
       c.candidates
       |> Stdlib.List.indexedMap (fun i cand ->
         let label = if i == 0 then "A" else "B"
@@ -196,7 +225,23 @@ let executeList (state: AppState) : AppState =
         let mark = if cand.hash == c.autoResolvedTo then "kept" else "lost"
 
         let tag = Stdlib.String.padEndToWidth $"({whose}, {mark})" 16
-        let preview = previewLine state.currentBranchId c.itemType cand.hash c.name
+
+        let flat =
+          Stdlib.List.getAt flats i |> Stdlib.Option.withDefault "(nothing to show)"
+
+        let windowed =
+          if windowStart == 0 then flat else "..." ++ (Stdlib.String.dropFirst flat windowStart)
+
+        let suffixed =
+          if textsEqual then
+            $"{windowed}  [{SCM.Conflicts.shortHash cand.hash}]"
+          else
+            windowed
+
+        let preview =
+          if suffixed == "" then "(nothing to show)"
+          else Stdlib.Cli.Tui.Text.clipToWidth suffixed 72
+
         $"      {label} {tag} {preview}")
       |> Stdlib.List.iter (fun l -> Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText l)))
 
