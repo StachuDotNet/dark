@@ -2264,6 +2264,56 @@ let private constraintFlagsAreNotTargets =
         $"an unquoted --why reason is not read as ids: {whyOut}"
     })
 
+/// A branch discard captures its op ids before deleting, so the untag can no longer miss the rows
+/// the delete removed -- which left tags pointing at nothing, and `status`'s store health calling
+/// the store damaged at exactly the moment trust was thinnest.
+let private aBranchDiscardLeavesNoDanglingTags =
+  cliTestOnMain
+    "discarding a branch draft leaves no tag pointing at a missing op"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "dangletags" ]
+        let! _ = runCli state [ "fn"; "Tests.Dangle.f"; "() : Int64 = 5L" ]
+        let! _ =
+          runCli state [ "fn"; "Tests.Dangle.g"; "() : Int64 = Tests.Dangle.f ()" ]
+        let! _ = runCli state [ "discard"; "-y" ]
+
+        let! dangling =
+          Sql.query
+            "SELECT count(*) AS n FROM op_branches ob
+           WHERE NOT EXISTS (SELECT 1 FROM package_ops p WHERE p.id = ob.op_id)"
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
+        Expect.equal dangling 0L "every surviving tag points at a real op"
+
+        let! status = runCli state [ "status" ]
+        Expect.isFalse
+          (status.Contains "store problems")
+          $"and store health stays quiet: {status}"
+
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "dangletags"; "-y" ]
+        ()
+      })
+
+/// Archiving the branch you stand on moves you to its PARENT -- read before the archive drops the
+/// row from the listing, or a branch-of-a-branch landed you on main.
+let private archivingAChildLandsOnItsParent =
+  cliTestOnMain
+    "archiving a child branch from atop it lands on the parent, not main"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "archparent" ]
+        let! _ = runCli state [ "switch"; "archchild" ]
+        let! archived = runCli state [ "branch"; "archive"; "archchild"; "-y" ]
+        Expect.stringContains
+          archived
+          "now on branch \"archparent\""
+          $"the child's parent, not main: {archived}"
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "archparent"; "-y" ]
+        ()
+      })
+
 let private aBundleCarriesItsCommits =
   cliTestOnMain
     "a branch bundle arrives with the author's commits, not as a draft"
@@ -2608,6 +2658,31 @@ let private commitRefusesDefiniteTypeErrors =
           taken
           "-- 4 ops"
           $"the typed override takes it: {taken}"
+
+        // The refusal names its item, and FIXING an error unblocks a later commit without the
+        // override: the gate checks the draft's LIVE items, so a superseded broken version (kept in
+        // the draft as history) no longer refuses forever.
+        Expect.stringContains
+          refused
+          "Tests.ArityGate.bad"
+          $"the refusal names the failing item: {refused}"
+        let! _ =
+          runCli
+            state
+            [ "fn"
+              "Tests.ArityGate.bad2"
+              "(x: Int64) : Int64 = Stdlib.String.length x" ]
+        let! refusedAgain = runCli state [ "commit"; "nope"; "-y" ]
+        Expect.stringContains
+          refusedAgain
+          "cannot commit"
+          $"broken refuses: {refusedAgain}"
+        let! _ =
+          runCli state [ "fn"; "Tests.ArityGate.bad2"; "(x: Int64) : Int64 = x" ]
+        let! fixed_ = runCli state [ "commit"; "fixed, no override"; "-y" ]
+        Expect.isFalse
+          (fixed_.Contains "cannot commit")
+          $"a fixed draft commits without --allow-type-errors: {fixed_}"
       })
 
 
@@ -4144,6 +4219,8 @@ let tests =
        failuresExitNonzero
        commitAsksAndNeedsAMessage
        constraintFlagsAreNotTargets
+       aBranchDiscardLeavesNoDanglingTags
+       archivingAChildLandsOnItsParent
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

@@ -65,7 +65,12 @@ for i in A B C D; do x "$i" connect "http://localhost:$PORT" --secret "$SECRET" 
 x B pull > /dev/null; x C pull > /dev/null
 
 echo "== a round trip"
-x A fn /SM.T.one '() : Int64 = 41L' > /dev/null; x A commit "A's work" -y > /dev/null
+x A fn /SM.T.one '() : Int64 = 41L' > /dev/null
+# A DRAFT does not travel: pushing it would land it under the receiver's import commit, and the
+# message written later would never reach anyone (the ops would already be marked pushed).
+want "a draft stays local" "stays local until" "$(x A push)"
+wantnot "and does not push" "^Pushed [1-9]" "$(x A push)"
+x A commit "A's work" -y > /dev/null
 want "A pushes" "^Pushed [1-9][0-9]* op" "$(x A push)"
 want "B pulls" "^Pulled [1-9][0-9]* new op" "$(x B pull)"
 want "B runs it" "^41$" "$(x B eval 'SM.T.one ()' | tail -1)"

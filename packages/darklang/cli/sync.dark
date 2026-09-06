@@ -388,6 +388,7 @@ let executePush (state: AppState) (url: String) : AppState =
 
     if alreadyPushed then
       printOk $"Already up to date with {url} -- nothing new to push."
+      pushTailNotes url
     else
 
     // Whether we hold everything the relay had BEFORE we add to it -- afterwards our own ops have moved
