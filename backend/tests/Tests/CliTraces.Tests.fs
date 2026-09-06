@@ -2950,9 +2950,12 @@ let private partialCommitTakesOnlyWhatYouNamed =
 
         let! refused =
           runCli state [ "commit"; "nope"; "--include=Tests.Pc.absent"; "-y" ]
+        // The refusal fires BEFORE the review renders, and names both the missing name and where
+        // to look -- showing the whole draft over a selection that commits none of it was the one
+        // dishonesty a review screen cannot afford.
         Expect.stringContains
           refused
-          "nothing in your draft is named"
+          "--include names things not in your draft: Tests.Pc.absent"
           "an unknown name is refused"
 
         let! stillThere = runCli state [ "status" ]
