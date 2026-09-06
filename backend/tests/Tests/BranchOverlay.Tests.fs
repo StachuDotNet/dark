@@ -786,13 +786,27 @@ let branchesOffBranches =
     let! _ = Branches.storeDeltaOps (testBranch "boA") opsA
     let! _ = Branches.storeDeltaOps (testBranch "boB") opsB
 
-    // B's overlay walks the parent chain: A's frontier + B's own.
+    // A parent's WIP is its own: until A commits, B's chain overlay carries none of A's ops.
+    let! bWipOps = Branches.loadDeltaOps (testBranch "boB")
+    let bWipOverlay = PM.withExtraOps pmPT bWipOps
+    let! bSeesAWip = bWipOverlay.findFn (fooLocIn "ChainA") |> Ply.toTask
+    Expect.isNone bSeesAWip "B does NOT see its parent A's uncommitted fn"
+
+    // Committed on A, the chain carries it. The stamp is what loadDeltaOps keys on.
+    do!
+      Sql.query
+        "UPDATE package_ops SET commit_hash = 'chain-test-commit'
+         WHERE id IN (SELECT op_id FROM op_branches WHERE branch_id = @b)"
+      |> Sql.parameters [ "b", Sql.uuid ((testBranch "boA").Guid) ]
+      |> Sql.executeStatementAsync
+
+    // B's overlay walks the parent chain: A's committed frontier + B's own (committed or not).
     let! bOps = Branches.loadDeltaOps (testBranch "boB")
     let bOverlay = PM.withExtraOps pmPT bOps
     let! bSeesA = bOverlay.findFn (fooLocIn "ChainA") |> Ply.toTask
     let! bSeesB = bOverlay.findFn (fooLocIn "ChainB") |> Ply.toTask
-    Expect.isSome bSeesA "B sees its parent A's fn (branches off branches)"
-    Expect.isSome bSeesB "B sees its own fn"
+    Expect.isSome bSeesA "B sees its parent A's committed fn (branches off branches)"
+    Expect.isSome bSeesB "B sees its own fn, uncommitted included"
 
     let! aOps = Branches.loadDeltaOps (testBranch "boA")
     let aOverlay = PM.withExtraOps pmPT aOps

@@ -96,6 +96,11 @@ let createValueInline
             [ LanguageTools.ProgramTypes.PackageOp.AddValue packageValue
               LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageValue packageValue.hash, Stdlib.Option.Option.None) ]
 
+          // Read BEFORE the save: after it, the live binding IS the new version.
+          let peerHeadsUp =
+            if isUpdate then Packages.peerHeadsUpLine location
+            else Stdlib.Option.Option.None
+
           match SCM.PackageOps.addAuthored state.currentBranchId ops with
           | Ok report ->
             AtRestCheck.printSaveReport state.currentBranchId report
@@ -105,6 +110,10 @@ let createValueInline
 
             Stdlib.printLine ""
             Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"✓ {action} value: {fullPath}")
+
+            match peerHeadsUp with
+            | Some line -> Stdlib.printLine line
+            | None -> ()
 
             // Repoint dependents NOW, into the draft, so you can run them against this change before
             // deciding whether to commit. Nothing is committed; `dark commit` is still the blessing.

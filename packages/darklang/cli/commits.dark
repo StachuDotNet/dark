@@ -29,12 +29,28 @@ let commitRow (c: SCM.Commits.Commit) : List<String> =
   let ops = Stdlib.Int64.toString (SCM.PackageOps.opCountIn c.hash)
   [ SCM.Conflicts.shortHash c.hash, ops, authorLabel c.author, c.message ]
 
-let executeList (state: AppState) (limit: Int64) : AppState =
+let executeList (state: AppState) (limit: Int64) (showAll: Bool) : AppState =
   // This branch's commits, not the store's: on a branch, main's commits are not "mine", and the workbench
   // lists the same set for the same branch.
   let branchId = state.currentBranchId
   let total = Stdlib.List.length (SCM.PackageOps.commitsOnBranch branchId 100000L)
-  let commits = SCM.PackageOps.commitsOnBranch branchId limit
+
+  // Housekeeping commits (archive markers with no authored work) are hidden by default: on an old
+  // store they dominate the listing. `--all` shows them. The overscan bounds how many rows get
+  // decoded for the check.
+  let (commits, hidden) =
+    if showAll then
+      (SCM.PackageOps.commitsOnBranch branchId limit, 0)
+    else
+      let window = SCM.PackageOps.commitsOnBranch branchId (limit + 60L)
+
+      let kept =
+        window
+        |> Stdlib.List.filter (fun c ->
+          Stdlib.Bool.not (SCM.PackageOps.isHousekeepingCommit c.hash))
+
+      let hiddenCount = (Stdlib.List.length window) - (Stdlib.List.length kept)
+      (Stdlib.List.take kept (Stdlib.Int.fromInt64 limit), hiddenCount)
 
   if Stdlib.List.isEmpty commits then
     printOk "no commits yet -- `dark commit` makes one from your draft."
@@ -57,6 +73,10 @@ let executeList (state: AppState) (limit: Int64) : AppState =
       [ "commit", "ops", "author", "message" ]
       (commits |> Stdlib.List.map commitRow)
 
+    if hidden > 0 then
+      printHint
+        $"  {Stdlib.Int.toString hidden} housekeeping commit(s) (branch archives) hidden -- `dark commits --all` shows them"
+
     state
 
 /// `dark commits --detailed`: the same commits, each followed by the ops it contains.
@@ -64,8 +84,15 @@ let executeList (state: AppState) (limit: Int64) : AppState =
 /// The table answers "what have I committed"; this answers "and what was in them", without running
 /// `dark show` once per row. Same op printer `show` uses, and the same per-commit cap, because the
 /// seed commit alone holds ~17k ops.
-let executeDetailed (state: AppState) (limit: Int64) : AppState =
-  let commits = SCM.PackageOps.commitsOnBranch state.currentBranchId limit
+let executeDetailed (state: AppState) (limit: Int64) (showAll: Bool) : AppState =
+  let commits =
+    if showAll then
+      SCM.PackageOps.commitsOnBranch state.currentBranchId limit
+    else
+      SCM.PackageOps.commitsOnBranch state.currentBranchId (limit + 60L)
+      |> Stdlib.List.filter (fun c ->
+        Stdlib.Bool.not (SCM.PackageOps.isHousekeepingCommit c.hash))
+      |> (fun kept -> Stdlib.List.take kept (Stdlib.Int.fromInt64 limit))
 
   if Stdlib.List.isEmpty commits then
     printOk "no commits yet -- `dark commit` makes one from your draft."
@@ -98,6 +125,7 @@ let help (_state: AppState) : String =
     "  dark commits           the 20 most recent"
     "  dark commits <n>       the n most recent"
     "  dark commits --detailed   each commit followed by its ops"
+    "  dark commits --all        include housekeeping (branch archive) commits"
     "  dark show <id>         what a commit contains, or what one op does"
     ""
     "  A commit marks the ops that belong to it; it does not snapshot"
@@ -118,7 +146,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
   let wantsJson = ScmJson.wantsJson args
   let args = ScmJson.stripJson args
   let detailed = Stdlib.List.member args "--detailed"
-  let args = args |> Stdlib.List.filter (fun a -> a != "--detailed")
+  let showAll = Stdlib.List.member args "--all"
+
+  let args =
+    args |> Stdlib.List.filter (fun a -> a != "--detailed" && a != "--all")
 
   // Parsed ONCE, before the shapes split, so `--json` and `--detailed` refuse a junk argument the same
   // way the pretty path does rather than defaulting it to 20 and answering as though nothing was asked.
@@ -143,14 +174,14 @@ let execute (state: AppState) (args: List<String>) : AppState =
     Stdlib.printLine (ScmJson.commitsJson (commitRows limit))
     state
   else if detailed then
-    executeDetailed state limit
+    executeDetailed state limit showAll
   else
 
   match args with
   // `limit` above already parsed the count and refused anything that isn't one, so both shapes here are
   // the same call.
-  | [] -> executeList state limit
-  | [ _n ] -> executeList state limit
+  | [] -> executeList state limit showAll
+  | [ _n ] -> executeList state limit showAll
   | _ ->
     printErr "`dark commits` takes at most a count."
     Stdlib.printLine (help state)

@@ -463,6 +463,9 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
          FROM package_ops p
          JOIN op_branches ob ON ob.op_id = p.id
          WHERE ob.branch_id IN (SELECT bid FROM chain)
+           -- An ancestor's WIP stays its own: only the branch itself contributes uncommitted
+           -- ops to the view; parents contribute what they committed.
+           AND (ob.branch_id = @start OR p.commit_hash IS NOT NULL)
          ORDER BY p.origin_ts, p.rowid"
       // `@mainId`, never the literal 'main': `parent_id` holds main's UUID, so comparing against the
       // NAME is true of every row, and the walk then terminates only because main has no `branches`

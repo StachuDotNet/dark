@@ -6,7 +6,8 @@
 # headline, that one for attributing a change to a phase.
 set -euo pipefail
 
-RELAY=${RELAY:-https://darklang-matter.fly.dev}
+# The relay hostname stays out of the repo (deploy/fly.toml omits it for the same reason).
+[ -n "${RELAY:-}" ] || { echo "set RELAY=<relay url> (the relay you deploy to)" >&2; exit 2; }
 # `CLI=` overrides which published binary is measured, for comparing builds against one relay.
 CLI=${CLI:-$(find "$(dirname "$0")/../../clis" -maxdepth 1 -name 'darklang-alpha-*-linux-x64' \
   -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)}

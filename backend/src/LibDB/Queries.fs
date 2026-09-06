@@ -400,6 +400,50 @@ let getDraftOps () : Task<List<PT.PackageOp>> =
   }
 
 
+/// The mask that keeps main's uncommitted draft out of a branch's view: for every name whose LIVE
+/// binding was written by a draft op, a synthetic `SetName` back to the name's last COMMITTED
+/// version, or a synthetic `Unbind` when the name was born in the draft. Prepended to a branch's
+/// overlay, so a branch resolves through committed main plus its own work -- the branch's own ops
+/// come later in the overlay list and win over the mask.
+///
+/// Synthetic means never stored: these ops exist only inside an in-memory overlay PM.
+let mainDraftMaskOps () : Task<List<PT.PackageOp>> =
+  task {
+    let! rows =
+      Sql.query
+        """
+        SELECT l.owner, l.modules, l.name, l.item_type,
+          (SELECT l2.item_hash
+           FROM locations l2 JOIN package_ops p2 ON p2.id = l2.op_id
+           WHERE l2.owner = l.owner AND l2.modules = l.modules AND l2.name = l.name
+             AND l2.source <> 'unbind' AND p2.commit_hash IS NOT NULL
+           ORDER BY l2.origin_ts DESC LIMIT 1) AS committed_hash
+        FROM locations l JOIN package_ops p ON p.id = l.op_id
+        WHERE l.unlisted_at IS NULL AND l.source <> 'unbind'
+          AND p.commit_hash IS NULL
+          AND p.id NOT IN (SELECT op_id FROM op_branches)
+        """
+      |> Sql.executeAsync (fun read ->
+        let loc : PT.PackageLocation =
+          { owner = read.string "owner"
+            modules = (read.string "modules").Split('.') |> Array.toList
+            name = read.string "name" }
+        let kind = read.string "item_type" |> PT.ItemKind.fromString
+        (loc, kind, read.stringOrNone "committed_hash"))
+    return
+      rows
+      |> List.map (fun (loc, kind, committed) ->
+        match committed with
+        | Some hash ->
+          PT.PackageOp.SetName(
+            loc,
+            PT.Reference.fromHashAndKind (PT.Hash hash, kind),
+            None
+          )
+        | None -> PT.PackageOp.Unbind(loc, None))
+  }
+
+
 /// Every op NOT tagged to a branch, committed or not. Branch ops are branch-pending rather
 /// than main WIP.
 ///

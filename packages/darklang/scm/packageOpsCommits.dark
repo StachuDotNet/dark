@@ -252,3 +252,64 @@ let parentCommitFor (branchId: Uuid) : String =
   with
   | Some row -> Stdlib.Sqlite.textField row "h" |> Stdlib.Option.withDefault ""
   | None -> ""
+
+
+/// True when every op in <param commitHash> is an ARCHIVE marker -- a `BranchEvent` recording
+/// that a branch was discarded, carrying no authored work. `dark commits` hides these by
+/// default; `--all` shows them. Merge events are never housekeeping: on a peer's machine the
+/// merged work files under the author's commits and the merge commit holds only its event, and
+/// hiding it there would make the same history read differently per machine.
+let isHousekeepingCommit (commitHash: String) : Bool =
+  if (opCountIn commitHash) > 3L then
+    false
+  else
+    let ops = opsInCommitLimited commitHash 4L
+
+    (Stdlib.Bool.not (Stdlib.List.isEmpty ops))
+    && (ops
+        |> Stdlib.List.all (fun op ->
+          match op with
+          | BranchEvent(_branchId, event, _at) ->
+            match event with
+            | Archived -> true
+            | _ -> false
+          | _ -> false))
+
+
+/// Who authored the version <param location> currently binds, when it was NOT this instance:
+/// `Some (author, commitSubject, minutesSinceItLandedHere)`. None when the live binding is
+/// yours, uncommitted, or the store holds no attribution for it. `dark fn` and friends use
+/// this for the "changed under you" heads-up before an edit replaces a colleague's version.
+let peerAuthoredCurrent
+  (location: LanguageTools.ProgramTypes.PackageLocation)
+  : Stdlib.Option.Option<(String * String * Int64)> =
+  let mods = Stdlib.String.join location.modules "."
+
+  // main-scoped: the heads-up is about MAIN's live binding -- the version a sync landed and an
+  // edit is about to replace. A branch's own rebind of the name was authored by you, so no note.
+  match
+    Stdlib.Sqlite.queryP
+      (localDb ())
+      "SELECT c.author AS author, c.message AS message,
+              CAST((julianday('now') - julianday(p.created_at)) * 1440 AS INTEGER) AS mins
+       FROM locations l
+       JOIN package_ops p ON p.id = l.op_id
+       JOIN commits c ON c.hash = p.commit_hash
+       WHERE l.owner = @p0 AND l.modules = @p1 AND l.name = @p2
+         AND l.unlisted_at IS NULL AND l.source <> 'unbind'
+       LIMIT 1"
+      [ location.owner, mods, location.name ]
+  with
+  | Ok [ row ] ->
+    match
+      (Stdlib.Sqlite.textField row "author",
+       Stdlib.Sqlite.textField row "message",
+       Stdlib.Sqlite.intField row "mins")
+    with
+    | (Some author, Some message, Some mins) ->
+      if author == identity () then
+        Stdlib.Option.Option.None
+      else
+        Stdlib.Option.Option.Some((author, message, mins))
+    | _ -> Stdlib.Option.Option.None
+  | _ -> Stdlib.Option.Option.None

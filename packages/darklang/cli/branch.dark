@@ -1074,7 +1074,7 @@ let executeLogCmd (state: AppState) (args: List<String>) : AppState =
         Stdlib.printLine (ScmJson.commitsJson (Commits.commitRows 20L))
         state
       else
-        Commits.executeList state 20L
+        Commits.executeList state 20L false
     // By NAME, because `executeLog` echoes back whatever it was handed and everything else the CLI
     // prints about a branch is its name. `resolveRef` turns it straight back into this id.
     | id ->

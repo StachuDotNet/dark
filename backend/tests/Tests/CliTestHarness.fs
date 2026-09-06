@@ -203,9 +203,3 @@ let looksLikeARuntimeFailure (output : string) : Option<string> =
   |> Array.tryFind (fun line ->
     patterns
     |> List.exists (fun p -> System.Text.RegularExpressions.Regex.IsMatch(line, p)))
-
-/// What is wrong with a swept command's answer, or `None` if nothing is.
-///
-/// The sweeps differ in what they hand a command, never in how they judge what comes back: it must
-/// not throw, it must say something, and it must not print a runtime error it caught. The `help`
-/// sweep is the exception -- it asks a further question of the text -- so it judges its own.

@@ -611,10 +611,17 @@ let opsForBranch (branchId : PT.BranchId) : List<PT.PackageOp> =
 
 /// The PT PM for <branchId>: core with that branch's overlay, or plain core on main.
 /// Used at parse/lowering time so a branch fn resolves name->hash.
+///
+/// The overlay is prefixed with the main-draft mask (`Queries.mainDraftMaskOps`): a branch
+/// resolves through COMMITTED main plus its own work, so main's uncommitted draft never leaks
+/// into a branch's view. The branch's own ops come later in the list and win over the mask.
 let ptForBranch (branchId : PT.BranchId) : PT.PackageManager =
-  match opsForBranch branchId with
-  | [] -> pt
-  | ops -> withExtraOps pt ops
+  if branchId.IsMain then
+    pt
+  else
+    match (Queries.mainDraftMaskOps ()).Result @ opsForBranch branchId with
+    | [] -> pt
+    | ops -> withExtraOps pt ops
 
 /// Where a branch binds <param hash>, for hash-to-NAME lookups.
 ///

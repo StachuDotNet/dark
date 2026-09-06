@@ -67,3 +67,37 @@ let definitionFromArgs (args: List<String>) : String =
       Stdlib.String.dropFirst joined 1 |> Stdlib.String.trim
     else
       joined
+
+
+/// The "changed under you" heads-up, computed BEFORE an edit lands (afterwards the live
+/// binding is already the new version): when the version being replaced was authored by a
+/// colleague, one line naming them, the commit it arrived in, and how long ago it landed
+/// here. None for your own versions and unattributed ones.
+let peerHeadsUpLine
+  (location: LanguageTools.ProgramTypes.PackageLocation)
+  : Stdlib.Option.Option<String> =
+  match SCM.PackageOps.peerAuthoredCurrent location with
+  | Some((author, message, mins)) ->
+    let who =
+      if Stdlib.String.startsWith author "inst-" then
+        Stdlib.String.slice author 0 13
+      else
+        author
+
+    let mins = if mins < 1L then 1L else mins
+
+    let age =
+      if mins < 120L then
+        (Stdlib.Int64.toString mins) ++ "m"
+      else if mins < 2880L then
+        (Stdlib.Int64.toString (Stdlib.Int64.divide mins 60L)) ++ "h"
+      else
+        (Stdlib.Int64.toString (Stdlib.Int64.divide mins 1440L)) ++ "d"
+
+    let subject = if message == "" then "no message" else message
+
+    Stdlib.Option.Option.Some(
+      Stdlib.Cli.UI.Colors.hint
+        $"  note: {who} changed this {age} ago ({subject}); your edit replaces their version"
+    )
+  | None -> Stdlib.Option.Option.None

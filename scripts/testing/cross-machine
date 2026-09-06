@@ -10,7 +10,7 @@
 #   scripts/testing/cross-machine shells <host> <relay-url> print A() / B() to `source` for the runbook
 #
 # <host> is anything ssh reaches (`framey` over tailscale). The relay is whichever one you deployed
-# (`https://darklang-matter.fly.dev`) or one started here (`dark serve --port 9090 Darklang.Matter.router`;
+# (the deployed relay) or one started here (`dark serve --port 9090 Darklang.Matter.router`;
 # then the url is http://<tailscale ip -4>:9090). The write secret is read from rundir/.relay-secret.
 set -euo pipefail
 

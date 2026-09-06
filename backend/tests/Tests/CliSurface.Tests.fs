@@ -73,7 +73,11 @@ let private soundsLikeMisuse (output : string) : bool =
 /// line. `runCliCatching` already reports an error that escaped; this is for the one that did not: the
 /// Dark-side path where a command prints `ExecutionError.toString` and carries on. The four phrases are
 /// the ones AGENTS.md says to grep a sweep's output for; `Internal error:` is a host exception a command
-
+/// What is wrong with a swept command's answer, or `None` if nothing is.
+///
+/// The sweeps differ in what they hand a command, never in how they judge what comes back: it must
+/// not throw, it must say something, and it must not print a runtime error it caught. The `help`
+/// sweep is the exception -- it asks a further question of the text -- so it judges its own.
 let private sweepFailure (outcome : Result<string, string>) : Option<string> =
   match outcome with
   | Error e -> Some $"crashed: {e}"

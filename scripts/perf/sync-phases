@@ -12,7 +12,8 @@
 # `importFrom` still decodes every op to plan conflicts before it discovers it has them.
 set -euo pipefail
 
-RELAY=${RELAY:-https://darklang-matter.fly.dev}
+# The relay hostname stays out of the repo (deploy/fly.toml omits it for the same reason).
+[ -n "${RELAY:-}" ] || { echo "set RELAY=<relay url> (the relay you deploy to)" >&2; exit 2; }
 CLI=$(find "$(dirname "$0")/../../clis" -maxdepth 1 -name 'darklang-alpha-*-linux-x64' \
   -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
 [ -n "$CLI" ] || { echo "no published CLI in clis/; run scripts/build/build-release-cli-exes.sh" >&2; exit 2; }

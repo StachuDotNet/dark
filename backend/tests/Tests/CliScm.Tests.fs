@@ -481,7 +481,8 @@ let private archivingABranchCommitsItsEvent =
           0L
           "and the draft is empty, which is what 'clean' was claiming"
 
-        let! commits = runCli state [ "commits"; "3" ]
+        // The marker is housekeeping, hidden from the default listing; `--all` shows it.
+        let! commits = runCli state [ "commits"; "3"; "--all" ]
         Expect.stringContains
           commits
           "archived branch \"archcommit\""
@@ -1685,7 +1686,7 @@ let private aNameHoldsOneItemWhateverItsKind =
 /// covered them.
 let private branchChainSeesItsAncestry =
   cliTestOnMain
-    "a branch off a branch sees its parent's work, and main sees neither"
+    "a branch off a branch sees its parent's COMMITTED work, and main sees neither"
     (fun state ->
       task {
         let! _ = runCli state [ "switch"; "chainOne" ]
@@ -1695,11 +1696,25 @@ let private branchChainSeesItsAncestry =
         let! _ = runCli state [ "branch"; "new"; "chainTwo" ]
         let! _ = runCli state [ "fn"; "Tests.Chain.two"; "() : Int64 = 22L" ]
 
-        // The deepest branch sees the whole chain.
+        // The parent's edit is still WIP, so the child does not see it yet: a parent's draft is its
+        // own until committed, all the way up the chain.
+        let! wipOnTwo = runCli state [ "eval"; "Tests.Chain.one ()" ]
+        Expect.stringContains
+          wipOnTwo
+          "not found"
+          "a parent's WIP does not leak down"
+
+        // Committed on the parent, the child sees the whole chain.
+        let! _ = runCli state [ "switch"; "chainOne" ]
+        let! _ = runCli state [ "commit"; "chain one"; "-y" ]
+        let! _ = runCli state [ "switch"; "chainTwo" ]
         let! twoOnTwo = runCli state [ "eval"; "Tests.Chain.two ()" ]
         Expect.stringContains twoOnTwo "22" "its own work"
         let! oneOnTwo = runCli state [ "eval"; "Tests.Chain.one ()" ]
-        Expect.stringContains oneOnTwo "11" "and its parent's, through the chain"
+        Expect.stringContains
+          oneOnTwo
+          "11"
+          "and its parent's committed work, through the chain"
 
         // The parent does NOT see its child's.
         let! _ = runCli state [ "switch"; "chainOne" ]
@@ -1869,6 +1884,8 @@ let private dependentsSeeTheBranchYouAreOn =
           "mainCaller"
           "main's caller shows on main"
 
+        // Committed, so the branch can see it: main's draft is invisible from a branch.
+        let! _ = runCli state [ "commit"; "dep target"; "-y" ]
         let! _ = runCli state [ "switch"; "depbr" ]
         let! _ =
           runCli
@@ -2353,6 +2370,107 @@ let private branchItemsArePolicyTargets =
       })
 
 
+
+/// Main's uncommitted draft never leaks into a branch's view: a draft-born name does not resolve
+/// there, and a draft edit over a committed version resolves to the committed one. The branch is an
+/// overlay on COMMITTED main; `dark commit` is what publishes work downstream.
+let private aBranchNeverSeesMainsDraft =
+  cliTestOnMain
+    "a branch resolves through committed main, not main's draft"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "fn"; "Tests.DraftMask.f"; "() : Int64 = 1L" ]
+
+        let! onBranch = runCli state [ "switch"; "dmask" ]
+        Expect.stringContains onBranch "dmask" "switched"
+        let! draftBorn = runCli state [ "eval"; "Tests.DraftMask.f ()" ]
+        Expect.stringContains
+          draftBorn
+          "not found"
+          "a draft-born name is invisible from a branch"
+
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "commit"; "draft mask v1"; "-y" ]
+        let! _ = runCli state [ "switch"; "dmask" ]
+        let! committed = runCli state [ "eval"; "Tests.DraftMask.f ()" ]
+        Expect.stringContains committed "1" "committed work is visible"
+
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "fn"; "Tests.DraftMask.f"; "() : Int64 = 2L" ]
+        let! onMain = runCli state [ "eval"; "Tests.DraftMask.f ()" ]
+        Expect.stringContains onMain "2" "main runs its own draft"
+        let! _ = runCli state [ "switch"; "dmask" ]
+        let! masked = runCli state [ "eval"; "Tests.DraftMask.f ()" ]
+        Expect.stringContains masked "1" "the branch stays on the committed version"
+
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "branch"; "archive"; "dmask"; "-y" ]
+        ()
+      })
+
+/// Editing a name whose live version a COLLEAGUE authored prints a one-line heads-up naming them
+/// and the commit it arrived in; editing your own version says nothing. The check reads the live
+/// binding's commit author before the save lands.
+let private editingAColleaguesVersionSaysSo =
+  cliTestOnMain
+    "an edit over a colleague's version gets a heads-up; over your own, silence"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "fn"; "Tests.PeerNote.f"; "() : Int64 = 1L" ]
+        let! _ = runCli state [ "commit"; "peer note v1"; "-y" ]
+
+        let! ownEdit = runCli state [ "fn"; "Tests.PeerNote.f"; "() : Int64 = 2L" ]
+        Expect.isFalse
+          (ownEdit.Contains "note:")
+          "editing your own version prints no heads-up"
+        let! _ = runCli state [ "discard"; "Tests.PeerNote.f"; "-y" ]
+
+        // The same binding, now wearing a colleague's name, as a sync would leave it.
+        do!
+          Sql.query
+            "UPDATE commits SET author = 'colleague' WHERE message = 'peer note v1'"
+          |> Sql.executeStatementAsync
+
+        let! peerEdit = runCli state [ "fn"; "Tests.PeerNote.f"; "() : Int64 = 3L" ]
+        Expect.stringContains
+          peerEdit
+          "note: colleague changed this"
+          "the heads-up names them"
+        Expect.stringContains peerEdit "peer note v1" "and the commit it arrived in"
+        let! _ = runCli state [ "discard"; "Tests.PeerNote.f"; "-y" ]
+        ()
+      })
+
+/// `dark commits` hides housekeeping (event-only commits: a branch archive or merge marker with no
+/// authored work) behind `--all`, and says how many it hid.
+let private commitsHideHousekeeping =
+  cliTestOnMain
+    "commits hides archive markers by default; --all shows them"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "hkeep" ]
+        let! _ = runCli state [ "fn"; "Tests.HKeep.f"; "() : Int64 = 1L" ]
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "branch"; "archive"; "hkeep"; "-y" ]
+
+        let! plain = runCli state [ "commits" ]
+        Expect.isFalse
+          (plain.Contains "archived branch \"hkeep\"")
+          "the archive marker is hidden by default"
+        Expect.stringContains
+          plain
+          "housekeeping"
+          "and the listing says it hid something"
+
+        let! all = runCli state [ "commits"; "--all" ]
+        Expect.stringContains
+          all
+          "archived branch \"hkeep\""
+          "--all shows the marker"
+        ()
+      })
+
 /// In the run order CliTraces.Tests.fs composes; sequencing lives there too.
 let tests : List<Test> =
   [ commitRefusesDefiniteTypeErrors
@@ -2398,4 +2516,7 @@ let tests : List<Test> =
     editChangesAnItemWithoutRetypingIt
     everyJsonSurfaceParses
     followingDoesNotDestroyASharedName
+    aBranchNeverSeesMainsDraft
+    editingAColleaguesVersionSaysSo
+    commitsHideHousekeeping
     commitsChainToTheirParent ]

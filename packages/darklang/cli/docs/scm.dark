@@ -83,8 +83,9 @@ not four. Intermediate versions you never showed anyone aren't history.
 ## Branches
 
 A branch is an overlay on the same op log, not a copy. Its ops are invisible
-to main until they merge, which is what makes several agents on several
-branches safe at once.
+to main until they merge, and it resolves through COMMITTED work only: a
+parent's draft (main's included) is invisible downstream until committed.
+Both directions are what make several agents on several branches safe at once.
 
 You refer to a branch by NAME everywhere on the command line. Underneath it
 has a uuid, which is what the op tags, bundles and parent links point at, so
