@@ -23,6 +23,19 @@ let cliUnderTest () : String =
   | None -> "./scripts/run-cli"
 
 
+/// What a call printed. A failure EXITS NONZERO and explains itself on stdout (a refused eval, a
+/// halted harmful call), so dropping stdout on a nonzero exit hid the very text these tests assert
+/// on. Stderr is only surfaced when stdout said nothing: appending it broke exact-match assertions
+/// on any stray diagnostic line.
+let callOutput (result: Stdlib.Cli.ExecutionOutcome) : String =
+  let out = Stdlib.String.trim result.stdout
+
+  if out != "" then out
+  else
+    let err = Stdlib.String.trim result.stderr
+    if err == "" then "" else $"ERROR: {err}"
+
+
 let runWithCommand (args: List<String>): String =
   let escapedArgs =
     args
@@ -39,10 +52,7 @@ let runWithCommand (args: List<String>): String =
   let command = $"{cliUnderTest ()} {argsString}"
   let result = Stdlib.Cli.Unix.executeInDirectoryWithOutput "." command
 
-  if result.exitCode == 0 then
-    Stdlib.String.trim result.stdout
-  else
-    $"ERROR: {result.stderr}"
+  callOutput result
 
 
 /// The same, but with <param input> on stdin. For the commands that ASK: `conflicts walk` reads a line
@@ -51,11 +61,7 @@ let runWithStdinAndCommand (input: String) (args: List<String>): String =
   let argsString = Stdlib.String.join args " "
   let command = $"printf '{input}' | {cliUnderTest ()} {argsString}"
   let result = Stdlib.Cli.Unix.executeInDirectoryWithOutput "." command
-
-  if result.exitCode == 0 then
-    Stdlib.String.trim result.stdout
-  else
-    $"ERROR: {result.stderr}"
+  callOutput result
 
 
 /// `dark conflicts walk`, on a conflict this test makes for itself.
