@@ -299,10 +299,24 @@ let private handleRequest
           // `Accept-Encoding` sees any change. On a first sync this is the difference between
           // shipping hundreds of megabytes and shipping tens; `maybeCompress` has the ratios and
           // the reason for the size floor.
-          let body, encoding = maybeCompress ctx.Request response.body
+          // Never on a body the handler already encoded (a pre-gzipped asset would be wrapped
+          // twice), and always with `Vary`, or a shared cache may hand a brotli body to a client
+          // that did not ask for one.
+          let alreadyEncoded =
+            respHeaders
+            |> List.exists (fun (k, _) ->
+              String.equalsCaseInsensitive k "Content-Encoding")
+
+          let body, encoding =
+            if alreadyEncoded then
+              response.body, None
+            else
+              maybeCompress ctx.Request response.body
 
           match encoding with
-          | Some enc -> ctx.Response.Headers.Add("Content-Encoding", enc)
+          | Some enc ->
+            ctx.Response.Headers.Add("Content-Encoding", enc)
+            ctx.Response.Headers.Add("Vary", "Accept-Encoding")
           | None -> ()
 
           ctx.Response.ContentLength64 <- int64 body.Length

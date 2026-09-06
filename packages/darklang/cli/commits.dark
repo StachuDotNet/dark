@@ -160,9 +160,11 @@ let execute (state: AppState) (args: List<String>) : AppState =
 let showCommit (state: AppState) (c: SCM.Commits.Commit) : Unit =
   let n = SCM.PackageOps.opCountIn c.hash
   let msg = if c.message == "" then "(no message)" else c.message
-  printOk $"commit {c.hash}"
+  // The same short ids and author label the `commits` table shows, so a person can carry an id
+  // between the two without noticing they differ. Both ids still take a longer prefix on input.
+  printOk $"commit {SCM.Conflicts.shortHash c.hash}"
   Stdlib.printLine $"  {msg}"
-  Stdlib.printLine $"  by {c.author} at {c.originTs}"
+  Stdlib.printLine $"  by {authorLabel c.author} at {c.originTs}"
   Stdlib.printLine $"  {Cli.Text.plural (Stdlib.Int.fromInt64 n) "op"} in this commit"
 
   // The commit this one follows. Worth a line rather than a lookup: an id is derived from its parent as
@@ -172,7 +174,7 @@ let showCommit (state: AppState) (c: SCM.Commits.Commit) : Unit =
     if c.parent == "" then
       ()
     else
-      Stdlib.printLine $"  follows {c.parent}"
+      Stdlib.printLine $"  follows {SCM.Conflicts.shortHash c.parent}"
 
   Stdlib.printLine ""
 

@@ -122,7 +122,8 @@ let candidateKeys
   : List<(String * String)> =
   let mods = loc.modules
 
-  // ["A"; "B"; "C"] -> ["A.B.C"; "A.B"; "A"; ""], the module chain from innermost out
+  // ["A"; "B"; "C"] -> ["A.B.C"; "A.B"; "A"], the module chain from innermost out; owner-wide ("")
+  // is appended below, since it is not a module.
   let chain =
     mods
     |> Stdlib.List.fold [] (fun acc _ ->
@@ -224,7 +225,7 @@ let targetExists (owner: String) (modules: String) (name: String) : Bool =
       // main-scoped: the chain above ends at main, and this is main's half.
       match
         Stdlib.Sqlite.queryOneP
-          (SCM.PackageOps.localDb ())
+          (localDb ())
           "SELECT 1 AS n FROM locations
            WHERE owner = @p0 AND (modules = @p1 OR modules LIKE @p2) AND unlisted_at IS NULL LIMIT 1"
           [ owner, modules, $"{modules}.%" ]
@@ -601,11 +602,7 @@ let everBoundHashes
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   (itemKind: LanguageTools.ProgramTypes.ItemKind)
   : List<LanguageTools.ProgramTypes.Hash> =
-  let itemType =
-    match itemKind with
-    | Fn -> "fn"
-    | Type -> "type"
-    | Value -> "value"
+  let itemType = Deps.kindString itemKind
 
   match
     // main-scoped, on purpose: every hash ever bound on MAIN is this fn's contract.

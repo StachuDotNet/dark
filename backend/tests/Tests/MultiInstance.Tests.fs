@@ -1271,6 +1271,120 @@ let mainSyncCarriesTheAuthorsCommit =
       teardown [ a; b ]
   }
 
+/// The two "your decision was superseded" reports check WHO acted, not only what happened.
+///
+/// A peer's policy with no local one before it supersedes nothing of yours; your own later edit is a
+/// change of mind, which closes the record rather than reporting you to yourself. Without either rule
+/// the store greets a fresh puller with findings about choices they never made -- which is exactly how
+/// it presented, on a store whose whole history had arrived by sync.
+let supersededReportsCheckAuthorship =
+  testTask
+    "a peer's decision alone, or your own later edit, is not a superseded-decision finding" {
+    let a = instance "a"
+
+    try
+      activate a
+      // A peer's pin arrives with an author; no local choice preceded it.
+      let! _ =
+        darkOn (
+          "let op = Darklang.LanguageTools.ProgramTypes.PackageOp.Decision(\"peerpin01\", "
+          + "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Sup\"]; name = \"f\" }, \"\", "
+          + "Darklang.LanguageTools.ProgramTypes.DecisionKind.Propagation Darklang.LanguageTools.ProgramTypes.PropagationPolicy.Pin) in "
+          + "Darklang.SCM.PackageOps.add Darklang.SCM.Ids.mainBranchId [ op ]"
+        )
+      do!
+        Sql.query
+          "INSERT INTO op_owners (op_id, owner)
+           SELECT id, 'peer-1' FROM package_ops
+           WHERE id NOT IN (SELECT op_id FROM op_owners)
+             AND substr(op_blob, 9, 1) = X'0B'"
+        |> Sql.executeStatementAsync
+      // A second peer replaces the first: still nobody's surprise but theirs. This is the arm the
+      // authorship check exists for -- without it the first peer's choice is recorded as "yours".
+      let! _ =
+        darkOn (
+          "let op = Darklang.LanguageTools.ProgramTypes.PackageOp.Decision(\"peerpin02\", "
+          + "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Sup\"]; name = \"f\" }, \"\", "
+          + "Darklang.LanguageTools.ProgramTypes.DecisionKind.Propagation Darklang.LanguageTools.ProgramTypes.PropagationPolicy.Follow) in "
+          + "Darklang.SCM.PackageOps.add Darklang.SCM.Ids.mainBranchId [ op ]"
+        )
+      do!
+        Sql.query
+          "INSERT INTO op_owners (op_id, owner)
+           SELECT id, 'peer-2' FROM package_ops
+           WHERE id NOT IN (SELECT op_id FROM op_owners)
+             AND substr(op_blob, 9, 1) = X'0B'"
+        |> Sql.executeStatementAsync
+      let! (policies : string) =
+        darkOn
+          "Darklang.SCM.PackageOps.supersededPolicies () |> Stdlib.List.length |> Stdlib.Int.toString"
+      Expect.equal
+        policies
+        "DString \"0\""
+        $"a peer's first-and-only choice supersedes nothing of yours: {policies}"
+
+      // Your own override, then your own edit: a change of mind, not a finding.
+      let! ops =
+        authorIntoMain "module TwoStore.Sup\n\nlet g (x: Int64) : Int64 = x + 1L\n"
+      let (PT.Hash gHash) = hashBoundTo ops "g"
+      let! _ =
+        darkOn (
+          "let op = Darklang.LanguageTools.ProgramTypes.PackageOp.Decision(\"selfov01\", "
+          + "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Sup\"]; name = \"g\" }, \"\", "
+          + "Darklang.LanguageTools.ProgramTypes.DecisionKind.Override (Darklang.LanguageTools.ProgramTypes.Reference.PackageFn (Darklang.LanguageTools.ProgramTypes.Hash.Hash \""
+          + gHash
+          + "\"))) in "
+          + "Darklang.SCM.PackageOps.add Darklang.SCM.Ids.mainBranchId [ op ]"
+        )
+      // The conflicts-table guard is what makes the fold run at all.
+      do!
+        Sql.query
+          "INSERT INTO conflicts (id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status, origin_ts, branch_id)
+           VALUES ('selfov01', 'TwoStore', 'Sup', 'g', 'fn', 'same-name-different-hash', '[]', '', '', 'overridden',
+                   strftime('%Y-%m-%dT%H:%M:%fZ','now'), '00000000-0000-0000-0000-000000000001')"
+        |> Sql.executeStatementAsync
+      let! _ =
+        authorIntoMain "module TwoStore.Sup\n\nlet g (x: Int64) : Int64 = x + 2L\n"
+      let! (overrides : string) =
+        darkOn
+          "Darklang.SCM.PackageOps.supersededOverrides () |> Stdlib.List.length |> Stdlib.Int.toString"
+      Expect.equal
+        overrides
+        "DString \"0\""
+        "editing past your own override is a change of mind, not a finding"
+    finally
+      teardown [ a ]
+  }
+
+/// An import whose insert fails leaves no commit row behind: the row is minted before the insert
+/// (the insert stamps against it), so the failure arm has to take it back out.
+let aFailedImportLeavesNoCommit =
+  testTask
+    "an import that fails leaves no synced-from commit naming ops that never arrived" {
+    let a = instance "a"
+
+    try
+      activate a
+      let! (before : string) =
+        darkOn
+          "Stdlib.Sqlite.scalarInt (Stdlib.LocalStore.path ()) \"SELECT count(*) AS n FROM commits\" \"n\" |> Stdlib.Option.withDefault 0L |> Stdlib.Int64.toString"
+      // blobHex that is not hex: `scmImportOps` throws inside, and importFrom's error arm runs.
+      let! (result : string) =
+        darkOn (
+          "let op = Darklang.SCM.Wire.SyncOp { id = \"7c9e6679-7425-40de-944b-e07fc1f90ae9\"; blobHex = \"zznothex\"; ts = \"2026-01-01T00:00:00.000Z\"; author = \"peer-1\"; commit = \"\" } in "
+          + "match Darklang.SCM.Wire.importFrom \"peer:x\" [ op ] [] with | Ok _ -> \"ok\" | Error e -> \"error\""
+        )
+      let! (after : string) =
+        darkOn
+          "Stdlib.Sqlite.scalarInt (Stdlib.LocalStore.path ()) \"SELECT count(*) AS n FROM commits\" \"n\" |> Stdlib.Option.withDefault 0L |> Stdlib.Int64.toString"
+      Expect.equal
+        after
+        before
+        $"no commit row survives a failed import (import said: {result})"
+    finally
+      teardown [ a ]
+  }
+
 let tests =
   testSequenced
   <| testList
@@ -1297,4 +1411,6 @@ let tests =
       anEventForAnUnknownBranchDoesNotWait
       aMergeEventForALaterBranchStillApplies
       mainSyncCarriesTheAuthorsCommit
+      supersededReportsCheckAuthorship
+      aFailedImportLeavesNoCommit
       anOverrideRepointsCallers ]

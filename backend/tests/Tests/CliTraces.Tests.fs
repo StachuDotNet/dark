@@ -2168,6 +2168,108 @@ let private anUnknownParentIsNamedAsSuch =
       })
 
 
+/// A variant of `runCli` that also reports what the process would EXIT with. `executeCliCommand`
+/// returns it; plain `runCli` reads only the printed text.
+let private runCliWithExit
+  (state : RT.ExecutionState)
+  (args : string list)
+  : Task<string * int64> =
+  task {
+    let argsDval = args |> List.map RT.DString |> Dval.list RT.KTString
+    let fnName =
+      RT.FQFnName.fqPackage (LibExecution.PackageRefs.Fn.Cli.executeCliCommand ())
+    NonBlockingConsole.wait ()
+    let captured = new System.IO.StringWriter()
+    let originalOut = System.Console.Out
+    try
+      System.Console.SetOut(captured)
+      let! result = Exe.executeFunction state fnName [] (NEList.singleton argsDval)
+      NonBlockingConsole.wait ()
+      match result with
+      | Ok(RT.DInt64 code) -> return (captured.ToString().Trim(), code)
+      | Ok(RT.DInt code) ->
+        return (captured.ToString().Trim(), int64 (RT.DarkInt.toBigInt code))
+      | Ok other ->
+        System.Console.SetOut(originalOut)
+        return Tests.failtestf "executeCliCommand returned a non-int: %A" other
+      | Error(rte, _) ->
+        System.Console.SetOut(originalOut)
+        return Tests.failtestf "runCliWithExit errored: %A" rte
+    finally
+      System.Console.SetOut(originalOut)
+  }
+
+/// Scripts and agents branch on the exit, so failure has to BE one, not prose. The full sweep of
+/// error paths is not wired yet; the two a script hits first are, and this pins them.
+let private failuresExitNonzero =
+  cliTest
+    "an unknown command and a failed eval exit nonzero; a good command exits zero"
+    (fun state ->
+      task {
+        let! (_, ok) = runCliWithExit state [ "status" ]
+        Expect.equal ok 0L "a command that worked exits 0"
+        let! (unknownOut, unknown) = runCliWithExit state [ "zzznotacommand" ]
+        Expect.stringContains unknownOut "Unknown command" "and says so"
+        Expect.equal unknown 1L "an unknown command exits 1"
+        let! (evalOut, failed) =
+          runCliWithExit state [ "eval"; "Tests.Nope.zzz 1L" ]
+        Expect.stringContains evalOut "not found" "the error is still printed"
+        Expect.equal failed 1L "a failed eval exits 1"
+      })
+
+/// The docs promise review-then-ask, and a pipe has nobody to ask: without `-y`, nothing commits.
+/// And a commit's message is the one sentence other machines get, so an empty one is refused
+/// rather than recorded forever.
+let private commitAsksAndNeedsAMessage =
+  cliTestOnMain
+    "commit on a piped stdin stays a draft, and an empty message is refused"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "discard"; "-y" ]
+        let! _ = runCli state [ "fn"; "Tests.CommitGate.f"; "() : Int64 = 11L" ]
+
+        // No -y: the harness's stdin is a pipe, so the prompt cannot be answered and the answer is no.
+        let! bare = runCli state [ "commit"; "gated" ]
+        Expect.stringContains
+          bare
+          "left as a draft"
+          $"nothing commits without an answer: {bare}"
+        let! still = runCli state [ "status" ]
+        Expect.stringContains
+          still
+          "1 item changed"
+          $"and the draft is still there: {still}"
+
+        let! noMessage = runCli state [ "commit"; "-y" ]
+        Expect.stringContains
+          noMessage
+          "a commit needs a message"
+          $"an empty message is refused, -y or not: {noMessage}"
+
+        let! taken = runCli state [ "commit"; "gated for real"; "-y" ]
+        Expect.stringContains
+          taken
+          "-- 2 ops"
+          $"with a message and -y it lands: {taken}"
+      })
+
+/// `--as` takes one value and `--why` swallows the rest of the line; neither is a target id.
+let private constraintFlagsAreNotTargets =
+  cliTest "constraint flag values are not read as finding ids" (fun state ->
+    task {
+      let! asOut =
+        runCli state [ "constraints"; "resolve"; "zzzzzzzz"; "--as"; "repoint" ]
+      Expect.stringContains asOut "zzzzzzzz" $"the target is reported: {asOut}"
+      Expect.isFalse
+        (asOut.Contains "matching \"repoint\"")
+        $"and the --as value is not: {asOut}"
+
+      let! whyOut = runCli state [ "ack"; "zzzzzzzz"; "--why"; "not"; "now" ]
+      Expect.isFalse
+        (whyOut.Contains "matching \"not\"" || whyOut.Contains "matching \"now\"")
+        $"an unquoted --why reason is not read as ids: {whyOut}"
+    })
+
 let private aBundleCarriesItsCommits =
   cliTestOnMain
     "a branch bundle arrives with the author's commits, not as a draft"
@@ -2507,8 +2609,11 @@ let private commitRefusesDefiniteTypeErrors =
 
         let! taken =
           runCli state [ "commit"; "taking it"; "-y"; "--allow-type-errors" ]
-        // `op(s)`: "nothing to commit -- your draft is empty" also contains "commit ".
-        Expect.stringContains taken "op(s)" $"the typed override takes it: {taken}"
+        // The op count, not "commit": "nothing to commit -- your draft is empty" also contains "commit ".
+        Expect.stringContains
+          taken
+          "-- 4 ops"
+          $"the typed override takes it: {taken}"
       })
 
 
@@ -3622,12 +3727,12 @@ let private commitRefusesUnresolvedReferences =
         // it has to be typed: `-y` alone must not wave it through.
         let! allowed =
           runCli state [ "commit"; "unresolved"; "--allow-unresolved"; "-y" ]
-        // `op(s)`, not `commit`: the refusal this flag exists to get past is
+        // The op count, not `commit`: the refusal this flag exists to get past is
         // "cannot commit: these reference names that don't resolve", which contains "commit",
         // so the obvious assertion passed whether the flag worked or not.
         Expect.stringContains
           allowed
-          "op(s)"
+          "-- 2 ops"
           $"--allow-unresolved records it as-is: {allowed}"
 
         // A forward reference inside one draft: the caller is authored first and cannot
@@ -4043,6 +4148,9 @@ let tests =
        statusSeparatesTheDraftsConstraintsFromStandingOnes
        aMissingNameIsOneLineNotAStackHeader
        anUnknownParentIsNamedAsSuch
+       failuresExitNonzero
+       commitAsksAndNeedsAMessage
+       constraintFlagsAreNotTargets
        aNameHoldsOneItemWhateverItsKind
        editChangesAnItemWithoutRetypingIt
        everyJsonSurfaceParses

@@ -211,7 +211,10 @@ let rewriteBy
     Stdlib.Result.Result.Ok 0
   else
     let keptIds = keep draft |> Stdlib.List.map (fun d -> d.id)
-    let dropped = draft |> Stdlib.List.filter (fun d -> Stdlib.Bool.not (Stdlib.List.``member`` keptIds d.id))
+    let dropped =
+      draft
+      |> Stdlib.List.filter (fun d ->
+        Stdlib.Bool.not (Stdlib.List.``member`` keptIds d.id))
     let count = Stdlib.List.length dropped
 
     if count == 0 then

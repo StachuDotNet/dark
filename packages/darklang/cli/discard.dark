@@ -89,12 +89,18 @@ let execute (state: AppState) (args: List<String>) : AppState =
     state
   else
 
-  printOk
-    $"  DISCARDING ({Stdlib.Int.toString (Stdlib.List.length changed)}) on {scope}, {Cli.Text.plural (Stdlib.Int.fromInt64 ops) "op"}"
+  // A WARNING header, not a green one: this listing is what is about to be destroyed, and green
+  // reads as "already fine".
+  Stdlib.printLine (
+    Stdlib.Cli.UI.Colors.warning
+      $"  DISCARDING ({Stdlib.Int.toString (Stdlib.List.length changed)}) on {scope}, {Cli.Text.plural (Stdlib.Int.fromInt64 ops) "op"}"
+  )
 
   changed
   |> Stdlib.List.iter (fun b ->
-    let name = if b.modules == "" then b.name else $"{b.modules}.{b.name}"
+    // The FULL name, as `status` and the JSON spell it; a listing of what dies is the wrong place
+    // to abbreviate.
+    let name = SCM.Conflicts.fqn b.owner b.modules b.name
     Stdlib.printLine $"    - {name}")
 
   // An explicit yes, not the usual default-yes: this is the one command here that destroys work, so a

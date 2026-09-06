@@ -148,9 +148,15 @@ let pushHandlerFn (req: HttpRequest) : HttpResponse =
 let branchAccessAllowed (req: HttpRequest) : Stdlib.Result.Result<Unit, String> =
   match writeAllowed req with
   | Ok _ -> Stdlib.Result.Result.Ok()
-  | Error _ ->
-    Stdlib.Result.Result.Error
-      "branches are not public: this needs the relay's secret. `dark connect <url> --secret <secret>`"
+  | Error why ->
+    // A relay with no secret CONFIGURED is the relay's fault, and `writeAllowed`'s message says so;
+    // replacing it with "connect with the secret" would send the client chasing a credential that
+    // cannot exist. Only the credential cases get the branch-specific wording.
+    if Stdlib.String.contains why "accepts no writes" then
+      Stdlib.Result.Result.Error why
+    else
+      Stdlib.Result.Result.Error
+        "branches are not public: this needs the relay's secret. `dark connect <url> --secret <secret>`"
 
 
 /// Store a pushed branch BUNDLE (registry + frontier ops) keyed by (owner, branch). `?owner=X&branch=Y`,

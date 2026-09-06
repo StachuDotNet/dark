@@ -431,17 +431,17 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
     match SCM.Conflicts.getByIdPrefix id with
     | None ->
       jsonFailure id "no conflict matching that id"
-      state
+      { state with exitCode = 1 }
     | Some c ->
       match pickCandidate c choice with
       | None ->
         jsonFailure id $"no candidate \"{choice}\" -- use A, B or a hash prefix"
-        state
+        { state with exitCode = 1 }
       | Some cand ->
-        match SCM.PackageOps.applyResolution state.currentBranchId c cand.hash with
+        // Through `settleConflict`, never `applyResolution` bare: settling also cascades, so the
+        // callers that had followed the losing version come along, and it refuses an empty hash.
+        match SCM.PackageOps.settleConflict state.currentBranchId c cand.hash with
         | Ok _ ->
-          SCM.Conflicts.setStatus c.id "overridden" cand.hash
-
           Stdlib.printLine (
             ScmJson.conflictActionJson (
               ScmJson.ConflictActionJson
@@ -456,7 +456,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
           state
         | Error e ->
           jsonFailure id e
-          state
+          { state with exitCode = 1 }
 
   | _ -> failureUnknown state
 
@@ -501,9 +501,10 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
         SCM.Conflicts.setStatus c.id "acked" ""
         printOk $"    {label} was already the auto-pick; closed without a new op."
       else
-        match SCM.PackageOps.applyResolution state.currentBranchId c cand.hash with
+        // `settleConflict`, not bare `applyResolution`: the cascade is part of the act (see the
+        // non-interactive override above).
+        match SCM.PackageOps.settleConflict state.currentBranchId c cand.hash with
         | Ok _ ->
-          SCM.Conflicts.setStatus c.id "overridden" cand.hash
           printOk $"    took {label}; {dotted} now binds {SCM.Conflicts.shortHash cand.hash}."
         | Error e -> printErr $"    couldn't apply that: {e}"
 

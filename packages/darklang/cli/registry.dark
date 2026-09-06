@@ -135,7 +135,7 @@ module Registry =
           execute = fun state args ->
             Stdlib.printLine (View.formatError $"Unknown command: {name}")
             Stdlib.printLine "Use 'help' to see available commands."
-            state
+            { state with exitCode = 1 }
           help = fun _state -> $"No help available for command: {name}"
           complete = fun _state _args -> [] }
 

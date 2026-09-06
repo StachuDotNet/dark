@@ -85,4 +85,4 @@ let executeCliCommand (args: List<String>) : Int =
     // interactive loop so it actually runs, instead of exiting the instant the command returns.
     match resultState.currentPage with
     | SubApp _ -> runInteractiveLoop resultState
-    | _ -> 0
+    | _ -> resultState.exitCode

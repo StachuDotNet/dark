@@ -1,6 +1,6 @@
 module Darklang.SCM.Commits
 
-//  the CHECKPOINT record + its silo
+// The CHECKPOINT record, and the `commits` silo.
 //
 // Authoring is live-on-write: an op takes effect the moment it folds, committed or not, so a commit is not a
 // gate. It is the one human moment -- review what changed, let propagation run over the FINAL versions,
@@ -39,14 +39,11 @@ let nextStamp () : String =
 /// A content-derived commit id: the same work, committed onto the same history, computes the same id on two
 /// machines rather than each inventing its own. Short: it's a handle you type, not a security boundary.
 ///
-/// The parent is in the material, so the id depends on POSITION as well as contents, the same way a git
-/// commit's does. Two machines that commit identical ops onto different histories therefore get different
-/// ids, which is the honest answer: those are not the same commit.
-///
-/// The op ids and the parent are IN the material, so the id is derived from what the commit holds and where
-/// it sits, not only from who typed what and when. Without them two commits of entirely different work by
-/// the same author in the same second collided in principle, and nothing about an id told you whether the
-/// contents it named were the contents you had. The ops arrive sorted (see `draftOpIdsFor`).
+/// The op ids and the parent are both IN the material, so an id says what the commit HOLDS and where it
+/// SITS, not only who typed what and when -- without them, two commits of entirely different work by the
+/// same author in the same second collide in principle. Two machines that commit identical ops onto
+/// different histories therefore get different ids, which is the honest answer: those are not the same
+/// commit. The ops arrive sorted (see `draftOpIdsFor`).
 let mintHash
   (message: String)
   (author: String)
@@ -127,7 +124,3 @@ let byHashPrefix (prefix: String) : Stdlib.Option.Option<Commit> =
   with
   | Some row -> commitFromRow row
   | None -> Stdlib.Option.Option.None
-
-let count () : Int64 =
-  Stdlib.Sqlite.scalarInt (localDb ()) "SELECT count(*) AS n FROM commits" "n"
-  |> Stdlib.Option.withDefault 0L

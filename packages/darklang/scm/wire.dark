@@ -427,7 +427,11 @@ let importFrom
         bulk = plan.bulk
         detected = plan.detected })
     |> Stdlib.Result.Result.Ok
-  | Error e -> Stdlib.Result.Result.Error e
+  | Error e ->
+    // The commit row was minted before the insert (the insert stamps against it); an insert that
+    // failed leaves it naming ops that never arrived, and `dark commits` would list it.
+    let _ = Commits.delete importCommit
+    Stdlib.Result.Result.Error e
 
 /// IMPORT peer/incoming ops for REVIEW: land them on a review branch (effective=0, inert, isolated from
 /// main) instead of auto-applying. Then `dark diff/log/conflicts <branch>` to inspect, and `merge <branch>`

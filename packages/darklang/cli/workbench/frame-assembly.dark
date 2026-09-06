@@ -51,8 +51,10 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
         // completely fine or a disaster and the number alone cannot tell you which.
         let draft = scmStatusLine state.scmStatus
 
-        let draftPart =
-          if draft == "" then "" else (Stdlib.Cli.UI.Colors.dimText ("    " ++ draft))
+        // Two forms of one segment: the plain text is what gets MEASURED, the dim one is what gets
+        // drawn. A width taken over the coloured form counts the escape codes.
+        let draftPlain = if draft == "" then "" else "    " ++ draft
+        let draftPart = if draft == "" then "" else Stdlib.Cli.UI.Colors.dimText draftPlain
 
         // Narrow terminals drop whole segments in priority order rather than letting the row overwrite
         // itself. The draft split is the most valuable thing here and the branch is second, so `instance:`
@@ -60,21 +62,17 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
         // clipped.
         let room = Stdlib.Int.max 0 (r.cols - syncVisibleLen - 4)
 
-        let widthOf (plain: String) : Int = Stdlib.String.displayWidth plain
-
         let fullPlain =
           "  " ++ state.accountName ++ "    instance: " ++ state.instanceName
-          ++ "    branch: " ++ branch ++ (if draft == "" then "" else "    " ++ draft)
+          ++ "    branch: " ++ branch ++ draftPlain
 
         let noInstancePlain =
-          "  " ++ state.accountName ++ "    branch: " ++ branch
-          ++ (if draft == "" then "" else "    " ++ draft)
+          "  " ++ state.accountName ++ "    branch: " ++ branch ++ draftPlain
 
-        let noAccountPlain =
-          "  branch: " ++ branch ++ (if draft == "" then "" else "    " ++ draft)
+        let noAccountPlain = "  branch: " ++ branch ++ draftPlain
 
         let line =
-          if widthOf fullPlain <= room then
+          if (Stdlib.String.displayWidth fullPlain) <= room then
             "  "
             ++ (Stdlib.Cli.UI.Colors.boldText state.accountName)
             ++ (Stdlib.Cli.UI.Colors.dimText "    instance: ")
@@ -82,13 +80,13 @@ let renderFull (state: State) (size: Stdlib.Cli.Tui.Size) : List<Stdlib.Cli.UI.L
             ++ (Stdlib.Cli.UI.Colors.dimText "    branch: ")
             ++ (Stdlib.Cli.UI.Colors.dimText branch)
             ++ draftPart
-          else if widthOf noInstancePlain <= room then
+          else if (Stdlib.String.displayWidth noInstancePlain) <= room then
             "  "
             ++ (Stdlib.Cli.UI.Colors.boldText state.accountName)
             ++ (Stdlib.Cli.UI.Colors.dimText "    branch: ")
             ++ (Stdlib.Cli.UI.Colors.dimText branch)
             ++ draftPart
-          else if widthOf noAccountPlain <= room then
+          else if (Stdlib.String.displayWidth noAccountPlain) <= room then
             "  " ++ (Stdlib.Cli.UI.Colors.dimText "branch: ") ++ (Stdlib.Cli.UI.Colors.dimText branch) ++ draftPart
           else
             Stdlib.Cli.UI.Colors.dimText (Stdlib.Cli.Tui.Text.clipToWidth ("  branch: " ++ branch ++ "  " ++ draft) room)

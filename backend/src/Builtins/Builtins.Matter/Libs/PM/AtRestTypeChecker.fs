@@ -644,19 +644,22 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
     { name = fn "atRestCheckBranch" 0
       typeParams = []
-      parameters =
-        // NOT consulted: the search runs against the package manager this builtin set was
-        // constructed with, which is MAIN's (`LibDB.PackageManager.pt`).
-        [ Param.make "branchId" TUuid "the branch a caller means" ]
+      parameters = [ Param.make "branchId" TUuid "the branch a caller means" ]
       returnType = TCustomType(NR.ok (DarkTypes.reportName ()), [])
       description =
         "Checks every visible package declaration on a branch without persisting anything."
       fn =
         (function
-        | exeState, _, _, [| DUuid _branchId |] ->
+        | exeState, _, _, [| DUuid branchId |] ->
           uply {
             try
-              let! report = checkBranch pm exeState.builtins
+              // The branch's own overlay, not this builtin set's pm (which is main's): on a branch
+              // the check has to see the branch's declarations, or it type-checks main and calls
+              // it the branch.
+              let branchPm =
+                LibDB.PackageManager.ptForBranch (PT.BranchId.Id branchId)
+
+              let! report = checkBranch branchPm exeState.builtins
               return DarkTypes.reportToDT report
             with ex ->
               return

@@ -285,8 +285,15 @@ let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState
   let positional = args |> Stdlib.List.filter (fun a -> Stdlib.String.startsWith a "--" |> Stdlib.Bool.not)
 
   match positional with
-  | []
+  // Asking for help is not an error, so `help` is plain and only a bare call (which IS a missing
+  // argument) shows the usage in red.
   | [ "help" ] ->
+    Stdlib.printLine "usage: dark undeprecate <name>"
+    Stdlib.printLine
+      (Stdlib.Cli.UI.Colors.hint
+        "  puts a deprecated fn, type or value back on the shelf. `dark ls --include-deprecated` finds them.")
+    state
+  | [] ->
     Stdlib.printLine (Stdlib.Cli.UI.Colors.error "usage: dark undeprecate <name>")
     Stdlib.printLine
       (Stdlib.Cli.UI.Colors.hint

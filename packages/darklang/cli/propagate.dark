@@ -450,6 +450,18 @@ let executeUnset (state: AppState) (arg: String) : AppState =
       state
     else
 
+    // Nothing to clear is said as that, not as a clearance: "cleared" on a name with no choice
+    // claims an act that did not happen, twice in a row on a double-tap.
+    let hasChoice =
+      SCM.Propagation.allChoices ()
+      |> Stdlib.List.any (fun c ->
+        (c.owner == owner) && (c.modules == modules) && (c.name == name))
+
+    if Stdlib.Bool.not hasChoice then
+      printOk $"no choice on {describeTarget owner modules name} to clear."
+      state
+    else
+
     match SCM.Propagation.clearPolicy state.currentBranchId owner modules name with
     | Error e ->
       printErr $"couldn't clear it: {e}"

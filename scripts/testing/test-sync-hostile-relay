@@ -41,8 +41,17 @@ wait_for_relay() {  # wait_for_relay <port>
   exit 2
 }
 
+# Only what THIS run started: a `pkill -f` on the fixture path would also take out one a person is
+# poking at by hand. And a port that already answers /ping is a stale fixture from a killed run --
+# our python would fail to bind, silently, and the run would test last checkout's code.
+FIXTURE_PIDS=()
 start_relay() {  # start_relay <port>
+  if [[ "$(curl -s --max-time 2 "http://localhost:$1/ping" 2>/dev/null)" == "pong" ]]; then
+    echo "something already answers on port $1 (a stale fixture?); kill it and re-run" >&2
+    exit 2
+  fi
   python3 "$FIXTURE" "$1" >/dev/null 2>&1 &
+  FIXTURE_PIDS+=($!)
   wait_for_relay "$1"
 }
 
@@ -50,7 +59,7 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 
 # The four modes that answer a push badly. The other modes are started at the step that uses them.
 MODES=(9081 9082 9084 9085)
-trap 'pkill -f "$FIXTURE" 2>/dev/null || true' EXIT
+trap '[[ ${#FIXTURE_PIDS[@]} -gt 0 ]] && kill "${FIXTURE_PIDS[@]}" 2>/dev/null || true' EXIT
 for m in "${MODES[@]}"; do
   start_relay "$m"
 done

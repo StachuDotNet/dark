@@ -283,7 +283,12 @@ let supersededPolicies
 
                   match Stdlib.Dict.get acc k with
                   | None ->
-                    Stdlib.Dict.setOverridingDuplicates acc k (loc, policy, policy, "")
+                    // A peer's choice with no local one before it supersedes nothing of yours; only a
+                    // locally-authored choice (no `op_owners` row) starts the record of what is "yours".
+                    if author == "" then
+                      Stdlib.Dict.setOverridingDuplicates acc k (loc, policy, policy, "")
+                    else
+                      acc
                   | Some entry ->
                     let (l, mine, _now, _by) = entry
                     // Only a PEER's later choice counts as superseding; changing your own mind is not a
@@ -332,13 +337,18 @@ let supersededOverrides () : List<(LanguageTools.ProgramTypes.PackageLocation * 
     match
       Stdlib.Sqlite.query
         (localDb ())
-        "SELECT id, op_blob FROM package_ops
+        "SELECT id, op_blob,
+                (SELECT o.owner FROM op_owners o WHERE o.op_id = id LIMIT 1) AS author
+         FROM package_ops
          WHERE effective = 1 ORDER BY origin_ts, rowid"
     with
     | Error _ -> []
     | Ok rows ->
-      // Fold the log in order, remembering per location: the hash the last override chose, and the hash
-      // bound now. Order is the fold's own (origin_ts, rowid), so "later" means what the fold means.
+      // Fold the log in order, remembering per location: the hash the last LOCAL override chose, and
+      // the hash bound now. Order is the fold's own (origin_ts, rowid), so "later" means what the fold
+      // means. The same authorship rule as `supersededPolicies`: only YOUR override can be superseded
+      // (a peer's is theirs to watch), and a later edit of YOURS is a change of mind, which closes the
+      // record rather than reporting you to yourself.
       let hashOf =
         (fun target ->
           LanguageTools.ProgramTypes.hashToString
@@ -350,23 +360,34 @@ let supersededOverrides () : List<(LanguageTools.ProgramTypes.PackageLocation * 
             (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
           with
           | (Some idStr, Some blob) ->
+            let author =
+              Stdlib.Sqlite.textField row "author" |> Stdlib.Option.withDefault ""
+
             match Stdlib.Uuid.parse idStr with
             | Error _ -> acc
             | Ok id ->
               match tryDecodeOp id blob with
               | None -> acc
               | Some(Decision(_, loc, _, Override target)) ->
-                let h = hashOf target
-                Stdlib.Dict.setOverridingDuplicates acc (decisionKey loc) (loc, h, h)
+                if author == "" then
+                  let h = hashOf target
+                  Stdlib.Dict.setOverridingDuplicates acc (decisionKey loc) (loc, h, h)
+                else
+                  // A peer's override displaces whatever record was open: from here on the standing
+                  // choice on this name is theirs, not yours.
+                  Stdlib.Dict.remove acc (decisionKey loc)
               | Some(SetName(loc, target, _)) ->
                 match Stdlib.Dict.get acc (decisionKey loc) with
                 | None -> acc
                 | Some entry ->
-                  let (l, chosen, _live) = entry
-                  Stdlib.Dict.setOverridingDuplicates
-                    acc
-                    (decisionKey loc)
-                    (l, chosen, hashOf target)
+                  if author == "" then
+                    Stdlib.Dict.remove acc (decisionKey loc)
+                  else
+                    let (l, chosen, _live) = entry
+                    Stdlib.Dict.setOverridingDuplicates
+                      acc
+                      (decisionKey loc)
+                      (l, chosen, hashOf target)
               | _ -> acc
           | _ -> acc)
 

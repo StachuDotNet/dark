@@ -78,6 +78,10 @@ let executePretty (state: AppState) : AppState =
              []
            else if s.followed == 0 then
              [ $"{Cli.Text.plural s.changed "item"} changed" ]
+           else if s.changed == s.followed then
+             // Everything here followed something (a pin/follow round trip, a cascade from a pull);
+             // "0 items changed, 1 followed" states a zero nobody typed.
+             [ $"{Cli.Text.plural s.followed "item"} followed" ]
            else
              // What you did and what followed, separately; see `Summary.followed`.
              [ $"{Cli.Text.plural (s.changed - s.followed) "item"} changed, {Stdlib.Int.toString s.followed} followed" ])

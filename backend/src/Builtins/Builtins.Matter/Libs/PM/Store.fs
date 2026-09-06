@@ -1,7 +1,7 @@
 /// Store-metadata builtins: this instance's own package-store path + the Release coordinate it speaks.
 /// These are facts about the local package STORE, used across the CLI (`dark version`, `dark ops`, config)
 /// and by sync — not sync's own machinery, so they live with the package manager, not under Sync/. (The
-/// wrappers stay in the `Darklang.Sync.*` namespace on the Dark side; only the F# home moves.)
+/// wrappers live under `Darklang.SCM.Wire` on the Dark side; the F# home is here.)
 module Builtins.Matter.Libs.PM.Store
 
 open FSharp.Control.Tasks
@@ -89,7 +89,12 @@ let fns () : List<BuiltInFn> =
                   .ToLowerInvariant()
 
               let ids =
-                List.zip opsHex opIds
+                // The wrapper builds both lists from one bundle, but `zip` on ragged input is an
+                // uncaught host exception; truncating scans what can be paired and no more.
+                let pairable = min (List.length opsHex) (List.length opIds)
+                List.zip
+                  (List.truncate pairable opsHex)
+                  (List.truncate pairable opIds)
                 |> List.choose (fun (hex, id) ->
                   match hex, id with
                   | DString h, DString i when h.ToLowerInvariant().Contains needle ->

@@ -94,7 +94,7 @@ let renderDevices (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<St
           "   " ++ (Stdlib.Cli.UI.Colors.dimText "instance.name  ") ++ state.instanceName
           "   " ++ (Stdlib.Cli.UI.Colors.dimText "instance.id    ") ++ (Stdlib.String.slice (configValueOr "instance.id" "(unset)") 0 8) ++ (Stdlib.Cli.UI.Colors.dimText "...")
           ""
-          Stdlib.Cli.UI.Colors.dimText "   s sync now  ·  a set this instance up  ·  c view/edit config     what arrived, and conflicts, live in SCM" ] ])
+          Stdlib.Cli.UI.Colors.dimText "   s sync now  ·  a where setup lives  ·  c view/edit config     what arrived, and conflicts, live in SCM" ] ])
 
 
 /// The AI view: agents dark is running (preview data for now) with a thread detail. `a` asks the agent.

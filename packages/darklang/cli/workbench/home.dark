@@ -81,12 +81,11 @@ let loadHomeItems (branchId: Uuid) : List<BodyItem> =
           let ahead = if own == 0 then "no commits yet" else (Stdlib.Int.toString own) ++ " ahead"
           // No "behind" marker: answering it means diffing the branch against its parent, and Home draws
           // on every keypress. `dark rebase --dry-run` answers it properly when you ask.
-          let behind = ""
           let last =
             match Stdlib.List.head ownCommits with
             | Some c -> " · last " ++ (agoText c.originTs)
             | None -> ""
-          (if parent == "" then "" else parent ++ " · ") ++ ahead ++ behind ++ last
+          (if parent == "" then "" else parent ++ " · ") ++ ahead ++ last
       BodyItem { name = marker ++ b.name; kind = "home-branch"; isModule = false; desc = desc })
   let mergedCount =
     allBranches |> Stdlib.List.filter (fun b -> b.merged) |> Stdlib.List.length
@@ -284,9 +283,8 @@ let homeBranchDetail (state: State) : List<String> =
     let isCurrent = b.id == state.branchId
     let own = SCM.PackageOps.commitsOnBranch b.id 5L
     let ownCount = Stdlib.List.length (SCM.PackageOps.commitsOnBranch b.id 200L)
-    // Same reason as above: "is this branch behind its parent" is a diff, and this pane redraws on every
+    // No "behind" marker: "is this branch behind its parent" is a diff, and this pane redraws on every
     // keypress. `dark rebase --dry-run` is where that question gets answered honestly.
-    let behind = false
     let standing =
       if b.merged then
         "merged"
@@ -294,9 +292,8 @@ let homeBranchDetail (state: State) : List<String> =
         (if ownCount == 0 then "no commits of its own"
          else if b.parentBranchId == Stdlib.Option.Option.None then plural ownCount "commit"
          else (plural ownCount "commit") ++ " ahead of " ++ parent)
-        ++ (if behind then (Stdlib.Cli.UI.Colors.colorize Stdlib.Cli.UI.Colors.orange "  ·  behind " ++ parent ++ " - a rebase would move it") else "")
     let wipHere =
-      if isCurrent then wipItemCount state.branchId
+      if isCurrent then wipItemCount ()
       else Stdlib.List.length (SCM.PackageOps.draftBindingsFor b.id)
     let commitLines =
       if Stdlib.List.isEmpty own then []

@@ -33,9 +33,9 @@ type Kind =
   /// pin a name to one version, and a later ordinary edit rebound it.
   ///
   /// Its own kind because the advice is different again: nothing is stale and no kind moved, the name is
-  /// simply not where you put it. Last-writer-wins is working as designed here; what was missing is that
-  /// it discards the losing side SILENTLY, and with sync running as a daemon that can happen while you
-  /// are asleep. This is how you find out.
+  /// simply not where you put it. Last-writer-wins is working as designed here; it just discards the
+  /// losing side SILENTLY, and with sync running as a daemon that can happen while you are asleep. This
+  /// is how you find out.
   ///
   /// Only an override qualifies. A pin can only be displaced by another propagation decision, which is
   /// deliberate-beating-deliberate and not a surprise; an override is the one a plain edit can undo.
@@ -134,6 +134,7 @@ let fqnOf (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
 /// Keyed on the version the usage is ON, not just the pair of names: "leave it, it's fine" survives the
 /// dependency getting further versions, but not the usage itself moving. It is the "not now" answer;
 /// "forever" is a `pin`.
+///
 /// <param discriminator> is whatever makes this finding a DIFFERENT one from the next: the version a
 /// usage is on, or the choice a policy replaced. Kept as text so a kind with no hashes can key on
 /// something else and still get a stable id.
@@ -150,11 +151,9 @@ let findingId
 
 /// Every live item whose recorded dependency edge points at a version that is no longer current.
 ///
-/// Two findings come out of the one query, split on whether the KIND moved as well as the hash.
-///
-/// One query. The edge carries the NAME it was resolved by, so a dependency that has moved on is still
-/// findable -- resolving its old hash through `locations` would find nothing, which is precisely the case
-/// that matters here.
+/// One query, two findings, split on whether the KIND moved as well as the hash. The edge carries the
+/// NAME it was resolved by, so a dependency that has moved on is still findable -- resolving its old hash
+/// through `locations` would find nothing, which is precisely the case that matters here.
 ///
 /// main-scoped, on purpose: this is a property of the STORE, of what main's log binds and depends on,
 /// not of the branch the process stands on.
@@ -227,7 +226,7 @@ let detectOutdatedUsages () : List<Finding> =
 /// stored at all; only answers are rows.
 ///
 /// Selected by "not a conflict" rather than by listing Constraint kinds, so a new kind's acks are read
-/// without touching this: conflicts are the closed set, Constraints the open one.
+/// without touching this: conflicts are the closed set (both its kinds excluded), Constraints the open one.
 ///
 /// Deliberately NOT scoped to a branch: a constraint is a property of the STORE, so a branch filter would
 /// make an ack given on main stop counting the moment you switched.
@@ -235,7 +234,8 @@ let ackedIds () : List<String> =
   Stdlib.Sqlite.column
     (localDb ())
     "SELECT id FROM conflicts
-     WHERE status = 'acked' AND kind <> 'same-name-different-hash'"
+     WHERE status = 'acked'
+       AND kind NOT IN ('same-name-different-hash', 'independent-creation')"
     "id"
 
 
@@ -253,13 +253,19 @@ let detectSupersededDecisions () : List<Finding> =
   |> Stdlib.List.map (fun entry ->
     let (loc, chosen, live) = entry
 
+    // The item's REAL kind, asked of the live binding: hardcoding fn here fed the wrong kind to
+    // `--json` and to anything resolving by it, for a superseded decision on a type or a value.
+    let kind =
+      SCM.Propagation.kindAt loc
+      |> Stdlib.Option.withDefault LanguageTools.ProgramTypes.ItemKind.Fn
+
     Finding
       { kind = Kind.DecisionSuperseded
         id = findingId loc loc chosen
         usage = loc
-        usageKind = LanguageTools.ProgramTypes.ItemKind.Fn
+        usageKind = kind
         dependency = loc
-        dependencyKind = LanguageTools.ProgramTypes.ItemKind.Fn
+        dependencyKind = kind
         detail =
           FindingDetail.Versions(
             LanguageTools.ProgramTypes.Hash.Hash chosen,
@@ -287,10 +293,9 @@ let detectSupersededPolicies () : List<Finding> =
 /// The same finding, for what the BRANCH binds.
 ///
 /// `detectOutdatedUsages` reads `locations`, which is main's, so an item bound on a branch is never a
-/// usage there: a branch whose caller of `f` was left behind when main moved `f` had no finding at
-/// all, and `rebase` said "already current" because the branch had not touched `f` itself. The branch
-/// went on running main's old version with nothing saying so. Seen on two machines: a colleague's
-/// branch calling the version of a fn I had replaced on main an hour earlier.
+/// usage there. Without this pass a branch whose caller of `f` was left behind when main moved `f` has
+/// no finding at all, and `rebase` answers "already current" because the branch never touched `f`
+/// itself: the branch goes on running main's old version with nothing saying so.
 ///
 /// One query per binding the chain holds, against the branch-aware read for what each dependency
 /// means now. A branch holds few bindings; this runs from `dark status`, and the whole chain's
@@ -347,11 +352,11 @@ let detectAll () : List<Finding> =
   // The ack lifecycle, the ids, the CLI and the `dark status` count are all kind-agnostic, so a kind
   // appends here and needs nothing else. The one thing that is NOT kind-agnostic is pin-suppression, in
   // `pending` below.
-  Stdlib.List.append
-    (Stdlib.List.append
-      (detectOutdatedUsages ())
-      (detectOutdatedUsagesOn (PackageOps.currentBranch ())))
-    (Stdlib.List.append (detectSupersededDecisions ()) (detectSupersededPolicies ()))
+  Stdlib.List.flatten
+    [ detectOutdatedUsages ()
+      detectOutdatedUsagesOn (PackageOps.currentBranch ())
+      detectSupersededDecisions ()
+      detectSupersededPolicies () ]
 
 
 /// The findings a human still has to look at: detection minus the two ways of having already answered.
@@ -392,8 +397,16 @@ let ack
   (s: Finding)
   (note: String)
   : Stdlib.Result.Result<Unit, String> =
+  // The default has to name the finding it answers. Only StaleUsage is a use of something else; for
+  // the other two `dependency` IS the name itself, and "stale use of X" describes nothing that happened.
   let reason =
-    if note != "" then note else $"stale use of {fqnOf s.dependency}"
+    if note != "" then
+      note
+    else
+      match s.kind with
+      | StaleUsage -> $"stale use of {fqnOf s.dependency}"
+      | KindChanged -> $"{fqnOf s.dependency} is a different kind of item now"
+      | DecisionSuperseded -> $"decision on {fqnOf s.usage} superseded"
 
   let op =
     LanguageTools.ProgramTypes.PackageOp.Decision(

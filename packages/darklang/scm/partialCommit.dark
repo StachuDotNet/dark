@@ -121,10 +121,8 @@ let closeOverDeps (hashes: List<String>) : List<String> =
   let added = draftAddedHashes ()
   let rounds = Stdlib.List.length added + 1
 
-  match Stdlib.List.range 1 rounds with
-  | steps ->
-    steps
-    |> Stdlib.List.fold (Stdlib.List.unique hashes) (fun acc _ -> closeStep added acc)
+  Stdlib.List.range 1 rounds
+  |> Stdlib.List.fold (Stdlib.List.unique hashes) (fun acc _ -> closeStep added acc)
 
 /// The op id of <param e>, when it carries CONTENT (or a deprecation) for one of <param wantedHashes>.
 ///

@@ -62,7 +62,10 @@ let loadItems (branchId: Uuid) (location: Packages.PackageLocation) : List<BodyI
 /// Items, not ops: authoring one value emits two ops (AddValue + SetName), so an op count would say
 /// "2 changes" above a list titled "Changes . 1". Ops are the right unit for a commit's size; items
 /// are the right unit for "how much have I changed".
-let wipItemCount (branchId: Uuid) : Int =
+///
+/// No branch to pass: `SCM.Draft.read ()` resolves through the process branch overlay, which `onBranch`
+/// keeps in step with `state.branchId`. For any OTHER branch, ask `draftBindingsFor` by id.
+let wipItemCount () : Int =
   Stdlib.List.length (SCM.Draft.read ()).bindings
 
 /// Feeds two surfaces that are the same list seen from two angles: the SCM view's changes list, and
@@ -73,8 +76,9 @@ let wipItemCount (branchId: Uuid) : Int =
 /// Flat and fully qualified, like the Values lens, because a draft is scattered across modules and
 /// filtering a tree to five leaves in five places is worse than a list.
 let loadChangedItems (branchId: Uuid) : List<BodyItem> =
-  SCM.Draft.read ()
-  |> fun p -> p.bindings
+  // The branch ASKED about, not the process overlay: a caller that just switched hands the new id
+  // before the overlay follows, and an ignored parameter here answered for the old branch.
+  SCM.PackageOps.draftBindingsFor branchId
   |> Stdlib.List.map (fun b ->
     BodyItem
       { name = SCM.Conflicts.fqn b.owner b.modules b.name

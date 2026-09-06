@@ -102,44 +102,46 @@ let planSyncImport
   if sourceId == "" then
     // No source identity: nothing to reconcile against and nothing to say about it.
     SyncPlan { conflicts = []; bulk = false; detected = true }
-  else if Conflicts.hasSyncBases sourceId then
-    // Only what actually ARRIVED counts as incoming -- see `unknownRecords`.
+  else
+    // Only what actually ARRIVED counts as incoming -- see `unknownRecords`. The same three reads feed
+    // both arms; what differs is the base they are compared against.
     let incoming = bindingsFromWireRecords (unknownRecords records)
     let names = incoming |> Stdlib.List.map (fun b -> b.name)
     let local = Conflicts.localBindingsFor names
+
     // The local side is labelled with this instance's IDENTITY, because the label is STORED and handed to
     // `--json`, where "yours" tells a reader nothing and can't tell two machines apart. Rendering it as
     // "yours" is the renderer's decision, which it makes by comparing against this same identity.
-    let conflicts =
-      Conflicts.detect (identity ()) sourceId local incoming (Conflicts.syncBases sourceId)
+    let me = identity ()
 
-    SyncPlan { conflicts = conflicts; bulk = false; detected = true }
-  else
-    // A first reconciliation cannot compare against an agreed base, having never agreed. It CAN still
-    // notice that both sides replaced the same parent, which needs no base at all: the two ops say so
-    // themselves. That is the case an instance which pushed but never pulled lands in -- `dark connect`
-    // pushes without pulling -- where its own edit would otherwise be superseded without it being told,
-    // while the colleague who happened to pull once IS told about the same event.
-    //
-    // Filtered to `same-name-different-hash`, which is the kind the same-parent rule produces. The
-    // independent-creation rule is deliberately NOT run here: it fires on two bindings that both record
-    // no predecessor, and "no predecessor" also means "none recorded", so on a first contact against a
-    // store full of unfamiliar names it would file conflicts by the thousand. That is what declining
-    // detection wholesale was protecting against, and it still is.
-    let incoming = bindingsFromWireRecords (unknownRecords records)
-    let names = incoming |> Stdlib.List.map (fun b -> b.name)
-    let local = Conflicts.localBindingsFor names
+    if Conflicts.hasSyncBases sourceId then
+      let conflicts =
+        Conflicts.detect me sourceId local incoming (Conflicts.syncBases sourceId)
 
-    let diverged =
-      Conflicts.detect (identity ()) sourceId local incoming []
-      |> Stdlib.List.filter (fun c -> c.kind == "same-name-different-hash")
+      SyncPlan { conflicts = conflicts; bulk = false; detected = true }
+    else
+      // A first reconciliation cannot compare against an agreed base, having never agreed. It CAN still
+      // notice that both sides replaced the same parent, which needs no base at all: the two ops say so
+      // themselves. That is the case an instance which pushed but never pulled lands in -- `dark connect`
+      // pushes without pulling -- where its own edit would otherwise be superseded without it being told,
+      // while the colleague who happened to pull once IS told about the same event.
+      //
+      // Filtered to `same-name-different-hash`, which is the kind the same-parent rule produces. The
+      // independent-creation rule is deliberately NOT run here: it fires on two bindings that both record
+      // no predecessor, and "no predecessor" also means "none recorded", so on a first contact against a
+      // store full of unfamiliar names it would file conflicts by the thousand. That is what declining
+      // detection wholesale protects against.
+      let diverged =
+        Conflicts.detect me sourceId local incoming []
+        |> Stdlib.List.filter (fun c -> c.kind == "same-name-different-hash")
 
-    SyncPlan { conflicts = diverged; bulk = true; detected = false }
+      SyncPlan { conflicts = diverged; bulk = true; detected = false }
 
 
-/// FINISH a sync-import, AFTER the ops have been inserted and folded: record the conflicts the plan found,
-/// then advance the bases to what this instance now holds. Both sides converge on that (the fold is
-/// deterministic over the same ops), so it is the honest "what we last agreed on" marker for the next import.
+/// FINISH a sync-import, AFTER the ops have been inserted and folded: record the conflicts the plan found.
+///
+/// Advancing the bases is `recordSyncBases`, which runs once per pull rather than once per page, so it is
+/// not folded in here.
 let finishSyncImport (sourceId: String) (plan: SyncPlan) : Unit =
   if sourceId == "" then
     ()

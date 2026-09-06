@@ -77,10 +77,14 @@ let executeList (state: AppState) (limit: Int64) : AppState =
   let shown = Stdlib.List.length summaries
 
   let header =
+    // "on main" for main, like every other command; "on branch X" only when there is a branch.
+    let where =
+      if SCM.Ids.isMain branch then "on main" else $"on branch {branchName}"
+
     if shown >= (Stdlib.Int.fromInt64 total) then
-      $"{Stdlib.Int64.toString total} ops on branch {branchName}"
+      $"{Stdlib.Int64.toString total} ops {where}"
     else
-      $"{Stdlib.Int64.toString total} ops on branch {branchName} - showing the {Stdlib.Int.toString shown} most recent"
+      $"{Stdlib.Int64.toString total} ops {where} - showing the {Stdlib.Int.toString shown} most recent"
 
   printOk header
 
@@ -101,7 +105,7 @@ let help (_state: AppState) : String =
     "  `dark undo`, `dark propagate`,"
     "  `dark branch`, `dark merge`, `dark rebase`, `dark sync`, `dark review`."
     ""
-    "Op-log SQL is siloed in SCM.PackageOps; this command just formats it." ]
+    "`dark commits` groups the same log by commit; `dark show <id>` opens one op or commit." ]
   |> Stdlib.String.join "\n"
 
 /// Where a verb that used to be an `ops` subcommand lives. `ops` reads; every verb that CHANGES the log is
@@ -149,13 +153,26 @@ let execute (state: AppState) (args: List<String>) : AppState =
     state
   else
 
+  // A count has to be a positive number: `ops -5` read as a count of -5 used to print the whole
+  // log (a million characters), and a refused count names the problem where silent help does not.
+  let countOf (n: String) : Stdlib.Result.Result<Int64, String> =
+    match Stdlib.Int64.parse n with
+    | Ok l when l > 0L -> Stdlib.Result.Result.Ok l
+    | Ok _ -> Stdlib.Result.Result.Error $"ops takes a positive count; got {n}."
+    | Error _ -> Stdlib.Result.Result.Error $"\"{n}\" isn't a count. `dark ops 50` shows the 50 most recent."
+
   match args with
   | [] -> executeList state 20L
   | [ "list" ] -> executeList state 20L
   | [ "list", n ] ->
-    match Stdlib.Int64.parse n with
+    match countOf n with
     | Ok l -> executeList state l
-    | Error _ -> executeList state 20L
+    | Error why ->
+      printErr why
+      state
+  | [ "show" ] ->
+    printErr "`ops show` needs an op id. `dark ops` lists them."
+    state
   | [ "show", id ] -> executeShow state id
   | verb :: _ ->
     match movedFromOps verb with
@@ -163,10 +180,11 @@ let execute (state: AppState) (args: List<String>) : AppState =
       printErr $"`ops` only reads the log -- {verb} is `{target}`."
       state
     | None ->
-      match Stdlib.Int64.parse verb with
+      match countOf verb with
       | Ok l -> executeList state l
-      | Error _ ->
-        Stdlib.printLine (help state)
+      | Error why ->
+        printErr why
+        printHint "  `dark ops help` says what it does."
         state
 
 let complete

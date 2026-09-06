@@ -110,6 +110,8 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
   | cs ->
     let n = Stdlib.Int.toString (Stdlib.List.length cs)
 
+    // "conflict(s)" rather than `Cli.Text.plural`: `scripts/testing/test-sync-multi-instance` matches
+    // this line verbatim, so the two have to move together.
     printOk
       $"{n} conflict(s) auto-resolved by recency and recorded -- the losing version is kept, not dropped."
 
@@ -438,7 +440,6 @@ let executePush (state: AppState) (url: String) : AppState =
     match outcome with
     | Ok counts ->
       let (sent, stored) = counts
-      let c = Stdlib.Int.toString (Stdlib.List.length chunks)
 
       let newPart =
         if stored == sent then
@@ -467,7 +468,8 @@ let executePush (state: AppState) (url: String) : AppState =
         printOk $"Nothing new to push to {url}."
       else
         printOk
-          $"Pushed {Stdlib.Int.toString sent} ops{newPart} to {url} as \"{id}\" (in {c} chunk(s))."
+          // `test-sync-multi-instance` matches "^Pushed [1-9][0-9]* op" against this line.
+          $"Pushed {Cli.Text.plural sent "op"}{newPart} to {url} as \"{id}\" (in {Cli.Text.plural (Stdlib.List.length chunks) "chunk"})."
 
       // Push is main-only (see the top of this function), and the success line looks the same from a
       // branch whether or not your day's work is in it -- so say which it was.
@@ -786,8 +788,10 @@ let executeStatus (state: AppState) (url: String) : AppState =
         | (true, false) ->
           printOk $"{Stdlib.Int64.toString unpushed} op(s) to send -- `dark push {url}`."
           branchLines ()
+        // No count on this side: how many ops are waiting is only knowable by asking for them, and
+        // `/sync/head` is deliberately a cheap stamp. The other three arms say a state, so this one does.
         | (false, true) ->
-          printOk $"ops to receive -- `dark pull {url}`."
+          printOk $"behind the relay -- `dark pull {url}`."
           branchLines ()
         | (true, true) ->
           printOk
@@ -865,7 +869,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   if Stdlib.Bool.not (Stdlib.List.isEmpty flags) then
     let f = Stdlib.String.join flags " "
-    printErr $"sync takes no flags, and doesn't understand {f}."
+    printErr $"sync takes no flags, and {f} isn't a url."
     printHint "  `dark sync help` lists what it does take."
     state
   else
@@ -965,7 +969,14 @@ let executeReviewCmd (state: AppState) (args: List<String>) : AppState =
   | [ "pull", url, queue, "--from", who ] ->
     executeReviewPullFrom state url queue who
   | [ "pull" ] -> executeReviewPull state (SCM.PackageOps.relay ()) "review"
-  | [ "pull", url ] -> executeReviewPull state url "review"
+  // A single argument that is not a url is the QUEUE, against the remembered relay: `helpReview`
+  // says `review pull [url] [queue]`, and following it without a url used to hand the queue name
+  // to the network. Same guard `branch pull` uses.
+  | [ "pull", arg ] ->
+    if Cli.Branch.looksLikeRelayUrl arg then
+      executeReviewPull state arg "review"
+    else
+      executeReviewPull state (SCM.PackageOps.relay ()) arg
   | [ "pull", url, queue ] -> executeReviewPull state url queue
   | [ "import", path ] -> executeReviewImport state path "review"
   | [ "import", path, queue ] -> executeReviewImport state path queue

@@ -299,6 +299,10 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
     // draft holding only a `Deprecate` binds no name and is still not empty.
     if SCM.PackageOps.draftOpCount () == 0L then
       (false, "", 0L, 0)
+    else if parsed.autoConfirm && parsed.message == "" then
+      // The same refusal the pretty path makes; the JSON below reports `committed = false`.
+      printErr "a commit needs a message: `dark commit \"what changed\"`."
+      (false, "", 0L, 0)
     else if parsed.autoConfirm && (refuseUnresolved parsed || refuseTypeErrors parsed) then
       (false, "", 0L, 0)
     else if parsed.autoConfirm then
@@ -407,6 +411,11 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
   if SCM.PackageOps.draftOpCount () == 0L then
     printOk "nothing to commit -- your draft is empty."
     state
+  // A commit is what other machines pull, and its message is the one sentence they get. An empty
+  // one is nearly always a slipped Enter, so it is refused rather than recorded forever.
+  else if parsed.message == "" then
+    printErr "a commit needs a message: `dark commit \"what changed\"`."
+    state
   else if refuseUnresolved parsed then
     state
   else if refuseTypeErrors parsed then
@@ -480,12 +489,19 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
 
       Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "    -> `dark conflicts` to inspect / override")
 
+    // `confirmExplicit`, so a piped stdin is a NO: docs promise a review-then-ask, and a script
+    // that wants no prompt says `-y`. `confirm` would treat "nobody there" as a yes.
     if
       Stdlib.Bool.not (
-        Cli.Prompt.confirm parsed.autoConfirm (Stdlib.Cli.UI.Colors.warning "\n  Commit this change? [Y/n]: ")
+        Cli.Prompt.confirmExplicit
+          parsed.autoConfirm
+          (Stdlib.Cli.UI.Colors.warning "\n  Commit this change? [Y/n]: ")
       )
     then
-      printOk "  left as a draft."
+      if Cli.Prompt.interactive () || parsed.autoConfirm then
+        printOk "  left as a draft."
+      else
+        printOk "  left as a draft. (`dark commit <message> -y` commits without the prompt -- a piped stdin can't answer it.)"
       state
     else
       let outcome =

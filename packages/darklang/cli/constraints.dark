@@ -107,6 +107,24 @@ let selectKind
   | None -> findings
 
 
+/// The `--kind` value, checked: `Error` explains rather than silently filtering to nothing on a typo,
+/// and a bare `--kind` is a missing value, not an unknown flag.
+let kindArgChecked (args: List<String>) : Stdlib.Result.Result<Unit, String> =
+  match Stdlib.List.findFirstIndex args (fun a -> a == "--kind") with
+  | None -> Stdlib.Result.Result.Ok()
+  | Some i ->
+    match Stdlib.List.getAt args (i + 1) with
+    | None ->
+      Stdlib.Result.Result.Error
+        "--kind needs a value: stale-usage, kind-changed, or decision-superseded."
+    | Some wanted ->
+      match SCM.Constraints.kindFromString wanted with
+      | Some _ -> Stdlib.Result.Result.Ok()
+      | None ->
+        Stdlib.Result.Result.Error
+          $"\"{wanted}\" isn't a kind -- stale-usage, kind-changed, or decision-superseded."
+
+
 let executeJson (state: AppState) (args: List<String>) : AppState =
   let findings = SCM.Constraints.pending () |> (fun fs -> selectKind fs args)
   let body = findings |> Stdlib.List.map toJson |> (fun ls -> Stdlib.String.join ls ",")
@@ -163,8 +181,24 @@ let selectTargets
     // An EMPTY prefix must not match. `startsWith f.id ""` is true of every finding, so `dark ack ""`
     // would ack the first one: a mutation, chosen arbitrarily, from an argument that says nothing. It is
     // an unknown id, which reports and skips.
+    // Flag VALUES are not targets: `--why` swallows the rest of the line (its text needn't be
+    // quoted), and `--as` takes the one token after it. Without this, `resolve <id> --as repoint`
+    // reports "no constraint matching \"repoint\"".
+    let beforeWhy =
+      match Stdlib.List.findFirstIndex ids (fun a -> a == "--why") with
+      | Some i -> Stdlib.List.take ids i
+      | None -> ids
+
+    let withoutAsValue =
+      match Stdlib.List.findFirstIndex beforeWhy (fun a -> a == "--as") with
+      | Some i ->
+        Stdlib.List.append
+          (Stdlib.List.take beforeWhy i)
+          (Stdlib.List.drop beforeWhy (i + 2))
+      | None -> beforeWhy
+
     let real =
-      ids
+      withoutAsValue
       |> Stdlib.List.filter (fun i -> Stdlib.String.startsWith i "--" |> Stdlib.Bool.not)
       |> Stdlib.List.map normalize
 
@@ -264,8 +298,26 @@ let resolutionFor
   match chosenResolution args with
   | "" ->
     match choices with
-    | [ only ] -> Stdlib.Result.Result.Ok only
-    | [] -> Stdlib.Result.Result.Error "these findings offer no resolution."
+    | [ only ] ->
+      // One choice ACROSS the batch is not one choice for EVERY member: a batch mixing a stale
+      // usage with a superseded decision unions to ["repoint"], and repointing the decision
+      // finding is not a thing. Every target has to offer it, same as the `--as` arm checks.
+      let cannot =
+        targets
+        |> Stdlib.List.filter (fun f ->
+          (SCM.Constraints.offersResolution f.kind only) |> Stdlib.Bool.not)
+
+      match cannot with
+      | [] -> Stdlib.Result.Result.Ok only
+      | fs ->
+        let ids =
+          fs |> Stdlib.List.map (fun f -> $"#{f.id}") |> (fun l -> Stdlib.String.join l " ")
+
+        Stdlib.Result.Result.Error
+          $"{ids} can't be resolved as \"{only}\" -- ack those, or resolve them separately."
+    | [] ->
+      let noun = if Stdlib.List.length targets == 1 then "this finding offers" else "these findings offer"
+      Stdlib.Result.Result.Error $"{noun} no resolution."
     | many ->
       let list = Stdlib.String.join many " | "
 
@@ -393,6 +445,7 @@ let listingUnderstands (args: List<String>) : Bool =
     match rest with
     | [] -> true
     | "--json" :: more -> understands more
+    | [ "--kind" ] -> true
     | "--kind" :: _ :: more -> understands more
     | _ -> false
 
@@ -407,7 +460,15 @@ let execute (state: AppState) (args: List<String>) : AppState =
       printErr $"`dark constraints` doesn't take \"{Stdlib.String.join args " "}\"."
       printHint "  dark constraints [--kind <kind>] [--json]   list; `resolve` and `ack` take ids"
       state
-    else if Stdlib.List.member args "--json" then
+    else
+
+    match kindArgChecked args with
+    | Error why ->
+      printErr why
+      state
+    | Ok _ ->
+
+    if Stdlib.List.member args "--json" then
       executeJson state args
     else
       executeList state args

@@ -54,15 +54,19 @@ DARK_CONFIG_RUNDIR="$PWD/$ROOT/relay" HOME="$PWD/$ROOT/relay/home" DARK_MATTER_W
   "$PWD/$CLI" serve Darklang.Matter.router --port "$PORT" > "$ROOT/relay/log" 2>&1 &
 RPID=$!
 trap 'kill $RPID 2>/dev/null' EXIT
-sleep 8
-kill -0 $RPID 2>/dev/null || { echo "the relay we started is not running"; exit 2; }
+# Poll rather than a flat sleep: 8s was a flake on a loaded box, and most starts are ready in 2.
+for _ in $(seq 1 40); do
+  [[ "$(curl -s --max-time 2 "http://localhost:$PORT/ping" 2>/dev/null)" == "pong" ]] && break
+  kill -0 $RPID 2>/dev/null || { echo "the relay we started is not running"; cat "$ROOT/relay/log"; exit 2; }
+  sleep 1
+done
 want "the relay answers" "^200$" "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$PORT/ping")"
 for i in A B C D; do x "$i" connect "http://localhost:$PORT" --secret "$SECRET" > /dev/null; done
 x B pull > /dev/null; x C pull > /dev/null
 
 echo "== a round trip"
 x A fn /SM.T.one '() : Int64 = 41L' > /dev/null; x A commit "A's work" -y > /dev/null
-want "A pushes" "^Pushed [1-9][0-9]* ops" "$(x A push)"
+want "A pushes" "^Pushed [1-9][0-9]* op" "$(x A push)"
 want "B pulls" "^Pulled [1-9][0-9]* new op" "$(x B pull)"
 want "B runs it" "^41$" "$(x B eval 'SM.T.one ()' | tail -1)"
 # The same work reads the same on both machines: A's commit id and message, not a "synced from A" of B's.
@@ -75,8 +79,8 @@ echo "== two instances authoring at the same time"
 ( x A fn /SM.T.a '() : Int64 = 1L' > /dev/null; x A commit "A" -y > /dev/null; x A push > "$ROOT/a.log" 2>&1 ) & PA=$!
 ( x B fn /SM.T.b '() : Int64 = 2L' > /dev/null; x B commit "B" -y > /dev/null; x B push > "$ROOT/b.log" 2>&1 ) & PB=$!
 wait $PA $PB   # named: the relay is a background job too, and it never exits
-want "A's push landed" "^Pushed [1-9][0-9]* ops" "$(cat "$ROOT/a.log")"
-want "B's push landed" "^Pushed [1-9][0-9]* ops" "$(cat "$ROOT/b.log")"
+want "A's push landed" "^Pushed [1-9][0-9]* op" "$(cat "$ROOT/a.log")"
+want "B's push landed" "^Pushed [1-9][0-9]* op" "$(cat "$ROOT/b.log")"
 x C pull > /dev/null
 want "C sees A's" "^1$" "$(x C eval 'SM.T.a ()' | tail -1)"
 want "C sees B's" "^2$" "$(x C eval 'SM.T.b ()' | tail -1)"

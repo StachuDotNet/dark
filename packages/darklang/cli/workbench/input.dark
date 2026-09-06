@@ -308,6 +308,10 @@ let performInputAction (state: State) (inp: InputState) : Step =
             message = "couldn't start a branch called \"" ++ inp.field.text ++ "\"" }
     | Some b ->
 
+    // The overlay FIRST: `itemsForView` reads the draft through the process overlay, so building
+    // the list before moving onto the branch describes the branch you just left.
+    let moved = onBranch state b.id
+
     let newItems =
       itemsForView state.activeView b.id state.location state.scm.section state.ai.section state.matter.lens
     // Land on the branch you just made, the way saving lands on the item you just wrote. Resetting to 0 put
@@ -321,7 +325,6 @@ let performInputAction (state: State) (inp: InputState) : Step =
         Stdlib.String.contains it.name inp.field.text)
       |> Stdlib.Option.map (fun pair -> let (i, _it) = pair in i)
       |> Stdlib.Option.withDefault 0
-    let moved = onBranch state b.id
 
     Step.Continue
       { moved with

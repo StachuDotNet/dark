@@ -8,8 +8,8 @@ module Darklang.SCM.Branch
 //
 // Everything here is derived from the same tables `SCM.Branches` owns; nothing is stored twice. What this
 // adds is the record shape and the lifecycle verbs a UI needs -- including `rename`, which is one UPDATE
-// now that a name is an alias nothing references. It could not be implemented at all when the name WAS the
-// id, and the LSP still refuses it for that reason.
+// because a name is an alias nothing references, and which the LSP's `dark/renameBranch` calls straight
+// through.
 
 /// A branch as a view holds it. `id` is the uuid everything internal points at; `name` is what a person
 /// reads and can change.

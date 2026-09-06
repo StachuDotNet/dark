@@ -596,18 +596,33 @@ let notFoundPage (title: String) (body: String) : HttpResponse =
 /// Escaping happens FIRST and the markers are recognised in their escaped form, so nothing in a doc
 /// comment can introduce markup of its own -- the only tags here are the ones this function adds.
 let renderDoc (raw: String) : String =
-  // The tags that actually occur, enumerated rather than matched loosely, so a stray `&lt;` in prose stays
-  // prose instead of swallowing the rest of the sentence into a code span.
-  esc raw
-  |> (fun d -> Stdlib.String.replaceAll d "{{" "<code>")
-  |> (fun d -> Stdlib.String.replaceAll d "}}" "</code>")
-  |> (fun d -> Stdlib.String.replaceAll d "&lt;param " "<code>")
-  |> (fun d -> Stdlib.String.replaceAll d "&lt;type " "<code>")
-  |> (fun d -> Stdlib.String.replaceAll d "&lt;var " "<code>")
-  |> (fun d -> Stdlib.String.replaceAll d "&lt;fn " "<code>")
-  |> (fun d -> Stdlib.String.replaceAll d "&lt;list " "<code>")
-  |> (fun d -> Stdlib.String.replaceAll d "&lt;returns " "<code>")
-  |> (fun d -> Stdlib.String.replaceAll d "&gt;" "</code>")
+  // The tags that actually occur, enumerated rather than matched loosely, so a stray `&lt;` in prose
+  // stays prose instead of swallowing the rest of the sentence into a code span. Each marker closes at
+  // its OWN `&gt;` -- the first one after it -- so a bare `>` in prose ("a -> b", "x > 0") is left
+  // alone rather than turned into a stray close tag.
+  let openMarker (d: String) (marker: String) : String =
+    d
+    |> Stdlib.String.split marker
+    |> Stdlib.List.indexedMap (fun i piece ->
+      if i == 0 then
+        piece
+      else
+        match Stdlib.String.split piece "&gt;" with
+        | first :: rest ->
+          "<code>" ++ first ++ "</code>" ++ (Stdlib.String.join rest "&gt;")
+        | [] -> "<code>"
+    )
+    |> (fun pieces -> Stdlib.String.join pieces "")
+
+  let markers =
+    [ "&lt;param ", "&lt;type ", "&lt;var ", "&lt;fn ", "&lt;list ", "&lt;returns " ]
+
+  markers
+  |> Stdlib.List.fold
+    (esc raw
+     |> (fun d -> Stdlib.String.replaceAll d "{{" "<code>")
+     |> (fun d -> Stdlib.String.replaceAll d "}}" "</code>"))
+    openMarker
 
 
 /// A semantic token type as a CSS class.

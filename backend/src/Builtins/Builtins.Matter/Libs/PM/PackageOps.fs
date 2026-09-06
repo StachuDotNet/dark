@@ -858,25 +858,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 |> List.map (fun (id, hex, ts) ->
                   (System.Guid.Parse id, System.Convert.FromHexString hex, ts))
 
-              let decoded =
-                parsed
-                |> List.map (fun (id, blob, ts) ->
-                  ((id, blob, ts), BS.PT.PackageOp.tryDeserialize id blob))
-              let stamped =
-                decoded
-                |> List.choose (fun ((_, _, ts), op) ->
-                  op |> Option.map (fun op -> (op, ts)))
-              let rawRecords =
-                decoded
-                |> List.choose (fun (record, op) ->
-                  if Option.isNone op then Some record else None)
-
-              if not (List.isEmpty rawRecords) then
-                System.Console.Error.WriteLine(
-                  $"note: {List.length rawRecords} op(s) in this bundle were written in a format this build cannot "
-                  + "read, and are stored inert. They are kept, not dropped, so a later build can apply them."
-                )
-
+              // Shape first, then decode: the stored-inert note below claims ops were kept, and a
+              // malformed bundle is about to be refused whole.
               if List.length parsed <> List.length records then
                 return
                   resultError (
@@ -884,6 +867,25 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                       "a record was not an (id, blobHex, originTs) triple; nothing was imported"
                   )
               else
+
+                let decoded =
+                  parsed
+                  |> List.map (fun (id, blob, ts) ->
+                    ((id, blob, ts), BS.PT.PackageOp.tryDeserialize id blob))
+                let stamped =
+                  decoded
+                  |> List.choose (fun ((_, _, ts), op) ->
+                    op |> Option.map (fun op -> (op, ts)))
+                let rawRecords =
+                  decoded
+                  |> List.choose (fun (record, op) ->
+                    if Option.isNone op then Some record else None)
+
+                if not (List.isEmpty rawRecords) then
+                  System.Console.Error.WriteLine(
+                    $"note: {List.length rawRecords} op(s) in this bundle were written in a format this build cannot "
+                    + "read, and are stored inert. They are kept, not dropped, so a later build can apply them."
+                  )
 
                 do! LibDB.Branches.createBranch branchId name parent
                 let ops = stamped |> List.map fst

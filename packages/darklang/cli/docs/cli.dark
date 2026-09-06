@@ -3,9 +3,9 @@ module Darklang.Cli.Docs.CLI
 let content () : String =
   """# CLI Commands
 
-`help` lists everything, grouped. This is the same set with a sentence of
-context each; `docs scm` is the one to read for how source control WORKS,
-because that model is not git's.
+`help` lists every command, grouped. This is the ones you reach for, with a
+sentence of context each; `docs scm` is the one to read for how source control
+WORKS, because that model is not git's.
 
 ## Global flags
   --branch <name>   run ONE command on a branch, without switching to it
@@ -19,7 +19,11 @@ starts there. `--branch` is for a one-off.
   fn <name> "<body>"      create or update a function
   type <name> "<body>"    create or update a type
   val <name> "<expr>"     create or update a value (`let` is an alias)
+  module <path> -         several declarations at once, from stdin
+  edit <name> [<file>]    apply a file, or open $EDITOR on the declaration
+  typecheck               audit the declarations on this branch
   deprecate / delete      take something off the shelf (see: docs deprecation)
+  undeprecate <name>      put it back
 
 Your edits are LIVE as soon as you write them. There is no build step.
 
@@ -85,6 +89,7 @@ Your edits are LIVE as soon as you write them. There is no build step.
   outliner          the interactive tree outliner
 
 ## Account, config, and the rest
+  install / update / uninstall / version   the `dark` binary itself
   login [name]      log in (no name lists accounts); persists across runs
   logout            clear the active account
   config            per-install settings (`config set <key> <value>`)

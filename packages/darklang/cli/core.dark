@@ -73,7 +73,12 @@ type AppState =
     allCommandsCache: List<Registry.CommandHandler>
     commandOptionsCache: List<String>
     /// When true, write telemetry to rundir/logs/telemetry.jsonl
-    telemetryEnabled: Bool }
+    telemetryEnabled: Bool
+    /// What the process exits with in non-interactive use. 0 unless a command sets it: an unknown
+    /// command, a failed `eval`, and the `--json` failure paths do, so scripts and agents can
+    /// branch on the exit rather than parse prose. (Most commands still report failure in prose
+    /// only; they set this as they are touched.)
+    exitCode: Int }
 
 /// What the prompt shows to your left: where you are in the package tree, and WHICH BRANCH, when you're on
 /// one.
@@ -194,7 +199,8 @@ let initState () : AppState =
       cachedFilterItems = []
       allCommandsCache = commands
       commandOptionsCache = commandOptions commands
-      telemetryEnabled = (Stdlib.Env.get "DARK_TELEMETRY") == Stdlib.Option.Option.Some "1" }
+      telemetryEnabled = (Stdlib.Env.get "DARK_TELEMETRY") == Stdlib.Option.Option.Some "1"
+      exitCode = 0 }
 
 type Msg =
   | ProcessInput of String
