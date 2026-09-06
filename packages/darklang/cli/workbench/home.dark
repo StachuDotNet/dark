@@ -413,7 +413,11 @@ let renderHome (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdli
     else
       "⚠ " ++ (Stdlib.Int.toString conflicts) ++ " need you"
   let tree = if wip == 0 then "✓ clean" else "● " ++ (Stdlib.Int.toString wip) ++ " uncommitted"
-  let title = branch ++ "  ·  " ++ sync ++ " · " ++ tree ++ " · " ++ (plural commits "commit")
+  // `scmStatus.commits` reads at most 1000 rows; past that the honest word is "1000+".
+  let commitsLabel =
+    if commits >= 1000 then "1000+ commits" else plural commits "commit"
+
+  let title = branch ++ "  ·  " ++ sync ++ " · " ++ tree ++ " · " ++ commitsLabel
   Stdlib.Cli.UI.SplitPane.render
     region
     Stdlib.Cli.UI.SplitPane.Orientation.Horizontal
