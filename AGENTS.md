@@ -342,6 +342,22 @@ match arm the bare case is fine, since the matched value's type resolves it.
 `Stdlib.List.length xs |> Stdlib.Int.toString` raises "Pipe: LongIdent". Parenthesize the
 left side.
 
+**A literal inside a tuple pattern silently falls through.** `| Some(_, _, "propagation") ->`
+against an `Option` of a 3-tuple parses and never matches; destructure first, then compare. Same
+family as the wildcard trap below.
+
+**`Stdlib.Dict.set` raises on an existing key.** Check-then-set, or use the merge helpers.
+
+**A builtin's wrapper can lie about Int width.** A builtin returning `Result<Int, _>` wrapped as
+`Result<Int64, _>` loads clean and fails at the first call. Match the builtin's declared types
+exactly; the loader will not catch it.
+
+**AOT disables System.Text.Json.** A path that is green on every dev-build test can die only in
+the published binary. Publish before the gates, always; `test-first-day` exists for exactly this.
+
+**`branch create` while standing on a branch creates a CHILD of that branch.** Switch to main
+first if you meant a sibling.
+
 **A wildcard doesn't match a multi-field DU case.** `| ExportPath _ ->` silently fails to match
 `ExportPath of String * TextField.State`; you need `| ExportPath(_ext, _field) ->`. It's a
 runtime error ("No matching case found") at the moment that case comes up, not a load

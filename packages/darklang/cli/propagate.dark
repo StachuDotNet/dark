@@ -603,12 +603,13 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [] ->
     if wantsJson then
       executeJson state
-    // A person gets the screen; a script or an agent gets the list, unchanged. Launching a full-screen app
-    // at something reading stdout would be worse than useless.
-    else if state.nonInteractive then
-      executeList state
     else
-      PropagateApp.launch state
+      // A person gets the screen; a script or an agent gets the list, unchanged. Ask the TERMINAL,
+      // not nonInteractive: `dark propagate` typed at a shell is nonInteractive by definition, and
+      // gating on it meant the screen help promises never launched from the command line.
+      match Stdlib.Cli.Tui.TerminalSupport.current () with
+      | Available -> PropagateApp.launch state
+      | Unavailable _reason -> executeList state
   | [ "list" ] ->
     if wantsJson then executeJson state else executeList state
   | [ "show", name ] ->

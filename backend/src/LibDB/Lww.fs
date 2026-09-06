@@ -23,6 +23,14 @@ let isStale
   newTs < curTs || (newTs = curTs && newHash <= curHash)
 
 
+/// An Unbind against a live BINDING on an exact stamp tie: the binding wins. SetName/SetName ties
+/// break on the hash; a tombstone has no hash to offer, so without a rule the SECOND arrival won
+/// and two stores that saw the pair in different orders diverged forever. Strict `>` is that rule,
+/// used by both sides of the pair in `PackageOpPlayback` (applyUnbind, and the unboundAfter check).
+let unbindBeatsBinding (unbindTs : string) (bindingTs : string) : bool =
+  unbindTs > bindingTs
+
+
 /// The same rule from the other side: does the INCOMING binding beat the live one?
 ///
 /// `SCM.Conflicts.incomingWins` asks exactly this in Dark, where recording a conflict has to name the

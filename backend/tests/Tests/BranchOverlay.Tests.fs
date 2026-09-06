@@ -2354,6 +2354,112 @@ let overrideClosesOnlyItsOwnKind =
   }
 
 
+/// A merge event for a branch this store never held must update NOTHING. Op ids are
+/// content-addressed, so the event's id list can name an op that exists here as local draft
+/// work; without the op_branches predicate on the stamp UPDATE, that op got the merger's
+/// commit_hash while the effective-flip correctly no-opped.
+let unknownBranchEventStampsNothing =
+  testTask
+    "a merge event for a never-held branch does not stamp a same-content draft op" {
+    let! ops = parsePackageOps (namedSource "StampGuard" 7)
+    let! _ = LibDB.Inserts.insertAndApplyOps ops
+    let opIds = ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
+
+    // The event, from a branch id this store has no row for, carrying a commit to copy.
+    let ghostBranch = testBranch "neverHeldStamp"
+    let event =
+      PT.PackageOp.BranchEvent(
+        ghostBranch,
+        PT.Merged(ops |> List.map LibDB.Inserts.computeOpHash),
+        "2026-01-01T00:00:00.000Z"
+      )
+    let eventId = LibDB.Inserts.computeOpHash event
+    let eventBlob = BS.PT.PackageOp.serialize eventId event
+    do!
+      execSqlP
+        "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts, commit_hash)
+         VALUES (@id, @blob, 0, 1, @ts, 'stamp-guard-commit')"
+        [ "id", Sql.uuid eventId
+          "blob", Sql.bytes eventBlob
+          "ts", Sql.string "2026-01-01T00:00:00.000Z" ]
+
+    let! _ = Seed.applyUnappliedOps ()
+
+    let! stamped =
+      countSql
+        $"""SELECT COUNT(*) as n FROM package_ops
+            WHERE commit_hash IS NOT NULL AND id IN ({opIds |> List.map (fun i -> $"'{i}'") |> String.concat ", "})"""
+        []
+    Expect.equal stamped 0L "the local draft ops keep commit_hash NULL"
+
+    do! execSql "DELETE FROM locations WHERE modules = 'StampGuard'"
+    do! execSqlP "DELETE FROM package_ops WHERE id = @id" [ "id", Sql.uuid eventId ]
+    do!
+      execSql
+        $"""DELETE FROM package_ops WHERE id IN ({opIds |> List.map (fun i -> $"'{i}'") |> String.concat ", "})"""
+  }
+
+
+/// The migrations path defers its refold to `growIfNeeded`, which reads effective=1 only --
+/// so branch-scoped Decisions (a branch's pins, folded into `propagation_policy`) came back
+/// from a schema change as nothing. `growIfNeeded` now re-runs `refoldBranchDecides` whenever
+/// it folded anything; this walks the exact drop-then-grow sequence for one branch's pin.
+let migrationsRefoldKeepsBranchPins =
+  testTask "a branch's propagation pin survives the drop-and-grow migration sequence" {
+    let branchId = testBranch "pinRefold"
+    do! cleanupBranch branchId
+    do! Branches.createBranch branchId "pin-refold" PT.BranchId.Main
+
+    let pin =
+      PT.PackageOp.Decision(
+        "test-pin-refold",
+        fooLocIn "PinRefold",
+        "test",
+        PT.DecisionKind.Propagation PT.PropagationPolicy.Pin
+      )
+    let! _ = Branches.storeDeltaOps branchId [ pin ]
+    do! Branches.refoldBranchDecides ()
+
+    let! before =
+      countSql
+        "SELECT COUNT(*) as n FROM propagation_policy WHERE branch_id = @b"
+        [ "b", Sql.string (string branchId.Guid) ]
+    Expect.equal before 1L "the pin folded into propagation_policy"
+
+    // The migration's harm, scoped to what this test owns: the policy row gone, and one main
+    // op unapplied so growIfNeeded's fold actually runs.
+    do!
+      execSqlP
+        "DELETE FROM propagation_policy WHERE branch_id = @b"
+        [ "b", Sql.string (string branchId.Guid) ]
+    let! mainOps = parsePackageOps (namedSource "PinRefoldMain" 3)
+    let! _ = LibDB.Inserts.insertAndApplyOps mainOps
+    let mainIds =
+      mainOps |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
+    do!
+      execSql
+        $"""UPDATE package_ops SET applied = 0 WHERE id IN ({mainIds |> List.map (fun i -> $"'{i}'") |> String.concat ", "})"""
+
+    let! _ = Seed.growIfNeeded (fun () -> localBuiltIns pmPT) pmRT (fun _ -> ())
+
+    let! after =
+      countSql
+        "SELECT COUNT(*) as n FROM propagation_policy WHERE branch_id = @b"
+        [ "b", Sql.string (string branchId.Guid) ]
+    Expect.equal after 1L "the pin is back after the grow"
+
+    do!
+      execSqlP
+        "DELETE FROM propagation_policy WHERE branch_id = @b"
+        [ "b", Sql.string (string branchId.Guid) ]
+    do! execSql "DELETE FROM locations WHERE modules = 'PinRefoldMain'"
+    do!
+      execSql
+        $"""DELETE FROM package_ops WHERE id IN ({mainIds |> List.map (fun i -> $"'{i}'") |> String.concat ", "})"""
+    do! cleanupBranch branchId
+  }
+
+
 let tests =
   // These mutate the process-global branch overlay AND delete from `package_ops`, either of which
   // can make a concurrent reader see the store mid-change. testSequenced, NOT testSequencedGroup:
@@ -2401,6 +2507,8 @@ let tests =
       noMainLiteralInDarkSql
       branchIdsNeverReachAPerson
       overrideClosesOnlyItsOwnKind
+      unknownBranchEventStampsNothing
+      migrationsRefoldKeepsBranchPins
       mainRetakesABranchsOp
       authoringOnAFinishedBranchRefuses
       liveBindingReadsTheBranchThenMain

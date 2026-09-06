@@ -616,7 +616,10 @@ let chainBindingsByHash
       |> List.fold
         (fun (m : Map<PT.PackageLocation, PT.ItemKind * string>) op ->
           match op with
-          | PT.PackageOp.SetName(loc, target, _) ->
+          | PT.PackageOp.SetName(loc, target, _)
+          // An Override IS a rebind (the overlay and the fork bases both treat it as one);
+          // skipping it here made a branch's Override-only binding invisible to discovery.
+          | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) ->
             let (Hash h) = target.hash
             Map.add loc (target.kind, h) m
           | PT.PackageOp.Unbind(loc, _) -> Map.remove loc m

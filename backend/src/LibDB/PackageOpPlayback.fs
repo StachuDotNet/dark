@@ -372,7 +372,9 @@ let private applySetNameFrom
     let! unboundSince = latestUnbindTs ctx location
     let unboundAfter =
       match unboundSince, thisTs with
-      | Some u, Some t -> t < u
+      // The mirror of applyUnbind's check: ties go to the binding, so only a strictly later
+      // tombstone blocks the SetName. One rule, `Lww.unbindBeatsBinding`, both directions.
+      | Some u, Some t -> Lww.unbindBeatsBinding u t
       | _ -> false
 
     if isStale || unboundAfter then
@@ -663,9 +665,14 @@ let private applyBranchEvent
         do!
           exec
             ctx
+            // The op_branches predicate matches the flip above: ids are content-addressed, so
+            // without it an event for a branch this store never held could stamp a same-content
+            // op sitting in main's draft with the merger's commit. Tag rows still exist here;
+            // the DELETE runs after both UPDATEs.
             "UPDATE package_ops SET commit_hash = (SELECT commit_hash FROM package_ops WHERE id = $e)
              WHERE commit_hash IS NULL
                AND id IN (SELECT value FROM json_each($ids))
+               AND id IN (SELECT op_id FROM op_branches WHERE branch_id = $b)
                AND (SELECT commit_hash FROM package_ops WHERE id = $e) IS NOT NULL"
             (fun cmd ->
               bindB cmd
@@ -742,7 +749,8 @@ let private applyUnbind
 
     let isStale =
       match live, thisTs with
-      | Some(_, Some curTs), Some t -> t < curTs
+      // Ties go to the binding: `Lww.unbindBeatsBinding` is the one statement of the rule.
+      | Some(_, Some curTs), Some t -> not (Lww.unbindBeatsBinding t curTs)
       | _ -> false
 
     if isStale then

@@ -485,6 +485,27 @@ let stampDraftOps (commitHash: String) (opIds: List<String>) : Int64 =
   stampDraftOpsFor (currentBranch ()) commitHash opIds
 
 
+/// Stamp <param opIds> that have LANDED on main (effective, uncommitted) with <param commitHash>,
+/// whatever branch tags they may still carry. `stampDraftOpsFor` scopes by `draftWhere`, which
+/// excludes ops a SIBLING branch still tags -- right for a person's commit, wrong for a merge:
+/// content-addressed ops are one row, so a review queue holding the same op must not keep a merge
+/// from committing what it landed (left unstamped, the op surfaces later as draft work nobody
+/// typed, or gets swept under the sibling's merge message).
+let stampLandedOps (commitHash: String) (opIds: List<String>) : Int64 =
+  if Stdlib.List.isEmpty opIds then
+    0L
+  else
+    let rows = opIds |> Stdlib.List.map (fun id -> [ commitHash, id ])
+
+    Stdlib.Sqlite.mustExecBatch
+      (localDb ())
+      [ ("UPDATE package_ops SET commit_hash = @p0
+          WHERE id = @p1 AND commit_hash IS NULL AND effective = 1",
+         rows) ]
+    |> Stdlib.List.fold 0L (fun acc n ->
+      acc + (Stdlib.Int.toInt64 n |> Stdlib.Option.withDefault 0L))
+
+
 /// Collapse the draft's superseded NAMINGS, keeping the last binding per name. Returns how many ops went.
 ///
 /// Main only. A branch's ops are branch-pending rather than draft, and they're collapsed when they merge.
@@ -1028,8 +1049,25 @@ let discardDraftFor (branchId: Uuid) : Int =
 /// Exactly these ids, never "whatever is uncommitted": that would sweep a half-written fn into a commit
 /// about a branch.
 let commitMainOps (message: String) (fallbackAuthor: String) (opIds: List<String>) : Unit =
-  let uncommitted = draftOpIdsFor SCM.Ids.mainBranchId
-  let toStamp = opIds |> Stdlib.List.filter (fun id -> Stdlib.List.``member`` uncommitted id)
+  // "In the draft" here means landed on main and uncommitted -- NOT `draftWhere`, whose
+  // op_branches exclusion would drop any op a sibling branch still tags. A merge lands
+  // content-addressed ops that a review queue may genuinely share; they are main's now,
+  // and this commit is their commit.
+  let toStamp =
+    if Stdlib.List.isEmpty opIds then
+      []
+    else
+      let rows =
+        Stdlib.Sqlite.rowsOrEmptyP
+          (localDb ())
+          "SELECT id FROM package_ops WHERE commit_hash IS NULL AND effective = 1"
+          []
+
+      let landed =
+        rows
+        |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "id")
+
+      opIds |> Stdlib.List.filter (fun id -> Stdlib.List.``member`` landed id)
 
   if Stdlib.List.isEmpty toStamp then
     ()
@@ -1046,7 +1084,7 @@ let commitMainOps (message: String) (fallbackAuthor: String) (opIds: List<String
         (Stdlib.List.sort toStamp)
         (parentCommitFor SCM.Ids.mainBranchId)
 
-    let _ = stampDraftOpsFor SCM.Ids.mainBranchId hash toStamp
+    let _ = stampLandedOps hash toStamp
     ()
 
 

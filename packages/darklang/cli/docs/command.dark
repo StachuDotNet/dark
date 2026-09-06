@@ -149,6 +149,14 @@ module Topics =
           subtopics = [] }
 
       DocTopic
+        { name = "relay"
+          description = "Running your own relay: setup, the write secret, smoke tests"
+          aliases = [ "matter", "server" ]
+          context = "cli"
+          content = Docs.Relay.content
+          subtopics = [] }
+
+      DocTopic
         { name = "scm"
           description = "Source control: edits, propagation, branches, merge, conflicts, sync"
           // Every noun someone would reach for lands here, because the model is one thing and splitting it

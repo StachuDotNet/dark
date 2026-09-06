@@ -95,7 +95,27 @@ let private theRuleIsAntisymmetric =
   }
 
 
+/// The Unbind/SetName pair has no hash to tie-break on, so the rule is: ties go to the BINDING.
+/// Without one rule used by both sides, the SECOND arrival won a tie and two stores that saw the
+/// pair in different orders diverged forever. Both fold sites (`applyUnbind`, and `applySetNameFrom`'s
+/// unboundAfter check) route through `unbindBeatsBinding`, so this table pins both.
+let private unbindTies =
+  test "an unbind beats a binding only with a strictly later stamp" {
+    Expect.isTrue
+      (Lww.unbindBeatsBinding "2026-01-02T00:00:00.000Z" "2026-01-01T00:00:00.000Z")
+      "strictly later unbind wins"
+    Expect.isFalse
+      (Lww.unbindBeatsBinding "2026-01-01T00:00:00.000Z" "2026-01-01T00:00:00.000Z")
+      "an exact tie goes to the binding"
+    Expect.isFalse
+      (Lww.unbindBeatsBinding "2026-01-01T00:00:00.000Z" "2026-01-02T00:00:00.000Z")
+      "an earlier unbind loses"
+  }
+
 let tests =
   testList
     "Lww"
-    [ agreesWithTheTable; isStaleAgreesWithTheTable; theRuleIsAntisymmetric ]
+    [ agreesWithTheTable
+      isStaleAgreesWithTheTable
+      theRuleIsAntisymmetric
+      unbindTies ]

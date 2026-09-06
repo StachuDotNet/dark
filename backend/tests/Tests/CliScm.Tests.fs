@@ -2412,6 +2412,95 @@ let private commitsHideHousekeeping =
         ()
       })
 
+
+/// A relay-hosted store holds client-pushed ops at effective=0, untagged and uncommitted.
+/// `discard` must not touch them: they are data this store holds for someone else, and the
+/// draft it reports must be the draft it drops.
+let private discardSparesInertOps =
+  cliTestOnMain "discard leaves relay-hosted (inert) ops alone" (fun state ->
+    task {
+      let! ops =
+        parsePackageOps
+          """module InertHold
+
+let held (x: Int64) : Int64 = x + 41L"""
+      let inertIds =
+        ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
+      for op in ops do
+        let id = LibDB.Inserts.computeOpHash op
+        do!
+          execSqlP
+            "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts)
+               VALUES (@id, @blob, 1, 0, @ts)"
+            [ "id", Sql.uuid id
+              "blob",
+              Sql.bytes (
+                LibSerialization.Binary.Serialization.PT.PackageOp.serialize id op
+              )
+              "ts", Sql.string "2026-01-01T00:00:00.000Z" ]
+
+      let! status = runCli state [ "status" ]
+      Expect.stringContains status "clean" "inert ops are not the draft"
+
+      let! _ = runCli state [ "discard"; "-y" ]
+
+      let! survived =
+        countSql
+          $"""SELECT COUNT(*) as n FROM package_ops
+                WHERE id IN ({inertIds |> List.map (fun i -> $"'{i}'") |> String.concat ", "})"""
+          []
+      Expect.equal
+        survived
+        (int64 (List.length inertIds))
+        "discard left the hosted ops in place"
+
+      do!
+        execSql
+          $"""DELETE FROM package_ops WHERE id IN ({inertIds |> List.map (fun i -> $"'{i}'") |> String.concat ", "})"""
+    })
+
+/// Content-addressed ops are one row, so two branches authoring identical source share ops.
+/// Merging one must still commit what it landed -- the shared op is main's now -- and the
+/// sibling's later archive must not make it reappear as draft work nobody typed.
+let private mergeCommitsWhatASiblingStillTags =
+  cliTestOnMain
+    "a merge commits shared ops even while a sibling still tags them"
+    (fun state ->
+      task {
+        let! _ = runCli state [ "switch"; "shared1" ]
+        let! _ = runCli state [ "fn"; "Tests.SharedLand.f"; "() : Int64 = 99L" ]
+        let! _ = runCli state [ "switch"; "main" ]
+        let! _ = runCli state [ "switch"; "shared2" ]
+        let! _ = runCli state [ "fn"; "Tests.SharedLand.f"; "() : Int64 = 99L" ]
+        let! _ = runCli state [ "switch"; "main" ]
+
+        let! merged = runCli state [ "merge"; "shared1" ]
+        Expect.stringContains merged "erged" $"the merge went through: {merged}"
+
+        // The shared content op is tagged by shared2 still; it must carry the merge's commit.
+        let! unstamped =
+          countSql
+            "SELECT COUNT(*) as n FROM package_ops p
+             WHERE p.commit_hash IS NULL AND p.effective = 1
+               AND p.id IN (SELECT op_id FROM op_branches ob
+                            JOIN branches b ON b.id = ob.branch_id WHERE b.name = 'shared2')"
+            []
+        Expect.equal
+          unstamped
+          0L
+          "every landed op the sibling tags is stamped by the merge"
+
+        let! statusAfterMerge = runCli state [ "status" ]
+        Expect.stringContains statusAfterMerge "clean" "the merge left main clean"
+
+        let! _ = runCli state [ "branch"; "archive"; "shared2"; "-y" ]
+        let! statusAfterArchive = runCli state [ "status" ]
+        Expect.stringContains
+          statusAfterArchive
+          "clean"
+          "the sibling's archive does not resurrect the op as draft work"
+      })
+
 /// In the run order CliTraces.Tests.fs composes; sequencing lives there too.
 let tests : List<Test> =
   [ commitRefusesDefiniteTypeErrors
@@ -2458,6 +2547,8 @@ let tests : List<Test> =
     everyJsonSurfaceParses
     followingDoesNotDestroyASharedName
     aBranchNeverSeesMainsDraft
+    discardSparesInertOps
+    mergeCommitsWhatASiblingStillTags
     editingAColleaguesVersionSaysSo
     commitsHideHousekeeping
     commitsChainToTheirParent ]

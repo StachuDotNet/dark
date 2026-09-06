@@ -48,7 +48,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
       let inDraft =
         SCM.PackageOps.draftBindings ()
         |> Stdlib.List.filter (fun b ->
-          (b.name == loc.name) && (b.modules == mods))
+          (b.owner == loc.owner) && (b.name == loc.name) && (b.modules == mods))
 
       if Stdlib.List.isEmpty inDraft then
         Cli.printOk $"{dotted} isn't in your draft on {scope} -- nothing to discard."

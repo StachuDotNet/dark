@@ -535,6 +535,11 @@ let growIfNeeded
     use _span = Telemetry.span "seed.growIfNeeded" []
     let! appliedCount =
       Telemetry.timeTask "seed.applyOps" [] (fun () -> applyUnappliedOps ())
+    // The fold above reads effective=1 only, so branch-scoped Decisions (a branch's propagation
+    // pins) never pass through it. After a projection drop (the migrations path defers here),
+    // skipping this would silently delete every branch pin; refolding is idempotent and
+    // origin_ts-guarded, so run it whenever the fold actually folded something.
+    if appliedCount > 0 then do! Branches.refoldBranchDecides ()
     // A store can have every op applied yet still hold unevaluated values (rt_dval NULL): after a
     // migration that re-marks ops applied without evaluating, or a store copied/built without a final grow
     // (the test seed does exactly this). Gating evaluation on `appliedCount > 0` alone leaves those values
