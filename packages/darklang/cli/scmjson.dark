@@ -45,6 +45,10 @@ type StatusJson =
 type CommitJson =
   { branch: String
     committed: Bool
+    /// "" when nothing refused; otherwise why `committed` is false: "no-message",
+    /// "unresolved-names", or "type-errors". The reason as data, so `commit --json` (the
+    /// documented dry review) never needs its refusal read out of colored prose.
+    refused: String
     commit: String
     message: String
     opsCommitted: Int64

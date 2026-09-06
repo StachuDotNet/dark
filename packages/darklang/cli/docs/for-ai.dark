@@ -106,9 +106,12 @@ PROPAGATION, and it's the one behaviour to know about, because it means a
   propagate pin <name> stop something following, and undo the repoint it got
   ack --all            leave every constraint finding for now
 
-Every question-answering command takes `--json`, and it's the same data the
-human view renders. `status --json` flags each changed item `followed` or not,
-which is how you tell what you did from what propagation did.
+Every question-answering command takes `--json` (status, commit's dry review,
+conflicts, constraints, branches, diff, deps, search, typecheck), and it's the
+same data the human view renders. `status --json` flags each changed item
+`followed` or not, which is how you tell what you did from what propagation did.
+Authoring commands exit nonzero when nothing was saved (a parse error, a name
+mismatch), so branch on the exit, not on grepping for "error".
   (see: docs scm -- the full model, branches, merge, conflicts, sync)
 
 ## Deprecation (mark items as unused / dangerous / obsolete)

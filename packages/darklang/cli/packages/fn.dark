@@ -88,7 +88,8 @@ let createFnInline
           (Stdlib.Cli.UI.Colors.hint
             ($"Rename it to `let {location.name} ...`, or change the "
              ++ "fn target."))
-        state
+        // Nothing was saved: an agent's authoring loop branches on the exit.
+        { state with exitCode = 1 }
 
       | Some writtenFn ->
         // Convert to ProgramTypes.PackageFn
@@ -146,13 +147,13 @@ let createFnInline
               "" ]
             |> Stdlib.printLines
 
-            state
+            { state with exitCode = 1 }
 
       | _ ->
         // a precise parse error was already printed above; don't stack the
         // generic hint on top of it
         if hasParseError then
-          state
+          { state with exitCode = 1 }
         else
           [
             (Stdlib.Cli.UI.Colors.error "Expected exactly one function declaration")
@@ -162,7 +163,7 @@ let createFnInline
             "  fn greet (name: String): String = \"Hello, \" ++ name"
             ""
           ] |> Stdlib.printLines
-          state
+          { state with exitCode = 1 }
     | None ->
       [
         (Stdlib.Cli.UI.Colors.error "Failed to parse function definition")
@@ -172,10 +173,10 @@ let createFnInline
         "  fn greet (name: String): String = \"Hello, \" ++ name"
         ""
       ] |> Stdlib.printLines
-      state
+      { state with exitCode = 1 }
   | Error msg ->
     Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Invalid location: {msg}")
-    state
+    { state with exitCode = 1 }
 
 
 let help (_state: Cli.AppState) : String =

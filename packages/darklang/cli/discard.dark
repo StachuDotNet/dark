@@ -65,7 +65,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
             (Stdlib.Cli.UI.Colors.warning $"\n  Drop {dotted} from your draft? [y/N]: ")
         )
       then
-        printOk "  kept."
+        printOk
+          $"  kept. (`dark discard {dotted} -y` if you mean it -- a piped stdin can't answer this.)"
         state
       else
         match SCM.PackageOps.discardDraftName loc.owner loc.modules loc.name with

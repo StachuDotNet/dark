@@ -300,17 +300,37 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
   // plain `dark commit --json` is a safe dry review an agent can look at before deciding.
   // The same two gates the pretty path runs: an agent driving `--json -y` must not commit an unresolvable
   // reference, or a definite type error, that a person at the pretty prompt would have been refused.
-  // They print their refusal; the JSON below then says `committed = false`.
+  // Refusals are DATA here, not prose: `commit --json` is the documented dry review, and its
+  // stdout belongs to the JSON alone -- prose above the payload broke the one call agents were
+  // told is safe to parse.
+  let quietRefusal () : String =
+    if parsed.message == "" && parsed.autoConfirm then "no-message"
+    else if
+      (Stdlib.Bool.not parsed.allowUnresolved)
+      && (Stdlib.Bool.not (
+        Stdlib.List.isEmpty (
+          SCM.PackageOps.unresolvedInDraft (SCM.PackageOps.currentBranch ())
+        )
+      ))
+    then
+      "unresolved-names"
+    else if Stdlib.Bool.not parsed.allowTypeErrors then
+      let report = SCM.PackageOps.typeCheckDraft (SCM.PackageOps.currentBranch ())
+
+      match report.verdict with
+      | Failed -> "type-errors"
+      | _ -> ""
+    else
+      ""
+
+  let refusal = if SCM.PackageOps.draftOpCount () == 0L then "" else quietRefusal ()
+
   let (didCommit, hash, ops, moved) =
     // Ask the DRAFT, not the changed-bindings list, for the same reason `executePretty` does: a
     // draft holding only a `Deprecate` binds no name and is still not empty.
     if SCM.PackageOps.draftOpCount () == 0L then
       (false, "", 0L, 0)
-    else if parsed.autoConfirm && parsed.message == "" then
-      // The same refusal the pretty path makes; the JSON below reports `committed = false`.
-      printErr "a commit needs a message: `dark commit \"what changed\"`."
-      (false, "", 0L, 0)
-    else if parsed.autoConfirm && (refuseUnresolved parsed || refuseTypeErrors parsed) then
+    else if refusal != "" then
       (false, "", 0L, 0)
     else if parsed.autoConfirm then
       match
@@ -329,6 +349,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
       ScmJson.CommitJson
         { branch = r.branch
           committed = didCommit
+          refused = refusal
           commit = hash
           message = parsed.message
           opsCommitted = ops
