@@ -25,8 +25,8 @@ Seen.check (Seen.stampFor 100L) 100L 100L = true
 // Ahead of them, because we have local work they have not taken. Still caught up on the RECEIVE side.
 Seen.check (Seen.stampFor 100L) 100L 140L = true
 
-// The regression. The stamp says we have seen their head, but we hold far fewer ops than they do, so the
-// stamp cannot be describing this store. Must NOT skip.
+// The case the count exists for: the stamp says we have seen their head, but we hold far fewer ops than
+// they do, so the stamp cannot be describing this store. Must NOT skip.
 Seen.check (Seen.stampFor 95829L) 95829L 12179L = false
 
 // Off by one on the same shape, so the boundary is pinned rather than only the dramatic case.

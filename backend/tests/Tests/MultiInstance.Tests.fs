@@ -151,6 +151,15 @@ let private boundHash (name : string) : Task<Option<string>> =
   |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
 
 
+/// The fold's mark on one op: 0 pending, 1 applied, 2 deferred (folded, did nothing, waiting for the
+/// branch it names). Deferred is the state that separates "not folded yet" from "folded and had no
+/// work to do", and only the flag can tell them apart from outside.
+let private appliedFlag (opId : string) : Task<int64> =
+  Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
+  |> Sql.parameters [ "id", Sql.string opId ]
+  |> Sql.executeRowAsync (fun read -> read.int64 "a")
+
+
 /// A propagation decision as an op: `pin` this location, with the author's words attached.
 ///
 /// `decidedAt` is what makes each decision a DISTINCT op. Passed in for the same reason `originTs` is:
@@ -524,8 +533,9 @@ let localEditsBeatAFastPeer =
 
 
 /// The fold reads the pending set on one connection and marks applied inside a transaction on another.
-/// A `serve` committing an op between the two used to be marked applied by the predicate sweep, with
-/// nothing having folded it and nothing ever re-reading it. Marking by id leaves it for the next pass.
+/// Marking by ID rather than by predicate is what keeps that safe: a `serve` committing an op between
+/// the two halves matches the predicate but was never folded, so a predicate sweep would record it as
+/// applied and nothing would ever re-read it. By id, it is simply left for the next pass.
 /// Deterministic: the "concurrent" write is simply placed between the two halves.
 let aWriteBetweenReadAndMarkIsNotLost =
   testTask
@@ -547,10 +557,7 @@ let aWriteBetweenReadAndMarkIsNotLost =
       let! folded = Seed.foldRead pending
       Expect.equal folded 1L "the fold took what it read"
 
-      let! lateApplied =
-        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
-        |> Sql.parameters [ "id", Sql.string lateId ]
-        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      let! lateApplied = appliedFlag lateId
       Expect.equal
         lateApplied
         0L
@@ -617,8 +624,8 @@ let aMergeEventLeavesUnpushedWorkOnTheBranch =
 
 
 /// A merge into a NON-main parent, arriving from a peer, retags onto the parent as the local merge does.
-/// It used to flip into main regardless of the parent: a child branch's work merged on one machine landed
-/// in the other machine's main, which nobody had merged there.
+/// The parent is carried in the event for exactly this reason: flipping into main regardless would land
+/// a child branch's work in the other machine's main, which nobody there had merged.
 let aMergeEventHonoursTheParent =
   testTask
     "a peer's merge of a branch off a branch retags onto the parent, not into main" {
@@ -671,8 +678,8 @@ let aMergeEventHonoursTheParent =
 
 
 /// What an arriving merge event lands is committed the way the event was. A pull commits the event on the
-/// way in; the ops it flips came by a branch bundle, uncommitted, and used to sit in main's draft as "1
-/// item changed" nobody here made.
+/// way in, but the ops it flips came by a branch bundle, uncommitted; left that way they sit in main's
+/// draft as "1 item changed" nobody on this machine made.
 let aMergeEventCommitsWhatItFlips =
   testTask "a peer's merge event stamps the ops it flips with its own commit" {
     let b = instance "b"
@@ -952,10 +959,7 @@ let private aMergeEventWaitsForItsBranch =
       let! notYet = boundHash "early"
       Expect.isNone notYet "nothing is live yet: the op it names has not arrived"
 
-      let! stillPending =
-        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
-        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
-        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      let! stillPending = appliedFlag (string (Inserts.computeOpHash event))
       // 2 is DEFERRED: folded, did nothing, waiting. Not 0, which would make the fold loop chase it
       // forever and raise "did not settle".
       Expect.equal
@@ -972,10 +976,7 @@ let private aMergeEventWaitsForItsBranch =
       let (PT.Hash e1) = hashOf "e1"
       Expect.equal landed (Some e1) "the merge lands the moment its branch's ops do"
 
-      let! nowApplied =
-        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
-        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
-        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      let! nowApplied = appliedFlag (string (Inserts.computeOpHash event))
       Expect.equal nowApplied 1L "and the event is applied once it has done its work"
     finally
       teardown [ b ]
@@ -1003,10 +1004,7 @@ let aMergeEventForALaterBranchStillApplies =
           "2026-01-02T00:00:00.000Z"
         )
       let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
-      let! applied =
-        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
-        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
-        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      let! applied = appliedFlag (string (Inserts.computeOpHash event))
       Expect.equal
         applied
         1L
@@ -1046,10 +1044,7 @@ let private anEventForAnUnknownBranchDoesNotWait =
         )
       let! _ = receive [ wireOp event "2026-01-02T00:00:00.000Z" ]
 
-      let! applied =
-        Sql.query "SELECT applied AS a FROM package_ops WHERE id = @id"
-        |> Sql.parameters [ "id", Sql.string (string (Inserts.computeOpHash event)) ]
-        |> Sql.executeRowAsync (fun read -> read.int64 "a")
+      let! applied = appliedFlag (string (Inserts.computeOpHash event))
       Expect.equal
         applied
         1L

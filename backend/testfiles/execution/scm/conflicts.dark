@@ -72,9 +72,10 @@ module Detect =
     [ Helpers.binding "f" "bbb" "2026-01-03T00:00:00.000Z" ]
     [ Helpers.base' "f" "ooo" ]) = 0
 
-  // It could not be reported before a binding said what it replaced, because this case and the one below
-  // reach the detector as the same three inputs. Guessing between them is what would false-alarm on every
-  // ordinary peer update.
+  // No base, and neither side says what it replaced: two independent creations of the same name. This
+  // case and the one below reach the detector as the same three inputs apart from `previous`, so that
+  // field is the only thing separating them; guessing instead would false-alarm on every ordinary
+  // peer update.
   (Helpers.detectCount
     [ Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z" ]
     [ Helpers.binding "f" "bbb" "2026-01-03T00:00:00.000Z" ]
@@ -130,8 +131,8 @@ module BothMovedTheSameParent =
     [ Helpers.editOf "f" "theirs" "2026-01-03T00:00:00.000Z" "parent" ]
     []) = 1
 
-  // A base that says only ONE side moved. Without the parent test this reads as an ordinary update,
-  // which is exactly how the notification went missing.
+  // A base that says only ONE side moved. Without the parent test this reads as an ordinary update
+  // and the divergence is never reported at all.
   (Helpers.detectCount
     [ Helpers.editOf "f" "mine" "2026-01-02T00:00:00.000Z" "parent" ]
     [ Helpers.editOf "f" "theirs" "2026-01-03T00:00:00.000Z" "parent" ]
@@ -149,8 +150,8 @@ module BothMovedTheSameParent =
   // produce: the base was recorded at the first sync, I edited since, they pulled my edit and edited
   // on top of it. Both hashes differ from the base, so the base test alone reads it as both sides
   // having moved; their `previous` being my current hash is what says otherwise, and it has to win.
-  // It did not: a colleague's edit on top of mine came back as three conflicts, every one resolved to
-  // the version I would have taken anyway.
+  // Lose that precedence and a colleague's ordinary edit on top of mine arrives as a conflict per
+  // name, every one of them resolving to the version I would have taken anyway.
   (Helpers.detectCount
     [ Helpers.editOf "f" "mine" "2026-01-02T00:00:00.000Z" "grandparent" ]
     [ Helpers.editOf "f" "theirs" "2026-01-03T00:00:00.000Z" "mine" ]
@@ -210,62 +211,8 @@ module AutoResolution =
    |> Stdlib.Option.map (fun c -> c.reason)) = Stdlib.Option.Option.Some "tie-break-by-hash"
 
 
-module IncomingWins =
-  // Mirrors `PackageOpPlayback.isStale`. If these two ever disagree, one machine records a conflict the
-  // other doesn't -- or worse, they converge on different winners.
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "bbb" "2026-01-03T00:00:00.000Z")
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z") = true
-
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "bbb" "2026-01-01T00:00:00.000Z")
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z") = false
-
-  // Equal stamps: higher hash wins.
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "bbb" "2026-01-02T00:00:00.000Z")
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z") = true
-
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z")
-    (Helpers.binding "f" "bbb" "2026-01-02T00:00:00.000Z") = false
-
-  // A local binding with no stamp never defends itself, matching the fold's unknown-stamp fallthrough.
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z")
-    (Helpers.binding "f" "zzz" "") = true
-
-  // An INCOMING binding with no stamp loses to a local one that has a stamp, and that is deliberate.
-  //
-  // It is the one place the two rules are not mirror images. `isStale` has a third answer this cannot
-  // express: when the op is absent from `package_ops` its stamp reads as UNKNOWN rather than empty, and
-  // the fold falls through to last-writer, applying it. A `Binding` carries a String, so "absent" and
-  // "empty" are the same value here.
-  //
-  // Unreachable rather than latent: the detector's incoming side is built from wire records, whose `ts`
-  // is a required field read out of a NOT NULL column, and an export drops any row lacking it. An empty
-  // stamp that DID arrive is stored as an empty stamp, and then both sides agree it loses on the lexical
-  // compare. Worth a case so the asymmetry is recorded rather than rediscovered.
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "zzz" "")
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z") = false
-
-  // The same binding again, stamped the same: nothing to win. `detect` never asks (equal hashes are not a
-  // conflict); the row pins the answer the fold's own equal-hash arm gives, so the three tables are one.
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z")
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.000Z") = false
-
-  // Stamps are `yyyy-MM-ddTHH:mm:ss.fffZ`, so lexical comparison is already chronological, down to the
-  // millisecond, and across a minute boundary.
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:00.002Z")
-    (Helpers.binding "f" "bbb" "2026-01-02T00:00:00.001Z") = true
-
-  Darklang.SCM.Conflicts.incomingWins
-    (Helpers.binding "f" "aaa" "2026-01-02T00:00:59.999Z")
-    (Helpers.binding "f" "aaa" "2026-01-02T00:01:00.000Z") = false
-
+// `incomingWins` itself is pinned in `lww.dark` (the Dark side) and `Lww.Tests.fs` (the F# twin);
+// a third copy of the table here only gave the two real ones a place to drift from.
 
 module ConflictId =
   // SORTED before hashing, so the id doesn't depend on which side happened to be local. Without this,

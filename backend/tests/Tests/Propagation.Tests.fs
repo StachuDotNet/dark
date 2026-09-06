@@ -84,8 +84,9 @@ let private cascadeKind
     | Error e -> return Exception.raiseInternal "propagate errored" [ "e", e ]
   }
 
-/// Remove a test module's rows so a re-run starts clean. The op log is append-only and
-/// content-addressed, so every test also varies its bodies by a unique suffix.
+/// Remove a test module's rows so a re-run starts clean. This clears the PROJECTIONS only: the op log
+/// is append-only and content-addressed, so re-authoring an identical body re-binds the hash that is
+/// already there rather than making a new version. That is why each test's constants are its own.
 let private cleanupFor (owner : string) (m : string) : Task<unit> =
   task {
     do!
@@ -106,7 +107,7 @@ let singleHop =
     let m = "PropTestHop"
     do! cleanup m
 
-    let! v1 = authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
+    let! v1 = authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
 
     let! _ =
       authorIn
@@ -119,7 +120,7 @@ let singleHop =
     let baseV1 = hashBoundTo v1 "base'"
 
     let! v2 =
-      authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1000L"""
+      authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1000L"""
 
     let baseV2 = hashBoundTo v2 "base'"
     Expect.notEqual baseV1 baseV2 "editing the body moves the content hash"
@@ -148,7 +149,7 @@ let c (x: Int64) : Int64 = Stdlib.Int64.add ({m}.b x) 100L"""
     let! cBefore = liveHash (loc m "c")
     let aV1 = hashBoundTo v1 "a"
 
-    let! v2 = authorIn m $"""let a (x: Int64) : Int64 = Stdlib.Int64.add x 2000L"""
+    let! v2 = authorIn m """let a (x: Int64) : Int64 = Stdlib.Int64.add x 2000L"""
 
     let! repointed = cascade (loc m "a") aV1 (hashBoundTo v2 "a")
 
@@ -184,7 +185,7 @@ let three (x: Int64) : Int64 = Stdlib.Int64.add ({m}.shared x) 30L"""
     let sharedV1 = hashBoundTo v1 "shared"
 
     let! v2 =
-      authorIn m $"""let shared (x: Int64) : Int64 = Stdlib.Int64.add x 3000L"""
+      authorIn m """let shared (x: Int64) : Int64 = Stdlib.Int64.add x 3000L"""
 
     let! repointed = cascade (loc m "shared") sharedV1 (hashBoundTo v2 "shared")
 
@@ -225,7 +226,7 @@ let free (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 20L"""
       |> Sql.executeStatementAsync
 
     let! v2 =
-      authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 4000L"""
+      authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 4000L"""
 
     let! repointed = cascade (loc m "base'") baseV1 (hashBoundTo v2 "base'")
 
@@ -263,7 +264,7 @@ let mine (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L"""
 let theirs (x: Int64) : Int64 = Stdlib.Int64.add (Darklang.{m}.base' x) 20L"""
 
     let! v2 =
-      authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 5000L"""
+      authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 5000L"""
 
     let! repointed = cascade (loc m "base'") baseV1 (hashBoundTo v2 "base'")
 
@@ -287,7 +288,7 @@ let noChangeNoCascade =
     let m = "PropTestNoop"
     do! cleanup m
 
-    let! v1 = authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
+    let! v1 = authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
 
     let! _ =
       authorIn
@@ -341,7 +342,7 @@ let finalVersionWins =
     let m = "PropTestFinal"
     do! cleanup m
 
-    let! v1 = authorIn m $"""let r (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
+    let! v1 = authorIn m """let r (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
     let! _ =
       authorIn m $"""let rd (x: Int64) : Int64 = Stdlib.Int64.add ({m}.r x) 0L"""
 
@@ -382,8 +383,8 @@ let sharedHashesAllRepoint =
     // Resolving that hash to a single location would silently drop one of the two
     // dependents from the cascade, which is a wrong answer rather than an incomplete
     // one.
-    let! v1 = authorIn m $"""let sh1 (x: Int64) : Int64 = Stdlib.Int64.add x 77L"""
-    let! _ = authorIn m $"""let sh2 (x: Int64) : Int64 = Stdlib.Int64.add x 77L"""
+    let! v1 = authorIn m """let sh1 (x: Int64) : Int64 = Stdlib.Int64.add x 77L"""
+    let! _ = authorIn m """let sh2 (x: Int64) : Int64 = Stdlib.Int64.add x 77L"""
 
     let! h1 = liveHash (loc m "sh1")
     let! h2 = liveHash (loc m "sh2")
@@ -397,7 +398,7 @@ let sharedHashesAllRepoint =
     let! d1Before = liveHash (loc m "d1")
     let! d2Before = liveHash (loc m "d2")
 
-    let! v2 = authorIn m $"""let sh1 (x: Int64) : Int64 = Stdlib.Int64.add x 88L"""
+    let! v2 = authorIn m """let sh1 (x: Int64) : Int64 = Stdlib.Int64.add x 88L"""
 
     let! repointed =
       cascade (loc m "sh1") (hashBoundTo v1 "sh1") (hashBoundTo v2 "sh1")
@@ -439,7 +440,7 @@ let repointIsMarkedAsFollowed =
     let m = "PropTestProv"
     do! cleanup m
 
-    let! v1 = authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 71L"""
+    let! v1 = authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 71L"""
 
     let! _ =
       authorIn m $"""let dependent (x: Int64) : Int64 = Darklang.{m}.base' x"""
@@ -447,7 +448,7 @@ let repointIsMarkedAsFollowed =
     let! authoredSource = bindingSource (loc m "dependent")
     Expect.equal authoredSource (Some "op") "authoring records itself as authoring"
 
-    let! v2 = authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 72L"""
+    let! v2 = authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 72L"""
 
     let! repointed =
       cascade (loc m "base'") (hashBoundTo v1 "base'") (hashBoundTo v2 "base'")
@@ -483,7 +484,7 @@ let secondPassIsSilent =
     let m = "PropTestSecondPass"
     do! cleanup m
 
-    let! v1 = authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
+    let! v1 = authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 1L"""
 
     let! _ =
       authorIn
@@ -491,7 +492,7 @@ let secondPassIsSilent =
         $"""let dep (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L"""
 
     let! v2 =
-      authorIn m $"""let base' (x: Int64) : Int64 = Stdlib.Int64.add x 7000L"""
+      authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 7000L"""
 
     let baseV1 = hashBoundTo v1 "base'"
     let baseV2 = hashBoundTo v2 "base'"
@@ -574,14 +575,14 @@ let valueMovesItsReaders =
     let m = "PropTestValue"
     do! cleanup m
 
-    let! v1 = authorIn m $"""val basis = 5L"""
+    let! v1 = authorIn m """val basis = 5L"""
 
     let! _ = authorIn m $"""let reads (): Int64 = Stdlib.Int64.add {m}.basis 10L"""
 
     let! readsBefore = liveHash (loc m "reads")
     Expect.isSome readsBefore "the reader is bound after authoring"
 
-    let! v2 = authorIn m $"""val basis = 500L"""
+    let! v2 = authorIn m """val basis = 500L"""
 
     let baseV1 = hashBoundTo v1 "basis"
     let baseV2 = hashBoundTo v2 "basis"

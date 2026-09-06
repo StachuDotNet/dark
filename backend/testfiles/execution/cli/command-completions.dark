@@ -1,6 +1,6 @@
 // Every command's `complete` is called on a real AppState, because the failure mode here is a function that
-// parses and loads fine and only throws at the moment somebody presses Tab. That is how a help-text bug
-// shipped once already: bad code behind a branch nothing exercised.
+// parses and loads fine and only throws at the moment somebody presses Tab. Nothing but running it finds
+// bad code behind a branch nobody exercises.
 //
 // The assertion is deliberately "none of them threw" rather than a completion count. Counts move whenever a
 // command gains an option, and a test that has to be edited every time is a test people edit without reading.

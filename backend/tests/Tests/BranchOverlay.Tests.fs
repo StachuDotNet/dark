@@ -616,6 +616,13 @@ let storeThenOverlay =
     do! cleanupBranch branchId
   }
 
+/// How many ops this branch's own frontier tags, ignoring the parent chain. A retag moves tags off
+/// a branch rather than deleting its ops, so this is what says the move happened.
+let private ownTagCount (branchId : PT.BranchId) : Task<int64> =
+  Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
+  |> Sql.parameters [ "b", Sql.string (string branchId) ]
+  |> Sql.executeRowAsync (fun read -> read.int64 "n")
+
 /// Count a branch's frontier ops at a given effective flag (cache-free, direct SQL).
 let private countEffective (branchId : PT.BranchId) (eff : int) : Task<int64> =
   Sql.query
@@ -807,10 +814,7 @@ let branchesOffBranches =
     Expect.isSome aNowSeesB "after merge, A sees B's fn (retagged onto A)"
     // B's OWN frontier tags are gone (moved to A). loadDeltaOps("boB") would still WALK to A, so we
     // check the direct tags, not the chain overlay.
-    let! bOwnTags =
-      Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
-      |> Sql.parameters [ "b", Sql.string (string (testBranch "boB")) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    let! bOwnTags = ownTagCount (testBranch "boB")
     Expect.equal
       bOwnTags
       0L
@@ -840,10 +844,7 @@ let getWipOpsExcludesBranch =
     let! total =
       Sql.query "SELECT count(*) AS n FROM package_ops WHERE effective = 1"
       |> Sql.executeRowAsync (fun read -> read.int64 "n")
-    let! branchCount =
-      Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
-      |> Sql.parameters [ "b", Sql.string (string branchId) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    let! branchCount = ownTagCount branchId
     // Every TAGGED op, not just this branch's: `getWipOps` excludes `op_branches` wholesale, so
     // subtracting only our own count assumes we're the only branch in the store, and we aren't.
     // DISTINCT because one op can be tagged to several branches.
@@ -1123,9 +1124,9 @@ let resolveKeepMineDoesNotRestampSharedOps =
   }
 
 
-/// `resolve theirs` after `resolve mine` used to report success and change nothing: keep-mine authors an
-/// Override, and take-theirs dropped only SetNames. Both BIND the name, and `opBindsKey` is the one
-/// definition of that; take-theirs drops every binder.
+/// `resolve theirs` after `resolve mine` has to undo the first decision. Keep-mine authors an Override
+/// and take-theirs drops SetNames; both BIND the name, so take-theirs has to drop every binder, not
+/// just the one shape. `opBindsKey` is the single definition of "binds this name" both sides read.
 let takeTheirsAfterKeepMineDropsTheOverride =
   testTask "resolve theirs after resolve mine drops the override too" {
     let b = testBranch "test-theirs-after-mine"
@@ -1902,10 +1903,7 @@ let aBranchNeverTagsWhatMainRuns =
     let! _ = LibDB.Inserts.insertAndApplyOps ops
     let! _ = Branches.storeDeltaOps branchId ops
 
-    let! tagged =
-      Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
-      |> Sql.parameters [ "b", Sql.string (string branchId) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    let! tagged = ownTagCount branchId
     Expect.equal tagged 0L "nothing main runs was tagged"
     let! draft = Queries.getDraftOps ()
     let draftIds =
@@ -1917,10 +1915,7 @@ let aBranchNeverTagsWhatMainRuns =
     let! fresh = parsePackageOps (namedSource "NoTagOnMainFresh" 43)
     let! stored = Branches.storeDeltaOps branchId fresh
     Expect.equal stored (int64 (List.length fresh)) "fresh ops are stored"
-    let! taggedNow =
-      Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
-      |> Sql.parameters [ "b", Sql.string (string branchId) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+    let! taggedNow = ownTagCount branchId
     Expect.equal taggedNow (int64 (List.length fresh)) "and tagged"
 
     do!
@@ -2116,6 +2111,14 @@ let branchEventForUnknownBranchIsIgnored =
       |> Sql.parameters [ "b", Sql.string (string unknown) ]
       |> Sql.executeRowAsync (fun read -> read.int64 "n")
     Expect.equal rows 0L "no branch was conjured up to receive the event"
+
+    // The one op this test wrote, back out: every test in this file leaves the shared store as it
+    // found it, and this one was the exception.
+    let opId = LibSerialization.Hashing.Hashing.computeOpRowId op
+    do!
+      Sql.query "DELETE FROM package_ops WHERE id = @id"
+      |> Sql.parameters [ "id", Sql.uuid opId ]
+      |> Sql.executeStatementAsync
   }
 
 

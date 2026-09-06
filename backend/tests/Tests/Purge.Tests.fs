@@ -196,11 +196,13 @@ let seedExportStripsPerInstallState =
 /// succeeds depends on what you last ran.
 let seedExportStripsTheBuildersDraft =
   test "Seed.export strips uncommitted main ops" {
-    let source = seedSource ()
+    // Whitespace-collapsed before matching: this pins WHAT the export deletes, and an assertion on
+    // Seed.fs's literal indentation broke on a reformat that changed nothing.
+    let source =
+      System.Text.RegularExpressions.Regex.Replace(seedSource (), @"\s+", " ")
+
     Expect.isTrue
-      (source.Contains
-        "DELETE FROM package_ops
-      WHERE commit_hash IS NULL")
+      (source.Contains "DELETE FROM package_ops WHERE commit_hash IS NULL")
       "`Seed.export` must strip main's uncommitted ops: a seed is committed history"
   }
 

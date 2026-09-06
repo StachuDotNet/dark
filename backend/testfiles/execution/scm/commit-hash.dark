@@ -3,7 +3,9 @@
 // (`draftOpIdsFor` sorts), and the last row records that `mintHash` itself does not sort, so if that ever
 // becomes true the sort has moved and `draftOpIdsFor`'s ORDER BY is dead.
 //
-// Ported from the F# `computeCommitHash` tests the migration deleted; the branch input is gone with it.
+// The branch is deliberately not an input. A commit is its message, author, stamp, ops and parent;
+// where it happens to sit is a property of the branch, not of the commit, so the same work committed
+// on two branches is the same commit.
 module MintHash =
   val ts = "2026-01-01T00:00:00.000Z"
 

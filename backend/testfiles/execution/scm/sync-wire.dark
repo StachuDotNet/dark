@@ -21,7 +21,7 @@ module Helpers =
     | Error e -> e
 
   /// A current-shape bundle carrying no ops. Takes the version so a wrong one can be exercised.
-  let v5 (version: String) : String =
+  let bundleAtVersion (version: String) : String =
     $"""{{"formatVersion":{version},"darkBuild":"abc123","kernelHash":"deadbeef","owner":"inst-1","cursor":0,"ops":[],"commits":[]}}"""
 
 
@@ -49,22 +49,22 @@ module RoundTrip =
 
 module RejectsWhatItCannotRead =
   // A bundle from a NEWER build is an error, and the error says to upgrade rather than half-read it.
-  (Helpers.isError (Helpers.decode (Helpers.v5 "99"))) = true
+  (Helpers.isError (Helpers.decode (Helpers.bundleAtVersion "99"))) = true
 
-  (Stdlib.String.contains (Helpers.errorText (Helpers.decode (Helpers.v5 "99"))) "v99") = true
+  (Stdlib.String.contains (Helpers.errorText (Helpers.decode (Helpers.bundleAtVersion "99"))) "v99") = true
 
   (Stdlib.String.contains
-    (Helpers.errorText (Helpers.decode (Helpers.v5 "99")))
+    (Helpers.errorText (Helpers.decode (Helpers.bundleAtVersion "99")))
     "not understood by this build") = true
 
   // An OLDER version is refused the same way, which is the point of dropping the legacy decoders: no
   // silent half-read of a shape this build no longer understands.
-  (Helpers.isError (Helpers.decode (Helpers.v5 "0"))) = true
+  (Helpers.isError (Helpers.decode (Helpers.bundleAtVersion "0"))) = true
 
   // Dispatch is on the version the bundle CLAIMS, never on whichever shape happens to parse. This fixture
   // is structurally identical to a readable bundle and differs only in its version, so it can only be
   // caught by reading the version first.
-  (Helpers.isError (Helpers.decode (Helpers.v5 "2"))) = true
+  (Helpers.isError (Helpers.decode (Helpers.bundleAtVersion "2"))) = true
 
 
 module RejectsDamage =

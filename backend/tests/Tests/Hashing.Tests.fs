@@ -231,10 +231,10 @@ let private fnHashTests =
         Expect.equal h1 h2 "AST node IDs should not affect hash"
       }
 
-      // The store is content-addressed, so two drafts that collide here are ONE item: the
-      // second author's name is bound to the first author's body. Seen when a test that
-      // committed `bad x = Tests.UnresT.missing x` ran before one that authored
-      // `caller x = TwoStore.Cascade.base x`, and `caller` called `missing`.
+      // An unresolved reference carries nothing but the name it failed to resolve, so the name
+      // has to reach the hash. The store is content-addressed, so two bodies that collide here
+      // are ONE item: the second author's name binds to the first author's body, and a call to
+      // `A.B.missing` starts answering as a call to `C.D.base`.
       test "unresolved references to different names hash differently" {
         let callUnresolved (names : List<string>) : PT.Expr =
           let nr : PT.NameResolution<PT.FQFnName.FQFnName> =

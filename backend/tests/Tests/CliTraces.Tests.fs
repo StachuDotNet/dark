@@ -324,10 +324,9 @@ let private testStatusCommand =
       Expect.isTrue
         (output.Contains("clean:") || output.Contains("draft:"))
         $"status says whether there's uncommitted work, got: {output}"
-      // `status` names the branch ALWAYS now, main included. It used to print the line only when you
-      // were off main, on the reasoning that main is the default and needs no announcement; with
-      // branches in daily use the opposite is true -- "where am I" is the question `status` is for, and
-      // an answer that is silent exactly half the time does not answer it.
+      // `status` names the branch ALWAYS, main included. "Where am I" is the question `status` is
+      // for, and an answer that is silent exactly half the time -- on the default branch, where most
+      // people are most of the time -- does not answer it.
       Expect.isTrue
         (output.Contains("On branch"))
         $"status names the branch it is on, main included, got: {output}"
@@ -442,9 +441,9 @@ let private testRteNamesPackageDecls =
 
 /// The same message for a script's own declarations. These are never in the
 /// store, and the CLI renders the error after the executor holding them is gone,
-/// so the pretty-printer's hash-to-name lookup used to miss and fall back to
-/// printing 64-character hashes. That is what made a declaration-collision bug
-/// read as an ordinary type mismatch.
+/// so the pretty-printer's hash-to-name lookup has nothing to find unless the
+/// script's names are carried to it. Missing, it prints 64-character hashes, and
+/// a declaration collision then reads as an ordinary type mismatch.
 let private testRteNamesScriptDecls =
   cliTest "RTE names script declarations" (fun state ->
     task {
@@ -1041,6 +1040,21 @@ let private looksLikeARuntimeFailure (output : string) : Option<string> =
     patterns
     |> List.exists (fun p -> System.Text.RegularExpressions.Regex.IsMatch(line, p)))
 
+/// What is wrong with a swept command's answer, or `None` if nothing is.
+///
+/// The sweeps differ in what they hand a command, never in how they judge what comes back: it must
+/// not throw, it must say something, and it must not print a runtime error it caught. The `help`
+/// sweep is the exception -- it asks a further question of the text -- so it judges its own.
+let private sweepFailure (outcome : Result<string, string>) : Option<string> =
+  match outcome with
+  | Error e -> Some $"crashed: {e}"
+  | Ok output ->
+    if output.Trim() = "" then
+      Some "said nothing"
+    else
+      looksLikeARuntimeFailure output
+      |> Option.map (fun line -> $"printed a runtime error: {line}")
+
 // The workbench renders. `initialState` builds a state without seizing the terminal, and this goes
 // through `dark eval` rather than a `.dark` testfile because building one reads the package tree,
 // and the execution testfiles are for pure functions (see `scm/propagation-policy.dark`).
@@ -1477,16 +1491,10 @@ let private everyCommandAnswersWhenBare =
 
         for cmd in commands do
           if not (Set.contains cmd notSweepable) then
-            match! runCliCatching state [ cmd ] with
-            | Error e -> failures <- (cmd, $"crashed: {e}") :: failures
-            | Ok output ->
-              if output.Trim() = "" then
-                failures <- (cmd, "said nothing") :: failures
-              else
-                match looksLikeARuntimeFailure output with
-                | Some line ->
-                  failures <- (cmd, $"printed a runtime error: {line}") :: failures
-                | None -> ()
+            let! outcome = runCliCatching state [ cmd ]
+            match sweepFailure outcome with
+            | Some why -> failures <- (cmd, why) :: failures
+            | None -> ()
 
         if not (List.isEmpty failures) then
           let detail =
@@ -1514,16 +1522,10 @@ let private everyCommandSurvivesABogusArgument =
           if not (Set.contains cmd skip) then
             // A command that silently ignores an argument it didn't understand looks
             // exactly like one that did what you asked.
-            match! runCliCatching state [ cmd; "zzz-no-such-thing-zzz" ] with
-            | Error e -> failures <- (cmd, $"crashed: {e}") :: failures
-            | Ok output ->
-              if output.Trim() = "" then
-                failures <- (cmd, "said nothing") :: failures
-              else
-                match looksLikeARuntimeFailure output with
-                | Some line ->
-                  failures <- (cmd, $"printed a runtime error: {line}") :: failures
-                | None -> ()
+            let! outcome = runCliCatching state [ cmd; "zzz-no-such-thing-zzz" ]
+            match sweepFailure outcome with
+            | Some why -> failures <- (cmd, why) :: failures
+            | None -> ()
 
             // `branch <junk>` and `switch <junk>` START that branch and move the store onto it, so every
             // command after them in this loop would be swept on a junk branch, as the store was found to be
@@ -1576,19 +1578,10 @@ let private everyCommandSurvivesABranch =
           task {
             for cmd in commands do
               if not (Set.contains cmd (Set.add "agent" notSweepable)) then
-                match! runCliCatching state (cmd :: extra) with
-                | Error e ->
-                  failures <- ($"{cmd} {label}", $"crashed: {e}") :: failures
-                | Ok output ->
-                  if output.Trim() = "" then
-                    failures <- ($"{cmd} {label}", "said nothing") :: failures
-                  else
-                    match looksLikeARuntimeFailure output with
-                    | Some line ->
-                      failures <-
-                        ($"{cmd} {label}", $"printed a runtime error: {line}")
-                        :: failures
-                    | None -> ()
+                let! outcome = runCliCatching state (cmd :: extra)
+                match sweepFailure outcome with
+                | Some why -> failures <- ($"{cmd} {label}", why) :: failures
+                | None -> ()
           }
 
         do! sweep "" []
@@ -1948,7 +1941,8 @@ let private archivingABranchCommitsItsEvent =
         let! status = runCli state [ "status" ]
         Expect.stringContains status "clean" $"and the tree is clean: {status}"
 
-        // The real assertion: `status` said clean before this fix too. Ask the draft.
+        // The real assertion. "clean" is what `status` prints when the draft is empty AND when it
+        // cannot see the archived branch's ops at all, so ask the draft directly.
         let! pending =
           Sql.query
             "SELECT count(*) AS n FROM package_ops
@@ -2116,9 +2110,9 @@ let private statusSeparatesTheDraftsConstraintsFromStandingOnes =
       })
 
 
-/// A name that does not resolve fails before any call is made, so its stack is empty, and the host
-/// used to print the stack header over nothing. One line for a one-line mistake; a real stack, from
-/// a fn that failed inside another, still prints.
+/// A name that does not resolve fails before any call is made, so its stack is empty and the host
+/// prints no stack header over it. One line for a one-line mistake; a real stack, from a fn that
+/// failed inside another, still prints.
 let private aMissingNameIsOneLineNotAStackHeader =
   cliTest
     "eval of a name that does not exist prints the error and no empty call stack"
@@ -2727,8 +2721,7 @@ let private resetWorkedExample () : Task<unit> =
       Sql.query
         "DELETE FROM package_ops WHERE commit_hash IS NULL
            AND id NOT IN (SELECT op_id FROM op_branches)
-           AND id IN (SELECT DISTINCT p.id FROM package_ops p
-                      JOIN locations l ON l.origin_ts = p.origin_ts
+           AND id IN (SELECT DISTINCT l.op_id FROM locations l
                       WHERE l.owner = 'Ux' AND l.modules = 'Money')"
       |> Sql.executeStatementAsync
 
@@ -4002,11 +3995,11 @@ let private slowCliTests =
 
 /// A dash-led argument is a flag someone mistyped, or a sweep passed in. It is never a name.
 ///
-/// `everyCommandSurvivesABogusArgument` above cannot catch this: these commands ANSWERED, at length and
-/// cheerfully, while doing something nobody asked for. `dark switch --help` started a branch called
-/// "--help" and moved the store onto it, so the next `dark fn` authored on a branch that existed by
-/// accident; `dark identity --help` renamed the instance to "--help", and the name goes out on the next
-/// push, so everyone else sees it before you do. Both found by sweeping the real CLI on a second machine.
+/// `everyCommandSurvivesABogusArgument` above cannot catch this, because these commands ANSWER, at
+/// length and cheerfully, while doing something nobody asked for. Unguarded, `dark switch --help`
+/// starts a branch called "--help" and moves the store onto it, so the next `dark fn` authors on a
+/// branch that exists by accident; `dark identity --help` renames the instance to "--help", and the
+/// name goes out on the next push, so everyone else sees it before you do.
 let private aDashLedArgumentIsNeverAName =
   cliTestOnMain
     "a dash-led argument is refused as a name rather than taken as one"

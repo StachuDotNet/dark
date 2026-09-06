@@ -6,7 +6,8 @@
 /// a winner the fold did not pick, and two instances converge on different content with nothing to say so.
 ///
 /// The Dark copy is pinned by the same table, case for case, in
-/// `backend/testfiles/execution/scm/lww.dark`. **Change one, change both, and the tables must match.**
+/// `backend/testfiles/execution/scm/lww.dark`. **Change one, change both, and the tables must
+/// match.**
 module Tests.Lww
 
 open Expecto

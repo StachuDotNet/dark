@@ -2101,10 +2101,16 @@ let private unitTests =
       } ]
 
 
-// Commit-time at-rest gating is covered by `CliTraces.commitRefusesDefiniteTypeErrors`, which
-// drives the real verb rather than the checker directly. Not covered anywhere: the "after this
-// update, N dependents have definite type errors" report.
+// Commit-time at-rest gating is covered by
+// `CliTraces.commitRefusesDefiniteTypeErrors`, which drives the real verb rather
+// than the checker directly.
 
+
+/// The checker's vocabulary is mirrored in `LanguageTools.AtRestTypeChecker` so Dark
+/// can render it. The F# side of that mirror is compiler-checked (adding a case breaks
+/// the conversion match); the Dark side is not, and a case missing there fails at
+/// runtime, in the editor, on the day someone first hits it. These compare the case
+/// names directly, so the mirror can only drift with a failing test.
 let private mirrorTests =
   let fsharpCases (typ : System.Type) : Set<string> =
     Microsoft.FSharp.Reflection.FSharpType.GetUnionCases(typ)

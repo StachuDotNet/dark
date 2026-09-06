@@ -207,6 +207,20 @@ let applySchemaIndexes (schemaSql : string) : unit =
 /// makes it safe to run against a store of any age, so a new step that skips those has nothing
 /// checking it.
 let runPending () : unit =
+  // A step's name is its identity in `system_migrations_v0`, so two steps sharing one would run as
+  // one and record as one, silently. Refused here, where every store passes on startup, because no
+  // test constructs this list.
+  let duplicates =
+    steps
+    |> List.countBy _.name
+    |> List.filter (fun (_, n) -> n > 1)
+    |> List.map fst
+
+  if not (List.isEmpty duplicates) then
+    Exception.raiseInternal
+      "duplicate release step name(s)"
+      [ "names", String.concat ", " duplicates ]
+
   let done_ = alreadyRun ()
 
   for step in steps do

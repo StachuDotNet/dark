@@ -52,8 +52,9 @@ module Wins =
     (b "2026-01-01T00:00:59.999Z" "aaaa")
     (b "2026-01-01T00:01:00.000Z" "aaaa")) = false
 
-  // An INCOMING binding with no stamp loses to anything that has one: the one asymmetry; see
-  // `conflicts.dark`'s IncomingWins for why it is deliberate.
+  // An INCOMING binding with no stamp loses to anything that has one: the one asymmetry. Deliberate:
+  // an op with no stamp cannot claim recency, and letting it win would let a malformed record beat
+  // real history.
   (Darklang.SCM.Conflicts.incomingWins
     (b "" "ffff")
     (b "2026-01-01T00:00:00.000Z" "aaaa")) = false

@@ -513,6 +513,8 @@ let aFailedRewriteLeavesTheDraftIntact =
         ops
     let! again = liveHash m "a"
     Expect.equal again before "a clean rewrite lands the same binding"
+
+    do! cleanup m
   }
 
 let tests =
