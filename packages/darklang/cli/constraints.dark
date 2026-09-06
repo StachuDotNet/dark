@@ -19,22 +19,6 @@ module Darklang.Cli.ConstraintsCmd
 //
 // All SQL is siloed in `SCM.Constraints`; this file writes NO SQL, it only formats.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
-let shortHash (h: LanguageTools.ProgramTypes.Hash) : String =
-  LanguageTools.ProgramTypes.hashToString h |> Stdlib.String.slice 0 8
-
-let jsonStr (s: String) : String =
-  let escaped =
-    s
-    |> Stdlib.String.replaceAll "\\" "\\\\"
-    |> Stdlib.String.replaceAll "\"" "\\\""
-
-  $"\"{escaped}\""
-
-
 /// A propagation choice, as a word.
 let policyName (p: LanguageTools.ProgramTypes.PropagationPolicy) : String =
   match p with
@@ -57,11 +41,11 @@ let line (f: SCM.Constraints.Finding) : String =
     let was = SCM.Deps.kindString f.dependencyKind
     $"  #{f.id}  {u}\n         uses {d} as a {was}; that name is something else now (still resolves, by hash)"
   | (StaleUsage, Versions(using, current)) ->
-    $"  #{f.id}  {u}\n         uses {d} @ {shortHash using}, current is {shortHash current}"
+    $"  #{f.id}  {u}\n         uses {d} @ {Cli.shortHash using}, current is {Cli.shortHash current}"
   // Its own sentence: `dependency` is the location itself here, so the stale-usage phrasing ("uses X")
   // would read as if the name called itself.
   | (DecisionSuperseded, Versions(using, current)) ->
-    $"  #{f.id}  {u}\n         you overrode this to {shortHash using}; a later edit rebound it to {shortHash current}"
+    $"  #{f.id}  {u}\n         you overrode this to {Cli.shortHash using}; a later edit rebound it to {Cli.shortHash current}"
   | (DecisionSuperseded, PolicyReplaced(was, now, by)) ->
     let whose = if by == "" then "a later choice" else by
 
@@ -72,24 +56,24 @@ let line (f: SCM.Constraints.Finding) : String =
 /// The same data the human view renders, not a subset. If an agent ever has to fall back to parsing the
 /// pretty output for one field, this is incomplete and that's a bug, not a workaround.
 let toJson (f: SCM.Constraints.Finding) : String =
-  let k = jsonStr (SCM.Constraints.kindToString f.kind)
-  let u = jsonStr (SCM.Constraints.fqnOf f.usage)
-  let d = jsonStr (SCM.Constraints.fqnOf f.dependency)
-  let uk = jsonStr (SCM.Deps.kindString f.usageKind)
-  let dk = jsonStr (SCM.Deps.kindString f.dependencyKind)
+  let k = Cli.jsonStr (SCM.Constraints.kindToString f.kind)
+  let u = Cli.jsonStr (SCM.Constraints.fqnOf f.usage)
+  let d = Cli.jsonStr (SCM.Constraints.fqnOf f.dependency)
+  let uk = Cli.jsonStr (SCM.Deps.kindString f.usageKind)
+  let dk = Cli.jsonStr (SCM.Deps.kindString f.dependencyKind)
 
   // The varying half is named for what it IS, so an agent reading this does not have to know that a
   // policy finding puts policy names in fields called `using` and `current`.
   let detail =
     match f.detail with
     | Versions(using, current) ->
-      let usingStr = jsonStr (LanguageTools.ProgramTypes.hashToString using)
-      let curStr = jsonStr (LanguageTools.ProgramTypes.hashToString current)
+      let usingStr = Cli.jsonStr (LanguageTools.ProgramTypes.hashToString using)
+      let curStr = Cli.jsonStr (LanguageTools.ProgramTypes.hashToString current)
       $"\"using\":{usingStr},\"current\":{curStr}"
     | PolicyReplaced(was, now, by) ->
-      $"\"was\":{jsonStr (policyName was)},\"now\":{jsonStr (policyName now)},\"replacedBy\":{jsonStr by}"
+      $"\"was\":{Cli.jsonStr (policyName was)},\"now\":{Cli.jsonStr (policyName now)},\"replacedBy\":{Cli.jsonStr by}"
 
-  $"{{\"id\":{jsonStr f.id},\"kind\":{k},\"usage\":{u},\"usageKind\":{uk},\"dependency\":{d},\"dependencyKind\":{dk},{detail}}}"
+  $"{{\"id\":{Cli.jsonStr f.id},\"kind\":{k},\"usage\":{u},\"usageKind\":{uk},\"dependency\":{d},\"dependencyKind\":{dk},{detail}}}"
 
 
 let selectKind
@@ -136,10 +120,10 @@ let executeList (state: AppState) (args: List<String>) : AppState =
   match SCM.Constraints.pending () |> (fun fs -> selectKind fs args) with
   | [] ->
     // Says what was CHECKED, not just that nothing turned up, and short enough for a narrow terminal.
-    printOk "no constraints: nothing has drifted off its current version."
+    Cli.printOk "no constraints: nothing has drifted off its current version."
     state
   | findings ->
-    printOk (Cli.Text.plural (Stdlib.List.length findings) "constraint")
+    Cli.printOk (Cli.Text.plural (Stdlib.List.length findings) "constraint")
     findings |> Stdlib.List.iter (fun f -> Stdlib.printLine (line f))
     Stdlib.printLine ""
 
@@ -237,20 +221,20 @@ let onBranch () : Bool =
 
 let executeAck (state: AppState) (args: List<String>) : AppState =
   if onBranch () then
-    printErr "constraints are a property of the store, not of a branch -- switch to main to ack."
-    printHint "  detection runs over main's bindings, so there's nothing branch-local here to answer."
+    Cli.printErr "constraints are a property of the store, not of a branch -- switch to main to ack."
+    Cli.printHint "  detection runs over main's bindings, so there's nothing branch-local here to answer."
     state
   else
     let (targets, missing) = selectTargets args
     let why = whyFrom args
 
     missing
-    |> Stdlib.List.iter (fun m -> printErr $"no constraint matching \"{m}\" -- skipped.")
+    |> Stdlib.List.iter (fun m -> Cli.printErr $"no constraint matching \"{m}\" -- skipped.")
 
     match targets with
     | [] ->
       if Stdlib.List.isEmpty missing then
-        printOk "nothing to ack."
+        Cli.printOk "nothing to ack."
       else
         ()
 
@@ -259,12 +243,12 @@ let executeAck (state: AppState) (args: List<String>) : AppState =
       targets
       |> Stdlib.List.iter (fun f ->
         match SCM.Constraints.ack state.currentBranchId f why with
-        | Ok _ -> printOk $"acked #{f.id}  {SCM.Constraints.fqnOf f.usage}"
-        | Error e -> printErr $"couldn't ack #{f.id}: {e}")
+        | Ok _ -> Cli.printOk $"acked #{f.id}  {SCM.Constraints.fqnOf f.usage}"
+        | Error e -> Cli.printErr $"couldn't ack #{f.id}: {e}")
 
       // Both lines are about REFERENCES, which is what every finding here describes.
-      printHint "  an ack comes back if that item later moves to some other old version."
-      printHint "  `dark propagate pin` instead, if it's deliberate for good."
+      Cli.printHint "  an ack comes back if that item later moves to some other old version."
+      Cli.printHint "  `dark propagate pin` instead, if it's deliberate for good."
       state
 
 
@@ -346,20 +330,20 @@ let resolutionFor
 /// while the finding it answers stays open on main.
 let executeResolve (state: AppState) (args: List<String>) : AppState =
   if onBranch () then
-    printErr "constraints are a property of the store, not of a branch -- switch to main to resolve."
-    printHint "  detection runs over main's bindings, so there's nothing branch-local here to answer."
+    Cli.printErr "constraints are a property of the store, not of a branch -- switch to main to resolve."
+    Cli.printHint "  detection runs over main's bindings, so there's nothing branch-local here to answer."
     state
   else
 
   let (targets, missing) = selectTargets args
 
   missing
-  |> Stdlib.List.iter (fun m -> printErr $"no constraint matching \"{m}\" -- skipped.")
+  |> Stdlib.List.iter (fun m -> Cli.printErr $"no constraint matching \"{m}\" -- skipped.")
 
   match targets with
   | [] ->
     if Stdlib.List.isEmpty missing then
-      printOk "nothing to resolve."
+      Cli.printOk "nothing to resolve."
     else
       ()
 
@@ -368,8 +352,8 @@ let executeResolve (state: AppState) (args: List<String>) : AppState =
 
   match resolutionFor targets args with
   | Error e ->
-    printErr e
-    printHint "  `dark ack <id>...` leaves them for now, which needs no choice."
+    Cli.printErr e
+    Cli.printHint "  `dark ack <id>...` leaves them for now, which needs no choice."
     state
   | Ok resolution ->
     targets
@@ -377,7 +361,7 @@ let executeResolve (state: AppState) (args: List<String>) : AppState =
       // A pinned item would be repointed and then held by the pin on the next change, which reads as the
       // command not working. Say so instead of doing something that won't stick.
       if (SCM.Propagation.shouldFollow f.usage) |> Stdlib.Bool.not then
-        printErr
+        Cli.printErr
           $"#{f.id}: {SCM.Constraints.fqnOf f.usage} is pinned -- `dark propagate follow` it first, which also catches it up."
       else
         match f.detail with
@@ -387,7 +371,7 @@ let executeResolve (state: AppState) (args: List<String>) : AppState =
           // Nothing to cascade: the finding is that a CHOICE was replaced, and the versions already
           // agree. Acking it is the whole answer.
           ()
-        printOk
+        Cli.printOk
           $"resolved #{f.id} as \"{resolution}\"  {SCM.Constraints.fqnOf f.usage}")
 
     state
@@ -433,8 +417,8 @@ let help (_state: AppState) : String =
 let executeAckCmd (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] ->
-    printErr "which findings? `dark ack <id>...`, or `dark ack --all`."
-    printHint "  `dark constraints` lists them."
+    Cli.printErr "which findings? `dark ack <id>...`, or `dark ack --all`."
+    Cli.printHint "  `dark constraints` lists them."
     state
   | _ -> executeAck state args
 
@@ -457,14 +441,14 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | "ack" :: rest -> executeAck state rest
   | _ ->
     if Stdlib.Bool.not (listingUnderstands args) then
-      printErr $"`dark constraints` doesn't take \"{Stdlib.String.join args " "}\"."
-      printHint "  dark constraints [--kind <kind>] [--json]   list; `resolve` and `ack` take ids"
+      Cli.printErr $"`dark constraints` doesn't take \"{Stdlib.String.join args " "}\"."
+      Cli.printHint "  dark constraints [--kind <kind>] [--json]   list; `resolve` and `ack` take ids"
       state
     else
 
     match kindArgChecked args with
     | Error why ->
-      printErr why
+      Cli.printErr why
       state
     | Ok _ ->
 

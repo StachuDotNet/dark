@@ -89,25 +89,6 @@ let createErrorDiagnostic
     range
     message
 
-let createInfoDiagnostic
-  (range: Parser.Range)
-  (message: String)
-  : LanguageServerProtocol.Diagnostic.Diagnostic =
-  createDiagnostic
-    LanguageServerProtocol.DiagnosticSeverity.DiagnosticSeverity.Information
-    range
-    message
-
-let createHintDiagnostic
-  (range: Parser.Range)
-  (message: String)
-  : LanguageServerProtocol.Diagnostic.Diagnostic =
-  createDiagnostic
-    LanguageServerProtocol.DiagnosticSeverity.DiagnosticSeverity.Hint
-    range
-    message
-
-
 let sendDiagnostic
   (uri: LanguageServerProtocol.DocumentUri)
   (diagnostic:

@@ -65,19 +65,16 @@ let modulesOf (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
 
 
 let choiceFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Choice> =
-  let txt (col: String) : String =
-    Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
-
-  match policyFromString (txt "policy") with
+  match policyFromString (Stdlib.Sqlite.textOr row "policy") with
   | Some p ->
     Stdlib.Option.Option.Some(
       Choice
-        { owner = txt "owner"
-          modules = txt "modules"
-          name = txt "name"
+        { owner = Stdlib.Sqlite.textOr row "owner"
+          modules = Stdlib.Sqlite.textOr row "modules"
+          name = Stdlib.Sqlite.textOr row "name"
           policy = p
-          note = txt "note"
-          originTs = txt "origin_ts" }
+          note = Stdlib.Sqlite.textOr row "note"
+          originTs = Stdlib.Sqlite.textOr row "origin_ts" }
     )
   | None -> Stdlib.Option.Option.None
 
@@ -249,23 +246,32 @@ let setPolicy
   (policy: Policy)
   (note: String)
   : Stdlib.Result.Result<Unit, String> =
-  let loc =
-    LanguageTools.ProgramTypes.PackageLocation
-      { owner = owner
-        modules = if modules == "" then [] else Stdlib.String.split modules "."
-        name = name }
+  authorPolicyOp branchId owner modules name note (toOpPolicy policy)
 
+
+/// Author one propagation `Decision` op: the shared act behind <fn setPolicy> and
+/// <fn clearPolicy>, which differ only in the op-level policy they record.
+///
+/// Stamped, because pin -> unset -> pin is three decisions and the third must not dedup
+/// into the first: content-addressed ops make an unstamped repeat BE the original, which
+/// then loses to the unset between them under last-writer-wins.
+let authorPolicyOp
+  (branchId: Uuid)
+  (owner: String)
+  (modules: String)
+  (name: String)
+  (note: String)
+  (policy: LanguageTools.ProgramTypes.PropagationPolicy)
+  : Stdlib.Result.Result<Unit, String> =
+  let loc = Deps.locationOf owner modules name
   let now = Stdlib.DateTime.toString (Stdlib.DateTime.now ())
 
   let op =
     LanguageTools.ProgramTypes.PackageOp.Decision(
-      // Stamped, because pin -> unset -> pin is three decisions and the third must not dedup into
-      // the first: content-addressed ops make an unstamped repeat BE the original, which then loses
-      // to the unset between them under last-writer-wins.
       $"propagation:{owner}.{modules}.{name}:{now}",
       loc,
       note,
-      LanguageTools.ProgramTypes.DecisionKind.Propagation(toOpPolicy policy)
+      LanguageTools.ProgramTypes.DecisionKind.Propagation policy
     )
 
   match SCM.PackageOps.add branchId [ op ] with
@@ -283,27 +289,15 @@ let clearPolicy
   (modules: String)
   (name: String)
   : Stdlib.Result.Result<Unit, String> =
-  let loc =
-    LanguageTools.ProgramTypes.PackageLocation
-      { owner = owner
-        modules = if modules == "" then [] else Stdlib.String.split modules "."
-        name = name }
-
-  let now = Stdlib.DateTime.toString (Stdlib.DateTime.now ())
-
-  let op =
-    LanguageTools.ProgramTypes.PackageOp.Decision(
-      $"propagation:{owner}.{modules}.{name}:{now}",
-      loc,
-      "",
-      LanguageTools.ProgramTypes.DecisionKind.Propagation(
-        LanguageTools.ProgramTypes.PropagationPolicy.Unset
-      )
-    )
-
-  match SCM.PackageOps.add branchId [ op ] with
-  | Ok _ -> Stdlib.Result.Result.Ok(())
-  | Error e -> Stdlib.Result.Result.Error e
+  // `Unset` is not a `Policy` case, which is why this can't just call `setPolicy`:
+  // the shared helper takes the op-level policy instead.
+  authorPolicyOp
+    branchId
+    owner
+    modules
+    name
+    ""
+    LanguageTools.ProgramTypes.PropagationPolicy.Unset
 
 
 /// What <param loc> would go back to if you undid the most recent change to it.
@@ -518,18 +512,14 @@ let authoringOrder
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : List<String> =
   let fromMain =
-    match
-      // main-scoped: main's half of the sequence, cut at the fork below when on a branch.
-      Stdlib.Sqlite.queryP
-        (localDb ())
-        "SELECT item_hash FROM locations
-         WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND source = 'op'
-         ORDER BY rowid"
-        [ loc.owner, modulesOf loc, loc.name ]
-    with
-    | Ok rows ->
-      rows |> Stdlib.List.filterMap (fun r -> Stdlib.Sqlite.textField r "item_hash")
-    | Error _ -> []
+    // main-scoped: main's half of the sequence, cut at the fork below when on a branch.
+    Stdlib.Sqlite.columnP
+      (localDb ())
+      "SELECT item_hash FROM locations
+       WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND source = 'op'
+       ORDER BY rowid"
+      [ loc.owner, modulesOf loc, loc.name ]
+      "item_hash"
 
   // On a branch the sequence CONTINUES into the branch's own ops: main's rows UP TO THE FORK are the
   // history you forked from, the branch's edits are what you did after. Stopping at the fork leaves a
@@ -602,20 +592,15 @@ let everBoundHashes
   : List<LanguageTools.ProgramTypes.Hash> =
   let itemType = Deps.kindString itemKind
 
-  match
-    // main-scoped, on purpose: every hash ever bound on MAIN is this fn's contract.
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT item_hash FROM locations
-       WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND item_type = @p3
-         AND source <> 'unbind'
-       GROUP BY item_hash
-       ORDER BY MAX(CASE WHEN unlisted_at IS NULL THEN '9999-12-31' ELSE unlisted_at END) DESC"
-      [ loc.owner, modulesOf loc, loc.name, itemType ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
+  // main-scoped, on purpose: every hash ever bound on MAIN is this fn's contract.
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT item_hash FROM locations
+     WHERE owner = @p0 AND modules = @p1 AND name = @p2 AND item_type = @p3
+       AND source <> 'unbind'
+     GROUP BY item_hash
+     ORDER BY MAX(CASE WHEN unlisted_at IS NULL THEN '9999-12-31' ELSE unlisted_at END) DESC"
+    [ loc.owner, modulesOf loc, loc.name, itemType ]
+    (fun row ->
       Stdlib.Sqlite.textField row "item_hash"
       |> Stdlib.Option.map (fun h -> LanguageTools.ProgramTypes.Hash.Hash h))
-  | Error _ -> []

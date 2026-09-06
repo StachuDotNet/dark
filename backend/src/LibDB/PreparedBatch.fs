@@ -137,6 +137,26 @@ let textOption
           [ "actualType", value.GetType().FullName ]
   }
 
+/// Read an optional (TEXT, nullable-TEXT) pair from the first row: `None` for no row,
+/// and the second column maps NULL to None. Per call site: the SQL and its parameters.
+let pairOption
+  (ctx : Ctx)
+  (sql : string)
+  (setParams : SqliteCommand -> unit)
+  : Task<Option<string * Option<string>>> =
+  task {
+    let cmd = command ctx sql
+    cmd.Parameters.Clear()
+    setParams cmd
+    use! reader = cmd.ExecuteReaderAsync()
+    let! hasRow = reader.ReadAsync()
+    if hasRow then
+      let second = if reader.IsDBNull 1 then None else Some(reader.GetString 1)
+      return Some(reader.GetString 0, second)
+    else
+      return None
+  }
+
 
 /// Bind a parameter. Wraps `AddWithValue` so it always returns unit.
 let inline p (cmd : SqliteCommand) (name : string) (value : obj) =

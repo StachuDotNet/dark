@@ -337,9 +337,7 @@ let localBindingsFor (names: List<String>) : List<Binding> =
         ++ (inPlaceholders chunk)
         ++ ")"
 
-      match Stdlib.Sqlite.queryP (localDb ()) sql chunk with
-      | Ok rows -> rows |> Stdlib.List.filterMap bindingFromRow
-      | Error _ -> [])
+      Stdlib.Sqlite.rowsP (localDb ()) sql chunk bindingFromRow)
     |> Stdlib.List.flatten
 
 
@@ -363,25 +361,19 @@ let baseFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<
 
 /// The bases a BRANCH recorded when it first touched each name (the parent's hash at the fork point).
 let branchBases (branchId: Uuid) : List<NameBase> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT owner, modules, name, base_hash FROM branch_name_bases WHERE branch_id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows -> rows |> Stdlib.List.filterMap baseFromRow
-  | Error _ -> []
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT owner, modules, name, base_hash FROM branch_name_bases WHERE branch_id = @p0"
+    [ Stdlib.Uuid.toString branchId ]
+    baseFromRow
 
 /// The bases recorded for a SYNC SOURCE: the hashes this instance and that source last agreed on.
 let syncBases (sourceId: String) : List<NameBase> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT owner, modules, name, base_hash FROM sync_bases WHERE source_id = @p0"
-      [ sourceId ]
-  with
-  | Ok rows -> rows |> Stdlib.List.filterMap baseFromRow
-  | Error _ -> []
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT owner, modules, name, base_hash FROM sync_bases WHERE source_id = @p0"
+    [ sourceId ]
+    baseFromRow
 
 /// Has this instance ever recorded agreement with <param sourceId>? A first sync has none, which is why a
 /// first sync can't (and shouldn't) report conflicts.
@@ -417,28 +409,25 @@ let recordAllSyncBases (sourceId: String) : Unit =
 // the `conflicts` table (record / read / resolve)
 
 let conflictFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Conflict> =
-  let text (col: String) : String =
-    Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
-
   match Stdlib.Sqlite.textField row "id" with
   | Some id ->
     let candidates =
-      match Stdlib.Json.parse<List<Candidate>> (text "candidates") with
+      match Stdlib.Json.parse<List<Candidate>> (Stdlib.Sqlite.textOr row "candidates") with
       | Ok cs -> cs
       | Error _ -> []
 
     (Conflict
       { id = id
-        owner = text "owner"
-        modules = text "modules"
-        name = text "name"
-        itemType = text "item_type"
-        kind = text "kind"
+        owner = Stdlib.Sqlite.textOr row "owner"
+        modules = Stdlib.Sqlite.textOr row "modules"
+        name = Stdlib.Sqlite.textOr row "name"
+        itemType = Stdlib.Sqlite.textOr row "item_type"
+        kind = Stdlib.Sqlite.textOr row "kind"
         candidates = candidates
-        autoResolvedTo = text "auto_resolved_to"
-        reason = text "reason"
-        status = text "status"
-        resolvedBy = text "resolved_by" })
+        autoResolvedTo = Stdlib.Sqlite.textOr row "auto_resolved_to"
+        reason = Stdlib.Sqlite.textOr row "reason"
+        status = Stdlib.Sqlite.textOr row "status"
+        resolvedBy = Stdlib.Sqlite.textOr row "resolved_by" })
     |> Stdlib.Option.Option.Some
   | None -> Stdlib.Option.Option.None
 
@@ -491,16 +480,13 @@ let record (branchId: Uuid) (conflicts: List<Conflict>) : Int =
 /// branch's from main would answer for a projection that hasn't happened yet. Each branch sees its own.
 let pending () : List<Conflict> =
   let recorded =
-    match
-      Stdlib.Sqlite.queryP
-        (localDb ())
-        "SELECT id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status,
-                COALESCE(resolved_by,'') AS resolved_by
-         FROM conflicts WHERE status = 'pending' AND branch_id = @p0 ORDER BY created_at"
-        [ Stdlib.Uuid.toString (onBranch ()) ]
-    with
-    | Ok rows -> rows |> Stdlib.List.filterMap conflictFromRow
-    | Error _ -> []
+    Stdlib.Sqlite.rowsP
+      (localDb ())
+      "SELECT id, owner, modules, name, item_type, kind, candidates, auto_resolved_to, reason, status,
+              COALESCE(resolved_by,'') AS resolved_by
+       FROM conflicts WHERE status = 'pending' AND branch_id = @p0 ORDER BY created_at"
+      [ Stdlib.Uuid.toString (onBranch ()) ]
+      conflictFromRow
 
   // A conflict whose name has since been bound to something that is NEITHER candidate was settled by
   // events, not by a person: an override's cascade repointed the callers, or a later edit moved on. Left
@@ -510,11 +496,7 @@ let pending () : List<Conflict> =
 
   recorded
   |> Stdlib.List.filter (fun c ->
-    let loc =
-      LanguageTools.ProgramTypes.PackageLocation
-        { owner = c.owner
-          modules = (if c.modules == "" then [] else Stdlib.String.split c.modules ".")
-          name = c.name }
+    let loc = Deps.locationOf c.owner c.modules c.name
 
     match PackageOps.liveBindingFor branchId loc with
     | Some live ->

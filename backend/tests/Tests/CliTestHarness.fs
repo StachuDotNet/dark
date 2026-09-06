@@ -92,6 +92,25 @@ let runCliCatching
       return Error(e.Message.Split('\n')[0])
   }
 
+/// Author a fn through the CLI (`fn <name> <decl>`), discarding the output.
+/// For sites that assert on the authoring output itself, use `runCli` directly.
+let author (state : RT.ExecutionState) (name : string) (decl : string) : Task<unit> =
+  task {
+    let! _ = runCli state [ "fn"; name; decl ]
+    return ()
+  }
+
+/// Teardown for tests that end off main: switch back, then archive each named
+/// branch with `-y`. Asserts nothing -- a test that checks the archive output
+/// keeps its own runCli + Expect.
+let archiveBranches (state : RT.ExecutionState) (names : List<string>) : Task<unit> =
+  task {
+    let! _ = runCli state [ "switch"; "main" ]
+    for name in names do
+      let! _ = runCli state [ "branch"; "archive"; name; "-y" ]
+      ()
+  }
+
 /// The trace id in a `traces list 1 --json` output.
 let parseTraceID (json : string) : string =
   let split = json.Split("\"traceId\":\"")

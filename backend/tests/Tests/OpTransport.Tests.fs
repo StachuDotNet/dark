@@ -21,6 +21,7 @@ open Prelude
 
 open Fumble
 open LibDB.Sqlite
+open TestUtils.TestUtils
 
 module Inserts = LibDB.Inserts
 module Seed = LibDB.Seed
@@ -29,12 +30,8 @@ let private ts = "2026-01-01T00:00:00.000Z"
 
 let private cleanup () : Task<unit> =
   task {
-    do!
-      Sql.query "DELETE FROM op_branches WHERE op_id LIKE 'fada0000-%'"
-      |> Sql.executeStatementAsync
-    do!
-      Sql.query "DELETE FROM package_ops WHERE id LIKE 'fada0000-%'"
-      |> Sql.executeStatementAsync
+    do! execSql "DELETE FROM op_branches WHERE op_id LIKE 'fada0000-%'"
+    do! execSql "DELETE FROM package_ops WHERE id LIKE 'fada0000-%'"
   }
 
 /// Shield a test op from a CONCURRENT test's authoring: `WipRefresh` rewrites the draft (`Inserts.rewriteOpsAtomically`), which
@@ -58,9 +55,9 @@ let private effectiveOf (id : string) : Task<int64> =
   |> Sql.executeRowAsync (fun read -> read.int64 "effective")
 
 let private countOf (id : string) : Task<int64> =
-  Sql.query "SELECT COUNT(*) as n FROM package_ops WHERE id = @id"
-  |> Sql.parameters [ "id", Sql.string id ]
-  |> Sql.executeRowAsync (fun read -> read.int64 "n")
+  countSql
+    "SELECT COUNT(*) as n FROM package_ops WHERE id = @id"
+    [ "id", Sql.string id ]
 
 
 let importSkipsAllMalformed =

@@ -137,6 +137,30 @@ let refuseDashLedName (kind: String) (name: String) : Bool =
     false
 
 
+// One colored line each: the shared voice of the SCM-era commands' output.
+let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
+let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
+let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
+
+
+/// First 8 hex chars of a hash, for human-readable display.
+let shortHash (h: LanguageTools.ProgramTypes.Hash) : String =
+  LanguageTools.ProgramTypes.hashToString h |> Stdlib.String.slice 0 8
+
+
+/// Escape a string for a hand-assembled JSON body. Backslash first, or it would
+/// re-escape the ones the quote pass just wrote.
+let jsonEscape (x: String) : String =
+  x
+  |> Stdlib.String.replaceAll "\\" "\\\\"
+  |> Stdlib.String.replaceAll "\"" "\\\""
+
+/// A JSON string literal: escaped and wrapped in quotes.
+let jsonStr (s: String) : String =
+  let escaped = jsonEscape s
+  $"\"{escaped}\""
+
+
 /// Takes the command list rather than calling `Registry.allCommands ()` itself: `initState` needs both the
 /// list and the options, and building the list is 60 records of 6 fields including 3 fn refs each. Calling it
 /// twice per process start was pure duplicate work, on every invocation including `dark version`.

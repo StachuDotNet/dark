@@ -295,6 +295,27 @@ module Expr =
       let name = NEList.ofList head tail |> WT.Unresolved
       NR.resolveTypeName pm onMissing currentModule name
 
+  /// `NR.resolveValueName` over the builtin values with `OnMissing.Allow` -- the
+  /// policy at every expression lowering site, where a failed lookup falls back
+  /// to another interpretation of the name rather than erroring.
+  let private resolveValueAllow builtins pm currentModule name =
+    NR.resolveValueName
+      (BuiltinNames.values builtins)
+      pm
+      NR.OnMissing.Allow
+      currentModule
+      name
+
+  /// `NR.resolveFnName` over the builtin fns with `OnMissing.Allow`; same
+  /// fall-back policy as `resolveValueAllow`.
+  let private resolveFnAllow builtins pm currentModule name =
+    NR.resolveFnName
+      (BuiltinNames.fns builtins)
+      pm
+      NR.OnMissing.Allow
+      currentModule
+      name
+
   let rec toPT
     (builtins : RT.Builtins)
     (pm : PT.PackageManager)
@@ -304,6 +325,8 @@ module Expr =
     (e : WT.Expr)
     : Ply<PT.Expr> =
     let toPT ctx = toPT builtins pm onMissing currentModule ctx
+    // TypeReference lowering under this call's pm/onMissing/currentModule.
+    let typeRefToPT = TypeReference.toPT pm onMissing currentModule
     uply {
       match e with
       | WT.EChar(_, contents, _, _) ->
@@ -347,20 +370,18 @@ module Expr =
         | None ->
           // Bare names resolve value-first, then function, then local variable.
           let! value =
-            NR.resolveValueName
-              (BuiltinNames.values builtins)
+            resolveValueAllow
+              builtins
               pm
-              NR.OnMissing.Allow
               currentModule
               (WT.Unresolved(NEList.singleton var))
           match value.resolved with
           | Ok _ -> return PT.EValue(id, value)
           | Error _ ->
             let! fnResult =
-              NR.resolveFnName
-                (BuiltinNames.fns builtins)
+              resolveFnAllow
+                builtins
                 pm
-                NR.OnMissing.Allow
                 currentModule
                 (WT.Unresolved(NEList.singleton var))
             match fnResult.resolved with
@@ -393,22 +414,12 @@ module Expr =
             let fullPath = NEList.pushBack fieldname basePath
             // Qualified bare names resolve value-first, then function.
             let! valueResult =
-              NR.resolveValueName
-                (BuiltinNames.values builtins)
-                pm
-                NR.OnMissing.Allow
-                currentModule
-                (WT.Unresolved fullPath)
+              resolveValueAllow builtins pm currentModule (WT.Unresolved fullPath)
             match valueResult.resolved with
             | Ok _ -> return PT.EValue(id, valueResult)
             | Error _ ->
               let! fnResult =
-                NR.resolveFnName
-                  (BuiltinNames.fns builtins)
-                  pm
-                  NR.OnMissing.Allow
-                  currentModule
-                  (WT.Unresolved fullPath)
+                resolveFnAllow builtins pm currentModule (WT.Unresolved fullPath)
               match fnResult.resolved with
               | Ok _ -> return PT.EFnName(id, fnResult)
               | Error _ ->
@@ -420,10 +431,7 @@ module Expr =
       | WT.EApply(_, (WT.EFnName(_, q) as callee), typeArgs, args) ->
         let id = gid ()
         let name = qualifiedFnName q
-        let! processedTypeArgs =
-          Ply.List.mapSequentially
-            (TypeReference.toPT pm onMissing currentModule)
-            typeArgs
+        let! processedTypeArgs = Ply.List.mapSequentially typeRefToPT typeArgs
         // Every Darklang fn has at least one parameter, so a call always has at
         // least one arg. A type-args-only `f<T>` is really `f<T> ()`: seed the
         // implicit unit arg. Same in serializer lowering.
@@ -461,13 +469,7 @@ module Expr =
             else
               // Applied names resolve function-first, then value, after lexical
               // bindings and self-recursion have had a chance to shadow them.
-              let! fnName =
-                NR.resolveFnName
-                  (BuiltinNames.fns builtins)
-                  pm
-                  NR.OnMissing.Allow
-                  currentModule
-                  name
+              let! fnName = resolveFnAllow builtins pm currentModule name
               match fnName.resolved with
               | Ok _ ->
                 return
@@ -478,13 +480,7 @@ module Expr =
                     processedArgs
                   )
               | Error _ ->
-                let! valueName =
-                  NR.resolveValueName
-                    (BuiltinNames.values builtins)
-                    pm
-                    NR.OnMissing.Allow
-                    currentModule
-                    name
+                let! valueName = resolveValueAllow builtins pm currentModule name
                 let callee =
                   match valueName.resolved with
                   | Ok _ -> PT.EValue(gid (), valueName)
@@ -495,13 +491,7 @@ module Expr =
           // value-first path when no function matches, preserving bare-reference
           // behavior while allowing `Mod.f x` to call the function even when a
           // same-named value exists.
-          let! fnNameResolved =
-            NR.resolveFnName
-              (BuiltinNames.fns builtins)
-              pm
-              NR.OnMissing.Allow
-              currentModule
-              name
+          let! fnNameResolved = resolveFnAllow builtins pm currentModule name
           let! expr =
             match fnNameResolved.resolved with
             | Ok _ -> Ply(PT.EFnName(gid (), fnNameResolved))
@@ -510,10 +500,7 @@ module Expr =
       | WT.EApply(_, lhs, typeArgs, args) ->
         let id = gid ()
         let! name = toPT context lhs
-        let! typeArgs =
-          Ply.List.mapSequentially
-            (TypeReference.toPT pm onMissing currentModule)
-            typeArgs
+        let! typeArgs = Ply.List.mapSequentially typeRefToPT typeArgs
         let! args =
           match args with
           | [] -> Ply(NEList.singleton (PT.EUnit(gid ())))
@@ -531,13 +518,7 @@ module Expr =
           match name with
           | WT.Unresolved _ ->
             uply {
-              let! v =
-                NR.resolveValueName
-                  (BuiltinNames.values builtins)
-                  pm
-                  NR.OnMissing.Allow
-                  currentModule
-                  name
+              let! v = resolveValueAllow builtins pm currentModule name
               return Some v
             }
           | WT.KnownBuiltin _ -> uply { return None }
@@ -549,13 +530,7 @@ module Expr =
           ->
           return PT.EValue(id, value)
         | _ ->
-          let! fnName =
-            NR.resolveFnName
-              (BuiltinNames.fns builtins)
-              pm
-              NR.OnMissing.Allow
-              currentModule
-              name
+          let! fnName = resolveFnAllow builtins pm currentModule name
           match fnName.resolved, valueResolved with
           | Ok _, _ -> return PT.EFnName(id, fnName)
           // A bare qualified name that resolves to neither value nor fn returns
@@ -653,10 +628,7 @@ module Expr =
               let! fieldExpr = toPT context fieldExpr
               return (fieldName, fieldExpr)
             })
-        let! typeArgs =
-          Ply.List.mapSequentially
-            (TypeReference.toPT pm onMissing currentModule)
-            tn.typeArgs
+        let! typeArgs = Ply.List.mapSequentially typeRefToPT tn.typeArgs
         return PT.ERecord(id, typeName, typeArgs, flds)
       | WT.ERecordUpdate(_, record, updates, _, _, _) ->
         let id = gid ()
@@ -703,10 +675,7 @@ module Expr =
             (enumTypeNameForCase tn caseName)
             caseName
         let! exprs = Ply.List.mapSequentially (toPT context) fields
-        let! typeArgs =
-          Ply.List.mapSequentially
-            (TypeReference.toPT pm onMissing currentModule)
-            tn.typeArgs
+        let! typeArgs = Ply.List.mapSequentially typeRefToPT tn.typeArgs
         return PT.EEnum(id, typeName, typeArgs, caseName, exprs)
       | WT.EMatch(_, mexpr, cases, _, _) ->
         let id = gid ()
@@ -786,10 +755,9 @@ module Expr =
           return PT.EPipeVariable(id, name, [])
         else
           let! resolved =
-            NR.resolveFnName
-              (BuiltinNames.fns builtins)
+            resolveFnAllow
+              builtins
               pm
-              NR.OnMissing.Allow
               currentModule
               (WT.Name.Unresolved(NEList.singleton name))
           return
@@ -837,26 +805,14 @@ module Expr =
           then
             return PT.EPipeVariable(id, varName, args)
           else
-            let! fnName =
-              NR.resolveFnName
-                (BuiltinNames.fns builtins)
-                pm
-                NR.OnMissing.Allow
-                currentModule
-                name
+            let! fnName = resolveFnAllow builtins pm currentModule name
             match fnName.resolved with
             | Ok _ -> return PT.EPipeFnCall(id, fnName, [], args)
             | Error _ -> return PT.EPipeVariable(id, varName, args)
         | _ ->
           // Missing names use Allow here, like other fn-name lowering. Package
           // loading can continue and unresolved names are handled later.
-          let! fnName =
-            NR.resolveFnName
-              (BuiltinNames.fns builtins)
-              pm
-              NR.OnMissing.Allow
-              currentModule
-              name
+          let! fnName = resolveFnAllow builtins pm currentModule name
           let! typeArgs =
             Ply.List.mapSequentially
               (TypeReference.toPT pm onMissing currentModule)

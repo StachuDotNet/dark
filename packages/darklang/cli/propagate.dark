@@ -16,23 +16,9 @@ module Darklang.Cli.PropagateCmd
 //
 // All policy SQL is siloed in `SCM.Propagation`; this file writes NO SQL, it only formats.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
 let dotted (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
   let mods = SCM.Propagation.modulesOf loc
   if mods == "" then $"{loc.owner}.{loc.name}" else $"{loc.owner}.{mods}.{loc.name}"
-
-let shortHash (h: LanguageTools.ProgramTypes.Hash) : String =
-  LanguageTools.ProgramTypes.hashToString h |> Stdlib.String.slice 0 8
-
-/// Escape a string for a hand-assembled JSON body. Backslash first, or it would re-escape the ones the
-/// quote pass just wrote.
-let esc (x: String) : String =
-  x
-  |> Stdlib.String.replaceAll "\\" "\\\\"
-  |> Stdlib.String.replaceAll "\"" "\\\""
 
 
 /// Turn what a human typed into a location, resolved relative to where they are.
@@ -93,7 +79,7 @@ let cascadeAndForce
       [ fromHash ]
       toHash
   with
-  | Error e -> printErr $"  cascade failed: {e}"
+  | Error e -> Cli.printErr $"  cascade failed: {e}"
   | Ok repoints ->
     repoints
     |> Stdlib.List.iter (fun r ->
@@ -107,7 +93,7 @@ let cascadeAndForce
         else
           match SCM.Propagation.rebind r.location refKind target with
           | Ok _ -> ()
-          | Error e -> printErr $"  couldn't rebind {dotted r.location}: {e}"
+          | Error e -> Cli.printErr $"  couldn't rebind {dotted r.location}: {e}"
       | None -> ())
 
 
@@ -172,8 +158,8 @@ let refuseMissingTarget (owner: String) (modules: String) (name: String) : Bool 
       else if modules == "" then $"{owner}.{name}"
       else $"{owner}.{modules}.{name}"
 
-    printErr $"nothing at {path}."
-    printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
+    Cli.printErr $"nothing at {path}."
+    Cli.printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
     true
 
 
@@ -207,7 +193,7 @@ let applyPin
     | Ok n when n > 0 ->
       let at =
         match SCM.Propagation.currentHash loc with
-        | Some h -> $" -- back on {shortHash h}"
+        | Some h -> $" -- back on {Cli.shortHash h}"
         | None -> ""
 
       $"pinned {dotted loc}, dropped the staged repoint{at}"
@@ -220,7 +206,7 @@ let applyPin
       | Error e -> $"pinned {dotted loc}, but couldn't roll it back: {e}"
       | Ok _ ->
         cascadeAndForceQuiet branchId loc kind wasAt prev
-        $"pinned {dotted loc}, rolled back to {shortHash prev}"
+        $"pinned {dotted loc}, rolled back to {Cli.shortHash prev}"
 
 
 /// Clear the pin on an ITEM and catch it up on what it missed. Returns a summary; see `applyPin`.
@@ -254,7 +240,7 @@ let applyFollow
 let executeList (state: AppState) : AppState =
   match SCM.Propagation.allChoices () with
   | [] ->
-    printOk "no propagation choices -- everything follows what it uses."
+    Cli.printOk "no propagation choices -- everything follows what it uses."
 
     // The impact, when there is some: right after an edit, "no choices" over two freshly-repointed
     // fns read as "nothing followed", the opposite of what happened. And the pin hint needs NAMES
@@ -270,17 +256,17 @@ let executeList (state: AppState) : AppState =
       if Stdlib.List.isEmpty followed then
         ()
       else
-        printHint
+        Cli.printHint
           $"""  {Cli.Text.plural (Stdlib.List.length followed) "draft item"} followed your edits:"""
 
         followed
         |> Stdlib.List.iter (fun b ->
-          printHint $"    > {SCM.Conflicts.fqn b.owner b.modules b.name}")
+          Cli.printHint $"    > {SCM.Conflicts.fqn b.owner b.modules b.name}")
 
-    printHint "  dark propagate pin <name>   stop it following, and undo the repoint you just got"
+    Cli.printHint "  dark propagate pin <name>   stop it following, and undo the repoint you just got"
     state
   | cs ->
-    printOk (Cli.Text.plural (Stdlib.List.length cs) "propagation choice")
+    Cli.printOk (Cli.Text.plural (Stdlib.List.length cs) "propagation choice")
 
     cs
     |> Stdlib.List.iter (fun c ->
@@ -304,7 +290,7 @@ let executeList (state: AppState) : AppState =
 let executeShow (state: AppState) (arg: String) : AppState =
   match resolve state arg with
   | Error e ->
-    printErr e
+    Cli.printErr e
     state
   | Ok loc when
     Stdlib.Bool.not
@@ -312,8 +298,8 @@ let executeShow (state: AppState) (arg: String) : AppState =
     ->
     // Same guard the verbs got: an unresolvable path is re-read as a module, so without this `show` answers
     // "follows (nothing set)" about a name nobody has, which reads as confirmation that it exists.
-    printErr $"nothing at {dotted loc}."
-    printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
+    Cli.printErr $"nothing at {dotted loc}."
+    Cli.printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
     state
   | Ok loc ->
     match SCM.Propagation.explicitPolicyFor loc with
@@ -328,15 +314,15 @@ let executeShow (state: AppState) (arg: String) : AppState =
           "a choice on this item"
 
       let why = if c.note == "" then "" else $" ({c.note})"
-      printOk $"{dotted loc}: {p}, from {scope}{why}"
+      Cli.printOk $"{dotted loc}: {p}, from {scope}{why}"
     | None ->
-      printOk $"{dotted loc}: follows (nothing set -- that's the default)"
+      Cli.printOk $"{dotted loc}: follows (nothing set -- that's the default)"
 
     match SCM.Propagation.staleDependencies loc with
-    | [] -> printHint "  it's on the current version of everything it uses."
+    | [] -> Cli.printHint "  it's on the current version of everything it uses."
     | stale ->
       let n = Stdlib.Int.toString (Stdlib.List.length stale)
-      printHint $"  behind on {n} of its dependencies:"
+      Cli.printHint $"  behind on {n} of its dependencies:"
 
       stale
       |> Stdlib.List.iter (fun s ->
@@ -344,7 +330,7 @@ let executeShow (state: AppState) (arg: String) : AppState =
 
         Stdlib.printLine
           (Stdlib.Cli.UI.Colors.hint
-            $"    {dotted depLoc}: using {shortHash have}, current is {shortHash live}"))
+            $"    {dotted depLoc}: using {Cli.shortHash have}, current is {Cli.shortHash live}"))
 
     state
 
@@ -365,7 +351,7 @@ let whyFrom (args: List<String>) : String =
 let executePin (state: AppState) (arg: String) (note: String) : AppState =
   match target state arg with
   | Error e ->
-    printErr e
+    Cli.printErr e
     state
   | Ok parts ->
     let (owner, modules, name) = parts
@@ -382,13 +368,13 @@ let executePin (state: AppState) (arg: String) (note: String) : AppState =
         SCM.Propagation.setPolicy state.currentBranchId owner modules name SCM.Propagation.Policy.Pin note
       with
       | Error e ->
-        printErr $"couldn't record the pin: {e}"
+        Cli.printErr $"couldn't record the pin: {e}"
         state
       | Ok _ ->
-        printOk
+        Cli.printOk
           $"pinned {describeTarget owner modules name} -- it won't follow its dependencies."
 
-        printHint "  already-repointed items under it keep their current version; pin them individually to roll those back."
+        Cli.printHint "  already-repointed items under it keep their current version; pin them individually to roll those back."
         state
     else
 
@@ -400,12 +386,12 @@ let executePin (state: AppState) (arg: String) (note: String) : AppState =
 
     match SCM.Propagation.kindAt loc with
     | None ->
-      printErr $"nothing at {describeTarget owner modules name}."
-      printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
+      Cli.printErr $"nothing at {describeTarget owner modules name}."
+      Cli.printHint "  `dark ls <module>` lists what's there; a name only on another branch needs `dark switch` first."
       state
     | Some kind ->
       // ONE implementation of what pinning means, shared with the interactive screen; see `applyPin`.
-      printOk (applyPin state.currentBranchId loc kind note)
+      Cli.printOk (applyPin state.currentBranchId loc kind note)
       state
 
 
@@ -413,7 +399,7 @@ let executePin (state: AppState) (arg: String) (note: String) : AppState =
 let executeFollow (state: AppState) (arg: String) (note: String) : AppState =
   match target state arg with
   | Error e ->
-    printErr e
+    Cli.printErr e
     state
   | Ok parts ->
     let (owner, modules, name) = parts
@@ -426,14 +412,14 @@ let executeFollow (state: AppState) (arg: String) (note: String) : AppState =
       SCM.Propagation.setPolicy state.currentBranchId owner modules name SCM.Propagation.Policy.Follow note
     with
     | Error e ->
-      printErr $"couldn't record the choice: {e}"
+      Cli.printErr $"couldn't record the choice: {e}"
       state
     | Ok _ ->
-      printOk
+      Cli.printOk
         $"{describeTarget owner modules name} follows its dependencies again."
 
       if name == "" then
-        printHint "  items under it follow from their next change; follow them individually to catch them up now."
+        Cli.printHint "  items under it follow from their next change; follow them individually to catch them up now."
         state
       else
         let loc =
@@ -447,13 +433,13 @@ let executeFollow (state: AppState) (arg: String) (note: String) : AppState =
         // normal edit takes -- there's no second, special repoint mechanism to keep in sync with the first.
         match SCM.Propagation.staleDependencies loc with
         | [] ->
-          printHint "  already on the current version of everything it uses."
+          Cli.printHint "  already on the current version of everything it uses."
           state
         | stale ->
           stale
           |> Stdlib.List.iter (fun s ->
             let (depLoc, depKind, have, live) = s
-            printHint $"  catching up on {dotted depLoc} -> {shortHash live}"
+            Cli.printHint $"  catching up on {dotted depLoc} -> {Cli.shortHash live}"
             cascadeAndForce state depLoc depKind have live)
 
           state
@@ -463,7 +449,7 @@ let executeFollow (state: AppState) (arg: String) (note: String) : AppState =
 let executeUnset (state: AppState) (arg: String) : AppState =
   match target state arg with
   | Error e ->
-    printErr e
+    Cli.printErr e
     state
   | Ok parts ->
     let (owner, modules, name) = parts
@@ -480,17 +466,17 @@ let executeUnset (state: AppState) (arg: String) : AppState =
         (c.owner == owner) && (c.modules == modules) && (c.name == name))
 
     if Stdlib.Bool.not hasChoice then
-      printOk $"no choice on {describeTarget owner modules name} to clear."
+      Cli.printOk $"no choice on {describeTarget owner modules name} to clear."
       state
     else
 
     match SCM.Propagation.clearPolicy state.currentBranchId owner modules name with
     | Error e ->
-      printErr $"couldn't clear it: {e}"
+      Cli.printErr $"couldn't clear it: {e}"
       state
     | Ok _ ->
-      printOk $"cleared the choice on {describeTarget owner modules name}."
-      printHint "  whatever covers it more broadly (or the default, follow) applies now."
+      Cli.printOk $"cleared the choice on {describeTarget owner modules name}."
+      Cli.printHint "  whatever covers it more broadly (or the default, follow) applies now."
       state
 
 
@@ -525,7 +511,7 @@ let executeJson (state: AppState) : AppState =
       let p = SCM.Propagation.policyToString c.policy
       let scope = if c.name == "" then "module" else "item"
 
-      $"{{\"owner\":\"{esc c.owner}\",\"modules\":\"{esc c.modules}\",\"name\":\"{esc c.name}\",\"scope\":\"{scope}\",\"policy\":\"{p}\",\"why\":\"{esc c.note}\"}}")
+      $"{{\"owner\":\"{Cli.jsonEscape c.owner}\",\"modules\":\"{Cli.jsonEscape c.modules}\",\"name\":\"{Cli.jsonEscape c.name}\",\"scope\":\"{scope}\",\"policy\":\"{p}\",\"why\":\"{Cli.jsonEscape c.note}\"}}")
     |> (fun ls -> Stdlib.String.join ls ",")
 
   Stdlib.printLine $"{{\"choices\":[{body}]}}"
@@ -538,13 +524,13 @@ let executeJson (state: AppState) : AppState =
 let executeJsonFor (state: AppState) (arg: String) : AppState =
   match resolve state arg with
   | Error e ->
-    Stdlib.printLine $"{{\"error\":\"{esc e}\"}}"
+    Stdlib.printLine $"{{\"error\":\"{Cli.jsonEscape e}\"}}"
     state
   | Ok loc when
     Stdlib.Bool.not
       (SCM.Propagation.targetExists loc.owner (SCM.Propagation.modulesOf loc) loc.name)
     ->
-    Stdlib.printLine $"{{\"error\":\"nothing at {esc (dotted loc)}\"}}"
+    Stdlib.printLine $"{{\"error\":\"nothing at {Cli.jsonEscape (dotted loc)}\"}}"
     state
   | Ok loc ->
     match SCM.Propagation.explicitPolicyFor loc with
@@ -553,12 +539,12 @@ let executeJsonFor (state: AppState) (arg: String) : AppState =
       let scope = if c.name == "" then "module" else "item"
 
       Stdlib.printLine
-        $"{{\"name\":\"{esc (dotted loc)}\",\"policy\":\"{p}\",\"from\":\"{scope}\",\"why\":\"{esc c.note}\"}}"
+        $"{{\"name\":\"{Cli.jsonEscape (dotted loc)}\",\"policy\":\"{p}\",\"from\":\"{scope}\",\"why\":\"{Cli.jsonEscape c.note}\"}}"
 
       state
     | None ->
       Stdlib.printLine
-        $"{{\"name\":\"{esc (dotted loc)}\",\"policy\":\"follow\",\"from\":\"\",\"why\":\"\"}}"
+        $"{{\"name\":\"{Cli.jsonEscape (dotted loc)}\",\"policy\":\"follow\",\"from\":\"\",\"why\":\"\"}}"
 
       state
 
@@ -589,7 +575,7 @@ let executeMany
 
   match names with
   | [] ->
-    printErr $"{verb} needs at least one name."
+    Cli.printErr $"{verb} needs at least one name."
     state
   | _ ->
     names
@@ -632,7 +618,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | "pin" :: rest -> executeMany state "pin" rest
   | "follow" :: rest -> executeMany state "follow" rest
   | _ ->
-    printErr "unrecognized -- `dark propagate help`."
+    Cli.printErr "unrecognized -- `dark propagate help`."
     state
 
 

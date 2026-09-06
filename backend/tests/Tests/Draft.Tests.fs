@@ -51,12 +51,7 @@ let private commitAll (message : string) : Task<string> =
 
 /// What `locations` currently binds a name to.
 let private liveHash (m : string) (name : string) : Task<Option<string>> =
-  Sql.query
-    "SELECT item_hash FROM locations
-     WHERE owner = 'Darklang' AND modules = @m AND name = @n AND unlisted_at IS NULL
-     LIMIT 1"
-  |> Sql.parameters [ "m", Sql.string m; "n", Sql.string name ]
-  |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
+  liveBoundHash { owner = "Darklang"; modules = [ m ]; name = name }
 
 let private draftOpCount () : Task<int64> =
   Sql.query
@@ -375,9 +370,9 @@ let keepsAnOpItCannotRead =
     Expect.equal afterHash committedHash "the rewrite still did its job"
 
     let! survivors =
-      Sql.query "SELECT COUNT(*) AS n FROM package_ops WHERE id = @id"
-      |> Sql.parameters [ "id", Sql.string (string alienId) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      countSql
+        "SELECT COUNT(*) AS n FROM package_ops WHERE id = @id"
+        [ "id", Sql.string (string alienId) ]
 
     Expect.equal survivors 1L "the op it could not read is still in the log"
 

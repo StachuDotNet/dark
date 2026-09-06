@@ -12,6 +12,47 @@ module PMPT = ProgramTypes
 module PMRT = RuntimeTypes
 
 
+/// Layer two lookups: ask <param overlay> first, and fall back to <param fallback> only
+/// when it has no answer. Per call site, only which pair of lookups is composed varies.
+let private overlayFirst
+  (overlay : 'k -> Ply<Option<'v>>)
+  (fallback : 'k -> Ply<Option<'v>>)
+  (k : 'k)
+  : Ply<Option<'v>> =
+  uply {
+    match! overlay k with
+    | Some v -> return Some v
+    | None -> return! fallback k
+  }
+
+/// Layer two location lookups: the overlay's locations first, then the fallback's.
+/// Per call site, only which pair of getters is composed varies.
+let private concatLocs
+  (overlay : 'k -> Ply<List<'v>>)
+  (fallback : 'k -> Ply<List<'v>>)
+  (k : 'k)
+  : Ply<List<'v>> =
+  uply {
+    let! overlayLocs = overlay k
+    let! fallbackLocs = fallback k
+    return overlayLocs @ fallbackLocs
+  }
+
+/// Answer from the store, falling back to the process's ephemeral (script-declared)
+/// locations only when the store holds no binding for the hash. Per call site, only
+/// which kind's stored getter and ephemeral table are paired varies.
+let private storedOrEphemeral
+  (stored : Hash -> Ply<List<'a>>)
+  (ephemeral : Hash -> List<'a>)
+  (id : Hash)
+  : Ply<List<'a>> =
+  uply {
+    match! stored id with
+    | [] -> return ephemeral id
+    | locs -> return locs
+  }
+
+
 // Cache of Harmful fn hashes, as underlying hex strings: PT.Hash and RT.Hash are distinct CLR
 // types, and storing strings avoids threading either wrapper through the cache layer. Not
 // branch-scoped, since `deprecations` isn't. `invalidateHarmful` is for a long-lived process that
@@ -84,26 +125,11 @@ let pt : PT.PackageManager =
     // ahead of the store, `type MyErr = | BadFormat` in a script would rename
     // `Stdlib.Int.ParseError` for the rest of the process.
     getTypeLocations =
-      fun id ->
-        uply {
-          match! PMPT.Type.getLocations id with
-          | [] -> return EphemeralPackages.typeLocations id
-          | stored -> return stored
-        }
+      storedOrEphemeral PMPT.Type.getLocations EphemeralPackages.typeLocations
     getValueLocations =
-      fun id ->
-        uply {
-          match! PMPT.Value.getLocations id with
-          | [] -> return EphemeralPackages.valueLocations id
-          | stored -> return stored
-        }
+      storedOrEphemeral PMPT.Value.getLocations EphemeralPackages.valueLocations
     getFnLocations =
-      fun id ->
-        uply {
-          match! PMPT.Fn.getLocations id with
-          | [] -> return EphemeralPackages.fnLocations id
-          | stored -> return stored
-        }
+      storedOrEphemeral PMPT.Fn.getLocations EphemeralPackages.fnLocations
 
     search = fun query -> PMPT.search query
 
@@ -388,77 +414,18 @@ let combine
   (overlay : PT.PackageManager)
   (fallback : PT.PackageManager)
   : PT.PackageManager =
-  { findType =
-      fun loc ->
-        uply {
-          match! overlay.findType loc with
-          | Some id -> return Some id
-          | None -> return! fallback.findType loc
-        }
+  { findType = overlayFirst overlay.findType fallback.findType
+    findValue = overlayFirst overlay.findValue fallback.findValue
+    findFn = overlayFirst overlay.findFn fallback.findFn
 
-    findValue =
-      fun loc ->
-        uply {
-          match! overlay.findValue loc with
-          | Some id -> return Some id
-          | None -> return! fallback.findValue loc
-        }
+    getType = overlayFirst overlay.getType fallback.getType
+    getValue = overlayFirst overlay.getValue fallback.getValue
+    getFn = overlayFirst overlay.getFn fallback.getFn
 
-    findFn =
-      fun loc ->
-        uply {
-          match! overlay.findFn loc with
-          | Some id -> return Some id
-          | None -> return! fallback.findFn loc
-        }
-
-    getType =
-      fun id ->
-        uply {
-          match! overlay.getType id with
-          | Some t -> return Some t
-          | None -> return! fallback.getType id
-        }
-
-    getValue =
-      fun id ->
-        uply {
-          match! overlay.getValue id with
-          | Some v -> return Some v
-          | None -> return! fallback.getValue id
-        }
-
-    getFn =
-      fun id ->
-        uply {
-          match! overlay.getFn id with
-          | Some f -> return Some f
-          | None -> return! fallback.getFn id
-        }
-
-    getTypeLocations =
-      fun id ->
-        uply {
-          let! overlayLocs = overlay.getTypeLocations id
-          let! fallbackLocs = fallback.getTypeLocations id
-          return overlayLocs @ fallbackLocs
-        }
-
+    getTypeLocations = concatLocs overlay.getTypeLocations fallback.getTypeLocations
     getValueLocations =
-      fun id ->
-        uply {
-          let! overlayLocs = overlay.getValueLocations id
-          let! fallbackLocs = fallback.getValueLocations id
-          return overlayLocs @ fallbackLocs
-        }
-
-    getFnLocations =
-      fun id ->
-        uply {
-          let! overlayLocs = overlay.getFnLocations id
-          let! fallbackLocs = fallback.getFnLocations id
-          return overlayLocs @ fallbackLocs
-        }
+      concatLocs overlay.getValueLocations fallback.getValueLocations
+    getFnLocations = concatLocs overlay.getFnLocations fallback.getFnLocations
 
     search =
       fun query ->

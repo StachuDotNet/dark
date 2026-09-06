@@ -46,6 +46,16 @@ let homeRowIs (state: State) (kind: String) : Bool =
       | Some it -> it.kind == kind
       | None -> false)
 
+/// Put the Matter view on <param lens>: reload the items for it and reset the cursor, the detail
+/// scroll and the filter, all of which indexed the list the lens just replaced.
+let withLens (state: State) (lens: Lens) : State =
+  { state with
+      matter = MatterState { lens = lens }
+      items = itemsForView vMatter state.branchId state.location state.scm.section state.ai.section lens
+      selected = 0
+      detailScroll = 0
+      filter = "" }
+
 /// Movement and view actions when no modal layer owns the key.
 let handleViewKey
   (state: State)
@@ -193,34 +203,14 @@ let handleViewKey
       // Matter: cycle the Lens - the whole tree, values only, then what you've changed. (L, not V, to
       // avoid clashing with v = new value.)
       if state.activeView == vMatter then
-        let nl = otherLens state.matter.lens
-        Step.Continue
-          { state with
-              matter = { state.matter with lens = nl }
-              items = itemsForView vMatter state.branchId state.location state.scm.section state.ai.section nl
-              selected = 0
-              detailScroll = 0
-              filter = "" }
+        Step.Continue (withLens state (otherLens state.matter.lens))
       else Step.Continue state
     | Some "C" ->
       // Matter: straight to the Changed lens, because it's the one you reach for constantly. "What moved
       // because of what I just did" is asked many times an hour, and making it two presses of a cycle is
       // how people stop asking.
       if state.activeView == vMatter then
-        Step.Continue
-          { state with
-              matter = MatterState { lens = Lens.Changed }
-              items =
-                itemsForView
-                  vMatter
-                  state.branchId
-                  state.location
-                  state.scm.section
-                  state.ai.section
-                  Lens.Changed
-              selected = 0
-              detailScroll = 0
-              filter = "" }
+        Step.Continue (withLens state Lens.Changed)
       else Step.Continue state
     | Some "f" ->
       // Scratch: clear the log. Elsewhere: open a find-as-you-type filter for the current list.

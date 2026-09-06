@@ -7,8 +7,6 @@ module Darklang.Cli.Status
 // is it: one line saying what's in your draft, what committing it would repoint, and whether anything is
 // waiting on you. If it can't be said in a line or two, it belongs in `dark commit`, not here.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-
 /// The full structured view. `dark status` prints a line of it; `--json` hands over all of it.
 let statusJson (state: AppState) : ScmJson.StatusJson =
   let p = SCM.Draft.read ()
@@ -63,7 +61,7 @@ let executePretty (state: AppState) : AppState =
   branchLine state
 
   if (s.changed == 0) && (s.removed == 0) && (s.conflicts == 0L) then
-    printOk "clean: nothing changed since your last commit."
+    Cli.printOk "clean: nothing changed since your last commit."
 
     // Nothing in a clean tree is yours, so say the constraints stand on their own.
     if s.constraints > 0 then
@@ -96,7 +94,7 @@ let executePretty (state: AppState) : AppState =
            else
              [ $"{Cli.Text.plural (Stdlib.Int.fromInt64 s.conflicts) "conflict"} to review" ]))
 
-    printOk $"""draft: {Stdlib.String.join parts ", "}"""
+    Cli.printOk $"""draft: {Stdlib.String.join parts ", "}"""
 
     if s.conflicts > 0L then
       Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "  -> `dark conflicts` to review them")

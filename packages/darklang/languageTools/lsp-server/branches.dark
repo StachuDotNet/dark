@@ -96,6 +96,26 @@ let moveTo (branchId: Uuid) (name: String) : Unit =
   ()
 
 
+/// Resolve <param branchRef> or refuse the request; <param fn> runs only with a real branch id.
+/// Every ref-taking handler opens the same way, so the refusal is spelled once.
+let withBranch
+  (state: LspState)
+  (requestID: JsonRPC.RequestID)
+  (branchRef: String)
+  (fn: Uuid -> LspState)
+  : LspState =
+  match resolveRef branchRef with
+  | None ->
+    respondError requestID $"no branch \"{branchRef}\""
+    state
+  | Some branchId -> fn branchId
+
+
+/// A list's length on the wire. JSON numbers are floats, so every count crossing here converts once.
+let countJson (xs: List<'a>) : Json =
+  Json.Number(Stdlib.Int.toFloat (Stdlib.List.length xs))
+
+
 /// `dark/getBranches` -- every active branch, with the active one flagged.
 let handleGetBranchesRequest
   (state: LspState)
@@ -185,11 +205,7 @@ let handleSwitchBranchRequest
   : LspState =
   // `main` resolves like any other ref: the resolver knows it by name and by id, and `branchName`
   // spells it without a `branches` row.
-  match resolveRef branchRef with
-  | None ->
-    respondError requestID $"no branch \"{branchRef}\""
-    state
-  | Some id ->
+  withBranch state requestID branchRef (fun id ->
     let name = SCM.PackageOps.branchName id
     moveTo id name
 
@@ -203,7 +219,7 @@ let handleSwitchBranchRequest
     notifyBranchChanged id name
     // The state carries the branch every later request resolves against, so a switch that moved only
     // the process overlay would leave completions and hovers answering for the branch you just left.
-    { state with currentBranchId = id }
+    { state with currentBranchId = id })
 
 
 /// `dark/deleteBranch` -- archive, which is what deleting a branch means here. Nothing is destroyed:
@@ -213,11 +229,7 @@ let handleDeleteBranchRequest
   (requestID: JsonRPC.RequestID)
   (branchRef: String)
   : LspState =
-  match resolveRef branchRef with
-  | None ->
-    respondError requestID $"no branch \"{branchRef}\""
-    state
-  | Some branchId ->
+  withBranch state requestID branchRef (fun branchId ->
     match SCM.PackageOps.archiveBranch branchId with
     | Ok msg ->
       // Archiving the branch you're standing on leaves you nowhere; go back to main.
@@ -237,7 +249,7 @@ let handleDeleteBranchRequest
       { state with currentBranchId = landedOn }
     | Error e ->
       respondError requestID e
-      state
+      state)
 
 
 /// `dark/canMerge` -- what a merge WOULD hit. Nothing is recorded by looking.
@@ -250,13 +262,8 @@ let handleCanMergeRequest
   (requestID: JsonRPC.RequestID)
   (branchRef: String)
   : LspState =
-  match resolveRef branchRef with
-  | None ->
-    respondError requestID $"no branch \"{branchRef}\""
-    state
-  | Some branchId ->
+  withBranch state requestID branchRef (fun branchId ->
     let conflicts = SCM.PackageOps.branchPreview branchId
-    let changes = SCM.PackageOps.branchDiffLines branchId
 
     let conflictJson =
       conflicts
@@ -281,11 +288,11 @@ let handleCanMergeRequest
         [ ("canMerge", Json.Bool allowed)
           // The gate's own words, so the editor can say WHY rather than inventing a reason.
           ("reason", Json.String why)
-          ("changeCount", Json.Number(Stdlib.Int.toFloat (Stdlib.List.length changes)))
+          ("changeCount", countJson (SCM.PackageOps.branchDiffLines branchId))
           ("conflicts", conflictJson)
           ("blocking", Json.Bool false) ])
 
-    state
+    state)
 
 
 /// `dark/merge` -- fold a branch into its parent. Records what it reconciled on the way.
@@ -294,11 +301,7 @@ let handleMergeRequest
   (requestID: JsonRPC.RequestID)
   (branchRef: String)
   : LspState =
-  match resolveRef branchRef with
-  | None ->
-    respondError requestID $"no branch \"{branchRef}\""
-    state
-  | Some branchId ->
+  withBranch state requestID branchRef (fun branchId ->
     match SCM.PackageOps.mergeBranch branchId with
     | Ok outcome ->
       respondOk
@@ -306,14 +309,13 @@ let handleMergeRequest
         (Json.Object
           [ ("success", Json.Bool true)
             ("merged", Json.Number(Stdlib.Int.toFloat outcome.merged))
-            ("conflicts",
-             Json.Number(Stdlib.Int.toFloat (Stdlib.List.length outcome.conflicts))) ])
+            ("conflicts", countJson outcome.conflicts) ])
 
       notifyBranchChanged (activeBranch ()) (SCM.PackageOps.branchName (activeBranch ()))
       state
     | Error e ->
       respondError requestID e
-      state
+      state)
 
 
 /// `dark/rebase` -- take the parent's current state as the new base.
@@ -322,11 +324,7 @@ let handleRebaseRequest
   (requestID: JsonRPC.RequestID)
   (branchRef: String)
   : LspState =
-  match resolveRef branchRef with
-  | None ->
-    respondError requestID $"no branch \"{branchRef}\""
-    state
-  | Some branchId ->
+  withBranch state requestID branchRef (fun branchId ->
     match SCM.PackageOps.rebaseBranch branchId with
     | Ok outcome ->
       respondOk
@@ -334,14 +332,13 @@ let handleRebaseRequest
         (Json.Object
           [ ("success", Json.Bool true)
             ("message", Json.String outcome.message)
-            ("conflicts",
-             Json.Number(Stdlib.Int.toFloat (Stdlib.List.length outcome.conflicts))) ])
+            ("conflicts", countJson outcome.conflicts) ])
 
       notifyBranchChanged (activeBranch ()) (SCM.PackageOps.branchName (activeBranch ()))
       state
     | Error e ->
       respondError requestID e
-      state
+      state)
 
 
 /// `dark/rebaseStatus` -- is this branch behind its parent, and on what.
@@ -350,11 +347,7 @@ let handleRebaseStatusRequest
   (requestID: JsonRPC.RequestID)
   (branchRef: String)
   : LspState =
-  match resolveRef branchRef with
-  | None ->
-    respondError requestID $"no branch \"{branchRef}\""
-    state
-  | Some branchId ->
+  withBranch state requestID branchRef (fun branchId ->
     let conflicts = SCM.PackageOps.branchPreview branchId
 
     respondOk
@@ -368,10 +361,9 @@ let handleRebaseStatusRequest
              SCM.PackageOps.branchName (SCM.PackageOps.branchParentOf branchId)
            ))
           ("rebaseNeeded", Json.Bool(Stdlib.List.isEmpty conflicts |> Stdlib.Bool.not))
-          ("divergedNames",
-           Json.Number(Stdlib.Int.toFloat (Stdlib.List.length conflicts))) ])
+          ("divergedNames", countJson conflicts) ])
 
-    state
+    state)
 
 
 /// `dark/scm/getWipSummary` -- what's in the draft: the ops you have authored and not yet committed with
@@ -406,10 +398,9 @@ let handleGetWipSummaryRequest
         // leads with the same split.
         ("authored", Json.Number(Stdlib.Int.toFloat (SCM.Draft.authoredCount p)))
         ("followed", Json.Number(Stdlib.Int.toFloat (SCM.Draft.followedCount p)))
-        ("repoints", Json.Number(Stdlib.Int.toFloat (Stdlib.List.length p.repoints)))
+        ("repoints", countJson p.repoints)
         ("constraints", Json.Number(Stdlib.Int.toFloat p.constraints))
-        ("conflicts",
-         Json.Number(Stdlib.Int.toFloat (Stdlib.List.length p.conflicts))) ])
+        ("conflicts", countJson p.conflicts) ])
 
   state
 
@@ -421,11 +412,7 @@ let handleRenameBranchRequest
   (branchRef: String)
   (newName: String)
   : LspState =
-  match resolveRef branchRef with
-  | None ->
-    respondError requestID $"no branch \"{branchRef}\""
-    state
-  | Some branchId ->
+  withBranch state requestID branchRef (fun branchId ->
     if SCM.Ids.isMain branchId then
       respondError requestID "main is the trunk; it has no name to change"
       state
@@ -449,7 +436,7 @@ let handleRenameBranchRequest
         state
       | Error e ->
         respondError requestID e
-        state
+        state)
 
 
 /// The no-argument form, for a client that calls `dark/renameBranch` without saying what to rename.

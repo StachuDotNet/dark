@@ -10,10 +10,6 @@ module Darklang.Cli.Commit
 // Propagation belongs here rather than per-edit: per-edit is correct but churny, interrupting you with
 // consequences you are about to change again.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
 /// Parsed `dark commit` arguments: everything non-flag is the message.
 type Args =
   { message: String
@@ -63,8 +59,8 @@ let refuseUnknownFlags (args: List<String>) : Bool =
   match unknownFlags args with
   | [] -> false
   | flags ->
-    flags |> Stdlib.List.iter (fun f -> printErr $"unknown flag \"{f}\".")
-    printHint "  `dark commit --help` lists what it takes."
+    flags |> Stdlib.List.iter (fun f -> Cli.printErr $"unknown flag \"{f}\".")
+    Cli.printHint "  `dark commit --help` lists what it takes."
     true
 
 let parseArgs (args: List<String>) : Args =
@@ -165,7 +161,7 @@ let propagateOne
     with
     | Ok repoints -> Stdlib.List.length repoints
     | Error e ->
-      printErr $"  propagation failed for {b.name}: {e}"
+      Cli.printErr $"  propagation failed for {b.name}: {e}"
       0
 
 /// The widest of a set of names, so the notes beside them line up instead of stair-stepping.
@@ -267,7 +263,7 @@ let commitSelected
           if Stdlib.List.isEmpty pulledIn then
             ()
           else
-            printOk
+            Cli.printOk
               $"  also committed (needed by what you named): {Stdlib.String.join pulledIn ", "}"
 
         Stdlib.Result.Result.Ok((hash, committed, moved))
@@ -377,7 +373,7 @@ let refuseUnresolved (parsed: Args) : Bool =
     match SCM.PackageOps.unresolvedInDraft (SCM.PackageOps.currentBranch ()) with
     | [] -> false
     | broken ->
-      printErr "cannot commit: these reference names that don't resolve."
+      Cli.printErr "cannot commit: these reference names that don't resolve."
 
       broken
       |> Stdlib.List.iter (fun (label, names) ->
@@ -386,7 +382,7 @@ let refuseUnresolved (parsed: Args) : Bool =
         names
         |> Stdlib.List.iter (fun n -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"    - {n}")))
 
-      printHint
+      Cli.printHint
         "  author what's missing, or `dark commit --allow-unresolved` to record it as-is."
 
       true
@@ -412,7 +408,7 @@ let refuseTypeErrors (parsed: Args) : Bool =
     | Checked -> false
     | Incomplete -> false
     | Failed ->
-      printErr "cannot commit: the at-rest type check found definite errors."
+      Cli.printErr "cannot commit: the at-rest type check found definite errors."
 
       // Per ITEM, so the refusal names what to open, with the SAME issue rendering `dark typecheck`
       // uses (it resolves referenced names and dedupes). "In the pipeline function: ..." with no
@@ -446,7 +442,7 @@ let refuseTypeErrors (parsed: Args) : Bool =
         else
           ()
 
-      printHint
+      Cli.printHint
         "  fix them, or `dark commit --allow-type-errors` to record them as-is."
 
       true
@@ -461,12 +457,12 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
   // `changed`, and a draft holding only `dark delete X` is not empty: judged by that list it would never
   // commit, and would ship in the seed as somebody else's mystery op.
   if SCM.PackageOps.draftOpCount () == 0L then
-    printOk "nothing to commit -- your draft is empty."
+    Cli.printOk "nothing to commit -- your draft is empty."
     state
   // A commit is what other machines pull, and its message is the one sentence they get. An empty
   // one is nearly always a slipped Enter, so it is refused rather than recorded forever.
   else if parsed.message == "" then
-    printErr "a commit needs a message: `dark commit \"what changed\"`."
+    Cli.printErr "a commit needs a message: `dark commit \"what changed\"`."
     state
   // An `--include` naming nothing in the draft is a typo, and the review screen would otherwise show
   // the WHOLE draft over a selection that commits none of it -- the one dishonesty a review screen
@@ -478,8 +474,8 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
     let unknown =
       Stdlib.String.join (SCM.PartialCommit.unknownNames parsed.include) ", "
 
-    printErr $"--include names things not in your draft: {unknown}."
-    printHint "  names are exact item names; `dark status` lists what the draft holds."
+    Cli.printErr $"--include names things not in your draft: {unknown}."
+    Cli.printHint "  names are exact item names; `dark status` lists what the draft holds."
     state
   else if refuseUnresolved parsed then
     state
@@ -488,7 +484,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
   else
     let withPrevious = r.withPrevious
 
-    printOk $"  CHANGED ({Stdlib.Int.toString (Stdlib.List.length changed)})"
+    Cli.printOk $"  CHANGED ({Stdlib.Int.toString (Stdlib.List.length changed)})"
 
     let nameWidth = widest (r.items |> Stdlib.List.map (fun i -> i.name))
 
@@ -500,7 +496,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       ()
     else
       Stdlib.printLine ""
-      printOk $"  REMOVED ({Stdlib.Int.toString (Stdlib.List.length r.removed)})"
+      Cli.printOk $"  REMOVED ({Stdlib.Int.toString (Stdlib.List.length r.removed)})"
       r.removed |> Stdlib.List.iter (fun name -> Stdlib.printLine $"    - {name}")
 
     // PROPAGATES TO -- outcomes, not ops. This is a PREVIEW; nothing is authored until you say yes.
@@ -510,7 +506,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       ()
     else
       Stdlib.printLine ""
-      printOk
+      Cli.printOk
         $"  PROPAGATES TO ({Stdlib.Int.toString (Stdlib.List.length repoints)})   (auto, reduced to final versions)"
 
       let repointWidth = widest (repoints |> Stdlib.List.map (fun rp -> rp.name))
@@ -529,7 +525,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
     else
       Stdlib.printLine ""
 
-      printOk
+      Cli.printOk
         $"  STAYING BEHIND ({Stdlib.Int.toString (Stdlib.List.length behind)})   (pinned, so they keep the version they have)"
 
       let behindWidth = widest (behind |> Stdlib.List.map (fun rp -> rp.name))
@@ -546,7 +542,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       ()
     else
       Stdlib.printLine ""
-      printOk
+      Cli.printOk
         $"  CONFLICTS ({Stdlib.Int.toString (Stdlib.List.length conflicts)})   auto-resolved, needs your ok"
 
       conflicts
@@ -560,7 +556,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       if Stdlib.List.isEmpty parsed.include then
         ()
       else
-        printHint
+        Cli.printHint
           $"""  --include: only {Stdlib.String.join parsed.include ", "} (and what they pull in) will commit; the rest stays a draft."""
 
     // `confirmExplicit`, so a piped stdin is a NO: docs promise a review-then-ask, and a script
@@ -574,9 +570,9 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
       )
     then
       if Cli.Prompt.interactive () || parsed.autoConfirm then
-        printOk "  left as a draft."
+        Cli.printOk "  left as a draft."
       else
-        printOk "  left as a draft. (`dark commit <message> -y` commits without the prompt -- a piped stdin can't answer it.)"
+        Cli.printOk "  left as a draft. (`dark commit <message> -y` commits without the prompt -- a piped stdin can't answer it.)"
       state
     else
       let outcome =
@@ -586,7 +582,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
           commitSelected state r parsed.message parsed.include
 
       match outcome with
-      | Error e -> printErr e
+      | Error e -> Cli.printErr e
       | Ok((hash, committed, moved)) ->
         let movedNote =
           if moved == 0 then "" else $", {Cli.Text.plural moved "dependent"} repointed"
@@ -602,7 +598,7 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
             $"; {Cli.Text.plural heldOps "op"} ({Cli.Text.plural heldItems "item"}) still in the draft"
 
         let stamped = Cli.Text.plural (Stdlib.Int.fromInt64 committed) "op"
-        printOk $"  commit {Stdlib.String.first hash 8} -- {stamped}{movedNote}{heldNote}."
+        Cli.printOk $"  commit {Stdlib.String.first hash 8} -- {stamped}{movedNote}{heldNote}."
 
       state
 

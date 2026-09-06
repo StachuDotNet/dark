@@ -63,15 +63,11 @@ let unknownRecords
     let ids = chunk |> Stdlib.List.map (fun r -> r.id)
 
     let known =
-      match
-        Stdlib.Sqlite.queryP
-          (localDb ())
-          ("SELECT id FROM package_ops WHERE id IN (" ++ (Conflicts.inPlaceholders ids) ++ ")")
-          ids
-      with
-      | Ok rows ->
-        rows |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "id")
-      | Error _ -> []
+      Stdlib.Sqlite.columnP
+        (localDb ())
+        ("SELECT id FROM package_ops WHERE id IN (" ++ (Conflicts.inPlaceholders ids) ++ ")")
+        ids
+        "id"
 
     // Dict, not `List.member`: membership by linear scan inside a filter is O(chunk^2), which on a
     // 10,833-op bundle was ~47s of a 50s import against ~2.4s to parse the same bundle.

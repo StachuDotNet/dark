@@ -6,10 +6,6 @@ module Darklang.Cli.Sync
 // All op-log SQL is siloed in `SCM.PackageOps`; this file writes none, it only formats the typed values
 // that silo returns and moves them over the wire codec.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
 // Relay transport, and the whole network surface of sync. A relay sits behind loopback / LAN / tailnet,
 // which the safe HttpClient bans, so these use the sync transport (SSRF guards relaxed for local nets,
 // cloud-metadata still blocked).
@@ -94,12 +90,12 @@ let storedCountOf (reply: String) : Stdlib.Option.Option<Int> =
 let reportDetection (bulk: Bool) (detected: Bool) : Unit =
   match (bulk, detected) with
   | (true, _) ->
-    printOk
+    Cli.printOk
       "First sync with this source: adopted it wholesale and recorded a base, so BASE-relative conflicts are detected from the next sync on."
 
-    printHint
+    Cli.printHint
       "  A divergence where you and the sender both replaced the same version is still caught, here and now: that one needs no base, since both ops say what they replaced."
-  | (_, false) -> printOk "Conflict detection did not run for this import."
+  | (_, false) -> Cli.printOk "Conflict detection did not run for this import."
   | _ -> ()
 
 /// Report what a reconciliation auto-resolved. ONE line, never a wall: the point is that nothing was lost
@@ -112,7 +108,7 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
 
     // "conflict(s)" rather than `Cli.Text.plural`: `scripts/testing/test-sync-multi-instance` matches
     // this line verbatim, so the two have to move together.
-    printOk
+    Cli.printOk
       $"{n} conflict(s) auto-resolved by recency and recorded -- the losing version is kept, not dropped."
 
 /// Override this instance's id with a name you chose.
@@ -121,14 +117,14 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
 /// a readable name in for the generated one in provenance, and survives the store being copied.
 let setIdentity (state: AppState) (name: String) : AppState =
   SCM.PackageOps.setIdentity name
-  printOk $"this instance is now \"{name}\" -- push/pull/sync identify it that way."
+  Cli.printOk $"this instance is now \"{name}\" -- push/pull/sync identify it that way."
   state
 
 /// Show this instance's sync identity.
 let executeWhoami (state: AppState) : AppState =
   match SCM.PackageOps.identity () with
-  | "" -> printOk "no instance id yet (one is minted on first sync)."
-  | id -> printOk $"sync identity: {id}"
+  | "" -> Cli.printOk "no instance id yet (one is minted on first sync)."
+  | id -> Cli.printOk $"sync identity: {id}"
 
   state
 
@@ -139,8 +135,8 @@ let executeExport (state: AppState) (path: String) : AppState =
   let ops = SCM.Wire.exportOps ()
 
   match Stdlib.Cli.File.writeText path (SCM.Wire.wireEncode ops) with
-  | Ok _ -> printOk $"Exported {Stdlib.Int.toString (Stdlib.List.length ops)} ops to {path}"
-  | Error _ -> printErr $"Couldn't write {path}"
+  | Ok _ -> Cli.printOk $"Exported {Stdlib.Int.toString (Stdlib.List.length ops)} ops to {path}"
+  | Error _ -> Cli.printErr $"Couldn't write {path}"
 
   state
 
@@ -164,21 +160,21 @@ let executeImport (state: AppState) (path: String) : AppState =
       | Ok outcome ->
         SCM.PackageOps.recordSyncBases source
 
-        printOk
+        Cli.printOk
           $"Imported {Stdlib.Int.toString outcome.imported} new op(s), of {Stdlib.Int.toString (Stdlib.List.length ops)} in file."
 
         reportDetection outcome.bulk outcome.detected
         reportConflicts outcome.conflicts
-      | Error e -> printErr $"Import failed: {e}"
+      | Error e -> Cli.printErr $"Import failed: {e}"
 
       state
     // Print the decoder's reason, not a generic one: it distinguishes "a version I don't speak" from
     // "these bytes are damaged", and only the first is fixed by rebuilding one side.
     | Error e ->
-      printErr $"Couldn't read the sync file: {e}"
+      Cli.printErr $"Couldn't read the sync file: {e}"
       state
   | Error _ ->
-    printErr $"Couldn't read {path}"
+    Cli.printErr $"Couldn't read {path}"
     state
 
 /// Stage an op bundle on a review branch (pending, inert) instead of applying it, so you can inspect it
@@ -191,16 +187,16 @@ let executeReviewImport (state: AppState) (path: String) (queue: String) : AppSt
     | Ok bundle ->
       match SCM.Wire.reviewImportTo queue bundle.ops with
       | Ok n ->
-        printOk
+        Cli.printOk
           $"Staged {Stdlib.Int.toString n} op(s) on branch \"{queue}\" (pending). Inspect: `dark diff {queue}` / `dark log {queue}` / `dark conflicts branch {queue}`. Then `dark review approve {queue}`, or `dark review reject {queue}`."
-      | Error e -> printErr $"Review import failed: {e}"
+      | Error e -> Cli.printErr $"Review import failed: {e}"
 
       state
     | Error e ->
-      printErr $"Couldn't read the sync file: {e}"
+      Cli.printErr $"Couldn't read the sync file: {e}"
       state
   | Error _ ->
-    printErr $"Couldn't read {path}"
+    Cli.printErr $"Couldn't read {path}"
     state
 
 /// Drain every page, staging each on <param queue>. Returns the total staged, or -1 if a page failed.
@@ -224,12 +220,12 @@ let executeReviewPullPages
     relayGet $"{url}/sync/pull?{ownerParam}sinceSeq={Stdlib.Int64.toString since}"
   with
   | Error e ->
-    printErr $"  page {Stdlib.Int64.toString (page + 1L)} failed: {e}"
+    Cli.printErr $"  page {Stdlib.Int64.toString (page + 1L)} failed: {e}"
     -1
   | Ok body ->
     match SCM.Wire.wireDecode body with
     | Error e ->
-      printErr $"  Couldn't read what {url} sent: {e}"
+      Cli.printErr $"  Couldn't read what {url} sent: {e}"
       -1
     | Ok bundle ->
       match bundle.ops with
@@ -238,13 +234,13 @@ let executeReviewPullPages
         // A cursor that does not advance would page forever. The relay's own pull advances it; this is
         // the guard for one that does not, since a hang with output is harder to diagnose than a stop.
         if bundle.cursor <= since then
-          printErr
+          Cli.printErr
             "  the relay stopped advancing its cursor -- stopping rather than asking for the same page again."
           -1
         else
           match SCM.Wire.reviewImportTo queue ops with
           | Error e ->
-            printErr $"  page staging failed: {e}"
+            Cli.printErr $"  page staging failed: {e}"
             -1
           | Ok n ->
             // Only after a page STAGED does its position count, and only when nothing was filtered out.
@@ -256,7 +252,7 @@ let executeReviewPullPages
 
             let _ =
               if n > 0 then
-                printOk
+                Cli.printOk
                   $"  +{Stdlib.Int.toString n} op(s) staged (page {Stdlib.Int64.toString (page + 1L)})"
               else
                 ()
@@ -277,7 +273,7 @@ let executeReviewPullFrom
   (owner: String)
   : AppState =
   if url == "" then
-    printErr "no relay -- `dark connect <url>` first, or pass a url."
+    Cli.printErr "no relay -- `dark connect <url>` first, or pass a url."
   else
     // No `owner=` unless one was asked for: the point is staging what a PEER sent. `--from you` is how
     // you review your own other machine.
@@ -298,11 +294,11 @@ let executeReviewPullFrom
     // pull has already applied can never be staged for review afterwards. Reported as "Staged 0",
     // it reads like success and leaves you approving an empty queue.
     | 0 ->
-      printOk $"Nothing new to stage from {url}."
-      printHint
+      Cli.printOk $"Nothing new to stage from {url}."
+      Cli.printHint
         "  `review pull` stages only what has not arrived yet, and an ordinary `dark pull` consumes the same cursor."
     | n ->
-      printOk
+      Cli.printOk
         $"Staged {Stdlib.Int.toString n} op(s) from {url} on branch \"{queue}\" (pending). `dark diff {queue}` then `dark review approve {queue}`."
 
   state
@@ -322,16 +318,16 @@ let executeApprove (state: AppState) (queue: String) : AppState =
 
   match SCM.PackageOps.mergeBranch queueId with
   | Ok outcome ->
-    printOk $"Approved {Stdlib.Int.toString outcome.merged} op(s) from \"{queue}\" into main."
+    Cli.printOk $"Approved {Stdlib.Int.toString outcome.merged} op(s) from \"{queue}\" into main."
     reportConflicts outcome.conflicts
   | Error e ->
     // An empty queue isn't a failure -- it means everything was already approved, rejected, or
     // resolved-to-theirs. Report it plainly so agents don't read it as an error.
     if Stdlib.String.contains e "nothing to merge" then
-      printOk
+      Cli.printOk
         $"Nothing to approve in \"{queue}\" -- no pending changes (all reviewed ops were approved, rejected, or reconciled to the local version)."
     else
-      printErr $"Approve failed: {e}"
+      Cli.printErr $"Approve failed: {e}"
 
   state
 
@@ -358,7 +354,7 @@ let pushTailNotes (url: String) : Unit =
   let draftOps = Stdlib.Int.fromInt64 (SCM.PackageOps.draftOpCount ())
 
   if draftOps > 0 then
-    printHint
+    Cli.printHint
       $"  your draft ({Cli.Text.plural draftOps "op"}) stays local until `dark commit`."
   else
     ()
@@ -366,13 +362,13 @@ let pushTailNotes (url: String) : Unit =
   SCM.Wire.unpushedBranches url
   |> Stdlib.List.iter (fun entry ->
     let (name, n) = entry
-    printHint
+    Cli.printHint
       $"  branch \"{name}\": {Stdlib.Int64.toString n} op(s) not on the relay -- `dark branch push {name}`.")
 
 
 let executePush (state: AppState) (url: String) : AppState =
   if url == "" then
-    printErr "no relay -- `dark connect <url>` first, or pass a url."
+    Cli.printErr "no relay -- `dark connect <url>` first, or pass a url."
   else
     let id = SCM.PackageOps.identity ()
     // MAIN-ONLY: a branch's ops are effective=0 and must NOT sync into another machine's main (that
@@ -385,7 +381,7 @@ let executePush (state: AppState) (url: String) : AppState =
     let alreadyPushed = (SCM.Wire.unpushedCount url) == 0L
 
     if alreadyPushed then
-      printOk $"Already up to date with {url} -- nothing new to push."
+      Cli.printOk $"Already up to date with {url} -- nothing new to push."
       pushTailNotes url
     else
 
@@ -483,10 +479,10 @@ let executePush (state: AppState) (url: String) : AppState =
       // Authoring on a branch grows the log, so the already-pushed check does not fire, yet there is
       // correctly nothing on MAIN to send. Say that as a no-op, not as "Pushed 0 ops".
       if sent == 0 then
-        printOk $"Nothing new to push to {url}."
+        Cli.printOk $"Nothing new to push to {url}."
         pushTailNotes url
       else
-        printOk
+        Cli.printOk
           // `test-sync-multi-instance` matches "^Pushed [1-9][0-9]* op" against this line.
           $"Pushed {Cli.Text.plural sent "op"}{newPart} to {url} as \"{id}\" (in {Cli.Text.plural (Stdlib.List.length chunks) "chunk"})."
 
@@ -501,15 +497,15 @@ let executePush (state: AppState) (url: String) : AppState =
         let named = Stdlib.LocalStore.configGet "current_branch_name"
         let shown = if named == "" then Stdlib.Uuid.toString branchId else named
 
-        printHint
+        Cli.printHint
           $"  that was main. You're on \"{shown}\" -- `dark branch push {shown}` sends the branch."
     | Error e ->
-      printErr $"Push to {url} failed: {e}"
+      Cli.printErr $"Push to {url} failed: {e}"
 
       // A failed push leaves the store untouched, so running it again is the whole recovery. Not said
       // for an auth failure, where retrying unchanged is exactly the wrong advice.
       if Stdlib.String.contains e "network error" || Stdlib.String.contains e "timeout" then
-        printHint
+        Cli.printHint
           "  nothing was lost -- your work is in your own store. `dark push` again when the relay is back."
       else
         ()
@@ -531,12 +527,12 @@ let executePullPages
   // -1 means a page FAILED, distinct from 0 meaning "nothing left": the caller memoizes the relay's head
   // on success, and doing that after a failure makes every later pull answer "Nothing new".
   | Error e ->
-    printErr $"  page {Stdlib.Int64.toString (page + 1L)} failed: {e}"
+    Cli.printErr $"  page {Stdlib.Int64.toString (page + 1L)} failed: {e}"
     -1
   | Ok body ->
     match SCM.Wire.wireDecode body with
     | Error _ ->
-      printErr "  a later page was unparseable -- stopping; re-run to resume."
+      Cli.printErr "  a later page was unparseable -- stopping; re-run to resume."
       -1
     | Ok bundle ->
       match bundle.ops with
@@ -550,14 +546,14 @@ let executePullPages
 
         match SCM.Wire.importFrom url ops bundle.commits with
         | Error e ->
-          printErr $"  page import failed: {e}"
+          Cli.printErr $"  page import failed: {e}"
           -1
         | Ok outcome ->
           SCM.Wire.setPullCursor url bundle.cursor
 
           let _ =
             if outcome.imported > 0 then
-              printOk
+              Cli.printOk
                 $"  +{Stdlib.Int.toString outcome.imported} op(s) (page {Stdlib.Int64.toString (page + 1L)})"
             else
               ()
@@ -569,7 +565,7 @@ let executePullPages
 
           match next with
           | Error e ->
-            printErr $"  page {Stdlib.Int64.toString (page + 2L)} failed: {e}"
+            Cli.printErr $"  page {Stdlib.Int64.toString (page + 2L)} failed: {e}"
             -1
           | Ok handle ->
             let rest = executePullPages state url (page + 1L) handle
@@ -580,7 +576,7 @@ let executePullPages
 /// last gave us, so repeat pulls are cheap.
 let executePull (state: AppState) (url: String) : AppState =
   if url == "" then
-    printErr "no relay -- `dark connect <url>` first, or pass a url."
+    Cli.printErr "no relay -- `dark connect <url>` first, or pass a url."
   else
     // No identity GATE and no owner FILTER: pull everything the relay holds. Reaching the relay is the
     // trust boundary; an `?owner={id}` filter would hide two machines' work from each other.
@@ -614,7 +610,7 @@ let executePull (state: AppState) (url: String) : AppState =
     // No `state` here: this whole `if` sits in statement position -- the function ends with a trailing
     // `state` -- so returning AppState from one branch makes the next expression illegal.
     if unchanged then
-      printOk $"Nothing new at {url}."
+      Cli.printOk $"Nothing new at {url}."
     else
 
     match
@@ -655,7 +651,7 @@ let executePull (state: AppState) (url: String) : AppState =
         let _ =
           if replaced then
             SCM.Wire.forgetPushed url
-            printOk
+            Cli.printOk
               $"{url} is a different relay instance than last time (wiped or replaced) -- everything will be pushed again."
           else
             ()
@@ -666,10 +662,10 @@ let executePull (state: AppState) (url: String) : AppState =
               if replaced then
                 ()
               else if cursorPastMissingOps then
-                printOk
+                Cli.printOk
                   $"Cursor for {url} points past ops this store doesn't have -- re-pulling from the start."
               else
-                printOk
+                Cli.printOk
                   $"Cursor for {url} can't be attributed to this relay -- re-pulling from the start."
 
             match relayGet $"{url}/sync/pull?sinceSeq=0" with
@@ -702,7 +698,7 @@ let executePull (state: AppState) (url: String) : AppState =
               with
               | Ok handle -> executePullPages state url 1L handle
               | Error e ->
-                printErr $"  page 2 failed: {e}"
+                Cli.printErr $"  page 2 failed: {e}"
                 -1
             else
               0
@@ -719,7 +715,7 @@ let executePull (state: AppState) (url: String) : AppState =
           // pull skips on, so recording it after a page FAILED loses the un-pulled ops for good.
           let _ =
             if laterPages < 0 then
-              printErr
+              Cli.printErr
                 "  a page didn't land -- not recording the relay's position, so the next pull retries."
             else
               // Ops that arrived FROM this relay are recorded as held by it inside `importFrom`, page
@@ -730,7 +726,7 @@ let executePull (state: AppState) (url: String) : AppState =
 
           let total = outcome.imported + (Stdlib.Int.max 0 laterPages)
 
-          printOk
+          Cli.printOk
             $"Pulled {Stdlib.Int.toString total} new op(s) from {url} as \"{id}\"."
 
           // The story, not just the number: the arriving commits' subjects ARE the answer to "what
@@ -742,16 +738,16 @@ let executePull (state: AppState) (url: String) : AppState =
 
               arrived
               |> Stdlib.List.iter (fun c ->
-                printHint $"  {Stdlib.String.first c.hash 8}  {c.author}  {c.message}")
+                Cli.printHint $"  {Stdlib.String.first c.hash 8}  {c.author}  {c.message}")
             else
               ()
 
           reportDetection outcome.bulk outcome.detected
           reportConflicts outcome.conflicts
-        | Error e -> printErr $"Pull import failed: {e}"
+        | Error e -> Cli.printErr $"Pull import failed: {e}"
       // Surface what the decoder said; see `executeImport`.
-      | Error e -> printErr $"Couldn't read what {url} sent: {e}"
-    | Error e -> printErr $"Pull from {url} failed: {e}"
+      | Error e -> Cli.printErr $"Couldn't read what {url} sent: {e}"
+    | Error e -> Cli.printErr $"Pull from {url} failed: {e}"
 
   state
 
@@ -759,7 +755,7 @@ let executePull (state: AppState) (url: String) : AppState =
 /// dedups by content id; pull is incremental. One command for the common two-box workflow.)
 let executeSync (state: AppState) (url: String) : AppState =
   if url == "" then
-    printErr "no relay -- `dark connect <url>` first, or pass a url."
+    Cli.printErr "no relay -- `dark connect <url>` first, or pass a url."
     state
   else
     executePull (executePush state url) url
@@ -772,7 +768,7 @@ let executeSync (state: AppState) (url: String) : AppState =
 /// exactly the same ops report a different max.
 let executeStatus (state: AppState) (url: String) : AppState =
   if url == "" then
-    printErr "no relay -- `dark connect <url>` first, or pass a url."
+    Cli.printErr "no relay -- `dark connect <url>` first, or pass a url."
   else
     let mine = SCM.Wire.localHead ()
 
@@ -780,8 +776,8 @@ let executeStatus (state: AppState) (url: String) : AppState =
     | Ok respBody ->
       match SCM.Wire.headDecode respBody with
       | Ok theirs ->
-        printOk $"local: {Stdlib.Int64.toString mine.count} ops"
-        printOk $"relay: {Stdlib.Int64.toString theirs.count} ops"
+        Cli.printOk $"local: {Stdlib.Int64.toString mine.count} ops"
+        Cli.printOk $"relay: {Stdlib.Int64.toString theirs.count} ops"
 
         // Effective ops this relay is not known to hold. The same question `push` decides on.
         let unpushed = SCM.Wire.unpushedCount url
@@ -801,7 +797,7 @@ let executeStatus (state: AppState) (url: String) : AppState =
           SCM.Wire.unpushedBranches url
           |> Stdlib.List.iter (fun entry ->
             let (name, n) = entry
-            printHint
+            Cli.printHint
               $"  branch \"{name}\": {Stdlib.Int64.toString n} op(s) not on the relay -- `dark branch push {name}`.")
 
           match relayGetAuthed url "/branch/owners" with
@@ -824,35 +820,35 @@ let executeStatus (state: AppState) (url: String) : AppState =
               | _ -> Stdlib.Option.Option.None)
             |> Stdlib.List.unique
             |> Stdlib.List.iter (fun owner ->
-              printHint
+              Cli.printHint
                 $"  the relay holds branches from \"{owner}\" you haven't pulled -- `dark branch pull --from {owner}`.")
 
         match (toSend, toReceive) with
         | (false, false) ->
-          printOk "in sync."
+          Cli.printOk "in sync."
           branchLines ()
           // A relay holding FEWER ops than this store, with nothing waiting to send, is a relay that was
           // wiped or replaced since the last push (main-only push never sends a branch's ops, so a small
           // gap is normal; a large one is not). `pull` notices the new instance and re-arms the push.
           if theirs.count + 100L < mine.count then
-            printHint
+            Cli.printHint
               "  the relay holds far fewer ops than this store, yet nothing is waiting to send. If it was wiped or replaced, `dark pull` will notice and re-arm the push."
           else
             ()
         | (true, false) ->
-          printOk $"{Stdlib.Int64.toString unpushed} op(s) to send -- `dark push {url}`."
+          Cli.printOk $"{Stdlib.Int64.toString unpushed} op(s) to send -- `dark push {url}`."
           branchLines ()
         // No count on this side: how many ops are waiting is only knowable by asking for them, and
         // `/sync/head` is deliberately a cheap stamp. The other three arms say a state, so this one does.
         | (false, true) ->
-          printOk $"behind the relay -- `dark pull {url}`."
+          Cli.printOk $"behind the relay -- `dark pull {url}`."
           branchLines ()
         | (true, true) ->
-          printOk
+          Cli.printOk
             $"out of sync both ways ({Stdlib.Int64.toString unpushed} op(s) to send) -- `dark sync {url}`."
           branchLines ()
-      | Error _ -> printErr "Relay returned an unparseable head."
-    | Error e -> printErr $"Status from {url} failed: {e}"
+      | Error _ -> Cli.printErr "Relay returned an unparseable head."
+    | Error e -> Cli.printErr $"Status from {url} failed: {e}"
 
   state
 
@@ -860,7 +856,7 @@ let executeStatus (state: AppState) (url: String) : AppState =
 /// `dark sync` / `pull` / `push` need no url.
 let executeConnect (state: AppState) (url: String) : AppState =
   SCM.PackageOps.setRelay url
-  printOk $"relay remembered: {url}. Uploading your ops..."
+  Cli.printOk $"relay remembered: {url}. Uploading your ops..."
   let after = executePush state url
 
   // The url is kept even when the push fails: connecting while offline is legitimate, and `dark push` is
@@ -874,7 +870,7 @@ let executeConnect (state: AppState) (url: String) : AppState =
   if reachable then
     after
   else
-    printHint
+    Cli.printHint
       $"  {url} is still your relay -- `dark push` retries, `dark connect <url>` changes it."
 
     after
@@ -923,8 +919,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   if Stdlib.Bool.not (Stdlib.List.isEmpty flags) then
     let f = Stdlib.String.join flags " "
-    printErr $"sync takes no flags, and {f} isn't a url."
-    printHint "  `dark sync help` lists what it does take."
+    Cli.printErr $"sync takes no flags, and {f} isn't a url."
+    Cli.printHint "  `dark sync help` lists what it does take."
     state
   else
 
@@ -945,7 +941,7 @@ let executePushCmd (state: AppState) (args: List<String>) : AppState =
   | [] -> executePush state (SCM.PackageOps.relay ())
   | [ url ] -> executePush state url
   | _ ->
-    printErr "usage: dark push [url]"
+    Cli.printErr "usage: dark push [url]"
     state
 
 /// `dark pull [url]`
@@ -954,7 +950,7 @@ let executePullCmd (state: AppState) (args: List<String>) : AppState =
   | [] -> executePull state (SCM.PackageOps.relay ())
   | [ url ] -> executePull state url
   | _ ->
-    printErr "usage: dark pull [url]"
+    Cli.printErr "usage: dark pull [url]"
     state
 
 /// `dark connect <url>`
@@ -969,23 +965,23 @@ let executeConnectCmd (state: AppState) (args: List<String>) : AppState =
     // it, and a few characters of hex turn up by chance in a store of any size, so every push is refused.
     // 12 is not a security threshold, it is the length at which a chance match stops happening.
     if Stdlib.String.length secret < 12 then
-      printErr "that secret is too short to use safely (needs 12+ characters)."
+      Cli.printErr "that secret is too short to use safely (needs 12+ characters)."
 
-      printHint
+      Cli.printHint
         "  Short secrets turn up inside ops by chance, and the guard that stops you publishing"
 
-      printHint
+      Cli.printHint
         "  the secret cannot tell a real leak from a coincidence, so every push would be refused."
 
       state
     else
       setRelaySecret url secret
-      printOk $"write secret stored for {url} (local config only; it never syncs)."
+      Cli.printOk $"write secret stored for {url} (local config only; it never syncs)."
       executeConnect state url
   | _ ->
-    printErr "usage: dark connect <url> [--secret <secret>]"
-    printHint "  the url of a relay, e.g. https://matter.darklang.com"
-    printHint "  --secret is needed to WRITE; reading a relay never needs one"
+    Cli.printErr "usage: dark connect <url> [--secret <secret>]"
+    Cli.printHint "  the url of a relay, e.g. https://matter.darklang.com"
+    Cli.printHint "  --secret is needed to WRITE; reading a relay never needs one"
     state
 
 /// `dark whoami`
@@ -1000,12 +996,12 @@ let executeIdentityCmd (state: AppState) (args: List<String>) : AppState =
   // Everything else is the NAME, so a mistyped flag would become one. The name goes out on every push,
   // which makes a slip here visible to everyone else before it is visible to you.
   | [ name ] when Stdlib.String.startsWith name "-" ->
-    printErr $"\"{name}\" starts with a dash, so it's a flag rather than an instance name."
-    printHint "  `dark identity <name>`, or bare `dark identity` to see the current one."
+    Cli.printErr $"\"{name}\" starts with a dash, so it's a flag rather than an instance name."
+    Cli.printHint "  `dark identity <name>`, or bare `dark identity` to see the current one."
     state
   | [ name ] -> setIdentity state name
   | _ ->
-    printErr "usage: dark identity <name>"
+    Cli.printErr "usage: dark identity <name>"
     state
 
 /// `dark review ...`
@@ -1044,11 +1040,11 @@ let executeReviewCmd (state: AppState) (args: List<String>) : AppState =
   | [ "reject", "-y" ] | [ "reject", "--yes" ] -> executeReject state "review" true
   // `import` has no default queue to fall back on: it takes a file, so refuse a missing one here.
   | [ "import" ] ->
-    printErr "dark review import <file> [queue] -- which file?"
+    Cli.printErr "dark review import <file> [queue] -- which file?"
     state
   | [ queue ] ->
     match Cli.Branch.resolveRef queue with
-    | Some queueId -> printOk (SCM.PackageOps.branchDiff queueId)
+    | Some queueId -> Cli.printOk (SCM.PackageOps.branchDiff queueId)
     | None -> ()
 
     state

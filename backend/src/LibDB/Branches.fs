@@ -272,6 +272,44 @@ let private foldBranchDecide
     )
     |> Sql.executeStatementAsync
 
+/// INSERT (id, blob, ts) rows into `package_ops` INERT (applied = 0, effective = 0: in
+/// the shared log, NOT folded into main) and tag them onto the branch, in ONE
+/// transaction. Content-addressed id -> re-store dedups; returns how many ops were
+/// newly stored. Per call site: the prepared rows and <param source>, the
+/// `op_branches.source` vocabulary ('op' for authored or undecodable-bundle ops).
+///
+/// Never tag an op main already runs. The row dedups by content, so a branch author (or a bundle)
+/// can hit an id that is effective = 1; a tag on it hid main's own op from main's draft and commit,
+/// since every draft query excludes tagged ids. An effective op is never tagged, and the other
+/// side of that invariant is `Inserts.insertAndApplyOpsWith`, which untags what it makes effective.
+let private storeInertTagged
+  (branchId : PT.BranchId)
+  (source : string)
+  (records : List<System.Guid * byte[] * string>)
+  : int64 =
+  let insertOps =
+    "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts)
+     VALUES (@id, @op_blob, 0, 0, @origin_ts)"
+  let opRows =
+    records
+    |> List.map (fun (id, blob, ts) ->
+      [ "id", Sql.uuid id; "op_blob", Sql.bytes blob; "origin_ts", Sql.string ts ])
+  let insertTags =
+    "INSERT OR IGNORE INTO op_branches (op_id, branch_id, source)
+     SELECT @op_id, @branch_id, @source
+     WHERE NOT EXISTS (SELECT 1 FROM package_ops WHERE id = @op_id AND effective = 1)"
+  let tagRows =
+    records
+    |> List.map (fun (id, _, _) ->
+      [ "op_id", Sql.uuid id
+        "branch_id", Sql.string (string branchId)
+        "source", Sql.string source ])
+  // one transaction; ops-insert counts come first, so truncate to the op rows.
+  Sql.executeTransactionSync [ (insertOps, opRows); (insertTags, tagRows) ]
+  |> List.truncate (List.length opRows)
+  |> List.sumBy int64
+
+
 /// Store a branch's authored ops with an EXPLICIT authoring stamp each: serialize + INSERT
 /// effective=0 (in the shared log, NOT folded into main) + tag the frontier, in ONE transaction,
 /// NO fold. Content-addressed id -> re-store dedups. Returns the number of ops newly stored.
@@ -302,34 +340,10 @@ let storeDeltaOpsStampedFrom
           let opId = opRowId op
           (opId, BS.PT.PackageOp.serialize opId op, op, ts))
 
-      let insertOps =
-        "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts)
-         VALUES (@id, @op_blob, 0, 0, @origin_ts)"
-      let opRows =
+      let stored =
         prepared
-        |> List.map (fun (id, blob, _, ts) ->
-          [ "id", Sql.uuid id
-            "op_blob", Sql.bytes blob
-            "origin_ts", Sql.string ts ])
-
-      // Never tag an op main already runs. The row dedups by content, so a branch author (or a bundle)
-      // can hit an id that is effective = 1; a tag on it hid main's own op from main's draft and commit,
-      // since every draft query excludes tagged ids. An effective op is never tagged, and the other
-      // side of that invariant is `Inserts.insertAndApplyOpsWith`, which untags what it makes effective.
-      let insertTags =
-        "INSERT OR IGNORE INTO op_branches (op_id, branch_id, source)
-         SELECT @op_id, @branch_id, @source
-         WHERE NOT EXISTS (SELECT 1 FROM package_ops WHERE id = @op_id AND effective = 1)"
-      let tagRows =
-        prepared
-        |> List.map (fun (id, _, _, _) ->
-          [ "op_id", Sql.uuid id
-            "branch_id", Sql.string (string branchId)
-            "source", Sql.string source ])
-
-      // one transaction; ops-insert counts come first, so truncate to the op rows.
-      let affected =
-        Sql.executeTransactionSync [ (insertOps, opRows); (insertTags, tagRows) ]
+        |> List.map (fun (id, blob, _, ts) -> (id, blob, ts))
+        |> storeInertTagged branchId source
 
       for (_, _, op, ts) in prepared do
         match op with
@@ -337,7 +351,7 @@ let storeDeltaOpsStampedFrom
           do! foldBranchDecide branchId loc policy reason ts
         | _ -> ()
 
-      return affected |> List.truncate (List.length opRows) |> List.sumBy int64
+      return stored
   }
 
 /// Re-fold every BRANCH-scoped propagation decision straight from the log.
@@ -391,28 +405,7 @@ let storeDeltaBlobsStamped
       return 0L
     else
       records |> List.iter (fun (_, _, ts) -> OriginTs.observe ts)
-
-      let insertOps =
-        "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts)
-         VALUES (@id, @op_blob, 0, 0, @origin_ts)"
-      let opRows =
-        records
-        |> List.map (fun (id, blob, ts) ->
-          [ "id", Sql.uuid id
-            "op_blob", Sql.bytes blob
-            "origin_ts", Sql.string ts ])
-      let insertTags =
-        "INSERT OR IGNORE INTO op_branches (op_id, branch_id, source)
-         SELECT @op_id, @branch_id, 'op'
-         WHERE NOT EXISTS (SELECT 1 FROM package_ops WHERE id = @op_id AND effective = 1)"
-      let tagRows =
-        records
-        |> List.map (fun (id, _, _) ->
-          [ "op_id", Sql.uuid id; "branch_id", Sql.string (string branchId) ])
-
-      let affected =
-        Sql.executeTransactionSync [ (insertOps, opRows); (insertTags, tagRows) ]
-      return affected |> List.truncate (List.length opRows) |> List.sumBy int64
+      return storeInertTagged branchId "op" records
   }
 
 /// Authored ops, fresh stamps.

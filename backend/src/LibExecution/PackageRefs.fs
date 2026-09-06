@@ -137,44 +137,59 @@ let setHashes (hashes : Map<string, string>) : unit =
   hashGeneration <- hashGeneration + 1
 
 
+/// Shared body of `Type.p` and `Fn.p`: a closure resolving `<kind>/<modules>.<name>`
+/// against the hash file. Resolution is cached once per hash generation: the answer
+/// cannot change while the generation is stable, and resolving per call costs an
+/// interpolated key, a Map walk and a Map.add -- these sit under Option and Result
+/// construction, so they run constantly. Each resolved hash is reported through
+/// `record` so the calling module's `_lookup` (read by PackageRefsGenerator) sees
+/// real values. Returns "" if the hash file is empty (CI before reload-packages).
+let private makeRef
+  (kind : string)
+  (record : string -> unit)
+  (modules : string list)
+  (name : string)
+  : unit -> string =
+  let mutable cachedGen = -1
+  let mutable cached = ""
+
+  fun () ->
+    let gen = currentGeneration ()
+    if gen = cachedGen then
+      cached
+    else
+      let fqn = $"""{kind}/{String.concat "." modules}.{name}"""
+      let h = getHashes ()
+      match Map.tryFind fqn h with
+      | Some hash ->
+        record hash
+        cachedGen <- gen
+        cached <- hash
+        hash
+      | None ->
+        if Map.isEmpty h then
+          "" // Hash file not yet populated (CI before reload-packages)
+        else
+          // A non-empty file missing this ref is stale: a ref was added, or an older
+          // binary regenerated it in place (`growIfNeeded` rewrites it).
+          Exception.raiseInternal
+            $"PackageRefs: {kind} hash not found. The hash file is stale; regenerate it with `> backend/src/LibExecution/package-ref-hashes.txt && ./scripts/build/reload-packages`"
+            [ "fqn", fqn ]
+
+
 module Type =
   /// All type refs registered by `p`. Used by PackageRefsGenerator.
   let mutable _lookup : Map<string list * string, string> = Map []
 
   /// Registers the FQN in `_lookup` at module init (for PackageRefsGenerator),
-  /// but defers the actual hash lookup until the returned function is called.
-  /// Returns "" if the hash file is empty (CI before reload-packages).
+  /// but defers the actual hash lookup to `makeRef`'s returned closure.
   let private p modules name : (unit -> string) =
     _lookup <- _lookup |> Map.add (modules, name) ""
-    // Resolved once per hash generation: the answer cannot change while the generation is stable,
-    // and resolving per call costs an interpolated key, a Map walk and a Map.add. These sit under
-    // Option and Result construction, so they run constantly.
-    let mutable cachedGen = -1
-    let mutable cached = ""
-
-    fun () ->
-      let gen = currentGeneration ()
-      if gen = cachedGen then
-        cached
-      else
-
-        let fqn = $"""type/{String.concat "." modules}.{name}"""
-        let h = getHashes ()
-        match Map.tryFind fqn h with
-        | Some hash ->
-          _lookup <- _lookup |> Map.add (modules, name) hash
-          cachedGen <- gen
-          cached <- hash
-          hash
-        | None ->
-          if Map.isEmpty h then
-            "" // Hash file not yet populated (CI before reload-packages)
-          else
-            // A non-empty file missing this ref is stale: a ref was added, or an older
-            // binary regenerated it in place (`growIfNeeded` rewrites it).
-            Exception.raiseInternal
-              "PackageRefs: type hash not found. The hash file is stale; regenerate it with `> backend/src/LibExecution/package-ref-hashes.txt && ./scripts/build/reload-packages`"
-              [ "fqn", fqn ]
+    makeRef
+      "type"
+      (fun h -> _lookup <- _lookup |> Map.add (modules, name) h)
+      modules
+      name
 
   module Stdlib =
     let private p addl = p ("Stdlib" :: addl)
@@ -501,35 +516,14 @@ module Fn =
   let mutable _lookup : Map<string list * string, string> = Map []
 
   /// Registers the FQN in `_lookup` at module init (for PackageRefsGenerator),
-  /// but defers the actual hash lookup until the returned function is called.
-  /// Returns "" if the hash file is empty (CI before reload-packages).
+  /// but defers the actual hash lookup to `makeRef`'s returned closure.
   let private p modules name : (unit -> string) =
     _lookup <- _lookup |> Map.add (modules, name) ""
-    // Resolved once per hash generation; see the note on the type-ref version above.
-    let mutable cachedGen = -1
-    let mutable cached = ""
-
-    fun () ->
-      let gen = currentGeneration ()
-      if gen = cachedGen then
-        cached
-      else
-
-        let fqn = $"""fn/{String.concat "." modules}.{name}"""
-        let h = getHashes ()
-        match Map.tryFind fqn h with
-        | Some hash ->
-          _lookup <- _lookup |> Map.add (modules, name) hash
-          cachedGen <- gen
-          cached <- hash
-          hash
-        | None ->
-          if Map.isEmpty h then
-            "" // Hash file not yet populated (CI before reload-packages)
-          else
-            Exception.raiseInternal
-              "PackageRefs: fn hash not found. The hash file is stale; regenerate it with `> backend/src/LibExecution/package-ref-hashes.txt && ./scripts/build/reload-packages`"
-              [ "fqn", fqn ]
+    makeRef
+      "fn"
+      (fun h -> _lookup <- _lookup |> Map.add (modules, name) h)
+      modules
+      name
 
   module Stdlib =
     let private p addl = p ("Stdlib" :: addl)

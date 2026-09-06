@@ -710,6 +710,50 @@ let private pendingFetches =
 let private prefetchClient = BaseClient.create syncConfig
 
 
+/// Decode a Dark `List<(String, String)>` of request headers; anything not that shape is dropped.
+let private headerPairs (dvals : List<Dval>) : List<string * string> =
+  dvals
+  |> List.choose (fun h ->
+    match h with
+    | DTuple(DString k, DString v, []) -> Some(k, v)
+    | _ -> None)
+
+
+/// The `UnguardedOrigins` gate, checked before any request is built, so a refused origin is never
+/// dialled. `okKT` is the caller's Ok type; the refusal is the Error to hand straight back.
+let private refuseIfGuarded (okKT : KnownType) (uri : string) : Option<Dval> =
+  if LibExecution.UnguardedOrigins.isAllowed uri then
+    None
+  else
+    Some(
+      Dval.resultError
+        okKT
+        KTString
+        (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
+    )
+
+
+/// Guard, build, send, shape: the shared body of the `*UnsafeBytes` builtins. Pass the final
+/// header list (auth already attached where a call carries it) and `[||]` for a GET's body.
+let private unsafeFetch
+  (client : HttpClient)
+  (verb : string)
+  (method : string)
+  (uri : string)
+  (headers : List<string * string>)
+  (body : byte array)
+  : Ply<Dval> =
+  uply {
+    match refuseIfGuarded KTBlob uri with
+    | Some refusal -> return refusal
+    | None ->
+      let request : Request =
+        { url = uri; method = HttpMethod method; headers = headers; body = body }
+      let! response = makeRequest syncConfig client request
+      return fetchResult verb response
+  }
+
+
 let streamResponseType () =
   FQTypeName.fqPackage (PackageRefs.Type.Stdlib.HttpClient.streamResponse ())
 
@@ -861,23 +905,7 @@ let fns (config : Configuration) : List<BuiltInFn> =
 
         (function
         | _, _, _, [| DString uri |] ->
-          uply {
-            // Before the request is built, so a refused origin is never dialled.
-            if not (LibExecution.UnguardedOrigins.isAllowed uri) then
-              return
-                Dval.resultError
-                  KTBlob
-                  KTString
-                  (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
-            else
-
-              let request : Request =
-                { url = uri; method = HttpMethod "GET"; headers = []; body = [||] }
-
-              let! response = makeRequest syncConfig syncClient request
-
-              return fetchResult "fetch" response
-          }
+          unsafeFetch syncClient "fetch" "GET" uri [] [||]
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -905,13 +933,9 @@ let fns (config : Configuration) : List<BuiltInFn> =
         (function
         | _, _, _, [| DString uri |] ->
           uply {
-            if not (LibExecution.UnguardedOrigins.isAllowed uri) then
-              return
-                Dval.resultError
-                  KTUuid
-                  KTString
-                  (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
-            else
+            match refuseIfGuarded KTUuid uri with
+            | Some refusal -> return refusal
+            | None ->
               let request : Request =
                 { url = uri; method = HttpMethod "GET"; headers = []; body = [||] }
 
@@ -984,36 +1008,11 @@ let fns (config : Configuration) : List<BuiltInFn> =
 
         (function
         | _, _, _, [| DString uri; DList(_, headerList) |] ->
-          uply {
-            let headers =
-              headerList
-              |> List.choose (fun h ->
-                match h with
-                | DTuple(DString k, DString v, []) -> Some(k, v)
-                | _ -> None)
-
-            // Before the request is built, so a refused origin is never dialled.
-            if not (LibExecution.UnguardedOrigins.isAllowed uri) then
-              return
-                Dval.resultError
-                  KTBlob
-                  KTString
-                  (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
-            else
-
-              // The credential is attached HERE, not passed in: the write secret must not reach Dark,
-              // where `configGet` has no capability and a pulled package could read it.
-              let request : Request =
-                { url = uri
-                  method = HttpMethod "GET"
-                  headers =
-                    headers @ LibExecution.UnguardedOrigins.authHeadersFor uri
-                  body = [||] }
-
-              let! response = makeRequest syncConfig syncClient request
-
-              return fetchResult "fetch" response
-          }
+          // The credential is attached HERE, not passed in: the write secret must not reach Dark,
+          // where `configGet` has no capability and a pulled package could read it.
+          let headers =
+            headerPairs headerList @ LibExecution.UnguardedOrigins.authHeadersFor uri
+          unsafeFetch syncClient "fetch" "GET" uri headers [||]
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -1051,35 +1050,15 @@ let fns (config : Configuration) : List<BuiltInFn> =
             // Caller headers go AFTER the content type so a caller cannot
             // accidentally unset it, and are taken as-is otherwise. A relay write
             // secret arrives this way rather than in the query string, which would
-            // put it in every access log and proxy trace between here and there.
-            let extra =
-              headers
-              |> List.choose (fun h ->
-                match h with
-                | DTuple(DString k, DString v, []) -> Some(k, v)
-                | _ -> None)
+            // put it in every access log and proxy trace between here and there;
+            // the stored credential is attached here, not passed in -- see
+            // `httpGetUnsafeBytesWithHeaders`.
+            let allHeaders =
+              ("Content-Type", "application/json")
+              :: (headerPairs headers
+                  @ LibExecution.UnguardedOrigins.authHeadersFor uri)
 
-            // Before the request is built, so a refused origin is never dialled.
-            if not (LibExecution.UnguardedOrigins.isAllowed uri) then
-              return
-                Dval.resultError
-                  KTBlob
-                  KTString
-                  (DString(LibExecution.UnguardedOrigins.refusalMessage uri))
-            else
-
-              // Credential attached here, not passed in -- see `httpGetUnsafeBytesWithHeaders`.
-              let auth = LibExecution.UnguardedOrigins.authHeadersFor uri
-
-              let request : Request =
-                { url = uri
-                  method = HttpMethod "POST"
-                  headers = ("Content-Type", "application/json") :: (extra @ auth)
-                  body = body }
-
-              let! response = makeRequest syncConfig syncClient request
-
-              return fetchResult "push" response
+            return! unsafeFetch syncClient "push" "POST" uri allHeaders body
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

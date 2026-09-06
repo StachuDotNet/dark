@@ -101,3 +101,76 @@ let peerHeadsUpLine
         $"  note: {who} changed this {age} ago ({subject}); your edit replaces their version"
     )
   | None -> Stdlib.Option.Option.None
+
+
+/// Shared tail of the fn/type/val authoring flow: build the name-resolution
+/// context, convert the written declaration, check unresolved names, take the
+/// previous hashes, save, report, and repoint dependents. `kindWord` fills the
+/// output lines ("function" | "type" | "value"); `failState` is what a failed
+/// save returns (fn sets the exit code, type/val historically don't).
+let saveAuthored
+  (state: Cli.AppState)
+  (location: LanguageTools.ProgramTypes.PackageLocation)
+  (kind: LanguageTools.ProgramTypes.ItemKind)
+  (kindWord: String)
+  (failState: Cli.AppState)
+  (convert:
+    LanguageTools.NameResolver.NRContext
+      -> (List<LanguageTools.ProgramTypes.PackageOp>
+          * LanguageTools.ProgramTypes.Hash
+          * List<LanguageTools.Parser.Range
+              * List<String>
+              * LanguageTools.ProgramTypes.NameResolutionError>))
+  : Cli.AppState =
+  let pm = LanguageTools.PackageManager.pm ()
+
+  let ctx =
+    LanguageTools.NameResolver.NRContext
+      { onMissing = LanguageTools.NameResolver.OnMissing.Allow
+        pm = pm
+        branchId = state.currentBranchId
+        owner = location.owner
+        currentModule = location.modules }
+
+  let (ops, hash, unresolvedNames) = convert ctx
+
+  if Errors.reportUnresolvedNames state.currentBranchId unresolvedNames then
+    state
+  else
+    let previousHashes = Propagate.getAllPreviousHashes state.currentBranchId location kind
+    let isUpdate = (Stdlib.List.isEmpty previousHashes) |> Stdlib.Bool.not
+
+    // Read BEFORE the save: after it, the live binding IS the new version.
+    let peerHeadsUp =
+      if isUpdate then peerHeadsUpLine location
+      else Stdlib.Option.Option.None
+
+    match SCM.PackageOps.addAuthored state.currentBranchId ops with
+    | Ok report ->
+      AtRestCheck.printSaveReport state.currentBranchId report
+
+      let fullPath = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation location
+      let action = if isUpdate then "Updated" else "Created"
+
+      Stdlib.printLine ""
+      Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"✓ {action} {kindWord}: {fullPath}")
+
+      match peerHeadsUp with
+      | Some line -> Stdlib.printLine line
+      | None -> ()
+
+      // Repoint dependents NOW, into the draft, so you can run them against this change before
+      // deciding whether to commit. Nothing is committed; `dark commit` is still the blessing.
+      if isUpdate then
+        Propagate.repointNow state.currentBranchId location previousHashes hash kind
+
+      Stdlib.printLine ""
+      state
+
+    | Error msg ->
+      [ ""
+        (Stdlib.Cli.UI.Colors.error $"✗ Failed to add {kindWord}: {msg}")
+        "" ]
+      |> Stdlib.printLines
+
+      failState

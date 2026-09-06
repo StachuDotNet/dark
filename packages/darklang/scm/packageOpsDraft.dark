@@ -45,18 +45,11 @@ let draftOpCount () : Int64 = draftOpCountFor (currentBranch ())
 /// Sorted rather than in log order: two machines that authored the same ops in a different order committed
 /// the same thing, and an id that says otherwise would be lying about the contents it claims to name.
 let draftOpIdsFor (branchId: Uuid) : List<String> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      ("SELECT p.id FROM package_ops p WHERE " ++ draftWhere branchId ++ " ORDER BY p.id")
-      (draftParams branchId)
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.map (fun row ->
-      Stdlib.Sqlite.textField row "id" |> Stdlib.Option.withDefault "")
-    |> Stdlib.List.filter (fun id -> id != "")
-  | Error _ -> []
+  Stdlib.Sqlite.columnP
+    (localDb ())
+    ("SELECT p.id FROM package_ops p WHERE " ++ draftWhere branchId ++ " ORDER BY p.id")
+    (draftParams branchId)
+    "id"
 
 
 let draftOpIds () : List<String> = draftOpIdsFor (currentBranch ())
@@ -66,16 +59,18 @@ let draftOpIds () : List<String> = draftOpIdsFor (currentBranch ())
 /// here, which is why propagation runs at commit time -- the intermediate versions never need to be shown
 /// or propagated to.
 let draftBindingsFor (branchId: Uuid) : List<Conflicts.Binding> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      ("SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p WHERE "
-       ++ draftWhere branchId
-       ++ " ORDER BY p.origin_ts, p.rowid")
-      (draftParams branchId)
-  with
-  | Ok rows -> bindingsFromOpRows rows
-  | Error _ -> []
+  bindingsFromOpRows (draftOpRowsFor branchId)
+
+
+/// The draft's op rows for <param branchId>, oldest first -- the one query behind
+/// <fn draftBindingsFor>, <fn draftRemovalsFor> and <fn draftEntriesFor>.
+let draftOpRowsFor (branchId: Uuid) : List<Dict<String, Stdlib.Sqlite.Value>> =
+  Stdlib.Sqlite.rowsOrEmptyP
+    (localDb ())
+    ("SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p WHERE "
+     ++ draftWhere branchId
+     ++ " ORDER BY p.origin_ts, p.rowid")
+    (draftParams branchId)
 
 
 let draftBindings () : List<Conflicts.Binding> =
@@ -86,21 +81,11 @@ let draftBindings () : List<Conflicts.Binding> =
 /// Not a binding, so `draftBindingsFor` cannot carry it, and a status that counted bindings alone would
 /// read "clean" over a draft whose one op deletes something.
 let draftRemovalsFor (branchId: Uuid) : List<String> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      ("SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p WHERE "
-       ++ draftWhere branchId
-       ++ " ORDER BY p.origin_ts, p.rowid")
-      (draftParams branchId)
-  with
-  | Ok rows ->
-    bindingEntriesFromOpRows rows
-    |> Stdlib.List.filterMap (fun w ->
-      match w.binding with
-      | Some _ -> Stdlib.Option.Option.None
-      | None -> Stdlib.Option.Option.Some(Conflicts.fqn w.owner w.modules w.name))
-  | Error _ -> []
+  bindingEntriesFromOpRows (draftOpRowsFor branchId)
+  |> Stdlib.List.filterMap (fun w ->
+    match w.binding with
+    | Some _ -> Stdlib.Option.Option.None
+    | None -> Stdlib.Option.Option.Some(Conflicts.fqn w.owner w.modules w.name))
 
 
 let draftRemovals () : List<String> = draftRemovalsFor (currentBranch ())
@@ -147,22 +132,17 @@ let propagatedNames () : List<String> =
   match currentBranch () with
   | id when SCM.Ids.isMain id ->
     // main-scoped: the branch arm is below.
-    match
-      Stdlib.Sqlite.query
-        (localDb ())
-        "SELECT owner, modules, name FROM locations
-          WHERE source = 'propagation' AND unlisted_at IS NULL"
-    with
-    | Ok rows ->
-      rows
-      |> Stdlib.List.filterMap (fun row ->
-        let txt (col: String) : String =
-          Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
-
+    Stdlib.Sqlite.rowsP
+      (localDb ())
+      "SELECT owner, modules, name FROM locations
+        WHERE source = 'propagation' AND unlisted_at IS NULL"
+      []
+      (fun row ->
         match Stdlib.Sqlite.textField row "name" with
-        | Some n -> Stdlib.Option.Option.Some(Conflicts.fqn (txt "owner") (txt "modules") n)
+        | Some n ->
+          Stdlib.Option.Option.Some(
+            Conflicts.fqn (Stdlib.Sqlite.textOr row "owner") (Stdlib.Sqlite.textOr row "modules") n)
         | None -> Stdlib.Option.Option.None)
-    | Error _ -> []
   | branchId ->
     // The branch's own record, `op_branches.source`: the LAST op binding each name decides. Main's
     // followers are not this branch's, so `locations.source` cannot answer for a branch.
@@ -188,32 +168,8 @@ let propagatedNames () : List<String> =
 /// The draft, decoded, oldest first. Same predicate as `draftWhere`, so this and the counts can't disagree
 /// about what the draft is.
 let draftEntriesFor (branchId: Uuid) : List<DraftEntry> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      ("SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p WHERE "
-       ++ draftWhere branchId
-       ++ " ORDER BY p.origin_ts, p.rowid")
-      (draftParams branchId)
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
-      match
-        (Stdlib.Sqlite.textField row "id",
-         Stdlib.Sqlite.bytesField row "op_blob",
-         Stdlib.Sqlite.textField row "ts")
-      with
-      | (Some idStr, Some blob, Some ts) ->
-        match Stdlib.Uuid.parse idStr with
-        | Ok id ->
-          match tryDecodeOp id blob with
-          | Some op ->
-            Stdlib.Option.Option.Some(DraftEntry { id = idStr; ts = ts; op = op })
-          | None -> Stdlib.Option.Option.None
-        | Error _ -> Stdlib.Option.Option.None
-      | _ -> Stdlib.Option.Option.None)
-  | Error _ -> []
+  decodeOpRowEntries (draftOpRowsFor branchId)
+  |> Stdlib.List.map (fun (id, ts, op) -> DraftEntry { id = id; ts = ts; op = op })
 
 
 let draftEntries () : List<DraftEntry> = draftEntriesFor (currentBranch ())

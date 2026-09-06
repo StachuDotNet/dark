@@ -155,28 +155,25 @@ let findingId
 /// main-scoped, on purpose: this is a property of the STORE, of what main's log binds and depends on,
 /// not of the branch the process stands on.
 let detectOutdatedUsages () : List<Finding> =
-  match
-    Stdlib.Sqlite.query
-      (localDb ())
-      "SELECT l.owner, l.modules, l.name, l.item_type,
-              pd.depends_on_owner AS d_owner, pd.depends_on_modules AS d_modules,
-              pd.depends_on_name AS d_name, pd.depends_on_item_type AS d_type,
-              pd.depends_on_hash AS using_hash, cur.item_hash AS current_hash,
-              cur.item_type AS current_type
-       FROM locations l
-       JOIN package_dependencies pd ON pd.item_hash = l.item_hash
-       JOIN locations cur
-         ON cur.owner = pd.depends_on_owner
-        AND cur.modules = pd.depends_on_modules
-        AND cur.name = pd.depends_on_name
-        AND cur.unlisted_at IS NULL
-       WHERE l.unlisted_at IS NULL
-         AND cur.item_hash <> pd.depends_on_hash
-       ORDER BY l.owner, l.modules, l.name"
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT l.owner, l.modules, l.name, l.item_type,
+            pd.depends_on_owner AS d_owner, pd.depends_on_modules AS d_modules,
+            pd.depends_on_name AS d_name, pd.depends_on_item_type AS d_type,
+            pd.depends_on_hash AS using_hash, cur.item_hash AS current_hash,
+            cur.item_type AS current_type
+     FROM locations l
+     JOIN package_dependencies pd ON pd.item_hash = l.item_hash
+     JOIN locations cur
+       ON cur.owner = pd.depends_on_owner
+      AND cur.modules = pd.depends_on_modules
+      AND cur.name = pd.depends_on_name
+      AND cur.unlisted_at IS NULL
+     WHERE l.unlisted_at IS NULL
+       AND cur.item_hash <> pd.depends_on_hash
+     ORDER BY l.owner, l.modules, l.name"
+    []
+    (fun row ->
       let txt (col: String) : String =
         Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
 
@@ -213,7 +210,6 @@ let detectOutdatedUsages () : List<Finding> =
                 LanguageTools.ProgramTypes.Hash.Hash(txt "current_hash")
               ) }
       ))
-  | Error _ -> []
 
 
 /// Ack ids, read from the shared conflicts record.
@@ -303,19 +299,14 @@ let detectOutdatedUsagesOn (branchId: Uuid) : List<Finding> =
   else
     PackageOps.chainBindings branchId
     |> Stdlib.List.map (fun b ->
-      match
-        Stdlib.Sqlite.queryP
-          (localDb ())
-          "SELECT depends_on_owner AS d_owner, depends_on_modules AS d_modules,
-                  depends_on_name AS d_name, depends_on_item_type AS d_type,
-                  depends_on_hash AS using_hash
-           FROM package_dependencies WHERE item_hash = @p0"
-          [ b.hash ]
-      with
-      | Error _ -> []
-      | Ok rows ->
-        rows
-        |> Stdlib.List.filterMap (fun row ->
+      Stdlib.Sqlite.rowsP
+        (localDb ())
+        "SELECT depends_on_owner AS d_owner, depends_on_modules AS d_modules,
+                depends_on_name AS d_name, depends_on_item_type AS d_type,
+                depends_on_hash AS using_hash
+         FROM package_dependencies WHERE item_hash = @p0"
+        [ b.hash ]
+        (fun row ->
           let txt (col: String) : String =
             Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
 

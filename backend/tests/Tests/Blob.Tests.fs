@@ -483,17 +483,15 @@ let sweepDeletesOrphansButKeepsReferenced =
       let valueTypeBytes =
         BS.RT.ValueType.serialize (RT.Dval.toValueType referencingDval)
       do!
-        Sql.query
+        execSqlP
           """
           INSERT OR REPLACE INTO package_values (hash, pt_def, rt_dval, value_type)
           VALUES (@hash, @pt_def, @rt_dval, @value_type)
           """
-        |> Sql.parameters
           [ "hash", Sql.string fakeHashStr
             "pt_def", Sql.bytes [||]
             "rt_dval", Sql.bytes rtDvalBytes
             "value_type", Sql.bytes valueTypeBytes ]
-        |> Sql.executeStatementAsync
 
       let! deleted = PMBlob.sweepOrphans () |> Ply.toTask
       Expect.isGreaterThanOrEqual

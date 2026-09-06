@@ -64,6 +64,15 @@ let runWithStdinAndCommand (input: String) (args: List<String>): String =
   callOutput result
 
 
+/// Run a command and compare its whole output exactly.
+let expectExact (args: List<String>) (expected: String): TestResult =
+  let output = runWithCommand args
+  if output == expected then
+    TestResult.Pass
+  else
+    TestResult.Fail $"Expected '{expected}', got '{output}'"
+
+
 /// `dark conflicts walk`, on a conflict this test makes for itself.
 ///
 /// Everything happens between a throwaway parent and its child, so main gains nothing.
@@ -152,35 +161,19 @@ let testStatusCommand (): TestResult =
 
 let testEvalBoolAnd (): TestResult =
   // `run` is for script files now; calling a package function is `eval`'s job, without the `@`.
-  let output = runWithCommand ["eval", "Stdlib.Bool.and true false"]
-  if output == "false" then
-    TestResult.Pass
-  else
-    TestResult.Fail $"Expected 'false', got '{output}'"
+  expectExact ["eval", "Stdlib.Bool.and true false"] "false"
 
 
 let testEvalInt64Add (): TestResult =
-  let output = runWithCommand ["eval", "Stdlib.Int64.add 5L 3L"]
-  if output == "8" then
-    TestResult.Pass
-  else
-    TestResult.Fail $"Expected '8', got '{output}'"
+  expectExact ["eval", "Stdlib.Int64.add 5L 3L"] "8"
 
 
 let testEvalStringLength (): TestResult =
-  let output = runWithCommand ["eval", "Stdlib.String.length \"hello\""]
-  if output == "5" then
-    TestResult.Pass
-  else
-    TestResult.Fail $"Expected '5', got '{output}'"
+  expectExact ["eval", "Stdlib.String.length \"hello\""] "5"
 
 
 let testEvalListLength (): TestResult =
-  let output = runWithCommand ["eval", "[1, 2, 3] |> Stdlib.List.length"]
-  if output == "3" then
-    TestResult.Pass
-  else
-    TestResult.Fail $"Expected '3', got '{output}'"
+  expectExact ["eval", "[1, 2, 3] |> Stdlib.List.length"] "3"
 
 
 /// Create, update, and what happens to a module that does not type-check.
@@ -620,19 +613,11 @@ let testHelpForLs (): TestResult =
 
 
 let testEvalSimpleExpression (): TestResult =
-  let output = runWithCommand ["eval", "2L + 3L"]
-  if output == "5" then
-    TestResult.Pass
-  else
-    TestResult.Fail $"Expected '5', got '{output}'"
+  expectExact ["eval", "2L + 3L"] "5"
 
 
 let testEvalStringExpression (): TestResult =
-  let output = runWithCommand ["eval", "\"hello\" ++ \"world\""]
-  if output == "helloworld" then
-    TestResult.Pass
-  else
-    TestResult.Fail $"Expected 'helloworld', got '{output}'"
+  expectExact ["eval", "\"hello\" ++ \"world\""] "helloworld"
 
 
 // ---------------------------------------------------------------- compiler views

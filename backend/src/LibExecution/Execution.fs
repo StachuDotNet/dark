@@ -425,30 +425,43 @@ let private prettyPrintFallback
   | Ok other ->
     $"<pretty-print failed for {label}: printer returned {other}\n  value: {raw}>"
 
+/// Calls a Dark pretty printer that returns a string: prepends the branch id to
+/// `args`, executes the fn at `fnHash`, and unwraps the `DString`; anything else
+/// goes through `prettyPrintFallback` with `label` and `raw`.
+let private callStringPrinter
+  (state : RT.ExecutionState)
+  (fnHash : string)
+  (label : string)
+  (raw : obj)
+  (args : List<RT.Dval>)
+  : Task<string> =
+  task {
+    let fnName = RT.FQFnName.fqPackage fnHash
+    let args = NEList.ofList (RT.DUuid state.branchId.Guid) args
+    match! executeFunction state fnName [] args with
+    | Ok(RT.DString s) -> return s
+    | result -> return prettyPrintFallback label raw result
+  }
+
 let fnNameToString
   (state : RT.ExecutionState)
   (name : RT.FQFnName.FQFnName)
   : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.fnName ())
-    let args =
-      NEList.ofList (RT.DUuid state.branchId.Guid) [ RT2DT.FQFnName.toDT name ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "fnName" name result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.fnName ())
+    "fnName"
+    name
+    [ RT2DT.FQFnName.toDT name ]
 
 
 let dvalToRepr (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.dval ())
-    let args = NEList.ofList (RT.DUuid state.branchId.Guid) [ RT2DT.Dval.toDT dval ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "dval" dval result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.dval ())
+    "dval"
+    dval
+    [ RT2DT.Dval.toDT dval ]
 
 
 /// Like `dvalToRepr`, but laid out for a line `width` columns wide and painted for a terminal.
@@ -466,51 +479,33 @@ let dvalToReprForTerminal
   (currentModule : List<string>)
   (dval : RT.Dval)
   : Task<string> =
-  task {
-    let fnName = RT.FQFnName.fqPackage (PackageRefs.Fn.Cli.renderValue ())
-    let currentModule = currentModule |> List.map RT.DString |> Dval.list RT.KTString
-    let args =
-      NEList.ofList
-        (RT.DUuid state.branchId.Guid)
-        [ Dval.int (bigint width)
-          RT.DBool color
-          currentModule
-          RT2DT.Dval.toDT dval ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "dval" dval result
-  }
+  let currentModule = currentModule |> List.map RT.DString |> Dval.list RT.KTString
+  callStringPrinter
+    state
+    (PackageRefs.Fn.Cli.renderValue ())
+    "dval"
+    dval
+    [ Dval.int (bigint width); RT.DBool color; currentModule; RT2DT.Dval.toDT dval ]
 
 
 let typeRefToString
   (state : RT.ExecutionState)
   (typeRef : RT.TypeReference)
   : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (
-        PackageRefs.Fn.PrettyPrinter.RuntimeTypes.typeReference ()
-      )
-    let args =
-      NEList.ofList
-        (RT.DUuid state.branchId.Guid)
-        [ RT2DT.TypeReference.toDT typeRef ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "typeRef" typeRef result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.typeReference ())
+    "typeRef"
+    typeRef
+    [ RT2DT.TypeReference.toDT typeRef ]
 
 let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (
-        PackageRefs.Fn.PrettyPrinter.RuntimeTypes.Dval.valueTypeName ()
-      )
-    let args = NEList.ofList (RT.DUuid state.branchId.Guid) [ RT2DT.Dval.toDT dval ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "typeName" dval result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.Dval.valueTypeName ())
+    "typeName"
+    dval
+    [ RT2DT.Dval.toDT dval ]
 
 
 

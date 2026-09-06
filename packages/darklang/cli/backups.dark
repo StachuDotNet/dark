@@ -6,10 +6,6 @@ module Darklang.Cli.Backups
 // store), and nothing else prunes them. So the answer to "if this goes wrong, what can I go back to?"
 // lives here rather than in `ls`, and so does the pruning.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
 /// Where the upgrade path puts them: a `backups` directory beside the store.
 let backupDir () : String =
   let db = Stdlib.LocalStore.path ()
@@ -48,12 +44,12 @@ let sizeOf (name: String) : String =
 let executeList (state: AppState) : AppState =
   match list () with
   | [] ->
-    printOk "no backups yet."
-    printHint "  One is taken automatically before an upgrade folds a new seed."
-    printHint "  `dark backups now` takes one on demand."
+    Cli.printOk "no backups yet."
+    Cli.printHint "  One is taken automatically before an upgrade folds a new seed."
+    Cli.printHint "  `dark backups now` takes one on demand."
     state
   | names ->
-    printOk
+    Cli.printOk
       $"""{Cli.Text.plural (Stdlib.List.length names) "backup"} in {backupDir ()}"""
 
     names
@@ -61,9 +57,9 @@ let executeList (state: AppState) : AppState =
       Stdlib.printLine $"  {name}  ({sizeOf name})")
 
     Stdlib.printLine ""
-    printHint "  dark backups now             take one now"
-    printHint "  dark backups restore <name>  put one in place of the store"
-    printHint "  dark backups prune <n>       keep the newest n, delete the rest"
+    Cli.printHint "  dark backups now             take one now"
+    Cli.printHint "  dark backups restore <name>  put one in place of the store"
+    Cli.printHint "  dark backups prune <n>       keep the newest n, delete the rest"
     state
 
 /// The store is in WAL mode, so recent writes can sit in `data.db-wal` and not in `data.db`. A copy of
@@ -78,7 +74,7 @@ let executeNow (state: AppState) : AppState =
   let db = Stdlib.LocalStore.path ()
 
   if Stdlib.Bool.not (Stdlib.Cli.File.exists db) then
-    printErr "there's no store to back up yet."
+    Cli.printErr "there's no store to back up yet."
     state
   else
     let dir = backupDir ()
@@ -89,10 +85,10 @@ let executeNow (state: AppState) : AppState =
 
     match Stdlib.Cli.File.copy db target with
     | Ok _ ->
-      printOk $"copied the store to {target}"
+      Cli.printOk $"copied the store to {target}"
       state
     | Error _ ->
-      printErr $"couldn't write {target}"
+      Cli.printErr $"couldn't write {target}"
       state
 
 /// `dark backups restore <name> [-y]`. Puts the named backup in place of the store. The store as it is
@@ -103,20 +99,20 @@ let executeRestore (state: AppState) (name: String) (autoConfirm: Bool) : AppSta
   let source = $"{backupDir ()}/{name}"
 
   if Stdlib.Bool.not (Stdlib.List.``member`` (list ()) name) then
-    printErr $"no backup named \"{name}\"."
-    printHint "  `dark backups` lists them."
+    Cli.printErr $"no backup named \"{name}\"."
+    Cli.printHint "  `dark backups` lists them."
     state
   else
 
   // Warning like DISCARDING: green on "replaces the store" reads as "already fine".
   Stdlib.printLine (Stdlib.Cli.UI.Colors.warning $"  RESTORING {name} replaces the store.")
-  printHint "  the store as it is now is copied aside first, so this is undoable."
+  Cli.printHint "  the store as it is now is copied aside first, so this is undoable."
 
   let confirmed =
     Cli.Prompt.confirmExplicit autoConfirm (Stdlib.Cli.UI.Colors.warning "\n  Restore it? [y/N]: ")
 
   if Stdlib.Bool.not confirmed then
-    printOk "  kept. (`dark backups restore <name> -y` if you mean it -- a piped stdin can't answer this.)"
+    Cli.printOk "  kept. (`dark backups restore <name> -y` if you mean it -- a piped stdin can't answer this.)"
     state
   else
     let stamp = Stdlib.DateTime.toStringISO8601BasicDateTime (Stdlib.DateTime.now ())
@@ -125,7 +121,7 @@ let executeRestore (state: AppState) (name: String) (autoConfirm: Bool) : AppSta
 
     match Stdlib.Cli.File.copy db aside with
     | Error _ ->
-      printErr $"couldn't copy the current store aside to {aside}; nothing restored."
+      Cli.printErr $"couldn't copy the current store aside to {aside}; nothing restored."
       state
     | Ok _ ->
       match Stdlib.Cli.File.copy source db with
@@ -133,10 +129,10 @@ let executeRestore (state: AppState) (name: String) (autoConfirm: Bool) : AppSta
         // The old store's WAL was truncated above; the -wal/-shm files that remain describe nothing.
         let _ = Stdlib.Cli.File.delete $"{db}-wal"
         let _ = Stdlib.Cli.File.delete $"{db}-shm"
-        printOk $"restored {name}. The store as it was is at {aside}."
+        Cli.printOk $"restored {name}. The store as it was is at {aside}."
         state
       | Error _ ->
-        printErr $"couldn't copy {source} over the store. The store is unchanged; a copy is at {aside}."
+        Cli.printErr $"couldn't copy {source} over the store. The store is unchanged; a copy is at {aside}."
         state
 
 /// `dark backups prune <keep> [-y]`. Deletes the oldest, keeping the newest <keep>. Shows what would go
@@ -145,18 +141,18 @@ let executeRestore (state: AppState) (name: String) (autoConfirm: Bool) : AppSta
 let executePrune (state: AppState) (keepArg: String) (autoConfirm: Bool) : AppState =
   match Stdlib.Int.parse keepArg with
   | Error _ ->
-    printErr $"\"{keepArg}\" isn't a number of backups to keep."
+    Cli.printErr $"\"{keepArg}\" isn't a number of backups to keep."
     state
   | Ok keep ->
     if keep < 0 then
-      printErr "keep a non-negative number of backups."
+      Cli.printErr "keep a non-negative number of backups."
       state
     else
       let all = list ()
       let doomed = Stdlib.List.drop all keep
 
       if Stdlib.List.isEmpty doomed then
-        printOk
+        Cli.printOk
           $"""nothing to prune: {Cli.Text.plural (Stdlib.List.length all) "backup"}, keeping {keepArg}."""
         state
       else
@@ -171,7 +167,7 @@ let executePrune (state: AppState) (keepArg: String) (autoConfirm: Bool) : AppSt
         Cli.Prompt.confirmExplicit autoConfirm (Stdlib.Cli.UI.Colors.warning "\n  Delete them? [y/N]: ")
 
       if Stdlib.Bool.not confirmed then
-        printOk "  kept. (`dark backups prune <n> -y` if you mean it -- a piped stdin can't answer this.)"
+        Cli.printOk "  kept. (`dark backups prune <n> -y` if you mean it -- a piped stdin can't answer this.)"
         state
       else
         let deleted =
@@ -180,10 +176,10 @@ let executePrune (state: AppState) (keepArg: String) (autoConfirm: Bool) : AppSt
             match Stdlib.Cli.File.delete $"{backupDir ()}/{name}" with
             | Ok _ -> Stdlib.Option.Option.Some name
             | Error _ ->
-              printErr $"  couldn't delete {name}"
+              Cli.printErr $"  couldn't delete {name}"
               Stdlib.Option.Option.None)
 
-        printOk
+        Cli.printOk
           $"""deleted {Cli.Text.plural (Stdlib.List.length deleted) "backup"}, kept {keepArg}."""
         state
 
@@ -200,15 +196,15 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [ "restore", name, "-y" ]
   | [ "restore", name, "--yes" ] -> executeRestore state name true
   | [ "restore" ] ->
-    printErr "restore needs a backup's name: `dark backups restore <name>`."
-    printHint "  `dark backups` lists them."
+    Cli.printErr "restore needs a backup's name: `dark backups restore <name>`."
+    Cli.printHint "  `dark backups` lists them."
     state
   | [ "prune" ] ->
-    printErr "prune needs how many to keep: `dark backups prune 3`."
+    Cli.printErr "prune needs how many to keep: `dark backups prune 3`."
     state
   | _ ->
-    printErr $"""`dark backups {Stdlib.String.join args " "}` isn't a form of this command."""
-    printHint "  dark backups | dark backups now | dark backups restore <name> | dark backups prune <n>"
+    Cli.printErr $"""`dark backups {Stdlib.String.join args " "}` isn't a form of this command."""
+    Cli.printHint "  dark backups | dark backups now | dark backups restore <name> | dark backups prune <n>"
     state
 
 

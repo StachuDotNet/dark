@@ -7,10 +7,6 @@ module Darklang.Cli.Setup
 // screen. This asks for each in turn, takes the secret without echoing it, and reports what it managed
 // rather than what it attempted.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
 /// Ask, and hand back what was typed with the surrounding space removed. An empty answer means "keep
 /// what's there", which is what makes re-running this safe.
 let ask (question: String) : String =
@@ -30,15 +26,15 @@ let askWithCurrent (label: String) (current: String) : String =
 /// `dark sync setup`
 let execute (state: AppState) (_args: List<String>) : AppState =
   if Stdlib.Bool.not (Cli.Prompt.interactive ()) then
-    printErr "dark sync setup asks questions, so it needs a terminal."
-    printHint "  non-interactive: dark identity <name> && dark connect <url> --secret <secret>"
+    Cli.printErr "dark sync setup asks questions, so it needs a terminal."
+    Cli.printHint "  non-interactive: dark identity <name> && dark connect <url> --secret <secret>"
     state
   else
 
   Stdlib.printLine ""
-  printOk "Setting up sync."
+  Cli.printOk "Setting up sync."
 
-  printHint
+  Cli.printHint
     "  A relay is where your ops go so your other machines can have them. Enter to keep a value."
 
   Stdlib.printLine ""
@@ -47,14 +43,14 @@ let execute (state: AppState) (_args: List<String>) : AppState =
   let identity = askWithCurrent "This instance's name" (SCM.PackageOps.identity ())
 
   if identity == "" then
-    printErr "an instance needs a name before it can sync."
+    Cli.printErr "an instance needs a name before it can sync."
     state
   else
 
   let relay = askWithCurrent "Relay url" (SCM.PackageOps.relay ())
 
   if relay == "" then
-    printErr "a relay url is needed to sync."
+    Cli.printErr "a relay url is needed to sync."
     state
   else
 
@@ -88,12 +84,12 @@ let execute (state: AppState) (_args: List<String>) : AppState =
 
   match secretOutcome with
   | Error why ->
-    printErr why
+    Cli.printErr why
 
-    printHint
+    Cli.printHint
       "  Short secrets turn up inside ops by chance, and the guard that stops you publishing one"
 
-    printHint "  cannot tell a real leak from a coincidence, so every push would be refused."
+    Cli.printHint "  cannot tell a real leak from a coincidence, so every push would be refused."
 
     state
   | Ok secretNote ->
@@ -101,18 +97,18 @@ let execute (state: AppState) (_args: List<String>) : AppState =
     let _ = SCM.PackageOps.setRelay relay
 
     Stdlib.printLine ""
-    printOk $"  identity: {identity}"
-    printOk $"  relay:    {relay}"
-    printOk $"  {secretNote}"
+    Cli.printOk $"  identity: {identity}"
+    Cli.printOk $"  relay:    {relay}"
+    Cli.printOk $"  {secretNote}"
     Stdlib.printLine ""
 
     // Push once, so setup ends with the instance actually synced rather than merely configured. A
     // failure here is reported and kept: connecting while offline is legitimate, and `dark push` retries.
-    printHint "  Pushing your ops..."
+    Cli.printHint "  Pushing your ops..."
     let after = Cli.Sync.executePush state relay
 
     Stdlib.printLine ""
-    printOk "Set up. `dark sync` from now on; `dark sync setup` again to change any of it."
+    Cli.printOk "Set up. `dark sync` from now on; `dark sync setup` again to change any of it."
     after
 
 

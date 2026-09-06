@@ -1725,6 +1725,19 @@ module PackageOp =
   let typeName () =
     FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.packageOp ())
 
+  /// Encodes SetName/Unbind's `previous`. A `Hash`, not a bare string: the Dark
+  /// side declares `Option<Hash>` and `Hash` is a single-case wrapper there, so
+  /// handing it a DString typechecks nowhere and throws the first time anything
+  /// unwraps it.
+  let private previousToDT (previous : Option<PT.Hash>) : Dval =
+    previous |> Option.map Hash.toDT |> Dval.option (Hash.knownType ())
+
+  /// Decodes SetName/Unbind's `previous`; anything but `Some h` reads as None.
+  let private previousFromDT (d : Dval) : Option<PT.Hash> =
+    match d with
+    | DEnum(_, _, _, "Some", [ h ]) -> Some(Hash.fromDT h)
+    | _ -> None
+
   let toDT (op : PT.PackageOp) : Dval =
     let (caseName, fields) =
       match op with
@@ -1733,16 +1746,9 @@ module PackageOp =
       | PT.PackageOp.AddFn f -> "AddFn", [ PackageFn.toDT f ]
       | PT.PackageOp.SetName(loc, target, previous) ->
         "SetName",
-        [ PackageLocation.toDT loc
-          Reference.toDT target
-          // A `Hash`, not a bare string: the Dark side declares `Option<Hash>` and `Hash` is a
-          // single-case wrapper there, so handing it a DString typechecks nowhere and throws the first
-          // time anything unwraps it.
-          previous |> Option.map Hash.toDT |> Dval.option (Hash.knownType ()) ]
+        [ PackageLocation.toDT loc; Reference.toDT target; previousToDT previous ]
       | PT.PackageOp.Unbind(loc, previous) ->
-        "Unbind",
-        [ PackageLocation.toDT loc
-          previous |> Option.map Hash.toDT |> Dval.option (Hash.knownType ()) ]
+        "Unbind", [ PackageLocation.toDT loc; previousToDT previous ]
       | PT.PackageOp.Deprecate(target, kind, message) ->
         "Deprecate",
         [ Reference.toDT target; DeprecationKind.toDT kind; DString message ]
@@ -1766,10 +1772,7 @@ module PackageOp =
       Some(PT.PackageOp.AddValue(PackageValue.fromDT v))
     | DEnum(_, _, [], "AddFn", [ f ]) -> Some(PT.PackageOp.AddFn(PackageFn.fromDT f))
     | DEnum(_, _, [], "SetName", [ loc; target; previous ]) ->
-      let previous =
-        match previous with
-        | DEnum(_, _, _, "Some", [ h ]) -> Some(Hash.fromDT h)
-        | _ -> None
+      let previous = previousFromDT previous
       Some(
         PT.PackageOp.SetName(
           PackageLocation.fromDT loc,
@@ -1778,11 +1781,7 @@ module PackageOp =
         )
       )
     | DEnum(_, _, [], "Unbind", [ loc; previous ]) ->
-      let previous =
-        match previous with
-        | DEnum(_, _, _, "Some", [ h ]) -> Some(Hash.fromDT h)
-        | _ -> None
-      Some(PT.PackageOp.Unbind(PackageLocation.fromDT loc, previous))
+      Some(PT.PackageOp.Unbind(PackageLocation.fromDT loc, previousFromDT previous))
     | DEnum(_, _, [], "Deprecate", [ target; kind; DString message ]) ->
       Some(
         PT.PackageOp.Deprecate(

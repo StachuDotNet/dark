@@ -82,8 +82,8 @@ let rowsToSyncOps (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<SyncOp>
 
 /// EXPORT every op as a portable wire record, oldest-first (full backup / file transfer).
 let exportOps () : List<SyncOp> =
-  match
-    Stdlib.Sqlite.query
+  rowsToSyncOps (
+    Stdlib.Sqlite.rowsOrEmptyP
       (PackageOps.localDb ())
       // Main's EFFECTIVE log only. The file is the documented backup and machine-to-machine path, and
       // importing it folds everything in it into main at the other end -- so a branch's unmerged work
@@ -99,9 +99,7 @@ let exportOps () : List<SyncOp> =
          AND commit_hash IS NOT NULL
          AND id NOT IN (SELECT op_id FROM op_branches)
        ORDER BY rowid ASC"
-  with
-  | Ok rows -> rowsToSyncOps rows
-  | Error _ -> []
+      [])
 
 
 /// Main's effective ops that <param relay> is not known to hold, in log order. This is what PUSH sends:
@@ -113,8 +111,8 @@ let exportOps () : List<SyncOp> =
 /// merged work never left the machine. Asking "which effective ops does this relay not hold" cannot be
 /// wrong about a flip it never heard of.
 let unpushedFor (relay: String) : List<SyncOp> =
-  match
-    Stdlib.Sqlite.queryP
+  rowsToSyncOps (
+    Stdlib.Sqlite.rowsOrEmptyP
       (PackageOps.localDb ())
       // COMMITTED ops only. A draft that ships arrives under the receiver's import commit, and the
       // message you write later never travels (the ops are already marked pushed); a draft is also
@@ -125,10 +123,7 @@ let unpushedFor (relay: String) : List<SyncOp> =
          AND p.commit_hash IS NOT NULL
          AND NOT EXISTS (SELECT 1 FROM sync_pushed s WHERE s.relay = @p0 AND s.op_id = p.id)
        ORDER BY p.rowid ASC"
-      [ relay ]
-  with
-  | Ok rows -> rowsToSyncOps rows
-  | Error _ -> []
+      [ relay ])
 
 /// How many effective ops <param relay> is not known to hold. The push skip and `sync status` ask this,
 /// so the two cannot disagree about whether there is anything to send.
@@ -157,20 +152,16 @@ let branchChannel (relay: String) : String = $"{relay}/branch"
 /// `sync status` would say "in sync" over a branch that exists on one machine only. A branch push and
 /// a branch pull both record what the channel holds.
 let unpushedBranches (relay: String) : List<(String * Int64)> =
-  match
-    Stdlib.Sqlite.queryP
-      (PackageOps.localDb ())
-      "SELECT b.name AS name, b.id AS id, count(*) AS n
-       FROM op_branches ob
-       JOIN branches b ON b.id = ob.branch_id
-       WHERE b.merged_at IS NULL AND b.archived_at IS NULL
-         AND NOT EXISTS (SELECT 1 FROM sync_pushed s WHERE s.relay = @p0 AND s.op_id = ob.op_id)
-       GROUP BY b.id ORDER BY b.name"
-      [ branchChannel relay ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
+  Stdlib.Sqlite.rowsP
+    (PackageOps.localDb ())
+    "SELECT b.name AS name, b.id AS id, count(*) AS n
+     FROM op_branches ob
+     JOIN branches b ON b.id = ob.branch_id
+     WHERE b.merged_at IS NULL AND b.archived_at IS NULL
+       AND NOT EXISTS (SELECT 1 FROM sync_pushed s WHERE s.relay = @p0 AND s.op_id = ob.op_id)
+     GROUP BY b.id ORDER BY b.name"
+    [ branchChannel relay ]
+    (fun row ->
       match
         (Stdlib.Sqlite.textField row "name",
          Stdlib.Sqlite.textField row "id",
@@ -179,7 +170,6 @@ let unpushedBranches (relay: String) : List<(String * Int64)> =
       | (Some name, Some id, Some n) ->
         Stdlib.Option.Option.Some(((if name == "" then id else name), n))
       | _ -> Stdlib.Option.Option.None)
-  | Error _ -> []
 
 /// Record that <param relay> holds these ops: after a push it confirmed, and after a pull that brought
 /// them from it. Idempotent.
@@ -249,21 +239,19 @@ let exportOwnedSince
        AND p.id NOT IN (SELECT op_id FROM op_branches)
      ORDER BY p.rowid ASC LIMIT @p2"
 
-  match
-    Stdlib.Sqlite.queryP
+  let rows =
+    Stdlib.Sqlite.rowsOrEmptyP
       (PackageOps.localDb ())
       sql
       [ owner, Stdlib.Int64.toString sinceSeq, Stdlib.Int64.toString relayPageSize ]
-  with
-  | Ok rows ->
-    let maxSeq =
-      rows
-      |> Stdlib.List.fold sinceSeq (fun acc row ->
-        let seq = Stdlib.Sqlite.intField row "seq" |> Stdlib.Option.withDefault 0L
-        if seq > acc then seq else acc)
 
-    (rowsToSyncOps rows, maxSeq)
-  | Error _ -> ([], sinceSeq)
+  let maxSeq =
+    rows
+    |> Stdlib.List.fold sinceSeq (fun acc row ->
+      let seq = Stdlib.Sqlite.intField row "seq" |> Stdlib.Option.withDefault 0L
+      if seq > acc then seq else acc)
+
+  (rowsToSyncOps rows, maxSeq)
 
 /// How many ops a relay hands back in one response.
 ///
@@ -306,14 +294,12 @@ let rememberRelayInstance (sourceId: String) (relayInstance: String) : Unit =
 /// Not a pull position: paging is by the relay's arrival order and its cursor is stored per source
 /// (`pullCursor`). A stamp cannot serve as one -- see `exportOwnedSince`.
 let localMaxOriginTs () : String =
-  match
-    Stdlib.Sqlite.queryOneP
-      (PackageOps.localDb ())
-      "SELECT max(origin_ts) AS m FROM package_ops"
-      []
-  with
-  | Some row -> Stdlib.Sqlite.textField row "m" |> Stdlib.Option.withDefault ""
-  | None -> ""
+  Stdlib.Sqlite.scalarTextP
+    (PackageOps.localDb ())
+    "SELECT max(origin_ts) AS m FROM package_ops"
+    []
+    "m"
+    ""
 
 /// A lightweight summary of an op log -- count + cursor -- for a cheap "are we in sync?"
 /// check that doesn't transfer the whole log. Serves the relay's /sync/head endpoint.

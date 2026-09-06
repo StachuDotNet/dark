@@ -39,16 +39,12 @@ let dependenciesOf
   : List<(LanguageTools.ProgramTypes.Hash * String)> =
   let h = LanguageTools.ProgramTypes.hashToString source
 
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT DISTINCT depends_on_hash, depends_on_item_type
-       FROM package_dependencies WHERE item_hash = @p0"
-      [ h ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT DISTINCT depends_on_hash, depends_on_item_type
+     FROM package_dependencies WHERE item_hash = @p0"
+    [ h ]
+    (fun row ->
       match
         (Stdlib.Sqlite.textField row "depends_on_hash",
          Stdlib.Sqlite.textField row "depends_on_item_type")
@@ -56,7 +52,6 @@ let dependenciesOf
       | (Some dh, Some dk) ->
         Stdlib.Option.Option.Some((LanguageTools.ProgramTypes.Hash.Hash dh, dk))
       | _ -> Stdlib.Option.Option.None)
-  | Error _ -> []
 
 /// The branch chain's own bindings as (hash, location, kind), or [] on main.
 ///
@@ -98,23 +93,19 @@ let dependentsOf
     // only the hashes the join could not name are looked up in the overlay, which on a branch is a
     // handful and on main is none.
     let mainResolved =
-      match
-        // main-scoped: main's half, by join; the overlay half below answers for the branch.
-        Stdlib.Sqlite.queryP
-          (localDb ())
-          "SELECT DISTINCT l.item_hash, l.item_type, l.owner, l.modules, l.name
-           FROM package_dependencies pd
-           JOIN locations l ON l.item_hash = pd.item_hash AND l.unlisted_at IS NULL
-           WHERE pd.depends_on_item_type = @p0
-             AND pd.depends_on_owner = @p1
-             AND pd.depends_on_modules = @p2
-             AND pd.depends_on_name = @p3
-           ORDER BY l.item_hash"
-          [ kindString kind, loc.owner, modules, loc.name ]
-      with
-      | Ok rows ->
-        rows
-        |> Stdlib.List.filterMap (fun row ->
+      // main-scoped: main's half, by join; the overlay half below answers for the branch.
+      Stdlib.Sqlite.rowsP
+        (localDb ())
+        "SELECT DISTINCT l.item_hash, l.item_type, l.owner, l.modules, l.name
+         FROM package_dependencies pd
+         JOIN locations l ON l.item_hash = pd.item_hash AND l.unlisted_at IS NULL
+         WHERE pd.depends_on_item_type = @p0
+           AND pd.depends_on_owner = @p1
+           AND pd.depends_on_modules = @p2
+           AND pd.depends_on_name = @p3
+         ORDER BY l.item_hash"
+        [ kindString kind, loc.owner, modules, loc.name ]
+        (fun row ->
           match
             (Stdlib.Sqlite.textField row "item_hash",
              Stdlib.Sqlite.textField row "item_type",
@@ -127,7 +118,6 @@ let dependentsOf
               (LanguageTools.ProgramTypes.Hash.Hash h, locationOf o m n, kindOf k)
             )
           | _ -> Stdlib.Option.Option.None)
-      | Error _ -> []
 
     if Stdlib.List.isEmpty overlay then
       mainResolved
@@ -155,21 +145,17 @@ let dependentsOf
           | (h, _, _) -> LanguageTools.ProgramTypes.hashToString h)
 
       let fromOverlay =
-        match
-          Stdlib.Sqlite.queryP
-            (localDb ())
-            "SELECT DISTINCT pd.item_hash
-             FROM package_dependencies pd
-             WHERE pd.depends_on_item_type = @p0
-               AND pd.depends_on_owner = @p1
-               AND pd.depends_on_modules = @p2
-               AND pd.depends_on_name = @p3
-             ORDER BY pd.item_hash"
-            [ kindString kind, loc.owner, modules, loc.name ]
-        with
-        | Ok rows ->
-          rows
-          |> Stdlib.List.filterMap (fun row ->
+        Stdlib.Sqlite.rowsP
+          (localDb ())
+          "SELECT DISTINCT pd.item_hash
+           FROM package_dependencies pd
+           WHERE pd.depends_on_item_type = @p0
+             AND pd.depends_on_owner = @p1
+             AND pd.depends_on_modules = @p2
+             AND pd.depends_on_name = @p3
+           ORDER BY pd.item_hash"
+          [ kindString kind, loc.owner, modules, loc.name ]
+          (fun row ->
             match Stdlib.Sqlite.textField row "item_hash" with
             | Some h ->
               if Stdlib.List.member named h then
@@ -184,7 +170,6 @@ let dependentsOf
                   | (oh, oloc, okind) ->
                     (LanguageTools.ProgramTypes.Hash.Hash oh, oloc, okind))
             | None -> Stdlib.Option.Option.None)
-        | Error _ -> []
 
       Stdlib.List.append mainResolved fromOverlay)
   |> Stdlib.List.flatten
@@ -252,17 +237,13 @@ let dependencyEdges
   : List<(LanguageTools.ProgramTypes.Hash * LanguageTools.ProgramTypes.ItemKind * LanguageTools.ProgramTypes.PackageLocation)> =
   let h = LanguageTools.ProgramTypes.hashToString source
 
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT DISTINCT depends_on_hash, depends_on_item_type,
-              depends_on_owner, depends_on_modules, depends_on_name
-       FROM package_dependencies WHERE item_hash = @p0"
-      [ h ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT DISTINCT depends_on_hash, depends_on_item_type,
+            depends_on_owner, depends_on_modules, depends_on_name
+     FROM package_dependencies WHERE item_hash = @p0"
+    [ h ]
+    (fun row ->
       match
         (Stdlib.Sqlite.textField row "depends_on_hash",
          Stdlib.Sqlite.textField row "depends_on_item_type",
@@ -275,4 +256,3 @@ let dependencyEdges
           (LanguageTools.ProgramTypes.Hash.Hash dh, kindOf dk, locationOf o m n)
         )
       | _ -> Stdlib.Option.Option.None)
-  | Error _ -> []

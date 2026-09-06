@@ -45,10 +45,7 @@ let draftNamings () : List<Selected> =
     | Decision(_, location, _, Override target)
     | SetName(location, target, _) ->
       let itemType =
-        match LanguageTools.ProgramTypes.Reference.kind target with
-        | Fn -> "fn"
-        | Type -> "type"
-        | Value -> "value"
+        SCM.Deps.kindString (LanguageTools.ProgramTypes.Reference.kind target)
 
       Stdlib.Option.Option.Some(
         Selected
@@ -89,17 +86,13 @@ let draftDepsOf (added: List<String>) (hashes: List<String>) : List<String> =
     let quoted =
       hashes |> Stdlib.List.map (fun h -> $"'{h}'") |> Stdlib.String.join ", "
 
-    match
-      Stdlib.Sqlite.query
-        (localDb ())
-        $"SELECT DISTINCT depends_on_hash AS h FROM package_dependencies
-          WHERE item_hash IN ({quoted}) AND depends_on_hash != ''"
-    with
-    | Ok rows ->
-      rows
-      |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "h")
-      |> Stdlib.List.filter (fun h -> Stdlib.List.``member`` added h)
-    | Error _ -> []
+    (Stdlib.Sqlite.columnP
+      (localDb ())
+      $"SELECT DISTINCT depends_on_hash AS h FROM package_dependencies
+        WHERE item_hash IN ({quoted}) AND depends_on_hash != ''"
+      []
+      "h")
+    |> Stdlib.List.filter (fun h -> Stdlib.List.``member`` added h)
 
 /// One round of closure: whatever <param acc> references that the draft adds and acc doesn't have yet.
 let closeStep (added: List<String>) (acc: List<String>) : List<String> =

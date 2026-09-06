@@ -101,135 +101,138 @@ let private locationsByHashFn
     deprecated = NotDeprecated }
 
 
+/// `pmFind{Type,Value,Fn}`: location -> hash, resolved against <param branchId>.
+///
+/// One shape, three item kinds. On a BRANCH, resolve against the overlay, so a name authored
+/// earlier on the same branch resolves. On main, read the store directly: the overlay PM memoizes
+/// its base, which goes stale across a long-lived process (the test harness shares one), and the
+/// direct finder (`PMPT.{Type,Value,Fn}.find`) has no cache to go stale.
+let private findByLocationFn
+  (builtinName : string)
+  (itemWord : string)
+  (findOnMain : PT.PackageLocation -> Ply<Option<PT.Hash>>)
+  (findOnBranch : PT.PackageManager -> PT.PackageLocation -> Ply<Option<PT.Hash>>)
+  : BuiltInFn =
+  { name = fn builtinName 0
+    typeParams = []
+    parameters =
+      [ branchParam
+        Param.make
+          "location"
+          (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
+          "" ]
+    returnType =
+      TypeReference.option (TCustomType(NR.ok (PT2DT.Hash.typeName ()), []))
+    description =
+      $"Tries to find a package {itemWord}, by location, and returns the ID if it exists"
+    fn =
+      (function
+      | _, _, _, [| DUuid branchIdGuid; location |] ->
+        uply {
+          let location = PT2DT.PackageLocation.fromDT location
+          let! result =
+            let branch = branchOfParam branchIdGuid
+
+            if branch.IsMain then
+              findOnMain location
+            else
+              findOnBranch (LibDB.PackageManager.ptForBranch branch) location
+          return
+            result
+            |> Option.map PT2DT.Hash.toDT
+            |> Dval.option (PT2DT.Hash.knownType ())
+        }
+      | _ -> incorrectArgs ())
+    sqlSpec = NotQueryable
+    previewable = Impure
+    capabilities = LibExecution.Capabilities.noCaps
+    deprecated = NotDeprecated }
+
+
+/// `pmGet{Type,Value,Fn}`: hash -> the stored item, decoded to its Dark-side type.
+let private getByHashFn
+  (builtinName : string)
+  (itemWord : string)
+  (typeName : unit -> FQTypeName.FQTypeName)
+  (get : PT.Hash -> Ply<Option<'a>>)
+  (toDT : 'a -> Dval)
+  : BuiltInFn =
+  { name = fn builtinName 0
+    typeParams = []
+    parameters =
+      [ Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
+    returnType = TypeReference.option (TCustomType(NR.ok (typeName ()), []))
+    description = $"Returns a package {itemWord}, by hash, if it exists"
+    fn =
+      (function
+      | _, _, _, [| hashDval |] ->
+        uply {
+          let hash = PT2DT.Hash.fromDT hashDval
+          let! result = get hash
+          return
+            result |> Option.map toDT |> Dval.option (KTCustomType(typeName (), []))
+        }
+      | _ -> incorrectArgs ())
+    sqlSpec = NotQueryable
+    previewable = Impure
+    capabilities = LibExecution.Capabilities.noCaps
+    deprecated = NotDeprecated }
+
+
+/// Mirrors `Query.getDirectSubmodules`: drop the query's current path, keep the next segment,
+/// dedupe, sort. Reduced here rather than in Dark because at the root of a large store this is
+/// hundreds of module paths collapsing to a handful of names, and the search already has them all.
+let private directSubmodules
+  (query : PT.Search.SearchQuery)
+  (results : PT.Search.SearchResults)
+  : List<string> =
+  let depth = List.length query.currentModule
+  // `List.skip` throws past the end; Dark's `List.drop` yields []. Match Dark.
+  let rec dropN n (xs : List<string>) =
+    if n <= 0 then
+      xs
+    else
+      match xs with
+      | [] -> []
+      | _ :: rest -> dropN (n - 1) rest
+  results.submodules
+  |> List.choose (fun modulePath ->
+    match dropN depth modulePath with
+    | next :: _ when next <> "" -> Some next
+    | _ -> None)
+  |> List.distinct
+  |> List.sort
+
+
+/// Strings as a Dark `List<String>`.
+let private toDList (xs : List<string>) : Dval =
+  xs |> List.map DString |> Dval.list KTString
+
+
 // TODO: review/reconsider the accessibility of these fns
 let fns (pm : PT.PackageManager) : List<BuiltInFn> =
   [ // types
-    { name = fn "pmFindType" 0
-      typeParams = []
-      parameters =
-        [ branchParam
-          Param.make
-            "location"
-            (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
-            "" ]
-      returnType =
-        TypeReference.option (TCustomType(NR.ok (PT2DT.Hash.typeName ()), []))
-      description =
-        "Tries to find a package type, by location, and returns the ID if it exists"
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; location |] ->
-          uply {
-            let location = PT2DT.PackageLocation.fromDT location
-            // On a BRANCH, resolve against the overlay, so a name authored earlier on the same branch
-            // resolves. On main, read the store directly: the overlay PM memoizes its base, which goes
-            // stale across a long-lived process (the test harness shares one), and `PMPT.Type.find`
-            // has no cache to go stale.
-            let! result =
-              let branch = branchOfParam branchIdGuid
+    findByLocationFn "pmFindType" "type" PMPT.Type.find (fun branchPM loc ->
+      branchPM.findType loc)
 
-              if branch.IsMain then
-                PMPT.Type.find location
-              else
-                (LibDB.PackageManager.ptForBranch branch).findType location
-            return
-              result
-              |> Option.map PT2DT.Hash.toDT
-              |> Dval.option (PT2DT.Hash.knownType ())
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    { name = fn "pmGetType" 0
-      typeParams = []
-      parameters =
-        [ Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
-      returnType =
-        TypeReference.option (TCustomType(NR.ok (PT2DT.PackageType.typeName ()), []))
-      description = "Returns a package type, by hash, if it exists"
-      fn =
-        let optType = KTCustomType((PT2DT.PackageType.typeName ()), [])
-        (function
-        | _, _, _, [| hashDval |] ->
-          uply {
-            let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getType hash
-            return result |> Option.map PT2DT.PackageType.toDT |> Dval.option optType
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
+    getByHashFn
+      "pmGetType"
+      "type"
+      PT2DT.PackageType.typeName
+      pm.getType
+      PT2DT.PackageType.toDT
 
 
     // values
-    { name = fn "pmFindValue" 0
-      typeParams = []
-      parameters =
-        [ branchParam
-          Param.make
-            "location"
-            (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
-            "" ]
-      returnType =
-        TypeReference.option (TCustomType(NR.ok (PT2DT.Hash.typeName ()), []))
-      description =
-        "Tries to find a package value, by location, and returns the ID if it exists"
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; location |] ->
-          uply {
-            let location = PT2DT.PackageLocation.fromDT location
-            // Overlay on a branch, direct store read on main; see `pmFindType`.
-            let! result =
-              let branch = branchOfParam branchIdGuid
+    findByLocationFn "pmFindValue" "value" PMPT.Value.find (fun branchPM loc ->
+      branchPM.findValue loc)
 
-              if branch.IsMain then
-                PMPT.Value.find location
-              else
-                (LibDB.PackageManager.ptForBranch branch).findValue location
-            return
-              result
-              |> Option.map PT2DT.Hash.toDT
-              |> Dval.option (PT2DT.Hash.knownType ())
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    { name = fn "pmGetValue" 0
-      typeParams = []
-      parameters =
-        [ Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
-      returnType =
-        TypeReference.option (
-          TCustomType(NR.ok (PT2DT.PackageValue.typeName ()), [])
-        )
-      description = "Returns a package value, by hash, if it exists"
-      fn =
-        (function
-        | _, _, _, [| hashDval |] ->
-          uply {
-            let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getValue hash
-            return
-              result
-              |> Option.map PT2DT.PackageValue.toDT
-              |> Dval.option (KTCustomType((PT2DT.PackageValue.typeName ()), []))
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
+    getByHashFn
+      "pmGetValue"
+      "value"
+      PT2DT.PackageValue.typeName
+      pm.getValue
+      PT2DT.PackageValue.toDT
 
 
     // Find all value IDs that have a specific ValueType
@@ -302,66 +305,15 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
 
 
     // Functions
-    { name = fn "pmFindFn" 0
-      typeParams = []
-      parameters =
-        [ branchParam
-          Param.make
-            "location"
-            (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
-            "" ]
-      returnType =
-        TypeReference.option (TCustomType(NR.ok (PT2DT.Hash.typeName ()), []))
-      description =
-        "Tries to find a package function, by location, and returns the ID if it exists"
-      fn =
-        (function
-        | _, _, _, [| DUuid branchIdGuid; location |] ->
-          uply {
-            let location = PT2DT.PackageLocation.fromDT location
-            // Overlay on a branch, direct store read on main; see `pmFindType`.
-            let! result =
-              let branch = branchOfParam branchIdGuid
+    findByLocationFn "pmFindFn" "function" PMPT.Fn.find (fun branchPM loc ->
+      branchPM.findFn loc)
 
-              if branch.IsMain then
-                PMPT.Fn.find location
-              else
-                (LibDB.PackageManager.ptForBranch branch).findFn location
-            return
-              result
-              |> Option.map PT2DT.Hash.toDT
-              |> Dval.option (PT2DT.Hash.knownType ())
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
-
-
-    { name = fn "pmGetFn" 0
-      typeParams = []
-      parameters =
-        [ Param.make "hash" (TCustomType(NR.ok (PT2DT.Hash.typeName ()), [])) "" ]
-      returnType =
-        TypeReference.option (TCustomType(NR.ok (PT2DT.PackageFn.typeName ()), []))
-      description = "Returns a package function, by hash, if it exists"
-      fn =
-        (function
-        | _, _, _, [| hashDval |] ->
-          uply {
-            let hash = PT2DT.Hash.fromDT hashDval
-            let! result = pm.getFn hash
-            return
-              result
-              |> Option.map PT2DT.PackageFn.toDT
-              |> Dval.option (KTCustomType((PT2DT.PackageFn.typeName ()), []))
-          }
-        | _ -> incorrectArgs ())
-      sqlSpec = NotQueryable
-      previewable = Impure
-      capabilities = LibExecution.Capabilities.noCaps
-      deprecated = NotDeprecated }
+    getByHashFn
+      "pmGetFn"
+      "function"
+      PT2DT.PackageFn.typeName
+      pm.getFn
+      PT2DT.PackageFn.toDT
 
 
     // Resolve a package fn's dotted name to a callable value (Applicable), so a name that only exists as a
@@ -508,32 +460,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let pm = LibDB.PackageManager.ptForBranch (branchOfParam branchIdGuid)
             let! results = pm.search searchQuery
 
-            // Mirrors `Query.getDirectSubmodules`: drop the current path, keep the next segment, dedupe,
-            // sort. Reduced here rather than in Dark because at the root of a large store this is hundreds
-            // of module paths collapsing to a handful of names, and the search already has them all.
-            let depth = List.length searchQuery.currentModule
-            // `List.skip` throws past the end; Dark's `List.drop` yields []. Match Dark.
-            let rec dropN n (xs : List<string>) =
-              if n <= 0 then
-                xs
-              else
-                match xs with
-                | [] -> []
-                | _ :: rest -> dropN (n - 1) rest
-            let submodules =
-              results.submodules
-              |> List.choose (fun modulePath ->
-                match dropN depth modulePath with
-                | next :: _ when next <> "" -> Some next
-                | _ -> None)
-              |> List.distinct
-              |> List.sort
+            let submodules = directSubmodules searchQuery results
 
             let names (locations : List<PT.LocatedItem<'a>>) =
               locations |> List.map (fun i -> i.location.name)
-
-            let toDList (xs : List<string>) =
-              xs |> List.map DString |> Dval.list KTString
 
             return
               DTuple(
@@ -574,29 +504,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let pm = LibDB.PackageManager.ptForBranch (branchOfParam branchIdGuid)
             let! results = pm.search searchQuery
 
-            let depth = List.length searchQuery.currentModule
-            // `List.skip` throws past the end; Dark's `List.drop` yields []. Match Dark.
-            let rec dropN n (xs : List<string>) =
-              if n <= 0 then
-                xs
-              else
-                match xs with
-                | [] -> []
-                | _ :: rest -> dropN (n - 1) rest
-            let submodules =
-              results.submodules
-              |> List.choose (fun modulePath ->
-                match dropN depth modulePath with
-                | next :: _ when next <> "" -> Some next
-                | _ -> None)
-              |> List.distinct
-              |> List.sort
+            let submodules = directSubmodules searchQuery results
 
             let pairKT =
               KTTuple(VT.string, ValueType.Known(PT2DT.Hash.knownType ()), [])
-
-            let toDList (xs : List<string>) =
-              xs |> List.map DString |> Dval.list KTString
 
             let pairs
               (locations : List<PT.LocatedItem<'a>>)
@@ -873,15 +784,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 let! parentId = LibDB.Branches.parentOf branch
                 do! LibDB.Branches.recordNameBases branch parentId ops
                 // Fold the CONTENT (never the SetNames) so the new versions resolve and carry their
-                // dependency edges, exactly as branch authoring does.
-                let contentOps =
-                  ops
-                  |> List.filter (fun op ->
-                    match op with
-                    | PT.PackageOp.AddValue _
-                    | PT.PackageOp.AddFn _
-                    | PT.PackageOp.AddType _ -> true
-                    | _ -> false)
+                // dependency edges, exactly as branch authoring does -- minus that path's value
+                // evaluation, which this one has never run.
+                let contentOps = PackageOps.contentOpsOf ops
                 if not (List.isEmpty contentOps) then
                   do! LibDB.PackageOpPlayback.applyOps contentOps
                 // Refresh the process overlay so a later eval in THIS process sees the repoints.

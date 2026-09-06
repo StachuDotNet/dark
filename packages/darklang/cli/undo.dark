@@ -20,11 +20,6 @@ module Darklang.Cli.Undo
 // The rebind is an ordinary authoring op and routes to whichever branch you are on, so undoing on a branch
 // never touches main.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
-
 let execute (state: AppState) (args: List<String>) : AppState =
   // A `--flag` is not a name. Without this it reaches the location parser, which answers "Location must
   // have at least owner, module, and name" -- a complaint about the name rather than the flag. `undo`
@@ -33,8 +28,8 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   if Stdlib.Bool.not (Stdlib.List.isEmpty flags) then
     let f = Stdlib.String.join flags " "
-    printErr $"undo takes no flags, and {f} isn't a name."
-    printHint "  usage: dark undo <name>"
+    Cli.printErr $"undo takes no flags, and {f} isn't a name."
+    Cli.printHint "  usage: dark undo <name>"
     state
   else
 
@@ -42,13 +37,13 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [ arg ] ->
     match Packages.Location.parseRelativeTo state.packageData.currentLocation arg with
     | Error e ->
-      printErr e
+      Cli.printErr e
       state
     | Ok loc ->
       match SCM.Propagation.kindAt loc with
       | None ->
-        printErr $"nothing named {PropagateCmd.dotted loc}."
-        printHint "  `dark ls <module>` lists what's there; `dark status` shows what you've changed."
+        Cli.printErr $"nothing named {PropagateCmd.dotted loc}."
+        Cli.printHint "  `dark ls <module>` lists what's there; `dark status` shows what you've changed."
         state
       | Some kind ->
         // Captured BEFORE the rebind: what anything above is pointed at, and so what the cascade back
@@ -63,34 +58,34 @@ let execute (state: AppState) (args: List<String>) : AppState =
             // `undo` steps back a VERSION, and a first version has none. Say what DOES remove it,
             // rather than stopping at "can't": a new item with a typo in it blocks `commit`, and the
             // route out is `discard <name>`, not the whole draft.
-            printOk
+            Cli.printOk
               $"{PropagateCmd.dotted loc} is at its first version -- nothing further to undo."
 
-            printHint
+            Cli.printHint
               $"  to remove it from your draft entirely: dark discard {PropagateCmd.dotted loc}"
 
             state
           | Some prev ->
             match SCM.Propagation.rebind loc kind prev with
             | Error e ->
-              printErr $"couldn't undo: {e}"
+              Cli.printErr $"couldn't undo: {e}"
               state
             | Ok _ ->
-              printOk
-                $"{PropagateCmd.dotted loc} is back on {PropagateCmd.shortHash prev}."
+              Cli.printOk
+                $"{PropagateCmd.dotted loc} is back on {Cli.shortHash prev}."
 
               // Anything above it followed the version we just stepped off, so it comes back down too --
               // otherwise the undo fixes one item and leaves its callers on something you just undid.
               PropagateCmd.cascadeAndForce state loc kind wasAt prev
 
-              printHint
+              Cli.printHint
                 "  nothing is lost: every version stays in the store, and `dark undo` again steps back further."
 
               state)
 
   | _ ->
-    printErr "usage: dark undo <name>"
-    printHint "  steps that item back to the version it had before your last change."
+    Cli.printErr "usage: dark undo <name>"
+    Cli.printHint "  steps that item back to the version it had before your last change."
     state
 
 

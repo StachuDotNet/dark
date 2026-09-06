@@ -6,6 +6,7 @@ open Expecto
 open System.Threading.Tasks
 open FSharp.Control.Tasks
 
+open Fumble
 open LibDB.Sqlite
 
 open Prelude
@@ -30,6 +31,40 @@ module PT2DT = LibExecution.ProgramTypesToDarkTypes
 
 let pmPT = LibDB.PackageManager.pt
 let pmRT = LibDB.PackageManager.rt
+
+
+// --- SQL plumbing, shared by the suites that assert on the store directly --------
+
+/// Run <param sql> against the active store, discarding any result.
+let execSql (sql : string) : Task<unit> = Sql.query sql |> Sql.executeStatementAsync
+
+/// `execSql` with parameters bound.
+let execSqlP
+  (sql : string)
+  (ps : List<string * Microsoft.Data.Sqlite.SqliteParameter>)
+  : Task<unit> =
+  Sql.query sql |> Sql.parameters ps |> Sql.executeStatementAsync
+
+/// Run a one-row scalar query; the single int64 column must be aliased `n`.
+let countSql
+  (sql : string)
+  (ps : List<string * Microsoft.Data.Sqlite.SqliteParameter>)
+  : Task<int64> =
+  Sql.query sql
+  |> Sql.parameters ps
+  |> Sql.executeRowAsync (fun read -> read.int64 "n")
+
+/// What `locations` currently binds <param l> to: the live (not unlisted) row, if
+/// any. Raises if more than one row is live, which would itself be a store bug.
+let liveBoundHash (l : PT.PackageLocation) : Task<Option<string>> =
+  Sql.query
+    "SELECT item_hash FROM locations
+     WHERE owner = @o AND modules = @m AND name = @n AND unlisted_at IS NULL"
+  |> Sql.parameters
+    [ "o", Sql.string l.owner
+      "m", Sql.string (String.concat "." l.modules)
+      "n", Sql.string l.name ]
+  |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
 
 let testPackageFn
   (typeParams : List<string>)

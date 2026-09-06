@@ -46,31 +46,23 @@ let relayGetBundle (owner: String) (branchId: Uuid) : String =
 /// Every owner with a hosted branch, with how many. What lets a client DISCOVER a colleague's push
 /// instead of hearing about it on Slack.
 let relayListOwners () : List<(String * Int64)> =
-  match
-    Stdlib.Sqlite.query
-      (localDb ())
-      "SELECT owner, count(*) AS n FROM relay_branches GROUP BY owner ORDER BY owner"
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT owner, count(*) AS n FROM relay_branches GROUP BY owner ORDER BY owner"
+    []
+    (fun row ->
       match (Stdlib.Sqlite.textField row "owner", Stdlib.Sqlite.intField row "n") with
       | (Some o, Some n) -> Stdlib.Option.Option.Some((o, n))
       | _ -> Stdlib.Option.Option.None)
-  | Error _ -> []
 
 
 /// The branch ids an owner has pushed here ("pull all my branches").
 let relayListBranches (owner: String) : List<String> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT branch_id FROM relay_branches WHERE owner = @p0 ORDER BY branch_id"
-      [ owner ]
-  with
-  | Ok rows ->
-    rows |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "branch_id")
-  | Error _ -> []
+  Stdlib.Sqlite.columnP
+    (localDb ())
+    "SELECT branch_id FROM relay_branches WHERE owner = @p0 ORDER BY branch_id"
+    [ owner ]
+    "branch_id"
 
 
 /// Can this branch merge into its parent? Two structural preconditions: it has changes, and it has no
@@ -213,25 +205,21 @@ type BranchRow =
 
 /// Every active branch, oldest first.
 let list () : List<BranchRow> =
-  match
-    Stdlib.Sqlite.query
-      (localDb ())
-      "SELECT b.id, b.name, b.parent_id, b.merged_at IS NOT NULL AS merged,
-              (SELECT count(*) FROM op_branches ob WHERE ob.branch_id = b.id) AS ops
-       FROM branches b WHERE b.archived_at IS NULL ORDER BY b.created_at DESC"
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
-      match Stdlib.Sqlite.textField row "id" |> Stdlib.Option.map Stdlib.Uuid.parse with
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT b.id, b.name, b.parent_id, b.merged_at IS NOT NULL AS merged,
+            (SELECT count(*) FROM op_branches ob WHERE ob.branch_id = b.id) AS ops
+     FROM branches b WHERE b.archived_at IS NULL ORDER BY b.created_at DESC"
+    []
+    (fun row ->
+      match Stdlib.Sqlite.uuidField row "id" with
       // A row whose id will not parse is skipped, not fatal: this feeds every listing and the LSP
       // tree, and one bad row taking all of them down is worse than one branch missing from the list.
-      | Some(Error _) -> Stdlib.Option.Option.None
-      | Some(Ok id) ->
+      | Some id ->
         Stdlib.Option.Option.Some(
           BranchRow
             { id = id
-              name = Stdlib.Sqlite.textField row "name" |> Stdlib.Option.withDefault ""
+              name = Stdlib.Sqlite.textOr row "name"
               parent =
                 SCM.Ids.fromTextField (Stdlib.Sqlite.textField row "parent_id")
               ops = Stdlib.Sqlite.intField row "ops" |> Stdlib.Option.withDefault 0L
@@ -239,7 +227,6 @@ let list () : List<BranchRow> =
                 (Stdlib.Sqlite.intField row "merged" |> Stdlib.Option.withDefault 0L) > 0L }
         )
       | None -> Stdlib.Option.Option.None)
-  | Error _ -> []
 
 /// How many branches are already merged. The `dark branches` footer needs the count of what it
 /// hid, and asking for it separately keeps `listLines` returning only what it will print.
@@ -282,15 +269,11 @@ let listLines (includeMerged: Bool) : List<String> =
 
 /// The names a branch has recorded a base for -- i.e. every name it has touched.
 let touchedNames (branchId: Uuid) : List<String> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT name FROM branch_name_bases WHERE branch_id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows ->
-    rows |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "name")
-  | Error _ -> []
+  Stdlib.Sqlite.columnP
+    (localDb ())
+    "SELECT name FROM branch_name_bases WHERE branch_id = @p0"
+    [ Stdlib.Uuid.toString branchId ]
+    "name"
 
 
 /// The key a name is looked up by. `branch_name_bases`, `locations` and the overlay all spell a name as
@@ -312,15 +295,11 @@ let fqnOf (owner: String) (modules: String) (name: String) : String =
 /// A branch's recorded bases: the parent's hash per name AT THE FORK, which is what a later comparison is
 /// against. `(owner, modules, name, base_hash)` rows, unformatted.
 let nameBases (branchId: Uuid) : List<(String * String * String * String)> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT owner, modules, name, base_hash FROM branch_name_bases WHERE branch_id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT owner, modules, name, base_hash FROM branch_name_bases WHERE branch_id = @p0"
+    [ Stdlib.Uuid.toString branchId ]
+    (fun row ->
       match
         (Stdlib.Sqlite.textField row "owner",
          Stdlib.Sqlite.textField row "modules",
@@ -330,7 +309,6 @@ let nameBases (branchId: Uuid) : List<(String * String * String * String)> =
       | (Some o, Some m, Some n, Some h) ->
         Stdlib.Option.Option.Some((o, m, n, h))
       | _ -> Stdlib.Option.Option.None)
-  | Error _ -> []
 
 
 /// The parent's CURRENT hash for each name this branch has a base for -- the state a child forks from and
@@ -344,20 +322,16 @@ let nameBases (branchId: Uuid) : List<(String * String * String * String)> =
 /// already does, latest stamp per name.
 let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String, String> =
   let fromMain =
-    match
-      // main-scoped: main's hashes are the base; a non-main parent's rebinds are overlaid by the caller.
-      Stdlib.Sqlite.queryP
-        (localDb ())
-        "SELECT l.owner, l.modules, l.name, l.item_hash
-         FROM branch_name_bases b
-         JOIN locations l
-           ON l.owner = b.owner AND l.modules = b.modules AND l.name = b.name
-         WHERE b.branch_id = @p0 AND l.unlisted_at IS NULL"
-        [ Stdlib.Uuid.toString branchId ]
-    with
-    | Ok rows ->
-      rows
-      |> Stdlib.List.filterMap (fun row ->
+    // main-scoped: main's hashes are the base; a non-main parent's rebinds are overlaid by the caller.
+    Stdlib.Sqlite.rowsP
+      (localDb ())
+      "SELECT l.owner, l.modules, l.name, l.item_hash
+       FROM branch_name_bases b
+       JOIN locations l
+         ON l.owner = b.owner AND l.modules = b.modules AND l.name = b.name
+       WHERE b.branch_id = @p0 AND l.unlisted_at IS NULL"
+      [ Stdlib.Uuid.toString branchId ]
+      (fun row ->
         match
           (Stdlib.Sqlite.textField row "owner",
            Stdlib.Sqlite.textField row "modules",
@@ -367,7 +341,6 @@ let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String, String
         | (Some o, Some m, Some n, Some h) ->
           Stdlib.Option.Option.Some((nameKey o m n, h))
         | _ -> Stdlib.Option.Option.None)
-    | Error _ -> []
 
   // A name the chain UNBOUND reads as "", the same spelling `divergedIn` gives a name main unlisted.
   let overlay =
@@ -537,32 +510,31 @@ let ownFrontierOps
 let ownFrontierOpsWithSource
   (branchId: Uuid)
   : List<(Uuid * LanguageTools.ProgramTypes.PackageOp * String)> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT p.id, p.op_blob, ob.source FROM package_ops p
-       JOIN op_branches ob ON ob.op_id = p.id
-       WHERE ob.branch_id = @p0
-       ORDER BY p.origin_ts, p.rowid"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
-      match
-        (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
-      with
-      | (Some idStr, Some blob) ->
-        match Stdlib.Uuid.parse idStr with
-        | Ok id ->
-          match SCM.PackageOps.tryDecodeOp id blob with
-          | Some op ->
-            let source = Stdlib.Sqlite.textField row "source" |> Stdlib.Option.withDefault "op"
-            Stdlib.Option.Option.Some((id, op, source))
-          | None -> Stdlib.Option.Option.None
-        | Error _ -> Stdlib.Option.Option.None
-      | _ -> Stdlib.Option.Option.None)
-  | Error _ -> []
+  ownOpRows branchId
+  |> Stdlib.List.filterMap (fun row ->
+    match
+      (Stdlib.Sqlite.uuidField row "id", Stdlib.Sqlite.bytesField row "op_blob")
+    with
+    | (Some id, Some blob) ->
+      match SCM.PackageOps.tryDecodeOp id blob with
+      | Some op ->
+        let source = Stdlib.Sqlite.textField row "source" |> Stdlib.Option.withDefault "op"
+        Stdlib.Option.Option.Some((id, op, source))
+      | None -> Stdlib.Option.Option.None
+    | _ -> Stdlib.Option.Option.None)
+
+
+/// A branch's own tagged op rows, oldest first: id, op_blob, ts, source. The one query
+/// behind <fn ownFrontierOpsWithSource>, `branchBindings` and `branchOps` -- the extra
+/// columns are harmless where unused, since the decoders read by name.
+let ownOpRows (branchId: Uuid) : List<Dict<String, Stdlib.Sqlite.Value>> =
+  Stdlib.Sqlite.rowsOrEmptyP
+    (localDb ())
+    "SELECT p.id, p.op_blob, p.origin_ts AS ts, ob.source FROM package_ops p
+     JOIN op_branches ob ON ob.op_id = p.id
+     WHERE ob.branch_id = @p0
+     ORDER BY p.origin_ts, p.rowid"
+    [ Stdlib.Uuid.toString branchId ]
 
 
 /// Does this op bind <param key>? True for a SetName and for a Decision that overrides the binding, since
@@ -661,15 +633,13 @@ let resolveTakeTheirs
 /// MAX(origin_ts) + 1s rather than wall clock, because authoring stamps can run ahead of it (see
 /// `LibDB.OriginTs`) and a peer's op can carry a future stamp. Safe to do to an op nobody has seen yet.
 let stampPastEverything () : String =
-  match
-    Stdlib.Sqlite.queryOne
-      (localDb ())
-      "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', MAX(origin_ts), '+1 second') AS ts
-       FROM package_ops"
-  with
-  | Some row ->
-    Stdlib.Sqlite.textField row "ts" |> Stdlib.Option.withDefault ""
-  | None -> ""
+  Stdlib.Sqlite.scalarTextP
+    (localDb ())
+    "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', MAX(origin_ts), '+1 second') AS ts
+     FROM package_ops"
+    []
+    "ts"
+    ""
 
 
 /// RESOLVE keep-mine: author an OVERRIDE that re-states the branch's binding with a stamp that wins LWW,
@@ -741,17 +711,13 @@ let retagFrontierToParent
   let b = Stdlib.Uuid.toString branchId
 
   let tagged =
-    match
-      Stdlib.Sqlite.queryOneP
-        (localDb ())
-        "SELECT count(*) AS n FROM op_branches WHERE branch_id = @p0"
-        [ b ]
-    with
-    | Some row ->
-      Stdlib.Sqlite.intField row "n"
-      |> Stdlib.Option.map (fun n -> Stdlib.Int.fromInt64 n)
-      |> Stdlib.Option.withDefault 0
-    | None -> 0
+    Stdlib.Sqlite.scalarIntP
+      (localDb ())
+      "SELECT count(*) AS n FROM op_branches WHERE branch_id = @p0"
+      [ b ]
+      "n"
+    |> Stdlib.Option.map (fun n -> Stdlib.Int.fromInt64 n)
+    |> Stdlib.Option.withDefault 0
 
   match
     Stdlib.Sqlite.execBatch
@@ -778,22 +744,11 @@ let retagFrontierToParent
 /// Every op id tagged to <param branchId>, decodable or not. What a merge is about to move, read BEFORE
 /// either merge arm drops the tags, so the event that travels can name them.
 let frontierIds (branchId: Uuid) : List<Uuid> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT op_id FROM op_branches WHERE branch_id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
-      match Stdlib.Sqlite.textField row "op_id" with
-      | Some id ->
-        (match Stdlib.Uuid.parse id with
-         | Ok u -> Stdlib.Option.Option.Some u
-         | Error _ -> Stdlib.Option.Option.None)
-      | None -> Stdlib.Option.Option.None)
-  | Error _ -> []
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT op_id FROM op_branches WHERE branch_id = @p0"
+    [ Stdlib.Uuid.toString branchId ]
+    (fun row -> Stdlib.Sqlite.uuidField row "op_id")
 
 
 /// MERGE into MAIN, first half: flip this branch's ops to effective so the fold will take them.
@@ -804,19 +759,15 @@ let markMergedEffective (branchId: Uuid) : Stdlib.Result.Result<Int, String> =
   let b = Stdlib.Uuid.toString branchId
 
   let toFlip =
-    match
-      Stdlib.Sqlite.queryOneP
-        (localDb ())
-        "SELECT count(*) AS n FROM package_ops p
-         JOIN op_branches ob ON ob.op_id = p.id
-         WHERE ob.branch_id = @p0 AND p.effective = 0"
-        [ b ]
-    with
-    | Some row ->
-      Stdlib.Sqlite.intField row "n"
-      |> Stdlib.Option.map (fun n -> Stdlib.Int.fromInt64 n)
-      |> Stdlib.Option.withDefault 0
-    | None -> 0
+    Stdlib.Sqlite.scalarIntP
+      (localDb ())
+      "SELECT count(*) AS n FROM package_ops p
+       JOIN op_branches ob ON ob.op_id = p.id
+       WHERE ob.branch_id = @p0 AND p.effective = 0"
+      [ b ]
+      "n"
+    |> Stdlib.Option.map (fun n -> Stdlib.Int.fromInt64 n)
+    |> Stdlib.Option.withDefault 0
 
   match
     Stdlib.Sqlite.execP

@@ -29,6 +29,14 @@ open LibSerialization.Hashing
 open LibDB.PreparedBatch
 
 
+/// Bind the location key nearly every projection statement filters on: $owner,
+/// $modules (dot-joined) and $name. Per call site, only the location varies.
+let private pLoc (cmd : SqliteCommand) (location : PT.PackageLocation) : unit =
+  p cmd "$owner" location.owner
+  p cmd "$modules" (String.concat "." location.modules)
+  p cmd "$name" location.name
+
+
 // ------------------------------------------------------------------
 // Dependency table maintenance.
 // ------------------------------------------------------------------
@@ -281,17 +289,8 @@ let private applyAddFn (ctx : Ctx) (fn : PT.PackageFn.PackageFn) : Task<unit> =
 /// Id alone is the whole key: `package_ops` has one row per op; branch claims live
 /// in `op_branches`.
 let private originTsOf (ctx : Ctx) (opId : System.Guid) : Task<Option<string>> =
-  task {
-    use cmd = ctx.conn.CreateCommand()
-    cmd.CommandText <- "SELECT origin_ts FROM package_ops WHERE id = $id"
-    p cmd "$id" (string opId)
-    use! reader = cmd.ExecuteReaderAsync()
-    let! hasRow = reader.ReadAsync()
-    if hasRow && not (reader.IsDBNull 0) then
-      return Some(reader.GetString 0)
-    else
-      return None
-  }
+  textOption ctx "SELECT origin_ts FROM package_ops WHERE id = $id" (fun cmd ->
+    p cmd "$id" (string opId))
 
 /// The newest `Unbind` folded at a name, by the stamp of the op that made it. An `Unbind` leaves a
 /// TOMBSTONE in `locations`: a row unlisted the moment it is written, stamped with the unbind's own
@@ -302,23 +301,13 @@ let private latestUnbindTs
   (ctx : Ctx)
   (location : PT.PackageLocation)
   : Task<Option<string>> =
-  task {
-    use cmd = ctx.conn.CreateCommand()
-    cmd.CommandText <-
-      "SELECT origin_ts FROM locations "
-      + "WHERE owner = $owner AND modules = $modules AND name = $name "
-      + "AND source = 'unbind' AND origin_ts IS NOT NULL "
-      + "ORDER BY origin_ts DESC LIMIT 1"
-    p cmd "$owner" location.owner
-    p cmd "$modules" (String.concat "." location.modules)
-    p cmd "$name" location.name
-    use! reader = cmd.ExecuteReaderAsync()
-    let! hasRow = reader.ReadAsync()
-    if hasRow && not (reader.IsDBNull 0) then
-      return Some(reader.GetString 0)
-    else
-      return None
-  }
+  textOption
+    ctx
+    ("SELECT origin_ts FROM locations "
+     + "WHERE owner = $owner AND modules = $modules AND name = $name "
+     + "AND source = 'unbind' AND origin_ts IS NOT NULL "
+     + "ORDER BY origin_ts DESC LIMIT 1")
+    (fun cmd -> pLoc cmd location)
 
 /// Apply a Set*Name op to the locations table.
 /// <param source> is what put the binding there: "op" for a normal fold, "resolution" for a human's answer
@@ -333,7 +322,6 @@ let private applySetNameFrom
   (itemKind : PT.ItemKind)
   : Task<unit> =
   task {
-    let modulesStr = String.concat "." location.modules
     let itemTypeStr = itemKind.toString ()
     let locationId = System.Guid.NewGuid()
     let (Hash itemHashStr) = itemHash
@@ -356,28 +344,16 @@ let private applySetNameFrom
     let thisOpId = Hashing.computeOpRowId opForStamp
     let! thisTs = originTsOf ctx thisOpId
 
+    // Keyed by NAME, not (name, kind): a location's identity is (owner, modules, name) -- `item_type` is
+    // only a lookup hint (item_hash + kind -> find the thing), never part of what a name IS. So the
+    // binding this op supersedes is whatever is live at the name, whatever kind it holds.
     let! curBinding =
-      task {
-        use cmd = ctx.conn.CreateCommand()
-        // Keyed by NAME, not (name, kind): a location's identity is (owner, modules, name) -- `item_type` is
-        // only a lookup hint (item_hash + kind -> find the thing), never part of what a name IS. So the
-        // binding this op supersedes is whatever is live at the name, whatever kind it holds.
-        cmd.CommandText <-
-          "SELECT item_hash, origin_ts FROM locations "
-          + "WHERE owner = $owner AND modules = $modules AND name = $name "
-          + "AND unlisted_at IS NULL LIMIT 1"
-        p cmd "$owner" location.owner
-        p cmd "$modules" modulesStr
-        p cmd "$name" location.name
-        use! reader = cmd.ExecuteReaderAsync()
-        let! hasRow = reader.ReadAsync()
-        if hasRow then
-          let h = reader.GetString 0
-          let ts = if reader.IsDBNull 1 then None else Some(reader.GetString 1)
-          return Some(h, ts)
-        else
-          return None
-      }
+      pairOption
+        ctx
+        ("SELECT item_hash, origin_ts FROM locations "
+         + "WHERE owner = $owner AND modules = $modules AND name = $name "
+         + "AND unlisted_at IS NULL LIMIT 1")
+        (fun cmd -> pLoc cmd location)
 
     let isStale =
       match curBinding, thisTs with
@@ -413,10 +389,7 @@ let private applySetNameFrom
             AND modules = $modules
             AND name = $name
             AND unlisted_at IS NULL
-          """ (fun cmd ->
-          p cmd "$owner" location.owner
-          p cmd "$modules" modulesStr
-          p cmd "$name" location.name)
+          """ (fun cmd -> pLoc cmd location)
 
       // 2. Nothing else is touched: a SetName binds its own name only. A hash is
       //    routinely live at several names, and retiring the others needs an op that
@@ -433,9 +406,7 @@ let private applySetNameFrom
           """ (fun cmd ->
           pUuid cmd "$location_id" locationId
           p cmd "$item_hash" itemHashStr
-          p cmd "$owner" location.owner
-          p cmd "$modules" modulesStr
-          p cmd "$name" location.name
+          pLoc cmd location
           p cmd "$item_type" itemTypeStr
           pOpt cmd "$origin_ts" thisTs
           p cmd "$source" source
@@ -460,79 +431,69 @@ let private serializeAnnotation
   ms.ToArray()
 
 
-/// Apply a Deprecate op: supersede any prior un-superseded row for (item_hash, item_kind).
+/// Record a deprecation-state change: supersede any prior un-superseded `deprecations`
+/// row for (item_hash, item_kind), then insert the new row. Per call site: the state
+/// ('deprecated' or 'undeprecated') and the annotation blob (a serialized kind+message,
+/// or None for an undeprecate, stored as NULL).
 ///
-/// Identity is hash-keyed: `Reference` carries only a Hash, so two FQNs sharing a
-/// hash deprecate together.
+/// Identity is hash-keyed: `Reference` carries only a Hash, so two FQNs sharing a hash
+/// deprecate together. Not branch-scoped: a deprecation is keyed on content, and a
+/// branch's `Deprecate` never folds at all.
+let private writeDeprecationState
+  (ctx : Ctx)
+  (target : PT.Reference)
+  (state : string)
+  (blob : Option<byte[]>)
+  : Task<unit> =
+  task {
+    let (Hash itemHashStr) = target.hash
+    let itemKindStr = target.kind.toString ()
+
+    do!
+      exec ctx """
+        UPDATE deprecations
+        SET unlisted_at = datetime('now')
+        WHERE item_hash = $item_hash
+          AND item_kind = $item_kind
+          AND unlisted_at IS NULL
+        """ (fun cmd ->
+        p cmd "$item_hash" itemHashStr
+        p cmd "$item_kind" itemKindStr)
+
+    do!
+      exec ctx """
+        INSERT INTO deprecations
+          (deprecation_id, item_hash, item_kind, state, annotation_blob)
+        VALUES
+          ($deprecation_id, $item_hash, $item_kind, $state, $blob)
+        """ (fun cmd ->
+        pUuid cmd "$deprecation_id" (System.Guid.NewGuid())
+        p cmd "$item_hash" itemHashStr
+        p cmd "$item_kind" itemKindStr
+        p cmd "$state" state
+        match blob with
+        | Some b -> p cmd "$blob" b
+        | None -> p cmd "$blob" System.DBNull.Value)
+  }
+
+
+/// Apply a Deprecate op: a `deprecated` row carrying the serialized kind + message.
 let private applyDeprecate
   (ctx : Ctx)
   (target : PT.Reference)
   (kind : PT.DeprecationKind)
   (message : string)
   : Task<unit> =
-  task {
-    let (Hash itemHashStr) = target.hash
-    let itemKindStr = target.kind.toString ()
-    let deprecationId = System.Guid.NewGuid()
-    let blob = serializeAnnotation kind message
-
-    do!
-      exec ctx """
-        UPDATE deprecations
-        SET unlisted_at = datetime('now')
-        WHERE item_hash = $item_hash
-          AND item_kind = $item_kind
-          AND unlisted_at IS NULL
-        """ (fun cmd ->
-        p cmd "$item_hash" itemHashStr
-        p cmd "$item_kind" itemKindStr)
-
-    do!
-      exec ctx """
-        INSERT INTO deprecations
-          (deprecation_id, item_hash, item_kind, state, annotation_blob)
-        VALUES
-          ($deprecation_id, $item_hash, $item_kind, 'deprecated', $blob)
-        """ (fun cmd ->
-        pUuid cmd "$deprecation_id" deprecationId
-        p cmd "$item_hash" itemHashStr
-        p cmd "$item_kind" itemKindStr
-        p cmd "$blob" blob)
-  }
+  writeDeprecationState
+    ctx
+    target
+    "deprecated"
+    (Some(serializeAnnotation kind message))
 
 
-/// Apply an Undeprecate op to the deprecations projection table.
-/// Records an `undeprecated`-state row that supersedes any prior row for the same
-/// (item_hash, item_kind). Not branch-scoped: a deprecation is keyed on content, and a branch's
-/// `Deprecate` never folds at all.
+/// Apply an Undeprecate op: an `undeprecated` row with no annotation.
 let private applyUndeprecate (ctx : Ctx) (target : PT.Reference) : Task<unit> =
-  task {
-    let (Hash itemHashStr) = target.hash
-    let itemKindStr = target.kind.toString ()
-    let deprecationId = System.Guid.NewGuid()
-
-    do!
-      exec ctx """
-        UPDATE deprecations
-        SET unlisted_at = datetime('now')
-        WHERE item_hash = $item_hash
-          AND item_kind = $item_kind
-          AND unlisted_at IS NULL
-        """ (fun cmd ->
-        p cmd "$item_hash" itemHashStr
-        p cmd "$item_kind" itemKindStr)
-
-    do!
-      exec ctx """
-        INSERT INTO deprecations
-          (deprecation_id, item_hash, item_kind, state, annotation_blob)
-        VALUES
-          ($deprecation_id, $item_hash, $item_kind, 'undeprecated', NULL)
-        """ (fun cmd ->
-        pUuid cmd "$deprecation_id" deprecationId
-        p cmd "$item_hash" itemHashStr
-        p cmd "$item_kind" itemKindStr)
-  }
+  writeDeprecationState ctx target "undeprecated" None
 
 
 // ------------------------------------------------------------------
@@ -561,8 +522,6 @@ let private applyDecision
     // answer for a decision nothing recorded.
     let! ts = originTsOf ctx opId |> Task.map (Option.defaultValue "")
 
-    let modules = String.concat "." loc.modules
-
     match kind with
     | PT.DecisionKind.Override _ ->
       // Folded as a binding, not here. Kept explicit so adding a case to `DecisionKind` is a compile
@@ -577,9 +536,7 @@ let private applyDecision
            WHERE branch_id = $branch AND owner = $owner AND modules = $modules AND name = $name
              AND COALESCE(origin_ts, '') < $ts" (fun cmd ->
           p cmd "$branch" (string branchId)
-          p cmd "$owner" loc.owner
-          p cmd "$modules" modules
-          p cmd "$name" loc.name
+          pLoc cmd loc
           p cmd "$ts" ts)
 
     | PT.DecisionKind.Propagation policy ->
@@ -594,9 +551,7 @@ let private applyDecision
            WHERE excluded.origin_ts > COALESCE(propagation_policy.origin_ts, '')"
           (fun cmd ->
             p cmd "$branch" (string branchId)
-            p cmd "$owner" loc.owner
-            p cmd "$modules" modules
-            p cmd "$name" loc.name
+            pLoc cmd loc
             p cmd "$policy" policy.ToText
             p cmd "$note" reason
             p cmd "$ts" ts)
@@ -617,9 +572,7 @@ let private applyDecision
              status = 'acked', reason = excluded.reason, origin_ts = excluded.origin_ts"
           (fun cmd ->
             p cmd "$id" findingId
-            p cmd "$owner" loc.owner
-            p cmd "$modules" modules
-            p cmd "$name" loc.name
+            pLoc cmd loc
             p cmd "$reason" reason
             p cmd "$ts" ts)
   }
@@ -776,29 +729,16 @@ let private applyUnbind
   (previous : Option<Hash>)
   : Task<unit> =
   task {
-    let modulesStr = String.concat "." location.modules
     let thisOpId = Hashing.computeOpRowId op
     let! thisTs = originTsOf ctx thisOpId
 
     let! live =
-      task {
-        use cmd = ctx.conn.CreateCommand()
-        cmd.CommandText <-
-          "SELECT item_type, origin_ts FROM locations "
-          + "WHERE owner = $owner AND modules = $modules AND name = $name "
-          + "AND unlisted_at IS NULL LIMIT 1"
-        p cmd "$owner" location.owner
-        p cmd "$modules" modulesStr
-        p cmd "$name" location.name
-        use! reader = cmd.ExecuteReaderAsync()
-        let! hasRow = reader.ReadAsync()
-        if hasRow then
-          let kind = reader.GetString 0
-          let ts = if reader.IsDBNull 1 then None else Some(reader.GetString 1)
-          return Some(kind, ts)
-        else
-          return None
-      }
+      pairOption
+        ctx
+        ("SELECT item_type, origin_ts FROM locations "
+         + "WHERE owner = $owner AND modules = $modules AND name = $name "
+         + "AND unlisted_at IS NULL LIMIT 1")
+        (fun cmd -> pLoc cmd location)
 
     let isStale =
       match live, thisTs with
@@ -816,10 +756,7 @@ let private applyUnbind
             AND modules = $modules
             AND name = $name
             AND unlisted_at IS NULL
-          """ (fun cmd ->
-          p cmd "$owner" location.owner
-          p cmd "$modules" modulesStr
-          p cmd "$name" location.name)
+          """ (fun cmd -> pLoc cmd location)
 
       // The tombstone. `item_hash` is what it unbound (or nothing, when the op named no predecessor)
       // and `item_type` is what was live, or 'fn' when nothing was: both are lookup hints on a row no
@@ -839,9 +776,7 @@ let private applyUnbind
           """ (fun cmd ->
           pUuid cmd "$location_id" (System.Guid.NewGuid())
           p cmd "$item_hash" (previousHash |> Option.defaultValue "")
-          p cmd "$owner" location.owner
-          p cmd "$modules" modulesStr
-          p cmd "$name" location.name
+          pLoc cmd location
           p cmd "$item_type" kind
           pOpt cmd "$origin_ts" thisTs
           p cmd "$op_id" (string thisOpId)
@@ -882,9 +817,7 @@ let private applyOp (ctx : Ctx) (source : string) (op : PT.PackageOp) : Task<uni
             (fun cmd ->
               p cmd "$op" id
               p cmd "$kind" (target.kind.toString ())
-              p cmd "$owner" loc.owner
-              p cmd "$modules" (String.concat "." loc.modules)
-              p cmd "$name" loc.name)
+              pLoc cmd loc)
       | _ ->
         // This fold is main's, so the row is main's. A branch's decision is folded by the branch path
         // with that branch's id; the two must spell main the same way or a policy set on main is written

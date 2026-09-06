@@ -40,7 +40,7 @@ let renderRow (idx: Int) (selected: Int) (r: SCM.Propagation.ImpactRow) : String
   let policy = if r.following then "follow" else "pinned"
   let name = ScmJson.pad (PropagateCmd.dotted r.item) 40
   let because = PropagateCmd.dotted r.because
-  $"  {cursor} {policy}  {name}  {PropagateCmd.shortHash r.at}   <- {because}"
+  $"  {cursor} {policy}  {name}  {Cli.shortHash r.at}   <- {because}"
 
 
 let render (state: State) : String =

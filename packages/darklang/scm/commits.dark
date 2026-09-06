@@ -26,15 +26,13 @@ type Commit =
 /// monotonic counter that can run ahead of the clock, so `now` isn't reliably "after" the ops being
 /// committed -- and this way it needs no clock capability.
 let nextStamp () : String =
-  match
-    Stdlib.Sqlite.queryOneP
-      (localDb ())
-      "SELECT COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ', MAX(origin_ts), '+1 second'),
-              strftime('%Y-%m-%dT%H:%M:%fZ','now')) AS ts FROM package_ops"
-      []
-  with
-  | Some row -> Stdlib.Sqlite.textField row "ts" |> Stdlib.Option.withDefault ""
-  | None -> ""
+  Stdlib.Sqlite.scalarTextP
+    (localDb ())
+    "SELECT COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ', MAX(origin_ts), '+1 second'),
+            strftime('%Y-%m-%dT%H:%M:%fZ','now')) AS ts FROM package_ops"
+    []
+    "ts"
+    ""
 
 /// A content-derived commit id: the same work, committed onto the same history, computes the same id on two
 /// machines rather than each inventing its own. Short: it's a handle you type, not a security boundary.
@@ -74,32 +72,26 @@ let create
   hash
 
 let commitFromRow (row: Dict<String, Stdlib.Sqlite.Value>) : Stdlib.Option.Option<Commit> =
-  let text (col: String) : String =
-    Stdlib.Sqlite.textField row col |> Stdlib.Option.withDefault ""
-
   match Stdlib.Sqlite.textField row "hash" with
   | Some hash ->
     (Commit
       { hash = hash
-        message = text "message"
-        author = text "author"
-        originTs = text "origin_ts"
-        createdAt = text "created_at"
-        parent = text "parent" })
+        message = Stdlib.Sqlite.textOr row "message"
+        author = Stdlib.Sqlite.textOr row "author"
+        originTs = Stdlib.Sqlite.textOr row "origin_ts"
+        createdAt = Stdlib.Sqlite.textOr row "created_at"
+        parent = Stdlib.Sqlite.textOr row "parent" })
     |> Stdlib.Option.Option.Some
   | None -> Stdlib.Option.Option.None
 
 /// The most recent commits, newest first.
 let recent (limit: Int64) : List<Commit> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT hash, message, author, origin_ts, created_at, parent FROM commits
-       ORDER BY created_at DESC, rowid DESC LIMIT @p0"
-      [ Stdlib.Int64.toString limit ]
-  with
-  | Ok rows -> rows |> Stdlib.List.filterMap commitFromRow
-  | Error _ -> []
+  Stdlib.Sqlite.rowsP
+    (localDb ())
+    "SELECT hash, message, author, origin_ts, created_at, parent FROM commits
+     ORDER BY created_at DESC, rowid DESC LIMIT @p0"
+    [ Stdlib.Int64.toString limit ]
+    commitFromRow
 
 /// Remove a commit row. For a commit that turned out to name no ops -- an import where everything deduped,
 /// which is what a routine re-sync is. The ops side of "did it commit anything" is `PackageOps.opCountIn`;

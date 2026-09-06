@@ -341,6 +341,29 @@ let private cleanupBranch (branchId : PT.BranchId) : Task<unit> =
     do! del "DELETE FROM branches WHERE id = @b"
   }
 
+/// A fresh branch off main for a test: derives the test-branch id from <param label>,
+/// wipes any prior run's rows, and registers the branch as <param name>.
+let private freshBranch (label : string) (name : string) : Task<PT.BranchId> =
+  task {
+    let b = testBranch label
+    do! cleanupBranch b
+    do! Branches.createBranch b name PT.BranchId.Main
+    return b
+  }
+
+/// `freshBranch`, but forked off <param parent> rather than main.
+let private freshBranchOff
+  (parent : PT.BranchId)
+  (label : string)
+  (name : string)
+  : Task<PT.BranchId> =
+  task {
+    let b = testBranch label
+    do! cleanupBranch b
+    do! Branches.createBranch b name parent
+    return b
+  }
+
 /// Pretend the parent moved every name this branch touched, by staling the recorded bases. Doing it
 /// this way rather than actually changing the parent keeps the conflict tests off the shared main
 /// projection every other test here reads concurrently.
@@ -363,17 +386,12 @@ let private staleNameBases (branchId : PT.BranchId) : Task<unit> =
 /// both sides are one table read.
 let parentHashesAgreeAcrossLanguages =
   testTask "F# and Dark compute the same parent hashes for a branch's bases" {
-    let parent = testBranch "ph-parent"
-    let child = testBranch "ph-child"
-    do! cleanupBranch child
-    do! cleanupBranch parent
-
-    do! Branches.createBranch parent "ph-parent" PT.BranchId.Main
+    let! parent = freshBranch "ph-parent" "ph-parent"
     let! parentOps = parsePackageOps (namedSource "PhTest" 1)
     let! _ = Branches.storeDeltaOps parent parentOps
     do! Branches.recordNameBases parent PT.BranchId.Main parentOps
 
-    do! Branches.createBranch child "ph-child" parent
+    let! child = freshBranchOff parent "ph-child" "ph-child"
     let! childOps = parsePackageOps (namedSource "PhTest" 2)
     let! _ = Branches.storeDeltaOps child childOps
     do! Branches.recordNameBases child parent childOps
@@ -419,28 +437,22 @@ let parentHashesAgreeAcrossLanguages =
 let undecodableBranchOpIsSkippedNotFatal =
   testTask
     "an op the build can't decode is skipped by the overlay, and survives in the log" {
-    let bid = testBranch "undecodable-overlay"
-    do! cleanupBranch bid
-
-    do! Branches.createBranch bid "undecodable" PT.BranchId.Main
+    let! bid = freshBranch "undecodable-overlay" "undecodable"
     let! ops = parsePackageOps (namedSource "UndecodableTest" 3)
     let! _ = Branches.storeDeltaOps bid ops
 
     // A blob no build can read, tagged to the branch the way a peer's newer-format op arrives.
     let junkId = System.Guid.NewGuid()
     do!
-      Sql.query
+      execSqlP
         "INSERT INTO package_ops (id, op_blob, effective, origin_ts)
          VALUES (@id, @blob, 0, '2099-01-01T00:00:00.000Z')"
-      |> Sql.parameters
         [ "id", Sql.string (string junkId)
           "blob", Sql.bytes [| 0xFFuy; 0xFEuy; 0xFDuy; 0xFCuy |] ]
-      |> Sql.executeStatementAsync
     do!
-      Sql.query "INSERT INTO op_branches (op_id, branch_id) VALUES (@id, @b)"
-      |> Sql.parameters
+      execSqlP
+        "INSERT INTO op_branches (op_id, branch_id) VALUES (@id, @b)"
         [ "id", Sql.string (string junkId); "b", Sql.string (string bid) ]
-      |> Sql.executeStatementAsync
 
     let! loaded = Branches.loadDeltaOps bid
     Expect.equal
@@ -453,16 +465,16 @@ let undecodableBranchOpIsSkippedNotFatal =
     Expect.isSome resolved "and the branch still resolves its own fn"
 
     let! stillThere =
-      Sql.query "SELECT count(*) AS n FROM package_ops WHERE id = @id"
-      |> Sql.parameters [ "id", Sql.string (string junkId) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      countSql
+        "SELECT count(*) AS n FROM package_ops WHERE id = @id"
+        [ "id", Sql.string (string junkId) ]
     Expect.equal stillThere 1L "reading past it did not delete it"
 
     do! cleanupBranch bid
     do!
-      Sql.query "DELETE FROM package_ops WHERE id = @id"
-      |> Sql.parameters [ "id", Sql.string (string junkId) ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "DELETE FROM package_ops WHERE id = @id"
+        [ "id", Sql.string (string junkId) ]
   }
 
 /// The overlay's SEARCH and its `findFn` must name the same version.
@@ -476,9 +488,7 @@ let undecodableBranchOpIsSkippedNotFatal =
 /// Three versions, because two cannot tell a hash-ordered answer from a correct one.
 let overlaySearchAgreesWithFindFn =
   testTask "the overlay's search names the version its location map binds" {
-    let bid = testBranch "search-agrees"
-    do! cleanupBranch bid
-    do! Branches.createBranch bid "search-agrees" PT.BranchId.Main
+    let! bid = freshBranch "search-agrees" "search-agrees"
 
     for answer in [ 1; 2; 3 ] do
       let! ops = parsePackageOps (namedSource "SearchAgrees" answer)
@@ -530,9 +540,7 @@ let overlaySearchAgreesWithFindFn =
 let supersededBranchVersionsKeepTheirName =
   testTask
     "a version the branch has edited past is still named, not rendered as a hash" {
-    let bid = testBranch "ever-named"
-    do! cleanupBranch bid
-    do! Branches.createBranch bid "ever-named" PT.BranchId.Main
+    let! bid = freshBranch "ever-named" "ever-named"
 
     let! firstOps = parsePackageOps (namedSource "EverNamed" 1)
     let! _ = Branches.storeDeltaOps bid firstOps
@@ -569,9 +577,7 @@ let supersededBranchVersionsKeepTheirName =
 /// the "you have nothing yet" panel to someone who has just written something.
 let branchAuthoringCountsAsHavingItems =
   testTask "an owner's first item on a branch counts as having items" {
-    let bid = testBranch "owner-has-items"
-    do! cleanupBranch bid
-    do! Branches.createBranch bid "owner-has-items" PT.BranchId.Main
+    let! bid = freshBranch "owner-has-items" "owner-has-items"
 
     // Store BEFORE asking. The overlay memoises per branch and this test writes ops behind its back
     // (`scmAddOps` refreshes it; `storeDeltaOps` on its own does not), so asking first would cache an
@@ -593,10 +599,7 @@ let branchAuthoringCountsAsHavingItems =
 let storeThenOverlay =
   testTask
     "a branch's ops round-trip through the store (effective=0) and overlay to resolve foo" {
-    let branchId = testBranch "test-branch-store-1"
-    do! cleanupBranch branchId
-
-    do! Branches.createBranch branchId "store-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-store-1" "store-proof"
     let! byName = idForName "store-proof"
     Expect.equal byName (Some branchId) "branch resolves by its name alias"
 
@@ -619,9 +622,9 @@ let storeThenOverlay =
 /// How many ops this branch's own frontier tags, ignoring the parent chain. A retag moves tags off
 /// a branch rather than deleting its ops, so this is what says the move happened.
 let private ownTagCount (branchId : PT.BranchId) : Task<int64> =
-  Sql.query "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
-  |> Sql.parameters [ "b", Sql.string (string branchId) ]
-  |> Sql.executeRowAsync (fun read -> read.int64 "n")
+  countSql
+    "SELECT count(*) AS n FROM op_branches WHERE branch_id = @b"
+    [ "b", Sql.string (string branchId) ]
 
 /// Count a branch's frontier ops at a given effective flag (cache-free, direct SQL).
 let private countEffective (branchId : PT.BranchId) (eff : int) : Task<int64> =
@@ -635,10 +638,7 @@ let private countEffective (branchId : PT.BranchId) (eff : int) : Task<int64> =
 let markMergedFlipsEffective =
   testTask
     "merge half-1: markMergedEffective flips a branch's ops effective 0->1 (fold does the rest)" {
-    let branchId = testBranch "test-branch-flip-1"
-    do! cleanupBranch branchId
-
-    do! Branches.createBranch branchId "flip-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-flip-1" "flip-proof"
     let! ops = parsePackageOps (branchSource 42)
     let! _ = Branches.storeDeltaOps branchId ops
 
@@ -706,9 +706,9 @@ let mergedBranchStaysAddressable =
       "live branch resolves for both reads and writes"
 
     do!
-      Sql.query "UPDATE branches SET merged_at = datetime('now') WHERE id = @b"
-      |> Sql.parameters [ "b", Sql.string (string (testBranch "mergedName")) ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "UPDATE branches SET merged_at = datetime('now') WHERE id = @b"
+        [ "b", Sql.string (string (testBranch "mergedName")) ]
 
     let! readSide = idForName "reuse-me"
     Expect.equal
@@ -736,9 +736,9 @@ let mergedBranchStaysAddressable =
 
     // Archiving is different from merging: it discards the ops, so there is nothing left to address.
     do!
-      Sql.query "UPDATE branches SET archived_at = datetime('now') WHERE id = @b"
-      |> Sql.parameters [ "b", Sql.string (string (testBranch "mergedName2")) ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "UPDATE branches SET archived_at = datetime('now') WHERE id = @b"
+        [ "b", Sql.string (string (testBranch "mergedName2")) ]
     let! afterArchive = idForName "reuse-me"
     Expect.equal
       afterArchive
@@ -794,11 +794,10 @@ let branchesOffBranches =
 
     // Committed on A, the chain carries it. The stamp is what loadDeltaOps keys on.
     do!
-      Sql.query
+      execSqlP
         "UPDATE package_ops SET commit_hash = 'chain-test-commit'
          WHERE id IN (SELECT op_id FROM op_branches WHERE branch_id = @b)"
-      |> Sql.parameters [ "b", Sql.uuid ((testBranch "boA").Guid) ]
-      |> Sql.executeStatementAsync
+        [ "b", Sql.uuid ((testBranch "boA").Guid) ]
 
     // B's overlay walks the parent chain: A's committed frontier + B's own (committed or not).
     let! bOps = Branches.loadDeltaOps (testBranch "boB")
@@ -846,9 +845,7 @@ let branchesOffBranches =
 let getWipOpsExcludesBranch =
   testTask
     "getWipOps excludes branch-tagged ops (main authoring can't see branch state)" {
-    let branchId = testBranch "test-wip-guard"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "wip-guard" PT.BranchId.Main
+    let! branchId = freshBranch "test-wip-guard" "wip-guard"
     let! ops = parsePackageOps (branchSource 42)
     let! _ = Branches.storeDeltaOps branchId ops
 
@@ -856,8 +853,7 @@ let getWipOpsExcludesBranch =
     // `effective = 1`: `getWipOps` excludes the OTHER inert population too (ops a client pushed to this
     // store, and anything a test left inert), which carries no tag to subtract.
     let! total =
-      Sql.query "SELECT count(*) AS n FROM package_ops WHERE effective = 1"
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      countSql "SELECT count(*) AS n FROM package_ops WHERE effective = 1" []
     let! branchCount = ownTagCount branchId
     // Every TAGGED op, not just this branch's: `getWipOps` excludes `op_branches` wholesale, so
     // subtracting only our own count assumes we're the only branch in the store, and we aren't.
@@ -884,12 +880,8 @@ let getWipOpsExcludesBranch =
 let mergeDoesNotConsumeSiblingPendingOps =
   testTask
     "a merge leaves OTHER branches' pending ops applied=0 (applied-flag isolation)" {
-    let bS = testBranch "test-sweep-sibling"
-    let bM = testBranch "test-sweep-merging"
-    do! cleanupBranch bS
-    do! cleanupBranch bM
-    do! Branches.createBranch bS "sweep-sibling" PT.BranchId.Main
-    do! Branches.createBranch bM "sweep-merging" PT.BranchId.Main
+    let! bS = freshBranch "test-sweep-sibling" "sweep-sibling"
+    let! bM = freshBranch "test-sweep-merging" "sweep-merging"
     // Distinct modules so M's fold pollutes only its own unique name (cleaned up after).
     let! opsS = parsePackageOps (namedSource "SweepSibling" 7)
     let! opsM = parsePackageOps (namedSource "SweepMerging" 8)
@@ -918,9 +910,7 @@ let mergeDoesNotConsumeSiblingPendingOps =
 
     do! cleanupBranch bS
     do! cleanupBranch bM
-    do!
-      Sql.query "DELETE FROM locations WHERE modules = 'SweepMerging'"
-      |> Sql.executeStatementAsync
+    do! execSql "DELETE FROM locations WHERE modules = 'SweepMerging'"
   }
 
 /// Two branches bind the SAME name to DIFFERENT hashes, the second authored LATER. Merging older
@@ -932,11 +922,7 @@ let sameNameMergesConvergeToLater =
     let bOld = testBranch "test-cvg-old"
     let bNew = testBranch "test-cvg-new"
     let liveHash () : Task<Option<string>> =
-      Sql.query
-        "SELECT item_hash FROM locations
-         WHERE owner = 'Darklang' AND modules = 'ConvergeWin' AND name = 'foo'
-           AND unlisted_at IS NULL"
-      |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
+      liveBoundHash { owner = "Darklang"; modules = [ "ConvergeWin" ]; name = "foo" }
     let mergeFold (b : PT.BranchId) : Task<unit> =
       task {
         let! _ = markMergedEffective b
@@ -945,9 +931,7 @@ let sameNameMergesConvergeToLater =
       }
     do! cleanupBranch bOld
     do! cleanupBranch bNew
-    do!
-      Sql.query "DELETE FROM locations WHERE modules = 'ConvergeWin'"
-      |> Sql.executeStatementAsync
+    do! execSql "DELETE FROM locations WHERE modules = 'ConvergeWin'"
 
     do! Branches.createBranch bOld "cvg-old" PT.BranchId.Main
     do! Branches.createBranch bNew "cvg-new" PT.BranchId.Main
@@ -970,9 +954,7 @@ let sameNameMergesConvergeToLater =
 
     do! cleanupBranch bOld
     do! cleanupBranch bNew
-    do!
-      Sql.query "DELETE FROM locations WHERE modules = 'ConvergeWin'"
-      |> Sql.executeStatementAsync
+    do! execSql "DELETE FROM locations WHERE modules = 'ConvergeWin'"
   }
 
 /// Locks the reload-stable rebase model: nameConflicts flags a name whose main hash diverged from
@@ -980,10 +962,7 @@ let sameNameMergesConvergeToLater =
 /// directly (no fold into main) so the test never pollutes the shared main projection.
 let rebaseDetectsAndClearsConflicts =
   testTask "nameConflicts flags a diverged name; rebase clears it" {
-    let bid = testBranch "test-rebase-gate"
-    do! cleanupBranch bid
-
-    do! Branches.createBranch bid "rebase-gate" PT.BranchId.Main
+    let! bid = freshBranch "test-rebase-gate" "rebase-gate"
     let! ops = parsePackageOps (namedSource "RebaseGate" 5)
     let! _ = Branches.storeDeltaOps bid ops
     do! Branches.recordNameBases bid PT.BranchId.Main ops
@@ -1011,11 +990,8 @@ let rebaseDetectsAndClearsConflicts =
 let branchTransferImportReDerivesBases =
   testTask
     "importing a branch's ops recreates it isolated + re-derives its per-name bases locally" {
-    let dst = testBranch "test-xfer-dst"
-    do! cleanupBranch dst
-
     // simulate scmImportBranchOps: register + store ops + re-derive bases.
-    do! Branches.createBranch dst "xfer" PT.BranchId.Main
+    let! dst = freshBranch "test-xfer-dst" "xfer"
     let! ops = parsePackageOps (namedSource "XferTest" 8)
     let! _ = Branches.storeDeltaOps dst ops
     do! Branches.recordNameBases dst PT.BranchId.Main ops
@@ -1040,10 +1016,7 @@ let branchTransferImportReDerivesBases =
 /// `Resolve` as a binding, and `recordNameBases` has to agree with it.
 let resolveAloneRecordsANameBase =
   testTask "a name bound only by Resolve still gets a per-name base" {
-    let b = testBranch "test-resolve-base"
-
-    do! cleanupBranch b
-    do! Branches.createBranch b "resolve-base" PT.BranchId.Main
+    let! b = freshBranch "test-resolve-base" "resolve-base"
 
     // Borrow a real (location, target) off a SetName rather than hand-building a hash: what is under
     // test is which op SHAPE gets counted, not what a Reference looks like.
@@ -1094,11 +1067,8 @@ let resolveAloneRecordsANameBase =
 let resolveKeepMineDoesNotRestampSharedOps =
   testTask
     "resolve keep-mine authors an override and leaves every existing stamp alone" {
-    let b = testBranch "test-resolve-no-restamp"
+    let! b = freshBranch "test-resolve-no-restamp" "restamp"
     let fqn = "Darklang.RestampTest.foo"
-
-    do! cleanupBranch b
-    do! Branches.createBranch b "restamp" PT.BranchId.Main
     let! ops = parsePackageOps (namedSource "RestampTest" 7)
     let! _ = Branches.storeDeltaOps b ops
     do! Branches.recordNameBases b PT.BranchId.Main ops
@@ -1143,10 +1113,8 @@ let resolveKeepMineDoesNotRestampSharedOps =
 /// just the one shape. `opBindsKey` is the single definition of "binds this name" both sides read.
 let takeTheirsAfterKeepMineDropsTheOverride =
   testTask "resolve theirs after resolve mine drops the override too" {
-    let b = testBranch "test-theirs-after-mine"
+    let! b = freshBranch "test-theirs-after-mine" "theirs-after-mine"
     let fqn = "Darklang.TheirsAfterMine.foo"
-    do! cleanupBranch b
-    do! Branches.createBranch b "theirs-after-mine" PT.BranchId.Main
     let! ops = parsePackageOps (namedSource "TheirsAfterMine" 7)
     let! _ = Branches.storeDeltaOps b ops
     do! Branches.recordNameBases b PT.BranchId.Main ops
@@ -1227,9 +1195,7 @@ let perNameResolutionMineTheirs =
 let reuseBranchIdRevives =
   testTask
     "createBranch on an archived/merged id revives it; parent stays first-write-wins" {
-    let b = testBranch "test-revive"
-    do! cleanupBranch b
-    do! Branches.createBranch b "revive" PT.BranchId.Main
+    let! b = freshBranch "test-revive" "revive"
 
     let flagsSet () : Task<int64> =
       Sql.query
@@ -1241,11 +1207,10 @@ let reuseBranchIdRevives =
     // Set the flags directly: this test is about createBranch's revive-on-reuse, and `archive` is
     // Dark now (SCM.Branches), so SQL keeps the setup on the test's actual subject.
     do!
-      Sql.query
+      execSqlP
         "UPDATE branches SET archived_at = datetime('now'), merged_at = datetime('now')
          WHERE id = @b"
-      |> Sql.parameters [ "b", Sql.string (string b) ]
-      |> Sql.executeStatementAsync
+        [ "b", Sql.string (string b) ]
     let! before = flagsSet ()
     Expect.equal before 1L "archived/merged flags are set before reuse"
 
@@ -1297,9 +1262,9 @@ let branchValueContentFoldIsolatesName =
     do! LibDB.PackageOpPlayback.applyOps addValueOps
 
     let! contentCount =
-      Sql.query "SELECT count(*) AS n FROM package_values WHERE hash = @h"
-      |> Sql.parameters [ "h", Sql.string valueHash ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      countSql
+        "SELECT count(*) AS n FROM package_values WHERE hash = @h"
+        [ "h", Sql.string valueHash ]
     Expect.isGreaterThan
       contentCount
       0L
@@ -1331,9 +1296,9 @@ let branchValueContentFoldIsolatesName =
         "rt_dval was NULL after evaluateAllValues -- expression-valued branch values would error (bug #1 regression)"
 
     do!
-      Sql.query "DELETE FROM package_values WHERE hash = @h"
-      |> Sql.parameters [ "h", Sql.string valueHash ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "DELETE FROM package_values WHERE hash = @h"
+        [ "h", Sql.string valueHash ]
   }
 
 let branchExists =
@@ -1356,9 +1321,9 @@ let branchExists =
     let! ops = parsePackageOps (namedSource "BeY" 7)
     let! _ = Branches.storeDeltaOps (testBranch "beY") ops
     do!
-      Sql.query "DELETE FROM branches WHERE id = @b"
-      |> Sql.parameters [ "b", Sql.string (string (testBranch "beY")) ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "DELETE FROM branches WHERE id = @b"
+        [ "b", Sql.string (string (testBranch "beY")) ]
     let! taggedOnly = Branches.exists (testBranch "beY")
     Expect.isTrue taggedOnly "ops tagged with no registry row still Branches.exists"
 
@@ -1376,27 +1341,21 @@ let branchExists =
 /// are first-class everywhere else in the model -- the overlay chain, merge routing, name bases.
 let propagationPinsComeFromTheWholeChain =
   testTask "a child branch inherits its parent's pins, not only main's" {
-    let parent = testBranch "pin-parent"
-    let child = testBranch "pin-child"
-    do! cleanupBranch child
-    do! cleanupBranch parent
-    do! Branches.createBranch parent "pin-parent" PT.BranchId.Main
-    do! Branches.createBranch child "pin-child" parent
+    let! parent = freshBranch "pin-parent" "pin-parent"
+    let! child = freshBranchOff parent "pin-child" "pin-child"
 
     let loc : PT.PackageLocation =
       { owner = "Darklang"; modules = [ "ChainPin" ]; name = "target" }
 
     // The parent pins it. Nobody else says anything.
     do!
-      Sql.query
+      execSqlP
         "INSERT INTO propagation_policy (branch_id, owner, modules, name, policy)
          VALUES (@b, @o, @m, @n, 'pin')"
-      |> Sql.parameters
         [ "b", Sql.string (string parent)
           "o", Sql.string loc.owner
           "m", Sql.string (String.concat "." loc.modules)
           "n", Sql.string loc.name ]
-      |> Sql.executeStatementAsync
 
     let! childPins = Queries.getPropagationPins child
     Expect.isTrue
@@ -1405,15 +1364,13 @@ let propagationPinsComeFromTheWholeChain =
 
     // And the child can still say otherwise: nearest in the chain wins, whatever it says.
     do!
-      Sql.query
+      execSqlP
         "INSERT INTO propagation_policy (branch_id, owner, modules, name, policy)
          VALUES (@b, @o, @m, @n, 'follow')"
-      |> Sql.parameters
         [ "b", Sql.string (string child)
           "o", Sql.string loc.owner
           "m", Sql.string (String.concat "." loc.modules)
           "n", Sql.string loc.name ]
-      |> Sql.executeStatementAsync
 
     let! overridden = Queries.getPropagationPins child
     Expect.isFalse
@@ -1432,10 +1389,9 @@ let propagationPinsComeFromTheWholeChain =
       "main never saw either decision"
 
     do!
-      Sql.query "DELETE FROM propagation_policy WHERE branch_id IN (@p, @c)"
-      |> Sql.parameters
+      execSqlP
+        "DELETE FROM propagation_policy WHERE branch_id IN (@p, @c)"
         [ "p", Sql.string (string parent); "c", Sql.string (string child) ]
-      |> Sql.executeStatementAsync
     do! cleanupBranch child
     do! cleanupBranch parent
   }
@@ -1535,9 +1491,8 @@ let rebuildKeepsBranchPolicy =
       "the rebuild path re-folds branch decisions from the log"
 
     do!
-      Sql.query
+      execSql
         "DELETE FROM propagation_policy WHERE owner = 'Zz' AND modules = 'RebuildTest'"
-      |> Sql.executeStatementAsync
     do! cleanupBranch (testBranch "bpX")
   }
 
@@ -1693,9 +1648,9 @@ let branchResolutionOrder =
       Expect.isError s "a uuid this store lacks is refused"
 
       do!
-        Sql.query "UPDATE branches SET archived_at = datetime('now') WHERE id = @b"
-        |> Sql.parameters [ "b", Sql.string (string storedB) ]
-        |> Sql.executeStatementAsync
+        execSqlP
+          "UPDATE branches SET archived_at = datetime('now') WHERE id = @b"
+          [ "b", Sql.string (string storedB) ]
       let! s = Sel.select None None
       match s with
       | Ok(s : Sel.Selection) ->
@@ -1731,9 +1686,7 @@ let branchResolutionOrder =
 /// not, so a colleague's copy of the branch still lists as live work they could keep authoring on.
 let branchEventMarksMerged =
   testTask "a BranchEvent(Merged) op folds to marking that branch merged" {
-    let branchId = testBranch "test-branch-event-merged"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "event-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-event-merged" "event-proof"
 
     let! before = isMerged branchId
     Expect.isFalse before "not merged before the event"
@@ -1764,9 +1717,7 @@ let branchEventMarksMerged =
 let mainRetakesABranchsOp =
   testTask
     "authoring on main an op a branch already holds makes it effective, untagged, and live" {
-    let branchId = testBranch "test-branch-main-retake"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "retake-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-main-retake" "retake-proof"
 
     let! ops = parsePackageOps (namedSource "MainRetake" 42)
     let ids = ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
@@ -1800,17 +1751,13 @@ let mainRetakesABranchsOp =
 
     // The tag is gone, so cleanupBranch would not find the rows; drop them by id.
     do!
-      Sql.query
+      execSqlP
         "DELETE FROM locations WHERE op_id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters
         [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
-      |> Sql.executeStatementAsync
     do!
-      Sql.query
+      execSqlP
         "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters
         [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
-      |> Sql.executeStatementAsync
     LibDB.Caching.invalidateAll ()
     do! cleanupBranch branchId
   }
@@ -1822,13 +1769,11 @@ let mainRetakesABranchsOp =
 /// after a merge elsewhere would put its next edit on a branch nothing merges again, listed as live.
 let authoringOnAFinishedBranchRefuses =
   testTask "authoring on a merged branch is refused rather than reviving it" {
-    let branchId = testBranch "test-branch-finished-refuses"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "finished-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-finished-refuses" "finished-proof"
     do!
-      Sql.query "UPDATE branches SET merged_at = datetime('now') WHERE id = @b"
-      |> Sql.parameters [ "b", Sql.string (string branchId) ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "UPDATE branches SET merged_at = datetime('now') WHERE id = @b"
+        [ "b", Sql.string (string branchId) ]
 
     // An empty op list reaches the guard before anything else, so it exercises exactly that.
     let! outcome =
@@ -1850,9 +1795,7 @@ let authoringOnAFinishedBranchRefuses =
 let liveBindingReadsTheBranchThenMain =
   testTask
     "liveBindingFor answers the branch's binding, and main's where the branch is silent" {
-    let branchId = testBranch "test-branch-live-binding"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "live-binding-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-live-binding" "live-binding-proof"
 
     let! ops = parsePackageOps (namedSource "LiveBind" 42)
     let! _ = Branches.storeDeltaOps branchId ops
@@ -1908,9 +1851,7 @@ let liveBindingReadsTheBranchThenMain =
 /// Every draft query excludes tagged ids, so a tag on main's own op hid it from `status` and `commit`.
 let aBranchNeverTagsWhatMainRuns =
   testTask "storing an op main already runs on a branch leaves it untagged" {
-    let branchId = testBranch "test-branch-no-tag-on-main"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "no-tag-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-no-tag-on-main" "no-tag-proof"
 
     let! ops = parsePackageOps (namedSource "NoTagOnMain" 42)
     let ids = ops |> List.map (fun op -> string (LibDB.Inserts.computeOpHash op))
@@ -1933,17 +1874,13 @@ let aBranchNeverTagsWhatMainRuns =
     Expect.equal taggedNow (int64 (List.length fresh)) "and tagged"
 
     do!
-      Sql.query
+      execSqlP
         "DELETE FROM locations WHERE op_id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters
         [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
-      |> Sql.executeStatementAsync
     do!
-      Sql.query
+      execSqlP
         "DELETE FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
-      |> Sql.parameters
         [ "ids", Sql.string (System.Text.Json.JsonSerializer.Serialize ids) ]
-      |> Sql.executeStatementAsync
     LibDB.Caching.invalidateAll ()
     do! cleanupBranch branchId
   }
@@ -1965,11 +1902,10 @@ let retagMovesTheBasesToo =
     let! ops = parsePackageOps (namedSource "BasesMove" 42)
     let! _ = Branches.storeDeltaOps child ops
     do!
-      Sql.query
+      execSqlP
         "INSERT OR IGNORE INTO branch_name_bases (branch_id, owner, modules, name, base_hash)
          VALUES (@b, 'Darklang', 'BasesMove', 'foo', 'the-fork-hash')"
-      |> Sql.parameters [ "b", Sql.string (string child) ]
-      |> Sql.executeStatementAsync
+        [ "b", Sql.string (string child) ]
 
     let! _ = retagFrontierToParent child parent
 
@@ -2072,9 +2008,7 @@ let overlayPairsByHashNotAdjacency =
 let anUndecodableBundleOpIsKeptNotRefused =
   testTask
     "a branch bundle with one unreadable op stores it inert and keeps the rest" {
-    let branchId = testBranch "test-branch-raw-op"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "raw-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-raw-op" "raw-proof"
 
     let! ops = parsePackageOps (namedSource "RawOp" 42)
     let! stored =
@@ -2121,18 +2055,15 @@ let branchEventForUnknownBranchIsIgnored =
     let! _ = LibDB.Inserts.insertAndApplyOps [ op ]
 
     let! rows =
-      Sql.query "SELECT COUNT(*) as n FROM branches WHERE id = @b"
-      |> Sql.parameters [ "b", Sql.string (string unknown) ]
-      |> Sql.executeRowAsync (fun read -> read.int64 "n")
+      countSql
+        "SELECT COUNT(*) as n FROM branches WHERE id = @b"
+        [ "b", Sql.string (string unknown) ]
     Expect.equal rows 0L "no branch was conjured up to receive the event"
 
     // The one op this test wrote, back out: every test in this file leaves the shared store as it
     // found it, and this one was the exception.
     let opId = LibSerialization.Hashing.Hashing.computeOpRowId op
-    do!
-      Sql.query "DELETE FROM package_ops WHERE id = @id"
-      |> Sql.parameters [ "id", Sql.uuid opId ]
-      |> Sql.executeStatementAsync
+    do! execSqlP "DELETE FROM package_ops WHERE id = @id" [ "id", Sql.uuid opId ]
   }
 
 
@@ -2145,9 +2076,7 @@ let branchEventForUnknownBranchIsIgnored =
 let foldDoesNotStrandOpsItMadeEffective =
   testTask
     "an op that makes other ops effective does not leave them applied-but-unfolded" {
-    let branchId = testBranch "test-branch-stranded"
-    do! cleanupBranch branchId
-    do! Branches.createBranch branchId "stranded-proof" PT.BranchId.Main
+    let! branchId = freshBranch "test-branch-stranded" "stranded-proof"
 
     let! ops = parsePackageOps (namedSource "BranchTestStranded" 77)
     let! _ = Branches.storeDeltaOps branchId ops
@@ -2169,14 +2098,12 @@ let foldDoesNotStrandOpsItMadeEffective =
     let eventId = LibDB.Inserts.computeOpHash event
     let eventBlob = BS.PT.PackageOp.serialize eventId event
     do!
-      Sql.query
+      execSqlP
         "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts)
          VALUES (@id, @blob, 0, 1, @ts)"
-      |> Sql.parameters
         [ "id", Sql.uuid eventId
           "blob", Sql.bytes eventBlob
           "ts", Sql.string "2026-01-01T00:00:00.000Z" ]
-      |> Sql.executeStatementAsync
 
     let! _ = Seed.applyUnappliedOps ()
 
@@ -2423,9 +2350,7 @@ let overrideClosesOnlyItsOwnKind =
       "pending"
       "the value conflict at the same name is a separate question and stays open"
 
-    do!
-      Sql.query "DELETE FROM conflicts WHERE id IN ('b1-fn', 'b1-value')"
-      |> Sql.executeStatementAsync
+    do! execSql "DELETE FROM conflicts WHERE id IN ('b1-fn', 'b1-value')"
   }
 
 

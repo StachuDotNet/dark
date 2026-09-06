@@ -13,6 +13,7 @@ open Microsoft.FSharp.Reflection
 
 open Fumble
 open LibDB.Sqlite
+open TestUtils.TestUtils
 
 module Seed = LibDB.Seed
 module PT = LibExecution.ProgramTypes
@@ -289,9 +290,8 @@ let durableReleaseCarriesForward =
     let! fpBefore = itemHashes ()
 
     do!
-      Sql.query
+      execSql
         "CREATE INDEX IF NOT EXISTS idx_release_migration_demo ON package_ops(origin_ts)"
-      |> Sql.executeStatementAsync
 
     let! _ = Seed.rebuildProjections ()
 
@@ -315,9 +315,7 @@ let durableReleaseCarriesForward =
     Expect.equal idxExists 1L "the Release's schema change actually landed"
 
     // leave the shared store as we found it
-    do!
-      Sql.query "DROP INDEX IF EXISTS idx_release_migration_demo"
-      |> Sql.executeStatementAsync
+    do! execSql "DROP INDEX IF EXISTS idx_release_migration_demo"
   }
 
 let registryCoversProjections =

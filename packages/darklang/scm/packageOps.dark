@@ -121,11 +121,13 @@ let tryDecodeOp
 let opBindsAName (blob: Blob) : Bool = Builtin.packageOpBindsAName blob
 
 
-/// Decode op-log rows (id, op_blob) into fully-decoded PackageOps. The QUERY is Dark; only the per-row
-/// blob decode is a builtin, so there's no read builtin at all.
-let decodeOpRows
+/// (id text, ts, decoded op) per decodable row -- the one id/blob/ts decode behind every
+/// op-log read. A row whose id won't parse or whose blob this build can't read is
+/// skipped; a row without a `ts` column reads as "". The QUERY is Dark; only the
+/// per-row blob decode is a builtin, so there's no read builtin at all.
+let decodeOpRowEntries
   (rows: List<Dict<String, Stdlib.Sqlite.Value>>)
-  : List<LanguageTools.ProgramTypes.PackageOp> =
+  : List<(String * String * LanguageTools.ProgramTypes.PackageOp)> =
   rows
   |> Stdlib.List.filterMap (fun row ->
     match
@@ -133,9 +135,18 @@ let decodeOpRows
     with
     | (Some idStr, Some blob) ->
       match Stdlib.Uuid.parse idStr with
-      | Ok id -> tryDecodeOp id blob
+      | Ok id ->
+        tryDecodeOp id blob
+        |> Stdlib.Option.map (fun op -> (idStr, Stdlib.Sqlite.textOr row "ts", op))
       | Error _ -> Stdlib.Option.Option.None
     | _ -> Stdlib.Option.Option.None)
+
+
+/// Decode op-log rows (id, op_blob) into fully-decoded PackageOps.
+let decodeOpRows
+  (rows: List<Dict<String, Stdlib.Sqlite.Value>>)
+  : List<LanguageTools.ProgramTypes.PackageOp> =
+  decodeOpRowEntries rows |> Stdlib.List.map (fun (_id, _ts, op) -> op)
 
 
 // reading an INCOMING side (op blobs -> the names they bind)
@@ -167,10 +178,7 @@ let bindingFromOp
     let modules = Stdlib.String.join location.modules "."
 
     let itemType =
-      match LanguageTools.ProgramTypes.Reference.kind target with
-      | Fn -> "fn"
-      | Type -> "type"
-      | Value -> "value"
+      Deps.kindString (LanguageTools.ProgramTypes.Reference.kind target)
 
     let hash =
       LanguageTools.ProgramTypes.hashToString
@@ -255,33 +263,38 @@ let bindingsFromOpRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<Co
 /// never materialized in `locations`, only ever an overlay. The Dark mirror of the F# overlay walk in
 /// `LibDB.Branches.chainOverlayOps`, so a name resolves the same whichever side asks.
 ///
-/// THE reference copy of the parent-chain CTE. `visibleWhere`, `parentCommitFor` and
-/// `branchHashHistoryFor` embed the same walk inside a larger statement and point here for why it is
-/// written this way; change one, change all four.
-///
 /// `@p1` is main's ID, bound, never the literal "main". `SCM.Ids` exists to enforce exactly that, and
 /// SQL is where it drifts unnoticed, because no type checker reads a string: against a store whose
 /// `parent_id` holds main's uuid, comparing to `'main'` is true for every row and the recursion walks
 /// past main instead of stopping at it.
 let chainBindingEntries (branchId: Uuid) : List<NameWord> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "WITH RECURSIVE chain(bid) AS (
-         SELECT @p0
-         UNION
-         SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
-         WHERE b.parent_id != @p1
-       )
-       SELECT p.id, p.op_blob, p.origin_ts AS ts
-       FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
-       WHERE ob.branch_id IN (SELECT bid FROM chain)
-       ORDER BY p.origin_ts, p.rowid"
-      [ Stdlib.Uuid.toString branchId
-        Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
-  with
-  | Ok rows -> bindingEntriesFromOpRows rows
-  | Error _ -> []
+  bindingEntriesFromOpRows (chainOpRows branchId)
+
+
+/// The parent-chain walk: @p0 = the branch, @p1 = main's id. Spliced into each chain
+/// statement (`chainOpRows`, `visibleWhere`, `parentCommitFor`), never edited in
+/// place -- the one copy of the walk every chain query shares.
+val chainCteSql =
+  "WITH RECURSIVE chain(bid) AS (
+     SELECT @p0
+     UNION
+     SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
+     WHERE b.parent_id != @p1
+   )"
+
+
+/// The chain's op rows (the chain CTE plus the id/op_blob/ts SELECT), oldest first --
+/// the one query behind <fn chainBindingEntries> and `branchHashHistoryFor`.
+let chainOpRows (branchId: Uuid) : List<Dict<String, Stdlib.Sqlite.Value>> =
+  Stdlib.Sqlite.rowsOrEmptyP
+    (localDb ())
+    (chainCteSql
+     ++ " SELECT p.id, p.op_blob, p.origin_ts AS ts
+          FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
+          WHERE ob.branch_id IN (SELECT bid FROM chain)
+          ORDER BY p.origin_ts, p.rowid")
+    [ Stdlib.Uuid.toString branchId
+      Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
 
 
 /// <fn chainBindingEntries>, keeping only the names the chain leaves bound.
@@ -497,16 +510,13 @@ let discardBranchDraft (branchId: Uuid) : Int64 =
   // will not touch. Against a fixed list, order stops mattering for coverage; rows still go before
   // tags so an op never sits untagged-but-present looking like a main op.
   let draftIds =
-    match
-      Stdlib.Sqlite.queryP
-        (localDb ())
-        "SELECT id FROM package_ops
-         WHERE commit_hash IS NULL AND effective = 0
-           AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)"
-        [ Stdlib.Uuid.toString branchId ]
-    with
-    | Ok rows -> rows |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "id")
-    | Error _ -> []
+    Stdlib.Sqlite.columnP
+      (localDb ())
+      "SELECT id FROM package_ops
+       WHERE commit_hash IS NULL AND effective = 0
+         AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)"
+      [ Stdlib.Uuid.toString branchId ]
+      "id"
 
   let idsJson = Stdlib.Json.serialize<List<String>> draftIds
 
@@ -661,25 +671,20 @@ let discardDraft () : Stdlib.Result.Result<Int, String> =
 /// The recursion is the cascade: if X repoints it gets a new hash, so anything referencing X repoints too.
 /// One recursive query rather than a Dark loop, so `dark status` is cheap enough to run on every prompt.
 let staleHashesFor (b: Conflicts.Binding) : List<String> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "WITH RECURSIVE stale(hash) AS (
-         SELECT d.item_hash FROM package_dependencies d
-          WHERE d.depends_on_owner = @p0
-            AND d.depends_on_modules = @p1
-            AND d.depends_on_name = @p2
-            AND d.depends_on_hash <> @p3
-         UNION
-         SELECT d2.item_hash FROM package_dependencies d2 JOIN stale s ON d2.depends_on_hash = s.hash
-       )
-       SELECT DISTINCT hash FROM stale"
-      [ b.owner, b.modules, b.name, b.hash ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "hash")
-  | Error _ -> []
+  Stdlib.Sqlite.columnP
+    (localDb ())
+    "WITH RECURSIVE stale(hash) AS (
+       SELECT d.item_hash FROM package_dependencies d
+        WHERE d.depends_on_owner = @p0
+          AND d.depends_on_modules = @p1
+          AND d.depends_on_name = @p2
+          AND d.depends_on_hash <> @p3
+       UNION
+       SELECT d2.item_hash FROM package_dependencies d2 JOIN stale s ON d2.depends_on_hash = s.hash
+     )
+     SELECT DISTINCT hash FROM stale"
+    [ b.owner, b.modules, b.name, b.hash ]
+    "hash"
 
 
 /// Every name bound to <param hash>, as <param branchId> sees it: main's, plus the branch's own frontier.
@@ -689,17 +694,13 @@ let staleHashesFor (b: Conflicts.Binding) : List<String> =
 /// the collateral on a branch -- precisely where a caller is about to warn someone about it.
 let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<String> =
   let mainNames =
-    match
-      // main-scoped: main's names for this content; the chain's names and rebinds are applied below.
-      Stdlib.Sqlite.queryP
-        (localDb ())
-        "SELECT owner, modules, name FROM locations
-         WHERE item_hash = @p0 AND item_type = @p1 AND unlisted_at IS NULL"
-        [ hash, itemType ]
-    with
-    | Ok rows ->
-      rows
-      |> Stdlib.List.filterMap (fun row ->
+    // main-scoped: main's names for this content; the chain's names and rebinds are applied below.
+    Stdlib.Sqlite.rowsP
+      (localDb ())
+      "SELECT owner, modules, name FROM locations
+       WHERE item_hash = @p0 AND item_type = @p1 AND unlisted_at IS NULL"
+      [ hash, itemType ]
+      (fun row ->
         match
           (Stdlib.Sqlite.textField row "owner",
            Stdlib.Sqlite.textField row "modules",
@@ -707,7 +708,6 @@ let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<Str
         with
         | (Some o, Some m, Some n) -> Stdlib.Option.Option.Some(Conflicts.fqn o m n)
         | _ -> Stdlib.Option.Option.None)
-    | Error _ -> []
 
   if SCM.Ids.isMain branchId then
     mainNames
@@ -759,10 +759,11 @@ let mainNamesForHashes (hashes: List<String>) : List<(String * String)> =
         ++ (Conflicts.inPlaceholders chunk)
         ++ ")"
 
-      match Stdlib.Sqlite.queryP (localDb ()) sql chunk with
-      | Ok rows ->
-        rows
-        |> Stdlib.List.filterMap (fun row ->
+      Stdlib.Sqlite.rowsP
+        (localDb ())
+        sql
+        chunk
+        (fun row ->
           match
             (Stdlib.Sqlite.textField row "item_hash",
              Stdlib.Sqlite.textField row "owner",
@@ -771,8 +772,7 @@ let mainNamesForHashes (hashes: List<String>) : List<(String * String)> =
           with
           | (Some h, Some o, Some m, Some n) ->
             Stdlib.Option.Option.Some((h, Conflicts.fqn o m n))
-          | _ -> Stdlib.Option.Option.None)
-      | Error _ -> [])
+          | _ -> Stdlib.Option.Option.None))
     |> Stdlib.List.flatten
 
 
@@ -812,17 +812,8 @@ let repointsFor (b: Conflicts.Binding) : List<String> =
 let locationOfFqn
   (fqn: String)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
-  match Stdlib.String.split fqn "." with
-  | owner :: rest ->
-    match Stdlib.List.last rest with
-    | Some name ->
-      let mods = Stdlib.List.take rest ((Stdlib.List.length rest) - 1)
-
-      (LanguageTools.ProgramTypes.PackageLocation
-        { owner = owner; modules = mods; name = name })
-      |> Stdlib.Option.Option.Some
-    | None -> Stdlib.Option.Option.None
-  | [] -> Stdlib.Option.Option.None
+  (Branches.parseFqn fqn)
+  |> Stdlib.Option.map (fun (o, m, n) -> Deps.locationOf o m n)
 
 
 /// One knock-on repoint: <param name> moves because <param uses> did. Carrying the CAUSE is what lets the
@@ -899,13 +890,7 @@ let applyResolution
   (c: Conflicts.Conflict)
   (hash: String)
   : Stdlib.Result.Result<Int, String> =
-  let modules =
-    if c.modules == "" then [] else Stdlib.String.split c.modules "."
-
-  let location =
-    LanguageTools.ProgramTypes.PackageLocation
-      { owner = c.owner; modules = modules; name = c.name }
-
+  let location = Deps.locationOf c.owner c.modules c.name
   let h = LanguageTools.ProgramTypes.Hash.Hash hash
 
   let reference =
@@ -947,15 +932,8 @@ let settleConflict
       // Cascade, the way an edit does. An override rebinds the NAME; without this the callers that
       // had followed the losing version go on calling it by hash, so the name says one thing and
       // everything that uses it does another, on every machine the override reaches.
-      let modules = if c.modules == "" then [] else Stdlib.String.split c.modules "."
-      let location =
-        LanguageTools.ProgramTypes.PackageLocation
-          { owner = c.owner; modules = modules; name = c.name }
-      let kind =
-        match c.itemType with
-        | "type" -> LanguageTools.ProgramTypes.ItemKind.Type
-        | "value" -> LanguageTools.ProgramTypes.ItemKind.Value
-        | _ -> LanguageTools.ProgramTypes.ItemKind.Fn
+      let location = Deps.locationOf c.owner c.modules c.name
+      let kind = Deps.kindOf c.itemType
       let losers =
         c.candidates
         |> Stdlib.List.filterMap (fun cand ->
@@ -1375,16 +1353,12 @@ let commitRowsFor (hashes: List<String>) : List<BranchBundleCommit> =
   if Stdlib.List.isEmpty wanted then
     []
   else
-    match
-      Stdlib.Sqlite.queryP
-        (localDb ())
-        "SELECT hash, message, author, origin_ts, COALESCE(parent, '') AS parent FROM commits
-         WHERE hash IN (SELECT value FROM json_each(@p0))"
-        [ Stdlib.Json.serialize<List<String>> wanted ]
-    with
-    | Ok rows ->
-      rows
-      |> Stdlib.List.filterMap (fun row ->
+    Stdlib.Sqlite.rowsP
+      (localDb ())
+      "SELECT hash, message, author, origin_ts, COALESCE(parent, '') AS parent FROM commits
+       WHERE hash IN (SELECT value FROM json_each(@p0))"
+      [ Stdlib.Json.serialize<List<String>> wanted ]
+      (fun row ->
         match
           (Stdlib.Sqlite.textField row "hash",
            Stdlib.Sqlite.textField row "message",
@@ -1402,7 +1376,6 @@ let commitRowsFor (hashes: List<String>) : List<BranchBundleCommit> =
                 parent = parent }
           )
         | _ -> Stdlib.Option.Option.None)
-    | Error _ -> []
 
 
 /// Take on a sender's commits: the rows first, then each op stamped with its author's commit, but only
@@ -1483,18 +1456,15 @@ let contentOpId (kind: String) (hash: String) : Uuid = Builtin.scmContentOpId ki
 /// receiver ignores what it already has.
 let exportBranch (branchId: Uuid) : String =
   let frontier =
-    match
-      Stdlib.Sqlite.queryP
+    Wire.rowsToSyncOps (
+      Stdlib.Sqlite.rowsOrEmptyP
         (localDb ())
         // `author` is borrowed to carry the commit hash through `rowsToSyncOps`; it moves to `commit`
         // below.
         "SELECT p.id, p.op_blob, p.origin_ts AS ts, COALESCE(p.commit_hash, '') AS author
          FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
          WHERE ob.branch_id = @p0 ORDER BY p.rowid ASC"
-        [ Stdlib.Uuid.toString branchId ]
-    with
-    | Ok rows -> Wire.rowsToSyncOps rows
-    | Error _ -> []
+        [ Stdlib.Uuid.toString branchId ])
 
   let frontierIds = frontier |> Stdlib.List.map (fun o -> o.id)
 
@@ -1506,12 +1476,7 @@ let exportBranch (branchId: Uuid) : String =
       match op with
       | SetName(_, target, _) ->
         let hash = LanguageTools.ProgramTypes.hashToString (LanguageTools.ProgramTypes.Reference.hash target)
-        let kind =
-          match target with
-          | PackageFn _ -> "fn"
-          | PackageType _ -> "type"
-          | PackageValue _ -> "value"
-
+        let kind = Deps.kindString (LanguageTools.ProgramTypes.Reference.kind target)
         Stdlib.Option.Option.Some(Stdlib.Uuid.toString (contentOpId kind hash))
       | _ -> Stdlib.Option.Option.None)
     |> Stdlib.List.filter (fun id -> Stdlib.Bool.not (Stdlib.List.``member`` frontierIds id))
@@ -1521,15 +1486,12 @@ let exportBranch (branchId: Uuid) : String =
     if Stdlib.List.isEmpty contentIds then
       []
     else
-      match
-        Stdlib.Sqlite.queryP
+      Wire.rowsToSyncOps (
+        Stdlib.Sqlite.rowsOrEmptyP
           (localDb ())
           "SELECT p.id, p.op_blob, p.origin_ts AS ts FROM package_ops p
            WHERE p.id IN (SELECT value FROM json_each(@p0)) ORDER BY p.rowid ASC"
-          [ Stdlib.Json.serialize<List<String>> contentIds ]
-      with
-      | Ok rows -> Wire.rowsToSyncOps rows
-      | Error _ -> []
+          [ Stdlib.Json.serialize<List<String>> contentIds ])
 
   // Content first, so a receiver folding in order has the body before the name. Borrowed content is
   // main's and travels uncommitted here; the receiver's main decides its commit, as for any content.

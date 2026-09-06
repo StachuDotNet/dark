@@ -14,17 +14,7 @@ module Darklang.SCM.PackageOps
 /// What a BRANCH binds, from its OWN frontier (not the parent chain) -- exactly the ops a merge would flip
 /// effective and fold, so this is the incoming side of a merge.
 let branchBindings (branchId: Uuid) : List<Conflicts.Binding> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT p.id, p.op_blob, p.origin_ts AS ts
-       FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
-       WHERE ob.branch_id = @p0
-       ORDER BY p.origin_ts, p.rowid"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows -> bindingsFromOpRows rows
-  | Error _ -> []
+  bindingsFromOpRows (Branches.ownOpRows branchId)
 
 
 /// Does this branch exist at all? Checks BOTH the registry row and the op tags, because either can exist
@@ -242,21 +232,15 @@ let resolveBranchRef (branchRef: String) : BranchRefResult =
 /// the listing has to be a name you can type.
 let branchIdForName (name: String) : Stdlib.Option.Option<Uuid> =
   match
-    Stdlib.Sqlite.queryP
+    Stdlib.Sqlite.queryOneP
       (localDb ())
       "SELECT id FROM branches
        WHERE name = @p0 AND archived_at IS NULL
        ORDER BY created_at DESC, rowid DESC LIMIT 1"
       [ name ]
   with
-  | Ok(row :: _) ->
-    match Stdlib.Sqlite.textField row "id" with
-    | Some id ->
-      match Stdlib.Uuid.parse id with
-      | Ok parsed -> Stdlib.Option.Option.Some parsed
-      | Error _ -> Stdlib.Option.Option.None
-    | None -> Stdlib.Option.Option.None
-  | _ -> Stdlib.Option.Option.None
+  | Some row -> Stdlib.Sqlite.uuidField row "id"
+  | None -> Stdlib.Option.Option.None
 
 
 /// Is this branch's work already in its parent?
@@ -273,14 +257,11 @@ let branchIsMerged (branchId: Uuid) : Bool =
 
 /// The ids of the ops tagged to <param branchId>: what a bundle of it carries.
 let branchOpIds (branchId: Uuid) : List<String> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT op_id FROM op_branches WHERE branch_id = @p0"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows -> rows |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "op_id")
-  | Error _ -> []
+  Stdlib.Sqlite.columnP
+    (localDb ())
+    "SELECT op_id FROM op_branches WHERE branch_id = @p0"
+    [ Stdlib.Uuid.toString branchId ]
+    "op_id"
 
 
 /// The ops a merge moved off <param branchId>, read back off its merge events.
@@ -293,13 +274,11 @@ let mergedOpsOf (branchId: Uuid) : List<LanguageTools.ProgramTypes.PackageOp> =
   // Byte 9 of the blob is the op tag; 0x0A is BranchEvent. There are few of these, so
   // decoding them all to find this branch's is cheaper than a column would be worth.
   let events =
-    match
-      Stdlib.Sqlite.query
+    decodeOpRows (
+      Stdlib.Sqlite.rowsOrEmptyP
         (localDb ())
         "SELECT id, op_blob FROM package_ops WHERE substr(op_blob, 9, 1) = X'0A'"
-    with
-    | Ok rows -> decodeOpRows rows
-    | Error _ -> []
+        [])
 
   let ids =
     events
@@ -313,16 +292,13 @@ let mergedOpsOf (branchId: Uuid) : List<LanguageTools.ProgramTypes.PackageOp> =
   if Stdlib.List.isEmpty ids then
     []
   else
-    match
-      Stdlib.Sqlite.queryP
+    decodeOpRows (
+      Stdlib.Sqlite.rowsOrEmptyP
         (localDb ())
         "SELECT id, op_blob FROM package_ops
          WHERE id IN (SELECT value FROM json_each(@p0))
          ORDER BY origin_ts, rowid"
-        [ Stdlib.Json.serialize<List<String>> ids ]
-    with
-    | Ok rows -> decodeOpRows rows
-    | Error _ -> []
+        [ Stdlib.Json.serialize<List<String>> ids ])
 
 
 /// Turn a branch NAME into its id, starting the branch if that name has none. Returns (id, wasCreated);
@@ -351,53 +327,26 @@ let branchHashHistoryFor
   (modules: String)
   (name: String)
   : List<String> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      // The parent-chain walk, as `chainBindingEntries` writes it; its note explains why `@p1` is
-      // main's bound id rather than the literal "main".
-      "WITH RECURSIVE chain(bid) AS (
-         SELECT @p0
-         UNION
-         SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
-         WHERE b.parent_id != @p1
-       )
-       SELECT p.id, p.op_blob, p.origin_ts AS ts
-       FROM package_ops p JOIN op_branches ob ON ob.op_id = p.id
-       WHERE ob.branch_id IN (SELECT bid FROM chain)
-       ORDER BY p.origin_ts, p.rowid"
-      [ Stdlib.Uuid.toString branchId
-        Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
-  with
-  | Ok rows ->
-    rows
-    |> Stdlib.List.filterMap (fun row ->
-      match
-        (Stdlib.Sqlite.textField row "id", Stdlib.Sqlite.bytesField row "op_blob")
-      with
-      | (Some idStr, Some blob) ->
-        (match Stdlib.Uuid.parse idStr with
-         | Ok id ->
-           (match tryDecodeOp id blob with
-            | Some(SetName(location, target, _)) ->
-              if
-                (location.owner == owner)
-                && ((Stdlib.String.join location.modules ".") == modules)
-                && (location.name == name)
-              then
-                Stdlib.Option.Option.Some(
-                  LanguageTools.ProgramTypes.hashToString
-                    (LanguageTools.ProgramTypes.Reference.hash target)
-                )
-              else
-                Stdlib.Option.Option.None
-            | _ -> Stdlib.Option.Option.None)
-         | Error _ -> Stdlib.Option.Option.None)
-      | _ -> Stdlib.Option.Option.None)
-    // `dedup`, not `unique`/`uniqueBy`: both of those SORT, which would replace the authoring order this
-    // function exists to return with lexicographic HASH order.
-    |> Stdlib.List.dedup
-  | Error _ -> []
+  // Deliberately SetName-only: an Override is a decision, not authoring history.
+  decodeOpRows (chainOpRows branchId)
+  |> Stdlib.List.filterMap (fun op ->
+    match op with
+    | SetName(location, target, _) ->
+      if
+        (location.owner == owner)
+        && ((Stdlib.String.join location.modules ".") == modules)
+        && (location.name == name)
+      then
+        Stdlib.Option.Option.Some(
+          LanguageTools.ProgramTypes.hashToString
+            (LanguageTools.ProgramTypes.Reference.hash target)
+        )
+      else
+        Stdlib.Option.Option.None
+    | _ -> Stdlib.Option.Option.None)
+  // `dedup`, not `unique`/`uniqueBy`: both of those SORT, which would replace the authoring order this
+  // function exists to return with lexicographic HASH order.
+  |> Stdlib.List.dedup
 
 
 /// A branch's OWN frontier ops, oldest-first: its authoring history, for `dark log <branch>` (the
@@ -407,14 +356,4 @@ let branchHashHistoryFor
 /// ops on a format this binary does not know, stored and left unapplied on purpose, and a history
 /// listing is the last thing that should die because one of them is in the way.
 let branchOps (branchId: Uuid) : List<LanguageTools.ProgramTypes.PackageOp> =
-  match
-    Stdlib.Sqlite.queryP
-      (localDb ())
-      "SELECT p.id, p.op_blob FROM package_ops p
-       JOIN op_branches ob ON ob.op_id = p.id
-       WHERE ob.branch_id = @p0
-       ORDER BY p.origin_ts, p.rowid"
-      [ Stdlib.Uuid.toString branchId ]
-  with
-  | Ok rows -> decodeOpRows rows
-  | Error _ -> []
+  decodeOpRows (Branches.ownOpRows branchId)

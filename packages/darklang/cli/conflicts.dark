@@ -9,10 +9,6 @@ module Darklang.Cli.Conflicts
 //
 // All conflict SQL is siloed in `SCM.Conflicts`; this file writes NO SQL, it only formats.
 
-let printOk (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.success msg)
-let printErr (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
-let printHint (msg: String) : Unit = Stdlib.printLine (Stdlib.Cli.UI.Colors.hint msg)
-
 /// Put the name back on a definition the pretty-printer couldn't name.
 ///
 /// The printer names a definition by looking its hash up in `locations`, and exactly one side of a conflict
@@ -173,11 +169,11 @@ let indentBlock (s: String) : String =
 let executeList (state: AppState) : AppState =
   match SCM.Conflicts.pending () with
   | [] ->
-    printOk "no conflicts pending."
+    Cli.printOk "no conflicts pending."
     state
   | cs ->
     let n = Stdlib.Int.toString (Stdlib.List.length cs)
-    printOk $"{n} pending"
+    Cli.printOk $"{n} pending"
 
     // Once for the whole list, not once per candidate row: both are store reads.
     let me = SCM.PackageOps.identity ()
@@ -258,11 +254,11 @@ let executeList (state: AppState) : AppState =
 let executeShow (state: AppState) (idPrefix: String) : AppState =
   match SCM.Conflicts.getByIdPrefix idPrefix with
   | None ->
-    printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
+    Cli.printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
     { state with exitCode = 1 }
   | Some c ->
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
-    printOk $"#{c.id}  {dotted}  [{c.itemType}] -- two live versions"
+    Cli.printOk $"#{c.id}  {dotted}  [{c.itemType}] -- two live versions"
 
     // Once for both candidates, not once each: it is a store read.
     let me = SCM.PackageOps.identity ()
@@ -290,12 +286,12 @@ let executeShow (state: AppState) (idPrefix: String) : AppState =
 let executeAck (state: AppState) (idPrefix: String) : AppState =
   match SCM.Conflicts.getByIdPrefix idPrefix with
   | None ->
-    printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
+    Cli.printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
     { state with exitCode = 1 }
   | Some c ->
     SCM.Conflicts.setStatus c.id "acked" ""
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
-    printOk $"acked #{c.id} ({dotted}) -- the auto-pick stands."
+    Cli.printOk $"acked #{c.id} ({dotted}) -- the auto-pick stands."
     state
 
 /// The candidate a user meant by "A" / "B" / a hash prefix.
@@ -324,7 +320,7 @@ let executeOverride
   : AppState =
   match SCM.Conflicts.getByIdPrefix idPrefix with
   | None ->
-    printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
+    Cli.printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
     { state with exitCode = 1 }
   | Some c ->
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
@@ -332,7 +328,7 @@ let executeOverride
     if choice == "-" then
       // Hand-author: show both versions and hand back the name. Deliberately does NOT close the conflict --
       // it closes when you've actually written the merged version and acked it.
-      printOk $"#{c.id}  {dotted} -- hand-authoring. Both versions:"
+      Cli.printOk $"#{c.id}  {dotted} -- hand-authoring. Both versions:"
       let _ = executeShow state idPrefix
       Stdlib.printLine ""
       Stdlib.printLine
@@ -342,21 +338,21 @@ let executeOverride
     else
       match pickCandidate c choice with
       | None ->
-        printErr $"no candidate \"{choice}\" on #{c.id} -- use A, B, a hash prefix, or - to hand-author."
+        Cli.printErr $"no candidate \"{choice}\" on #{c.id} -- use A, B, a hash prefix, or - to hand-author."
         state
       | Some cand ->
         if cand.hash == c.autoResolvedTo then
-          printOk
+          Cli.printOk
             $"#{c.id}: that's already the auto-pick. Nothing to override -- `dark conflicts ack {c.id}` if it's right."
           state
         else
           match SCM.PackageOps.settleConflict state.currentBranchId c cand.hash with
           | Ok _ ->
-            printOk
+            Cli.printOk
               $"overrode #{c.id}: {dotted} now binds {SCM.Conflicts.shortHash cand.hash}. It's an op, so the choice syncs and holds."
             state
           | Error e ->
-            printErr $"override failed: {e}"
+            Cli.printErr $"override failed: {e}"
             state
 
 /// PREVIEW a branch: what a merge WOULD reconcile. Nothing is recorded by looking; a conflict is only written
@@ -369,11 +365,11 @@ let executeBranchPreview (state: AppState) (branchRef: String) : AppState =
   | Some branchId ->
     match SCM.PackageOps.branchPreview branchId with
     | [] ->
-      printOk $"\"{branchRef}\" would merge cleanly -- neither side moved a name the other did."
+      Cli.printOk $"\"{branchRef}\" would merge cleanly -- neither side moved a name the other did."
       state
     | cs ->
       let n = Cli.Text.plural (Stdlib.List.length cs) "conflict"
-      printOk $"{n} a merge of \"{branchRef}\" would auto-resolve (not recorded until it does):"
+      Cli.printOk $"{n} a merge of \"{branchRef}\" would auto-resolve (not recorded until it does):"
 
       cs
       |> Stdlib.List.iter (fun c ->
@@ -418,18 +414,27 @@ let jsonFailure (id: String) (msg: String) : Unit =
     )
   )
 
-let failureUnknown (state: AppState) : AppState =
+/// Its "that worked" twin.
+let jsonSuccess (id: String) (status: String) (resolvedTo: String) : Unit =
   Stdlib.printLine (
     ScmJson.conflictActionJson (
       ScmJson.ConflictActionJson
-        { id = ""
-          ok = false
-          status = ""
-          resolvedTo = ""
-          error = "unknown `dark conflicts` subcommand" }
+        { id = id; ok = true; status = status; resolvedTo = resolvedTo; error = "" }
     )
   )
 
+/// The typed conflict list, as both listing arms print it.
+let printConflictList (cs: List<SCM.Conflicts.Conflict>) : Unit =
+  Stdlib.printLine (
+    ScmJson.conflictListJson (
+      ScmJson.ConflictListJson
+        { pending = Stdlib.List.length cs
+          conflicts = cs |> Stdlib.List.map ScmJson.conflictWithFqn }
+    )
+  )
+
+let failureUnknown (state: AppState) : AppState =
+  jsonFailure "" "unknown `dark conflicts` subcommand"
   state
 
 
@@ -438,16 +443,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
   match args with
   | []
   | [ "list" ] ->
-    let cs = SCM.Conflicts.pending ()
-
-    Stdlib.printLine (
-      ScmJson.conflictListJson (
-        ScmJson.ConflictListJson
-            { pending = Stdlib.List.length cs
-              conflicts = cs |> Stdlib.List.map ScmJson.conflictWithFqn }
-      )
-    )
-
+    printConflictList (SCM.Conflicts.pending ())
     state
 
   | [ "branch", branchRef ] ->
@@ -455,16 +451,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
     match Cli.Branch.resolveRef branchRef with
     | None -> state
     | Some branchId ->
-      let cs = SCM.PackageOps.branchPreview branchId
-
-      Stdlib.printLine (
-        ScmJson.conflictListJson (
-          ScmJson.ConflictListJson
-            { pending = Stdlib.List.length cs
-              conflicts = cs |> Stdlib.List.map ScmJson.conflictWithFqn }
-        )
-      )
-
+      printConflictList (SCM.PackageOps.branchPreview branchId)
       state
 
   | [ "show", id ] ->
@@ -473,17 +460,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
       Stdlib.printLine (ScmJson.conflictJson c)
       state
     | None ->
-      Stdlib.printLine (
-        ScmJson.conflictActionJson (
-          ScmJson.ConflictActionJson
-            { id = id
-              ok = false
-              status = ""
-              resolvedTo = ""
-              error = "no conflict matching that id" }
-        )
-      )
-
+      jsonFailure id "no conflict matching that id"
       state
 
 
@@ -491,31 +468,10 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
     match SCM.Conflicts.getByIdPrefix id with
     | Some c ->
       SCM.Conflicts.setStatus c.id "acked" ""
-
-      Stdlib.printLine (
-        ScmJson.conflictActionJson (
-          ScmJson.ConflictActionJson
-            { id = c.id
-              ok = true
-              status = "acked"
-              resolvedTo = c.autoResolvedTo
-              error = "" }
-        )
-      )
-
+      jsonSuccess c.id "acked" c.autoResolvedTo
       state
     | None ->
-      Stdlib.printLine (
-        ScmJson.conflictActionJson (
-          ScmJson.ConflictActionJson
-            { id = id
-              ok = false
-              status = ""
-              resolvedTo = ""
-              error = "no conflict matching that id" }
-        )
-      )
-
+      jsonFailure id "no conflict matching that id"
       state
 
 
@@ -534,17 +490,7 @@ let executeJson (state: AppState) (args: List<String>) : AppState =
         // callers that had followed the losing version come along, and it refuses an empty hash.
         match SCM.PackageOps.settleConflict state.currentBranchId c cand.hash with
         | Ok _ ->
-          Stdlib.printLine (
-            ScmJson.conflictActionJson (
-              ScmJson.ConflictActionJson
-                { id = c.id
-                  ok = true
-                  status = "overridden"
-                  resolvedTo = cand.hash
-                  error = "" }
-            )
-          )
-
+          jsonSuccess c.id "overridden" cand.hash
           state
         | Error e ->
           jsonFailure id e
@@ -560,7 +506,7 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
   let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
   let pos = $"{Stdlib.Int.toString n}/{Stdlib.Int.toString total}"
   Stdlib.printLine ""
-  printOk $"  [{pos}]  {dotted}  [{c.itemType}]"
+  Cli.printOk $"  [{pos}]  {dotted}  [{c.itemType}]"
 
   // Once for both candidates; see `whoseCandidate`.
   let me = SCM.PackageOps.identity ()
@@ -586,19 +532,19 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
 
   let apply (choice: String) (label: String) : Unit =
     match pickCandidate c choice with
-    | None -> printErr "    couldn't tell which side you meant; left it pending."
+    | None -> Cli.printErr "    couldn't tell which side you meant; left it pending."
     | Some cand ->
       if cand.hash == c.autoResolvedTo then
         // Agreeing with the fold changes no binding, so it is an ack rather than a new op.
         SCM.Conflicts.setStatus c.id "acked" ""
-        printOk $"    {label} was already the auto-pick; closed without a new op."
+        Cli.printOk $"    {label} was already the auto-pick; closed without a new op."
       else
         // `settleConflict`, not bare `applyResolution`: the cascade is part of the act (see the
         // non-interactive override above).
         match SCM.PackageOps.settleConflict state.currentBranchId c cand.hash with
         | Ok _ ->
-          printOk $"    took {label}; {dotted} now binds {SCM.Conflicts.shortHash cand.hash}."
-        | Error e -> printErr $"    couldn't apply that: {e}"
+          Cli.printOk $"    took {label}; {dotted} now binds {SCM.Conflicts.shortHash cand.hash}."
+        | Error e -> Cli.printErr $"    couldn't apply that: {e}"
 
   /// The side the auto-pick kept, as the letter this prompt uses.
   let foldPick () : String =
@@ -609,7 +555,7 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
   match answer with
   | "q" -> false
   | "s" ->
-    printOk "    skipped; still pending."
+    Cli.printOk "    skipped; still pending."
     true
   | "" ->
     // Enter is the safe answer, and the safe answer is the one already made. Name the SIDE it kept, so
@@ -624,7 +570,7 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
     apply "B" "theirs"
     true
   | other ->
-    printErr $"    \"{other}\" isn't one of a/b/s/q; left it pending."
+    Cli.printErr $"    \"{other}\" isn't one of a/b/s/q; left it pending."
     true
 
 
@@ -635,11 +581,11 @@ let walkOne (state: AppState) (c: SCM.Conflicts.Conflict) (n: Int) (total: Int) 
 let executeWalk (state: AppState) : AppState =
   match SCM.Conflicts.pending () with
   | [] ->
-    printOk "no conflicts pending."
+    Cli.printOk "no conflicts pending."
     state
   | cs ->
     let total = Stdlib.List.length cs
-    printOk $"{Stdlib.Int.toString total} to review. A is yours, B is what arrived."
+    Cli.printOk $"{Stdlib.Int.toString total} to review. A is yours, B is what arrived."
 
     let _ =
       cs
@@ -655,10 +601,10 @@ let executeWalk (state: AppState) : AppState =
     Stdlib.printLine ""
 
     match SCM.Conflicts.pending () with
-    | [] -> printOk "all settled."
+    | [] -> Cli.printOk "all settled."
     | left ->
       let n = Stdlib.Int.toString (Stdlib.List.length left)
-      printOk $"{n} still pending -- `dark conflicts` picks up where you left off."
+      Cli.printOk $"{n} still pending -- `dark conflicts` picks up where you left off."
 
     state
 
@@ -686,24 +632,24 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
   // A verb typed without its argument is a slip, not a request for the manual: the one line that would
   // fix it should not be buried in `help`.
   | [ "show" ] ->
-    printErr "show needs a conflict id."
-    printHint "  `dark conflicts` lists them, ids first."
+    Cli.printErr "show needs a conflict id."
+    Cli.printHint "  `dark conflicts` lists them, ids first."
     state
   | [ "ack" ] ->
-    printErr "ack needs a conflict id."
-    printHint "  `dark conflicts` lists them, ids first."
+    Cli.printErr "ack needs a conflict id."
+    Cli.printHint "  `dark conflicts` lists them, ids first."
     state
   | [ "override", _id ] ->
-    printErr "override needs a side: A, B, or a hash prefix."
-    printHint "  `dark conflicts show <id>` prints both versions with their hashes."
+    Cli.printErr "override needs a side: A, B, or a hash prefix."
+    Cli.printHint "  `dark conflicts show <id>` prints both versions with their hashes."
     state
   | [ "override" ] ->
-    printErr "override needs a conflict id and a side."
-    printHint "  `dark conflicts` lists them; `show <id>` prints both versions."
+    Cli.printErr "override needs a conflict id and a side."
+    Cli.printHint "  `dark conflicts` lists them; `show <id>` prints both versions."
     state
   | [ "branch" ] ->
-    printErr "branch needs a branch to preview."
-    printHint "  `dark branches` lists them."
+    Cli.printErr "branch needs a branch to preview."
+    Cli.printHint "  `dark branches` lists them."
     state
 
   // Printing help alone reads as an answer: a typo would look exactly like `conflicts --help`, a

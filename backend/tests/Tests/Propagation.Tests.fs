@@ -32,17 +32,6 @@ let private authorIn (m : string) (decls : string) : Task<List<PT.PackageOp>> =
 let private loc (m : string) (name : string) : PT.PackageLocation =
   { owner = "Darklang"; modules = [ m ]; name = name }
 
-/// What `locations` currently binds a name to.
-let private liveHash (l : PT.PackageLocation) : Task<Option<string>> =
-  Sql.query
-    "SELECT item_hash FROM locations
-     WHERE owner = @o AND modules = @m AND name = @n AND unlisted_at IS NULL LIMIT 1"
-  |> Sql.parameters
-    [ "o", Sql.string l.owner
-      "m", Sql.string (String.concat "." l.modules)
-      "n", Sql.string l.name ]
-  |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
-
 let private hashStr (h : PT.Hash) : string =
   let (PT.Hash s) = h
   s
@@ -90,13 +79,13 @@ let private cascadeKind
 let private cleanupFor (owner : string) (m : string) : Task<unit> =
   task {
     do!
-      Sql.query "DELETE FROM locations WHERE owner = @o AND modules = @m"
-      |> Sql.parameters [ "o", Sql.string owner; "m", Sql.string m ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "DELETE FROM locations WHERE owner = @o AND modules = @m"
+        [ "o", Sql.string owner; "m", Sql.string m ]
     do!
-      Sql.query "DELETE FROM propagation_policy WHERE owner = @o AND modules = @m"
-      |> Sql.parameters [ "o", Sql.string owner; "m", Sql.string m ]
-      |> Sql.executeStatementAsync
+      execSqlP
+        "DELETE FROM propagation_policy WHERE owner = @o AND modules = @m"
+        [ "o", Sql.string owner; "m", Sql.string m ]
   }
 
 let private cleanup (m : string) : Task<unit> = cleanupFor "Darklang" m
@@ -114,7 +103,7 @@ let singleHop =
         m
         $"""let dep (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L"""
 
-    let! depBefore = liveHash (loc m "dep")
+    let! depBefore = liveBoundHash (loc m "dep")
     Expect.isSome depBefore "dep is bound after authoring"
 
     let baseV1 = hashBoundTo v1 "base'"
@@ -128,7 +117,7 @@ let singleHop =
     let! repointed = cascade (loc m "base'") baseV1 baseV2
     Expect.contains repointed "dep" "the cascade reports repointing dep"
 
-    let! depAfter = liveHash (loc m "dep")
+    let! depAfter = liveBoundHash (loc m "dep")
     Expect.notEqual depAfter depBefore "dep is now bound to a NEW version of itself"
 
     do! cleanup m
@@ -146,7 +135,7 @@ let transitive =
 let b (x: Int64) : Int64 = Stdlib.Int64.add ({m}.a x) 10L
 let c (x: Int64) : Int64 = Stdlib.Int64.add ({m}.b x) 100L"""
 
-    let! cBefore = liveHash (loc m "c")
+    let! cBefore = liveBoundHash (loc m "c")
     let aV1 = hashBoundTo v1 "a"
 
     let! v2 = authorIn m """let a (x: Int64) : Int64 = Stdlib.Int64.add x 2000L"""
@@ -163,7 +152,7 @@ let c (x: Int64) : Int64 = Stdlib.Int64.add ({m}.b x) 100L"""
       "c"
       "c repoints because b moved -- the cascade recurses"
 
-    let! cAfter = liveHash (loc m "c")
+    let! cAfter = liveBoundHash (loc m "c")
     Expect.notEqual cAfter cBefore "c really moved, not just reported"
 
     do! cleanup m
@@ -208,22 +197,20 @@ let pinStopsIt =
 let held (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L
 let free (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 20L"""
 
-    let! heldBefore = liveHash (loc m "held")
+    let! heldBefore = liveBoundHash (loc m "held")
     let baseV1 = hashBoundTo v1 "base'"
 
     // A pin on main. This is what a propagation `Decision` op folds to, and it
     // is the whole point of the policy table: the cascade is a rule the machine
     // applies TO you until you can overrule it.
     do!
-      Sql.query
+      execSqlP
         // Main's id from the product's constant, never spelled by hand: the cascade looks the
         // row up by that same id, so a hand-typed one would be a row nothing can find and a
         // test that passes while asserting nothing.
         "INSERT INTO propagation_policy (branch_id, owner, modules, name, policy, note, origin_ts)
          VALUES (@branch, 'Darklang', @m, 'held', 'pin', 'test', '2026-01-02T00:00:00.000Z')"
-      |> Sql.parameters
         [ "m", Sql.string m; "branch", Sql.string (string PT.BranchId.Main) ]
-      |> Sql.executeStatementAsync
 
     let! v2 =
       authorIn m """let base' (x: Int64) : Int64 = Stdlib.Int64.add x 4000L"""
@@ -233,7 +220,7 @@ let free (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 20L"""
     Expect.contains repointed "free" "the unpinned dependent follows"
     Expect.isFalse (List.contains "held" repointed) "the pinned one does not"
 
-    let! heldAfter = liveHash (loc m "held")
+    let! heldAfter = liveBoundHash (loc m "held")
     Expect.equal heldAfter heldBefore "and it really didn't move"
 
     do! cleanup m
@@ -295,7 +282,7 @@ let noChangeNoCascade =
         m
         $"""let dep (x: Int64) : Int64 = Stdlib.Int64.add ({m}.base' x) 10L"""
 
-    let! depBefore = liveHash (loc m "dep")
+    let! depBefore = liveBoundHash (loc m "dep")
     let baseV1 = hashBoundTo v1 "base'"
 
     // from == to: nothing changed. A cascade here would author a new version of
@@ -304,7 +291,7 @@ let noChangeNoCascade =
     let! repointed = cascade (loc m "base'") baseV1 baseV1
     Expect.isEmpty repointed "no repoints when the hash didn't move"
 
-    let! depAfter = liveHash (loc m "dep")
+    let! depAfter = liveBoundHash (loc m "dep")
     Expect.equal depAfter depBefore "and the dependent is untouched"
 
     do! cleanup m
@@ -327,8 +314,8 @@ let mutualRecursion =
 let b (x: Int64) : Int64 =
   if x <= 0L then 0L else Stdlib.Int64.add ({m}.a (Stdlib.Int64.subtract x 1L)) 1L"""
 
-    let! aBound = liveHash (loc m "a")
-    let! bBound = liveHash (loc m "b")
+    let! aBound = liveBoundHash (loc m "a")
+    let! bBound = liveBoundHash (loc m "b")
     Expect.isSome aBound "a is bound"
     Expect.isSome bBound "b is bound"
     Expect.notEqual aBound bBound "the two sides of the cycle are distinct items"
@@ -356,7 +343,7 @@ let finalVersionWins =
       let! _ = cascade (loc m "r") prev next
       prev <- next
 
-    let! rLive = liveHash (loc m "r")
+    let! rLive = liveBoundHash (loc m "r")
     Expect.equal rLive (Some(hashStr prev)) "r is on its last version"
 
     // And the dependent points at THAT r, not at an earlier one.
@@ -386,8 +373,8 @@ let sharedHashesAllRepoint =
     let! v1 = authorIn m """let sh1 (x: Int64) : Int64 = Stdlib.Int64.add x 77L"""
     let! _ = authorIn m """let sh2 (x: Int64) : Int64 = Stdlib.Int64.add x 77L"""
 
-    let! h1 = liveHash (loc m "sh1")
-    let! h2 = liveHash (loc m "sh2")
+    let! h1 = liveBoundHash (loc m "sh1")
+    let! h2 = liveBoundHash (loc m "sh2")
     Expect.equal h1 h2 "same body, same hash: one item at two names"
 
     let! _ =
@@ -395,8 +382,8 @@ let sharedHashesAllRepoint =
     let! _ =
       authorIn m $"""let d2 (x: Int64) : Int64 = Stdlib.Int64.add ({m}.sh2 x) 4L"""
 
-    let! d1Before = liveHash (loc m "d1")
-    let! d2Before = liveHash (loc m "d2")
+    let! d1Before = liveBoundHash (loc m "d1")
+    let! d2Before = liveBoundHash (loc m "d2")
 
     let! v2 = authorIn m """let sh1 (x: Int64) : Int64 = Stdlib.Int64.add x 88L"""
 
@@ -404,7 +391,7 @@ let sharedHashesAllRepoint =
       cascade (loc m "sh1") (hashBoundTo v1 "sh1") (hashBoundTo v2 "sh1")
     Expect.contains repointed "d1" "the dependent of the name we edited repoints"
 
-    let! d1After = liveHash (loc m "d1")
+    let! d1After = liveBoundHash (loc m "d1")
     Expect.notEqual d1After d1Before "d1 really moved"
 
     // `d2` reached the same CONTENT, but through the name `sh2`, and `sh2` still
@@ -414,9 +401,9 @@ let sharedHashesAllRepoint =
     Expect.isFalse
       (List.contains "d2" repointed)
       "the other name's dependent does NOT repoint"
-    let! d2After = liveHash (loc m "d2")
+    let! d2After = liveBoundHash (loc m "d2")
     Expect.equal d2After d2Before "d2 is untouched"
-    let! sh2After = liveHash (loc m "sh2")
+    let! sh2After = liveBoundHash (loc m "sh2")
     Expect.equal sh2After h2 "and sh2 still means what it meant"
 
     do! cleanup m
@@ -500,7 +487,7 @@ let secondPassIsSilent =
     let! repointed = cascade (loc m "base'") baseV1 baseV2
     Expect.contains repointed "dep" "the first pass repoints dep"
 
-    let! depAfterFirst = liveHash (loc m "dep")
+    let! depAfterFirst = liveBoundHash (loc m "dep")
 
     // The second pass, over the same edit. This is what `dark commit` does.
     let! (secondPass :
@@ -521,7 +508,7 @@ let secondPassIsSilent =
         "a dependent that has already followed produces no ops the second time"
     | Error e -> Exception.raiseInternal "propagate errored" [ "e", e ]
 
-    let! depAfterSecond = liveHash (loc m "dep")
+    let! depAfterSecond = liveBoundHash (loc m "dep")
     Expect.equal
       depAfterSecond
       depAfterFirst
@@ -547,7 +534,7 @@ let typeMovesItsUsers =
 
     let! _ = authorIn m $"""let mk (): {m}.Rec = {m}.Rec {{ a = 1L }}"""
 
-    let! mkBefore = liveHash (loc m "mk")
+    let! mkBefore = liveBoundHash (loc m "mk")
     Expect.isSome mkBefore "mk is bound after authoring"
 
     let! v2 = authorIn m $"""type Rec = {{ a: Int64; b: Int64 }}"""
@@ -562,7 +549,7 @@ let typeMovesItsUsers =
       "mk"
       "the cascade reports repointing the fn that uses the type"
 
-    let! mkAfter = liveHash (loc m "mk")
+    let! mkAfter = liveBoundHash (loc m "mk")
     Expect.notEqual mkAfter mkBefore "mk is now bound to a NEW version of itself"
 
     do! cleanup m
@@ -579,7 +566,7 @@ let valueMovesItsReaders =
 
     let! _ = authorIn m $"""let reads (): Int64 = Stdlib.Int64.add {m}.basis 10L"""
 
-    let! readsBefore = liveHash (loc m "reads")
+    let! readsBefore = liveBoundHash (loc m "reads")
     Expect.isSome readsBefore "the reader is bound after authoring"
 
     let! v2 = authorIn m """val basis = 500L"""
@@ -594,7 +581,7 @@ let valueMovesItsReaders =
       "reads"
       "the cascade reports repointing the fn that reads it"
 
-    let! readsAfter = liveHash (loc m "reads")
+    let! readsAfter = liveBoundHash (loc m "reads")
     Expect.notEqual
       readsAfter
       readsBefore
@@ -618,8 +605,8 @@ let private namingElsewhereLeavesTheOldNameBound =
     let! _ =
       Inserts.insertAndApplyOpsAsWip
         [ PT.PackageOp.SetName(loc m "new", PT.PackageFn h, None) ]
-    let! atNew = liveHash (loc m "new")
-    let! atOld = liveHash (loc m "old")
+    let! atNew = liveBoundHash (loc m "new")
+    let! atOld = liveBoundHash (loc m "old")
     Expect.equal atNew (Some(hashStr h)) "the new name binds the hash"
     Expect.equal atOld (Some(hashStr h)) "and the old name still does"
     do! cleanupFor "Darklang" m

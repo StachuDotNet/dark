@@ -155,6 +155,16 @@ module Sql =
         [ "dbPath", LibConfig.Config.dbPath ]
     | None -> ()
 
+  /// Unwrap a query result: an Error that is a store condition raises as one, anything
+  /// else raises internal. Per call site: how the message renders the error (each
+  /// wrapper names itself, and some show `err.Message` where most show the whole exn).
+  let private unwrapDb (msg : exn -> string) (r : Result<'a, exn>) : 'a =
+    match r with
+    | Ok v -> v
+    | Error err ->
+      raiseIfStoreCondition err
+      Exception.raiseInternal (msg err) [ "err", err ]
+
   let executeNonQueryAsync props =
     timedTask "nonQuery" (fun () ->
       Sql.executeNonQueryAsync props
@@ -167,21 +177,17 @@ module Sql =
 
   let executeRowAsync (reader : RowReader -> 't) (props : Sql.SqlProps) : Task<'t> =
     task {
-      match!
+      let! r =
         timedTask "row" (fun () ->
           Sql.executeAsync reader props |> Async.StartImmediateAsTask)
+      match
+        unwrapDb (fun err -> $"SQL query failed in executeRowAsync: {err.Message}") r
       with
-      | Ok [ a ] -> return a
-      | Ok [] -> return Exception.raiseInternal $"No results; expected 1" []
-      | Ok list ->
+      | [ a ] -> return a
+      | [] -> return Exception.raiseInternal $"No results; expected 1" []
+      | list ->
         return
           Exception.raiseInternal $"Too many results, expected 1" [ "actual", list ]
-      | Error err ->
-        raiseIfStoreCondition err
-        return
-          Exception.raiseInternal
-            $"SQL query failed in executeRowAsync: {err.Message}"
-            [ "err", err ]
     }
 
   let executeRowOptionAsync
@@ -189,23 +195,21 @@ module Sql =
     (props : Sql.SqlProps)
     : Task<Option<'t>> =
     task {
-      match!
+      let! r =
         timedTask "rowOption" (fun () ->
           Sql.executeAsync reader props |> Async.StartImmediateAsTask)
+      match
+        unwrapDb
+          (fun err -> $"SQL query failed in executeRowOptionAsync: {err.Message}")
+          r
       with
-      | Ok [ a ] -> return Some a
-      | Ok [] -> return None
-      | Ok list ->
+      | [ a ] -> return Some a
+      | [] -> return None
+      | list ->
         return
           Exception.raiseInternal
             $"Too many results, expected 0 or 1"
             [ "actual", list ]
-      | Error err ->
-        raiseIfStoreCondition err
-        return
-          Exception.raiseInternal
-            $"SQL query failed in executeRowOptionAsync: {err.Message}"
-            [ "err", err ]
     }
 
   let executeAsync rr props =
@@ -221,52 +225,39 @@ module Sql =
   let executeExistsSync (props : Sql.SqlProps) : bool =
     match
       timedSync "existsSync" (fun () -> Sql.execute (fun read -> read.bool 0) props)
+      |> unwrapDb (fun err -> $"Database query failed in executeExistsSync: {err}")
     with
-    | Ok [ true ] -> true
-    | Ok [] -> false
-    | Ok result ->
+    | [ true ] -> true
+    | [] -> false
+    | result ->
       Exception.raiseInternal "Too many results, expected 1" [ "actual", result ]
-    | Error err ->
-      raiseIfStoreCondition err
-      Exception.raiseInternal
-        $"Database query failed in executeExistsSync: {err}"
-        [ "err", err ]
 
   let executeStatementAsync (props : Sql.SqlProps) : Task<unit> =
     task {
-      match!
+      let! r =
         timedTask "statement" (fun () ->
           Sql.executeNonQueryAsync props |> Async.StartImmediateAsTask)
-      with
-      | Error err ->
-        raiseIfStoreCondition err
-        Exception.raiseInternal
-          $"Database statement failed in executeStatementAsync: {err}"
-          [ "err", err ]
-      | Ok _count -> return ()
+      r
+      |> unwrapDb (fun err ->
+        $"Database statement failed in executeStatementAsync: {err}")
+      |> ignore<int>
     }
 
   let executeStatementSync (props : Sql.SqlProps) : unit =
-    match timedSync "statementSync" (fun () -> Sql.executeNonQuery props) with
-    | Ok _count -> ()
-    | Error err ->
-      raiseIfStoreCondition err
-      Exception.raiseInternal
-        $"Database statement failed in executeStatementSync: {err}"
-        [ "err", err ]
+    timedSync "statementSync" (fun () -> Sql.executeNonQuery props)
+    |> unwrapDb (fun err ->
+      $"Database statement failed in executeStatementSync: {err}")
+    |> ignore<int>
 
   /// Execute multiple SQL statements in a transaction synchronously
   let executeTransactionSync
     (statements :
       List<string * List<List<string * Microsoft.Data.Sqlite.SqliteParameter>>>)
     : List<int> =
-    match connect |> Sql.executeTransaction statements with
-    | Ok counts -> counts
-    | Error err ->
-      raiseIfStoreCondition err
-      Exception.raiseInternal
-        $"Database transaction failed in executeTransactionSync: {err}"
-        [ "err", err ]
+    connect
+    |> Sql.executeTransaction statements
+    |> unwrapDb (fun err ->
+      $"Database transaction failed in executeTransactionSync: {err}")
 
   let uuid (u : uuid) = u.ToString() |> Sql.string
 
@@ -290,6 +281,16 @@ module Sql =
 
 
 
+// SQLite returns DateTime with Unspecified kind, but we know it's UTC
+// TODO consider if this is what we actually want - this seems risky
+let private toUtcInstant (dateTime : System.DateTime) : NodaTime.Instant =
+  let utcDateTime =
+    if dateTime.Kind = System.DateTimeKind.Utc then
+      dateTime
+    else
+      System.DateTime.SpecifyKind(dateTime, System.DateTimeKind.Utc)
+  NodaTime.Instant.FromDateTimeUtc utcDateTime
+
 // Extension methods
 type RowReader with
 
@@ -303,27 +304,10 @@ type RowReader with
 
 
   member this.instant(name : string) : NodaTime.Instant =
-    let dateTime : System.DateTime = this.dateTime (name)
-    // SQLite returns DateTime with Unspecified kind, but we know it's UTC
-    // TODO consider if this is what we actually want - this seems risky
-    let utcDateTime =
-      if dateTime.Kind = System.DateTimeKind.Utc then
-        dateTime
-      else
-        System.DateTime.SpecifyKind(dateTime, System.DateTimeKind.Utc)
-    NodaTime.Instant.FromDateTimeUtc utcDateTime
+    toUtcInstant (this.dateTime (name))
 
   member this.instantOrNone(name : string) : Option<NodaTime.Instant> =
-    this.dateTimeOrNone (name)
-    |> Option.map (fun dateTime ->
-      // SQLite returns DateTime with Unspecified kind, but we know it's UTC
-      // TODO consider if this is what we actually want - this seems risky
-      let utcDateTime =
-        if dateTime.Kind = System.DateTimeKind.Utc then
-          dateTime
-        else
-          System.DateTime.SpecifyKind(dateTime, System.DateTimeKind.Utc)
-      NodaTime.Instant.FromDateTimeUtc utcDateTime)
+    this.dateTimeOrNone (name) |> Option.map toUtcInstant
 
 
 
