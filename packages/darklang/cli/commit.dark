@@ -30,6 +30,8 @@ type Args =
 let isKnownFlag (a: String) : Bool =
   (a == "-y")
   || (a == "--yes")
+  || (a == "-m")
+  || (a == "--message")
   || (Stdlib.String.startsWith a "--json")
   || (Stdlib.String.startsWith a "--include=")
   || (a == "--allow-unresolved")
@@ -68,6 +70,11 @@ let refuseUnknownFlags (args: List<String>) : Bool =
 let parseArgs (args: List<String>) : Args =
   let autoConfirm =
     (Stdlib.List.member args "-y") || (Stdlib.List.member args "--yes")
+
+  // `-m` is accepted as a no-op marker: the message is positional, but a decade of git muscle
+  // memory types `commit -m "msg"`, and rejecting it once cost a person their commit message (the
+  // failed commit put a sync ahead of the commit). The token after `-m` is simply the message.
+  let args = args |> Stdlib.List.filter (fun a -> a != "-m" && a != "--message")
 
   // Everything that isn't a flag is the message, so the flags have to come out first or they land in it.
   let words =
@@ -386,13 +393,37 @@ let refuseTypeErrors (parsed: Args) : Bool =
     | Failed ->
       printErr "cannot commit: the at-rest type check found definite errors."
 
-      // Both lists: a `Failed` verdict can carry its reasons in either, and a refusal with no reason
-      // under it is worse than none.
-      Stdlib.List.append report.diagnostics report.blockers
-      |> Stdlib.List.iter (fun issue ->
-        Stdlib.printLine
-          (Stdlib.Cli.UI.Colors.error
-            $"    - {LanguageTools.AtRestTypeChecker.issueToString issue}"))
+      // Per ITEM, so the refusal names what to open, with the SAME issue rendering `dark typecheck`
+      // uses (it resolves referenced names and dedupes). "In the pipeline function: ..." with no
+      // name, over a five-item draft, told a person (and an agent) nothing actionable.
+      let branchId = SCM.PackageOps.currentBranch ()
+
+      report.items
+      |> Stdlib.List.iter (fun item ->
+        match item.verdict with
+        | Failed ->
+          let label = Packages.Typecheck.itemLabel branchId item.item
+
+          Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"    {label}:")
+
+          Stdlib.List.append
+            (Packages.AtRestCheck.issueLines branchId item.diagnostics)
+            (Packages.AtRestCheck.issueLines branchId item.blockers)
+          |> Stdlib.List.iter (fun line ->
+            Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"    {line}"))
+        | _ -> ())
+
+      // The report's own lists are the union of the items' -- printing both doubles every line. They
+      // stand alone only when the checker could not produce items at all (an unavailable report).
+      let _ =
+        if Stdlib.List.isEmpty report.items then
+          Stdlib.List.append
+            (Packages.AtRestCheck.issueLines branchId report.diagnostics)
+            (Packages.AtRestCheck.issueLines branchId report.blockers)
+          |> Stdlib.List.iter (fun line ->
+            Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"    {line}"))
+        else
+          ()
 
       printHint
         "  fix them, or `dark commit --allow-type-errors` to record them as-is."
@@ -415,6 +446,19 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
   // one is nearly always a slipped Enter, so it is refused rather than recorded forever.
   else if parsed.message == "" then
     printErr "a commit needs a message: `dark commit \"what changed\"`."
+    state
+  // An `--include` naming nothing in the draft is a typo, and the review screen would otherwise show
+  // the WHOLE draft over a selection that commits none of it -- the one dishonesty a review screen
+  // cannot afford.
+  else if
+    (Stdlib.Bool.not (Stdlib.List.isEmpty parsed.include))
+    && (Stdlib.Bool.not (Stdlib.List.isEmpty (SCM.PartialCommit.unknownNames parsed.include)))
+  then
+    let unknown =
+      Stdlib.String.join (SCM.PartialCommit.unknownNames parsed.include) ", "
+
+    printErr $"--include names things not in your draft: {unknown}."
+    printHint "  names are exact item names; `dark status` lists what the draft holds."
     state
   else if refuseUnresolved parsed then
     state
@@ -489,13 +533,23 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
 
       Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "    -> `dark conflicts` to inspect / override")
 
+    // The review above always shows the whole draft; when a selection is in force, say what will
+    // actually commit before asking.
+    let _ =
+      if Stdlib.List.isEmpty parsed.include then
+        ()
+      else
+        printHint
+          $"""  --include: only {Stdlib.String.join parsed.include ", "} (and what they pull in) will commit; the rest stays a draft."""
+
     // `confirmExplicit`, so a piped stdin is a NO: docs promise a review-then-ask, and a script
-    // that wants no prompt says `-y`. `confirm` would treat "nobody there" as a yes.
+    // that wants no prompt says `-y`. `confirm` would treat "nobody there" as a yes. `[y/N]`,
+    // because that is what Enter now does.
     if
       Stdlib.Bool.not (
         Cli.Prompt.confirmExplicit
           parsed.autoConfirm
-          (Stdlib.Cli.UI.Colors.warning "\n  Commit this change? [Y/n]: ")
+          (Stdlib.Cli.UI.Colors.warning "\n  Commit this change? [y/N]: ")
       )
     then
       if Cli.Prompt.interactive () || parsed.autoConfirm then
@@ -520,11 +574,14 @@ let executePretty (state: AppState) (args: List<String>) : AppState =
           if Stdlib.List.isEmpty parsed.include then
             ""
           else
-            let held = Stdlib.Int.fromInt64 (SCM.PackageOps.draftOpCount ())
-            $" -- {Cli.Text.plural held "op"} still in the draft"
+            // Ops AND items: status speaks items and this line speaks ops, and forcing the reader to
+            // reconcile 4-vs-16 mid-commit was the one vocabulary jolt of the flow.
+            let heldOps = Stdlib.Int.fromInt64 (SCM.PackageOps.draftOpCount ())
+            let heldItems = Stdlib.List.length (SCM.PackageOps.draftBindings ())
+            $"; {Cli.Text.plural heldOps "op"} ({Cli.Text.plural heldItems "item"}) still in the draft"
 
         let stamped = Cli.Text.plural (Stdlib.Int.fromInt64 committed) "op"
-        printOk $"  commit {Stdlib.String.first hash 8} -- {stamped}{movedNote}.{heldNote}"
+        printOk $"  commit {Stdlib.String.first hash 8} -- {stamped}{movedNote}{heldNote}."
 
       state
 

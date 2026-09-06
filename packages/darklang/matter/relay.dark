@@ -227,3 +227,10 @@ let branchListHandlerFn (req: HttpRequest) : HttpResponse =
     Stdlib.Http.Request.queryParam req "owner" |> Stdlib.Option.withDefault ""
 
   Stdlib.Http.responseWithText (SCM.PackageOps.relayListBranches owner) 200
+
+/// Every hosted branch with its owner (`owner branch-id` per line). Same secret as the other branch
+/// reads: whose branches exist is itself unpublished work.
+let branchOwnersHandlerFn (req: HttpRequest) : HttpResponse =
+  match branchAccessAllowed req with
+  | Error why -> Stdlib.Http.responseWithText why 401
+  | Ok _ -> Stdlib.Http.responseWithText (SCM.PackageOps.relayListAllBranches ()) 200

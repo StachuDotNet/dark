@@ -186,8 +186,29 @@ let repointNow
     match repointDependents branchId location itemKind previousHashes currentHash with
     | Ok [] -> ()
     | Ok repoints ->
-      let n = Stdlib.Int.toString (Stdlib.List.length repoints)
-      Stdlib.printLine (Stdlib.Cli.UI.Colors.hint $"  {n} dependent(s) repointed")
+      // Names when there are few (withholding two names just sends a person to another command),
+      // a count when there are many, and the way BACK in either case: this is the tool's most
+      // opaque moment, and "repointed" belonging to a command called `propagate` is not guessable.
+      let count = Stdlib.List.length repoints
+
+      let names =
+        repoints
+        |> Stdlib.List.map (fun r ->
+          let l = r.location
+          let mods = Stdlib.String.join l.modules "."
+          if mods == "" then $"{l.owner}.{l.name}" else $"{l.owner}.{mods}.{l.name}")
+        |> Stdlib.List.unique
+
+      let line =
+        if count <= 5 then
+          $"""  {Cli.Text.plural count "dependent"} repointed: {Stdlib.String.join names ", "}"""
+        else
+          $"""  {Cli.Text.plural count "dependent"} repointed"""
+
+      Stdlib.printLine (Stdlib.Cli.UI.Colors.hint line)
+      Stdlib.printLine
+        (Stdlib.Cli.UI.Colors.hint
+          "  (`dark propagate pin <name>` undoes one and keeps it put)")
     | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"  propagation failed: {e}")
 
 

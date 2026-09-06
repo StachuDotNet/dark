@@ -467,11 +467,58 @@ let runInteractiveLoop (state: AppState) : Int =
       // Sampled BEFORE the fold, which is the work being measured. Sampling after it and passing that as
       // the start instead times the preceding log call, and reports ~0 ms no matter how slow the fold is.
       let tUpdate = if renderedState.telemetryEnabled then Telemetry.now () else 0
+      // A paste (or an agent's keystroke burst) whose text embeds newlines, landing at the classic
+      // prompt, runs each line the way typing it would. The reader coalesces `status<Enter>quit<Enter>`
+      // into ONE read whose text is "status\nquit\n"; inserting that literally types a single garbled
+      // line and submits nothing. Text after the final newline stays typed and unsubmitted, exactly as
+      // a trailing unfinished line should.
+      let promptPasteLines =
+        match renderedState.currentPage with
+        | MainPrompt ->
+          if Stdlib.String.contains keyInput.keyChar "\n" then
+            Stdlib.Option.Option.Some(Stdlib.String.split keyInput.keyChar "\n")
+          else
+            Stdlib.Option.Option.None
+        | _ -> Stdlib.Option.Option.None
+
       let newState =
-        Stdlib.List.range 1 times
-        |> Stdlib.List.fold renderedState (fun st _i ->
-          if st.isExiting || (Stdlib.List.length st.pageStack) != startingDepth then st
-          else Update.updateAppState st keyPressedMsg)
+        match promptPasteLines with
+        | Some segments ->
+          let lastIdx = (Stdlib.List.length segments) - 1
+
+          segments
+          |> Stdlib.List.indexedMap (fun i seg -> (i, seg))
+          |> Stdlib.List.fold renderedState (fun st pair ->
+            let (i, seg) = pair
+
+            if st.isExiting then
+              st
+            else
+              let typed =
+                if seg == "" then
+                  st
+                else
+                  Update.updateAppState
+                    st
+                    (Msg.KeyPressed(
+                      keyInput.key,
+                      keyInput.modifiers,
+                      Stdlib.Option.Option.Some seg
+                    ))
+
+              if i == lastIdx then
+                typed
+              else
+                handleKeyInput
+                  typed
+                  Stdlib.Cli.Stdin.Key.Key.Enter
+                  keyInput.modifiers
+                  Stdlib.Option.Option.None)
+        | None ->
+          Stdlib.List.range 1 times
+          |> Stdlib.List.fold renderedState (fun st _i ->
+            if st.isExiting || (Stdlib.List.length st.pageStack) != startingDepth then st
+            else Update.updateAppState st keyPressedMsg)
 
       if renderedState.telemetryEnabled then
         Telemetry.logWithContext "readKey" tReadKey [("char", keyInput.keyChar)]

@@ -287,6 +287,7 @@ let landingHandlerFn (_req: HttpRequest) : HttpResponse =
      ++ route "GET" "/sync/pull" "ops as wire records; `?sinceSeq=` pages, `?owner=` filters"
      ++ route "POST" "/sync/push" "ingest ops; content-addressed, so a re-push is a no-op"
      ++ route "GET" "/branch/list" "branches held for an owner"
+     ++ route "GET" "/branch/owners" "every hosted branch with its owner"
      ++ route "GET" "/branch/pull" "one branch bundle"
      ++ route "POST" "/branch/push" "store a branch bundle"
      ++ route "GET" "/ping" "health"
@@ -1169,7 +1170,8 @@ val handlers =
     post "/sync/push" Darklang.Matter.Relay.pushHandlerFn
     post "/branch/push" Darklang.Matter.Relay.branchPushHandlerFn
     get "/branch/pull" Darklang.Matter.Relay.branchPullHandlerFn
-    get "/branch/list" Darklang.Matter.Relay.branchListHandlerFn ]
+    get "/branch/list" Darklang.Matter.Relay.branchListHandlerFn
+    get "/branch/owners" Darklang.Matter.Relay.branchOwnersHandlerFn ]
 
 /// One server, two audiences.
 ///

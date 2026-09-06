@@ -145,7 +145,7 @@ let branchDiffEntries (branchId: Uuid) : List<BranchDiffEntry> =
 
       (BranchDiffEntry
         { name = Conflicts.fqn b.owner b.modules b.name
-          itemType = b.itemType
+          kind = b.itemType
           change = change
           parentHash = parentHash
           hash = b.hash })

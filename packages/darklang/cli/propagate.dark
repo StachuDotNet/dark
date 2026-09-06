@@ -255,6 +255,28 @@ let executeList (state: AppState) : AppState =
   match SCM.Propagation.allChoices () with
   | [] ->
     printOk "no propagation choices -- everything follows what it uses."
+
+    // The impact, when there is some: right after an edit, "no choices" over two freshly-repointed
+    // fns read as "nothing followed", the opposite of what happened. And the pin hint needs NAMES
+    // to point at.
+    let followed =
+      SCM.Draft.read ()
+      |> (fun p ->
+        p.bindings
+        |> Stdlib.List.filter (fun b ->
+          Stdlib.List.member p.propagated (SCM.Conflicts.fqn b.owner b.modules b.name)))
+
+    let _ =
+      if Stdlib.List.isEmpty followed then
+        ()
+      else
+        printHint
+          $"""  {Cli.Text.plural (Stdlib.List.length followed) "draft item"} followed your edits:"""
+
+        followed
+        |> Stdlib.List.iter (fun b ->
+          printHint $"    > {SCM.Conflicts.fqn b.owner b.modules b.name}")
+
     printHint "  dark propagate pin <name>   stop it following, and undo the repoint you just got"
     state
   | cs ->

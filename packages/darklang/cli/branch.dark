@@ -22,6 +22,10 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
     printOk
       $"{n} conflict(s) auto-resolved by recency and recorded -- the losing version is kept, not dropped."
 
+    // The merge IS the moment; sending the reader through `status` to learn the next verb costs a
+    // round trip at the point they most want it.
+    printHint $"  -> `dark conflicts` to review the {n} auto-pick(s)"
+
 /// Where a branch id is, in words: `main`, or `branch "<name>"`. Main is never quoted and a branch
 /// always is, so the two read differently in every message that names one.
 let whereLabel (id: Uuid) : String =
@@ -179,6 +183,18 @@ let executeSwitch (state: AppState) (branchRef: String) : AppState =
       let _ =
         if created then
           printOk $"started branch \"{handle}\"{parentNote}."
+
+          // A merged namesake exists: the "come back after lunch" move is `switch <old name>`, and
+          // silently starting an empty impostor lets you edit a branch you believe holds your work.
+          let namesake =
+            SCM.Branches.list ()
+            |> Stdlib.List.any (fun b -> (b.name == handle) && b.merged && (b.id != branchId))
+
+          if namesake then
+            printHint
+              $"  note: an earlier \"{handle}\" was merged; this one is fresh. `dark branches --all` shows both."
+          else
+            ()
         else
           ()
 
@@ -261,7 +277,7 @@ let executeMergePreview
         entries
         |> Stdlib.List.iter (fun e ->
           let mark = if e.change == "new" then "+" else "~"
-          Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText $"    {mark} {e.name}  [{e.itemType}]"))
+          Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText $"    {mark} {e.name}  [{e.kind}]"))
 
       // The conflicts a merge WOULD auto-resolve. Nothing is recorded by looking, which is the whole
       // point of asking first.
@@ -430,13 +446,13 @@ let executeDiff (state: AppState) (branchRef: String) (withSource: Bool) : AppSt
             else
               $" (was {SCM.Conflicts.shortHash e.parentHash})"
 
-          Stdlib.printLine $"    {mark} {leaf}  [{e.itemType}] {short}{was}"
+          Stdlib.printLine $"    {mark} {leaf}  [{e.kind}] {short}{was}"
 
           if withSource then
             Stdlib.printLine (
               Stdlib.Cli.UI.Colors.dimText
                 (Cli.Conflicts.indentBlock
-                  (Cli.Conflicts.renderItem branchId e.itemType e.hash leaf))
+                  (Cli.Conflicts.renderItem branchId e.kind e.hash leaf))
             )
           else
             ()))
@@ -519,13 +535,17 @@ let executeArchive
       if (entries == []) || autoConfirm then
         true
       else
-        printOk
-          $"  ARCHIVING \"{branchRef}\" discards {Cli.Text.plural (Stdlib.List.length entries) "unmerged name"}:"
+        // Warning-colored like DISCARDING: this listing is what is about to be destroyed, and
+        // green reads as "already fine".
+        Stdlib.printLine (
+          Stdlib.Cli.UI.Colors.warning
+            $"  ARCHIVING \"{branchRef}\" discards {Cli.Text.plural (Stdlib.List.length entries) "unmerged name"}:"
+        )
 
         entries
         |> Stdlib.List.iter (fun e ->
           Stdlib.printLine
-            (Stdlib.Cli.UI.Colors.dimText $"    - {e.name}  [{e.itemType}]"))
+            (Stdlib.Cli.UI.Colors.dimText $"    - {e.name}  [{e.kind}]"))
 
         printHint "  `dark merge` first if you meant to keep them."
 
@@ -540,6 +560,10 @@ let executeArchive
       state
     else
 
+    // The parent, read BEFORE the archive: an archived branch drops out of the listing `parentOf`
+    // reads, so asking afterwards answers main even for a branch of a branch.
+    let (parentId, parentName) = parentOf branchId
+
     match SCM.PackageOps.archiveBranch branchId with
     | Ok _ ->
       printOk $"archived branch \"{branchRef}\"."
@@ -547,7 +571,6 @@ let executeArchive
       // next edit would land there and revive it. Move to the parent, in this process and in the
       // config the next one reads, and say so.
       if SCM.PackageOps.currentBranch () == branchId then
-        let (parentId, parentName) = parentOf branchId
         let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString parentId)
         let _ =
           Stdlib.LocalStore.configSet
@@ -816,6 +839,14 @@ let execute (state: AppState) (args: List<String>) : AppState =
       printHint $"  to start or switch to a branch actually named \"{id}\": dark switch {id}"
       Stdlib.printLine (help state)
       state
+    else if Stdlib.List.member commandShapedWords id then
+      // A question-shaped word must not CHANGE STATE: `dark branch status` from a git reflex used to
+      // start a branch named "status" and switch onto it -- the "what is going on" probe adding one
+      // more thing that is going on.
+      printErr $"\"{id}\" reads like a command, not a branch name, so nothing was created."
+      printHint "  the current branch:      dark branch"
+      printHint $"  really start \"{id}\":    dark switch {id}"
+      { state with exitCode = 1 }
     else
       match looksLikeTypoedSubcommand id with
       | Some sub ->
@@ -847,6 +878,10 @@ val knownSubcommands =
     "import"
     "push"
     "pull" ]
+
+/// Words a git reflex types after `branch` that are questions or other tools' verbs, not names.
+/// (`switch`, `delete` and friends that ARE subcommands here live in `knownSubcommands` above.)
+val commandShapedWords = [ "status", "info", "show", "remove", "rm", "help", "checkout", "branch" ]
 
 /// Whether <param arg> looks like a fumbled subcommand rather than a branch name.
 ///

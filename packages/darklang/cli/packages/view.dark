@@ -449,6 +449,12 @@ let viewCompiled
     | Raw -> printRaw branchId location
 
 
+/// Is every character a hex digit? (Cheaper than a parse, and an FQN never looks like this.)
+let looksLikeHex (s: String) : Bool =
+  s
+  |> Stdlib.String.toList
+  |> Stdlib.List.all (fun c -> Stdlib.Char.isDigit c || (Stdlib.List.member [ 'a', 'b', 'c', 'd', 'e', 'f' ] c))
+
 // VIEW command - view modules, functions, types, or constants, as source, AST, or instructions
 let execute (state: AppState) (args: List<String>) : AppState =
   let branchId = state.currentBranchId
@@ -464,7 +470,27 @@ let execute (state: AppState) (args: List<String>) : AppState =
     let locationResult =
       match pathArg with
       | None -> Stdlib.Result.Result.Ok state.packageData.currentLocation
-      | Some p -> Traversal.traverse branchId state.packageData.currentLocation p
+      | Some p ->
+        // A 64-hex argument is an item HASH: every --json surface hands them out, and a
+        // content-addressed store whose ids were dead ends on the command line taught agents to
+        // route back through names that propagation can move underneath them.
+        if (Stdlib.String.length p == 64) && (Stdlib.String.toLowercase p == p) && (looksLikeHex p) then
+          match SCM.Deps.mainLocationOf p with
+          | Some loc ->
+            // Wrapped by the KIND the store records for it, so the viewer renders it as itself.
+            let kind =
+              SCM.Propagation.kindAt loc
+              |> Stdlib.Option.withDefault LanguageTools.ProgramTypes.ItemKind.Fn
+
+            (match kind with
+             | Fn -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Function loc)
+             | Type -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Type loc)
+             | Value -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Value loc))
+          | None ->
+            Stdlib.Result.Result.Error
+              $"no live name binds hash {Stdlib.String.first p 8} -- `dark show {Stdlib.String.first p 8}` reads it as an op."
+        else
+          Traversal.traverse branchId state.packageData.currentLocation p
 
     match locationResult with
     | Error errorMsg ->

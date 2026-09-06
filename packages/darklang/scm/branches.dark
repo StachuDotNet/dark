@@ -43,6 +43,23 @@ let relayGetBundle (owner: String) (branchId: Uuid) : String =
   | Some row -> Stdlib.Sqlite.textField row "bundle" |> Stdlib.Option.withDefault ""
   | None -> ""
 
+/// Every owner with a hosted branch, with how many. What lets a client DISCOVER a colleague's push
+/// instead of hearing about it on Slack.
+let relayListOwners () : List<(String * Int64)> =
+  match
+    Stdlib.Sqlite.query
+      (localDb ())
+      "SELECT owner, count(*) AS n FROM relay_branches GROUP BY owner ORDER BY owner"
+  with
+  | Ok rows ->
+    rows
+    |> Stdlib.List.filterMap (fun row ->
+      match (Stdlib.Sqlite.textField row "owner", Stdlib.Sqlite.intField row "n") with
+      | (Some o, Some n) -> Stdlib.Option.Option.Some((o, n))
+      | _ -> Stdlib.Option.Option.None)
+  | Error _ -> []
+
+
 /// The branch ids an owner has pushed here ("pull all my branches").
 let relayListBranches (owner: String) : List<String> =
   match
@@ -201,7 +218,7 @@ let list () : List<BranchRow> =
       (localDb ())
       "SELECT b.id, b.name, b.parent_id, b.merged_at IS NOT NULL AS merged,
               (SELECT count(*) FROM op_branches ob WHERE ob.branch_id = b.id) AS ops
-       FROM branches b WHERE b.archived_at IS NULL ORDER BY b.created_at"
+       FROM branches b WHERE b.archived_at IS NULL ORDER BY b.created_at DESC"
   with
   | Ok rows ->
     rows

@@ -344,7 +344,8 @@ let liveBindingAt
 type BranchDiffEntry =
   { /// Dotted, as a person reads it.
     name: String
-    itemType: String
+    /// "fn" / "type" / "value" -- named `kind`, as every other JSON surface spells it.
+    kind: String
     /// "new" when the parent does not have this name at all, "changed" when it has a different version.
     change: String
     /// What the parent binds. "" when the name is new there.
@@ -490,29 +491,45 @@ let collapseDraft () : Stdlib.Result.Result<Int, String> =
 let discardBranchDraft (branchId: Uuid) : Int64 =
   let n = draftOpCountFor branchId
 
+  // The ids FIRST, as a list: each statement below shrinks what the other's subquery would see, so
+  // running them against live subqueries either deletes rows the untag then cannot find (dangling
+  // tags, which `dark status`'s store health reports as damage) or untags rows the delete then
+  // will not touch. Against a fixed list, order stops mattering for coverage; rows still go before
+  // tags so an op never sits untagged-but-present looking like a main op.
+  let draftIds =
+    match
+      Stdlib.Sqlite.queryP
+        (localDb ())
+        "SELECT id FROM package_ops
+         WHERE commit_hash IS NULL AND effective = 0
+           AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)"
+        [ Stdlib.Uuid.toString branchId ]
+    with
+    | Ok rows -> rows |> Stdlib.List.filterMap (fun row -> Stdlib.Sqlite.textField row "id")
+    | Error _ -> []
+
+  let idsJson = Stdlib.Json.serialize<List<String>> draftIds
+
   let _ =
     Stdlib.Sqlite.mustExec
       (localDb ())
-      // Only ops no OTHER branch holds -- see the same guard in `Branches.archive`. And only
-      // `effective = 0`: op ids are content hashes, so a branch op can share its id with one main
-      // already holds live (author the same value on both), and the tag then points at MAIN's op.
-      // Without this guard a branch discard would delete it from the canonical log.
-      "DELETE FROM package_ops WHERE commit_hash IS NULL AND effective = 0
-        AND id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)
-        AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p0)"
-      [ Stdlib.Uuid.toString branchId ]
+      // Only ops no OTHER branch holds -- see the same guard in `Branches.archive`. The tag can also
+      // point at an op main holds live (author the same value on both places), which the
+      // `commit_hash IS NULL AND effective = 0` shape of the id list above already excludes.
+      "DELETE FROM package_ops
+        WHERE id IN (SELECT value FROM json_each(@p0))
+          AND id NOT IN (SELECT op_id FROM op_branches WHERE branch_id <> @p1)"
+      [ idsJson, Stdlib.Uuid.toString branchId ]
 
-  // Untag by WHAT THE BRANCH HELD, not by what the delete above managed to remove. An op a sibling also
-  // tags, or one whose content main already holds live, survives that delete on purpose; its TAG must go
-  // regardless, or the branch still lists an op it was just told to discard.
+  // Untag everything the branch held, whether or not the row above survived (a sibling's tag keeps
+  // the row; this branch's tag must still go).
   let _ =
     Stdlib.Sqlite.mustExec
       (localDb ())
       "DELETE FROM op_branches
         WHERE branch_id = @p0
-          AND op_id IN (SELECT id FROM package_ops
-                        WHERE commit_hash IS NULL AND effective = 0)"
-      [ Stdlib.Uuid.toString branchId ]
+          AND op_id IN (SELECT value FROM json_each(@p1))"
+      [ Stdlib.Uuid.toString branchId, idsJson ]
 
   // Once the branch holds nothing, its per-name fork points describe ops that no longer exist. They stay
   // while any op survives, because those ops are still based on them.
@@ -1205,7 +1222,23 @@ let branchList (includeMerged: Bool) : String =
       "no branches -- `dark switch <name>` starts one."
     else
       $"no live branches.{footer}"
-  | lines -> (Stdlib.String.join lines "\n") ++ footer
+  | lines ->
+    // Newest first, capped: a long-lived store accretes dozens of finished experiments, and the one
+    // live branch you care about should not be buried in them. `--all` uncaps along with unhiding.
+    let cap = 20
+
+    let shown =
+      if includeMerged || (Stdlib.List.length lines) <= cap then
+        lines
+      else
+        let more = (Stdlib.List.length lines) - cap
+
+        Stdlib.List.append
+          (Stdlib.List.take lines cap)
+          [ $"+ {Stdlib.Int.toString more} more -- `dark branches --all` lists every branch." ]
+
+    (Stdlib.String.join shown "\n") ++ footer
+
 
 
 /// Present everything a branch changes vs its parent (+ new, ~ changed) -- the review-before-merge diff.
@@ -1532,6 +1565,18 @@ let relayGetBranch (owner: String) (branchId: Uuid) : String =
 
 let relayListBranches (owner: String) : String =
   Stdlib.String.join (Branches.relayListBranches owner) "\n"
+
+
+/// `owner branch-id` per hosted bundle, one per line: the discovery listing `/branch/owners` serves.
+let relayListAllBranches () : String =
+  Branches.relayListOwners ()
+  |> Stdlib.List.map (fun entry ->
+    let (owner, _n) = entry
+
+    Branches.relayListBranches owner
+    |> Stdlib.List.map (fun bid -> $"{owner} {bid}"))
+  |> Stdlib.List.flatten
+  |> (fun lines -> Stdlib.String.join lines "\n")
 
 
 /// Import a branch bundle: register + store its ops effective=0 + tag + re-base against local main.

@@ -404,9 +404,57 @@ let supersededOverrides () : List<(LanguageTools.ProgramTypes.PackageLocation * 
 /// Asked at commit rather than only at save, because a draft is allowed to be broken (you write the caller
 /// before the callee) and a commit is not: a commit is what other machines pull. Saving already reports
 /// this; committing is where refusing it is worth something.
+///
+/// Checks the draft's LIVE items only: the last binding per name, and the content those bindings
+/// target. A superseded version's `Add` stays in the draft by design (its naming collapses, the
+/// content ships as history), and checking it made a broken-then-fixed edit refuse the commit
+/// forever -- the broken content was still there, no longer bound to anything, failing on every try.
+/// Unreachable history is not what the gate protects; what other machines will RESOLVE is.
 let typeCheckDraft
   (branchId: Uuid)
   : LanguageTools.AtRestTypeChecker.Report =
-  match draftEntriesFor branchId |> Stdlib.List.map (fun e -> e.op) with
+  let ops = draftEntriesFor branchId |> Stdlib.List.map (fun e -> e.op)
+
+  // Last SetName per location wins; ops are oldest-first, so a later fold entry replaces an earlier.
+  let liveTargets =
+    ops
+    |> Stdlib.List.fold Stdlib.Dict.empty (fun acc op ->
+      match op with
+      | SetName(loc, target, _) ->
+        Stdlib.Dict.setOverridingDuplicates
+          acc
+          (decisionKey loc)
+          (LanguageTools.ProgramTypes.hashToString (LanguageTools.ProgramTypes.Reference.hash target))
+      | _ -> acc)
+    |> Stdlib.Dict.values
+
+  let namedHashes =
+    ops
+    |> Stdlib.List.filterMap (fun op ->
+      match op with
+      | SetName(_, target, _) ->
+        Stdlib.Option.Option.Some(
+          LanguageTools.ProgramTypes.hashToString (LanguageTools.ProgramTypes.Reference.hash target)
+        )
+      | _ -> Stdlib.Option.Option.None)
+
+  let liveOps =
+    ops
+    |> Stdlib.List.filter (fun op ->
+      match op with
+      | AddFn f ->
+        let h = LanguageTools.ProgramTypes.hashToString f.hash
+        // Content some binding targets, or content no draft SetName ever named (don't silently
+        // skip a shape this filter does not understand).
+        (Stdlib.List.member liveTargets h) || (Stdlib.Bool.not (Stdlib.List.member namedHashes h))
+      | AddType t ->
+        let h = LanguageTools.ProgramTypes.hashToString t.hash
+        (Stdlib.List.member liveTargets h) || (Stdlib.Bool.not (Stdlib.List.member namedHashes h))
+      | AddValue v ->
+        let h = LanguageTools.ProgramTypes.hashToString v.hash
+        (Stdlib.List.member liveTargets h) || (Stdlib.Bool.not (Stdlib.List.member namedHashes h))
+      | _ -> true)
+
+  match liveOps with
   | [] -> LanguageTools.AtRestTypeChecker.emptyReport ()
-  | ops -> LanguageTools.AtRestTypeChecker.checkPackageOps ops
+  | live -> LanguageTools.AtRestTypeChecker.checkPackageOps live

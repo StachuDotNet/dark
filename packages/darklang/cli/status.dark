@@ -114,7 +114,10 @@ let executePretty (state: AppState) : AppState =
           $"""  {Cli.Text.plural s.constraints "constraint"} outstanding, {mine} -> `dark constraints`""")
 
     if (s.changed > 0) || (s.removed > 0) then
-      Stdlib.printLine (Stdlib.Cli.UI.Colors.hint "  -> `dark commit` to review + commit")
+      // "it asks first": to a git reflex, commit is the one verb you do not run to look, and the
+      // review screen is exactly where the names this line withholds live.
+      Stdlib.printLine
+        (Stdlib.Cli.UI.Colors.hint "  -> `dark commit` to review + commit (it asks first)")
 
   // Store health, reported here rather than behind a verb: a check you have to remember to run is a check
   // nobody runs. Silent when the store is fine, which is almost always.

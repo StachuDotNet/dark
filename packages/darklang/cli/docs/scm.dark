@@ -102,11 +102,11 @@ prints both.
 
   dark --branch <name> <cmd>   run ONE command on a branch, without switching
 
-The branch is per PROCESS. `switch` persists it, so the next `dark` starts
-there; `--branch` is for one command; `DARK_BRANCH` sets it for one shell,
-which is how several agents run on several branches without fighting over
-the persisted setting. Agents working in parallel should use one process
-each, which they get for free.
+The persisted branch is PER INSTALL, not per process: `switch` writes it,
+and every concurrent `dark` on this store reads it -- one session's `switch`
+moves them all, silently. `--branch` is for one command; `DARK_BRANCH` sets
+it for one shell. Agents (or several terminals) working in parallel MUST use
+`DARK_BRANCH` or `--branch`; only those are per-process.
 
 `--branch` and `switch` differ in one more way. A branch started by the flag
 is parented to main; one started by `switch` is parented to the branch you're

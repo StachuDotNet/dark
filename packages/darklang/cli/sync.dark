@@ -353,6 +353,25 @@ let executeReject
 /// Push this instance's op log to a relay UNDER YOUR IDENTITY, so you can pull it back from
 /// any machine. The relay stores + forwards; it never runs the ops. Content-addressed re-push
 /// is a no-op.
+/// What `push` should say besides its verdict: work that is NOT going by this push and why.
+/// A push is the 5pm command; "nothing new" while a draft or a branch sits local reads as
+/// "everything shipped", and the handoff dies on it.
+let pushTailNotes (url: String) : Unit =
+  let draftOps = Stdlib.Int.fromInt64 (SCM.PackageOps.draftOpCount ())
+
+  if draftOps > 0 then
+    printHint
+      $"  your draft ({Cli.Text.plural draftOps "op"}) stays local until `dark commit`."
+  else
+    ()
+
+  SCM.Wire.unpushedBranches url
+  |> Stdlib.List.iter (fun entry ->
+    let (name, n) = entry
+    printHint
+      $"  branch \"{name}\": {Stdlib.Int64.toString n} op(s) not on the relay -- `dark branch push {name}`.")
+
+
 let executePush (state: AppState) (url: String) : AppState =
   if url == "" then
     printErr "no relay -- `dark connect <url>` first, or pass a url."
@@ -466,10 +485,13 @@ let executePush (state: AppState) (url: String) : AppState =
       // correctly nothing on MAIN to send. Say that as a no-op, not as "Pushed 0 ops".
       if sent == 0 then
         printOk $"Nothing new to push to {url}."
+        pushTailNotes url
       else
         printOk
           // `test-sync-multi-instance` matches "^Pushed [1-9][0-9]* op" against this line.
           $"Pushed {Cli.Text.plural sent "op"}{newPart} to {url} as \"{id}\" (in {Cli.Text.plural (Stdlib.List.length chunks) "chunk"})."
+
+        pushTailNotes url
 
       // Push is main-only (see the top of this function), and the success line looks the same from a
       // branch whether or not your day's work is in it -- so say which it was.
@@ -717,6 +739,19 @@ let executePull (state: AppState) (url: String) : AppState =
           printOk
             $"Pulled {Stdlib.Int.toString total} new op(s) from {url} as \"{id}\"."
 
+          // The story, not just the number: the arriving commits' subjects ARE the answer to "what
+          // changed since I left", and they are already local by now. Capped; the pull that catches
+          // a fresh store up on months of history is not a listing.
+          let _ =
+            if total > 0 then
+              let arrived = SCM.PackageOps.commitsArrivedRecently 5L
+
+              arrived
+              |> Stdlib.List.iter (fun c ->
+                printHint $"  {Stdlib.String.first c.hash 8}  {c.author}  {c.message}")
+            else
+              ()
+
           reportDetection outcome.bulk outcome.detected
           reportConflicts outcome.conflicts
         | Error e -> printErr $"Pull import failed: {e}"
@@ -765,13 +800,38 @@ let executeStatus (state: AppState) (url: String) : AppState =
             SCM.Wire.seenEverything (SCM.Wire.lastSeenHead url) theirs mine)
 
         // Branch ops travel by `branch push`, not `sync`, so they are reported apart from the verdict
-        // and never make it "out of sync".
+        // and never make it "out of sync". Both directions: local branches the relay lacks, and
+        // hosted branches this store has never pulled -- the handoff that otherwise needs a Slack
+        // message ("I pushed a branch; my identity is X").
         let branchLines () : Unit =
           SCM.Wire.unpushedBranches url
           |> Stdlib.List.iter (fun entry ->
             let (name, n) = entry
             printHint
               $"  branch \"{name}\": {Stdlib.Int64.toString n} op(s) not on the relay -- `dark branch push {name}`.")
+
+          match relayGetAuthed url "/branch/owners" with
+          | Error _ -> ()
+          | Ok body ->
+            let knownIds =
+              SCM.Branches.list () |> Stdlib.List.map (fun b -> Stdlib.Uuid.toString b.id)
+
+            let me = SCM.PackageOps.identity ()
+
+            Stdlib.String.fromBlobWithReplacement body
+            |> Stdlib.String.splitOnNewline
+            |> Stdlib.List.filterMap (fun line ->
+              match Stdlib.String.split (Stdlib.String.trim line) " " with
+              | [ owner, bid ] ->
+                if (owner != me) && (Stdlib.Bool.not (Stdlib.List.member knownIds bid)) then
+                  Stdlib.Option.Option.Some owner
+                else
+                  Stdlib.Option.Option.None
+              | _ -> Stdlib.Option.Option.None)
+            |> Stdlib.List.unique
+            |> Stdlib.List.iter (fun owner ->
+              printHint
+                $"  the relay holds branches from \"{owner}\" you haven't pulled -- `dark branch pull --from {owner}`.")
 
         match (toSend, toReceive) with
         | (false, false) ->

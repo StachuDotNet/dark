@@ -100,6 +100,27 @@ let previewLine (branchId: Uuid) (itemType: String) (hash: String) (name: String
     Stdlib.Cli.Tui.Text.clipToWidth flattened 72
 
 
+/// The same flattening as <fn previewLine>, unclipped, so a caller comparing two candidates can find
+/// where they split before deciding what to clip.
+let previewFlat (branchId: Uuid) (itemType: String) (hash: String) (name: String) : String =
+  renderItem branchId itemType hash name
+  |> Stdlib.String.splitOnNewline
+  |> Stdlib.List.map Stdlib.String.trim
+  |> Stdlib.List.filter (fun l ->
+    (l != "") && (Stdlib.Bool.not (Stdlib.String.startsWith l "//")))
+  |> (fun ls -> Stdlib.String.join ls " ")
+
+/// The index at which two strings first differ (their common-prefix length).
+let firstDivergence (a: String) (b: String) : Int =
+  let la = Stdlib.String.toList a
+  let lb = Stdlib.String.toList b
+
+  Stdlib.List.zipShortest la lb
+  |> Stdlib.List.findFirstIndex (fun pair ->
+    let (ca, cb) = pair
+    ca != cb)
+  |> Stdlib.Option.withDefault (Stdlib.Int.min (Stdlib.List.length la) (Stdlib.List.length lb))
+
 /// Whose version a candidate is, in the words all three views use.
 ///
 /// Off `side` and the recorded author, never off the candidate's position, so it stays true if the
@@ -111,6 +132,27 @@ let whoseCandidate (me: String) (cand: SCM.Conflicts.Candidate) : String =
   else if cand.author == "" then "theirs"
   else if cand.author == me then "yours"
   else cand.author
+
+/// The labels for a whole conflict's candidates. A MERGE conflict's incoming side carries the branch
+/// name in `side` (sync's carries "incoming"), and both sides of a local merge are yours -- so
+/// "yours" against a branch name says nothing. Label the local side by WHERE it lives instead:
+/// <param hereName> is the branch the listing is scoped to (main, usually). "yours"/"theirs" stays
+/// for sync, where it is true and useful.
+let candidateLabels
+  (me: String)
+  (hereName: String)
+  (c: SCM.Conflicts.Conflict)
+  : List<String> =
+  let isMergeShaped =
+    c.candidates
+    |> Stdlib.List.any (fun cand -> (cand.side != "local") && (cand.side != "incoming"))
+
+  c.candidates
+  |> Stdlib.List.map (fun cand ->
+    if isMergeShaped then
+      if cand.side == "local" then hereName else cand.side
+    else
+      whoseCandidate me cand)
 
 /// Indent a rendered block so it sits under its candidate line.
 let indentBlock (s: String) : String =
@@ -129,8 +171,9 @@ let executeList (state: AppState) : AppState =
     let n = Stdlib.Int.toString (Stdlib.List.length cs)
     printOk $"{n} pending"
 
-    // Once for the whole list, not once per candidate row: it is a store read.
+    // Once for the whole list, not once per candidate row: both are store reads.
     let me = SCM.PackageOps.identity ()
+    let hereName = SCM.PackageOps.branchName (SCM.Conflicts.onBranch ())
 
     cs
     |> Stdlib.List.iter (fun c ->
@@ -139,10 +182,14 @@ let executeList (state: AppState) : AppState =
       // BOTH sides inline, in the order `override` takes them, so the list answers "does this matter"
       // without a second command. Each row says WHOSE and WHAT HAPPENED, rather than leaving both to a
       // legend printed after the rows it explains.
+      let whoseLabels = candidateLabels me hereName c
+
       c.candidates
       |> Stdlib.List.indexedMap (fun i cand ->
         let label = if i == 0 then "A" else "B"
-        let whose = whoseCandidate me cand
+
+        let whose =
+          Stdlib.List.getAt whoseLabels i |> Stdlib.Option.withDefault (whoseCandidate me cand)
 
         // "lost", not "over": the summary above already promises the losing version is kept rather than
         // dropped, and an abbreviation nobody expands is not a word.
@@ -167,7 +214,7 @@ let executeShow (state: AppState) (idPrefix: String) : AppState =
   match SCM.Conflicts.getByIdPrefix idPrefix with
   | None ->
     printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
-    state
+    { state with exitCode = 1 }
   | Some c ->
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
     printOk $"#{c.id}  {dotted}  [{c.itemType}] -- two live versions"
@@ -199,7 +246,7 @@ let executeAck (state: AppState) (idPrefix: String) : AppState =
   match SCM.Conflicts.getByIdPrefix idPrefix with
   | None ->
     printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
-    state
+    { state with exitCode = 1 }
   | Some c ->
     SCM.Conflicts.setStatus c.id "acked" ""
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
@@ -233,7 +280,7 @@ let executeOverride
   match SCM.Conflicts.getByIdPrefix idPrefix with
   | None ->
     printErr $"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them."
-    state
+    { state with exitCode = 1 }
   | Some c ->
     let dotted = SCM.Conflicts.fqn c.owner c.modules c.name
 

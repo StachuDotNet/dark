@@ -108,7 +108,8 @@ let executeRestore (state: AppState) (name: String) (autoConfirm: Bool) : AppSta
     state
   else
 
-  printOk $"  RESTORING {name} replaces the store."
+  // Warning like DISCARDING: green on "replaces the store" reads as "already fine".
+  Stdlib.printLine (Stdlib.Cli.UI.Colors.warning $"  RESTORING {name} replaces the store.")
   printHint "  the store as it is now is copied aside first, so this is undoable."
 
   let confirmed =
@@ -160,8 +161,10 @@ let executePrune (state: AppState) (keepArg: String) (autoConfirm: Bool) : AppSt
         state
       else
 
-      printOk
-        $"""  PRUNING deletes {Cli.Text.plural (Stdlib.List.length doomed) "backup"}:"""
+      Stdlib.printLine (
+        Stdlib.Cli.UI.Colors.warning
+          $"""  PRUNING deletes {Cli.Text.plural (Stdlib.List.length doomed) "backup"}:"""
+      )
       doomed |> Stdlib.List.iter (fun name -> Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText $"    - {name}"))
 
       let confirmed =
