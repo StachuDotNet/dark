@@ -30,7 +30,6 @@ let createState
   (tracing : RT.Tracing.Tracing)
   (reportException : RT.ExceptionReporter)
   (notify : RT.Notifier)
-  (branchId : RT.BranchId)
   (program : RT.Program)
   : RT.ExecutionState =
   { tracing = tracing
@@ -41,7 +40,6 @@ let createState
     lambdaInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
     packageFnInstrCache = System.Collections.Concurrent.ConcurrentDictionary()
 
-    branchId = branchId
     program = program
 
     builtins = builtins
@@ -51,16 +49,22 @@ let createState
     fns =
       { builtIn = builtins.fns
         package = pm.getFn
-        isHarmful = fun pkg -> pm.isHarmful branchId pkg }
+        isHarmful = fun pkg -> pm.isHarmful pkg }
 
     allowHarmful = false
 
-    // The base default is permissive — `createState` is RT-level and can't read the on-disk grant, so
-    // the gate is a no-op here. The CLI host narrows it per entry point (`eval`/host → the configured
-    // grant; `dark run` → NONE) before executing user code; tests run permissive.
+    // The base default is permissive -- `createState` is RT-level and can't read the
+    // on-disk grant, so the gate is a no-op here. The CLI host narrows it per entry
+    // point (`eval`/host -> the configured grant; `dark run` -> NONE) before executing
+    // user code; tests run permissive.
     grantedCaps = LibExecution.Capabilities.allCaps
 
-    accountID = None }
+    accountID = None
+
+    // Main unless a caller says otherwise. `createState` is RT-level and has no way
+    // to read which branch the process picked; the CLI host sets this per entry
+    // point, like `grantedCaps` and `accountID`.
+    branchId = Branching.BranchId.Main }
 
 
 let rec callStackForFrame
@@ -94,6 +98,9 @@ let execute
     let vm = RT.VMState.create instrs
     try
       try
+        // TODO: handle secrets and DBs by explicit references instead of relying on
+        // the symbol table.
+
         // TODO: handle secrets and DBs by explicit references instead of relying on symbol table
         // vm.symbolTable <- Interpreter.withGlobals state inputVars
 
@@ -131,29 +138,15 @@ let executeToplevel
   : Task<RT.ExecutionResult> =
   execute exeState (Some tlid, instrs)
 
-/// Execute an applicable (lambda or named fn) with given args in a fresh VM.
-/// Lambda + package fn instruction caches live on `exeState`, so lambdas
-/// created in the caller's VM remain findable here.
-/// The instruction stream for applying a callable to `n` arguments, one per arity.
-///
-/// It is the same stream every time: `Apply` reading the callable from register 1 and the arguments
-/// from 2 onwards. Building it per call meant a `LoadVal` instruction per argument, assembled with
-/// list appends, purely to move values into registers that the caller can write to directly.
 /// Spare VMs per thread, for `executeApplicable` to borrow.
 ///
 /// A `ConcurrentBag` allocates a node per add, and this runs once per lambda application. A VM's
 /// interpreter loop is single-threaded, so a thread-static store needs no synchronisation and no node.
 ///
-/// A *stack*, not the single slot this used to be. The comment then said one was enough "because a
-/// nested application finds it empty and builds its own", which is true and is the whole problem:
-/// nesting is the common case, not the exception. `map` over a list whose lambda calls `findFirst`
-/// has the outer application holding the slot for the whole traversal, so every inner one built a
-/// fresh `VMState` -- thirteen dictionaries and seven arrays -- per element. It is why a native list
-/// operation lost to its Dark equivalent on a five-element list while winning easily on fifty: the
-/// per-call cost was fixed and large, and only long lists amortised it.
-///
-/// Eight deep covers the nesting real code reaches; past that it falls back to building one, which is
-/// correct, just not free.
+/// A stack, not a single slot: nested application is the common case (`map` whose
+/// lambda calls `findFirst`), and a single slot forced every inner application to
+/// build a fresh `VMState`. Eight deep covers real nesting; past that it falls back
+/// to building one.
 type private VMSlot() =
   static let capacity = 8
 
@@ -194,6 +187,7 @@ let private applyInstrsByArity =
   System.Collections.Concurrent.ConcurrentDictionary<int, struct (RT.InstrData * int)>()
 
 /// The `InstrData` for applying to `n` arguments, plus the register count it needs.
+/// Same stream for every arity: `Apply` reads the callable from register 1, args from 2 on.
 ///
 /// Cached as `InstrData` rather than `Instructions` so the array is built once ever, not converted
 /// from a list on every application.
@@ -277,10 +271,9 @@ let private runLoaded
   // before it paid for a `task` state machine and the `Task` it returned. Same shape as the
   // `Ply.trySync` fast paths in the type checker.
   //
-  // The success, error and exception paths used to be three local functions declared here. Each
-  // captures `vm`, so all three were allocated on every application, including the overwhelmingly
-  // common one that takes the synchronous success path and calls none of them. They are spelled out
-  // where they are used instead: `succeeded` is three lines, and the other two are cold.
+  // The result paths are inlined, not local functions: locals would capture `vm` and
+  // allocate on every application, including the common synchronous success that
+  // calls none of them.
   try
     let running = Interpreter.execute exeState vm
 
@@ -331,10 +324,8 @@ let executeApplicable
 
 /// Re-raise an error a lambda raised, keeping the frames it raised it in.
 ///
-/// A builtin applying a lambda gets back `Error(rte, stack)` where `stack` covers the borrowed VM the
-/// lambda ran in. Raising the error on its own -- which every caller here used to do -- threw those
-/// frames away, so `List.map [1;2] (fun x -> Stdlib.Int.divide x 0)` reported a call stack that
-/// stopped at the caller and never mentioned the lambda. Written in Dark it named both.
+/// A builtin applying a lambda gets `Error(rte, stack)` covering the borrowed VM;
+/// raising the error alone drops those frames, so the report never names the lambda.
 let raiseFromApplied
   (callerVm : RT.VMState)
   (rte : RTE.Error)
@@ -421,14 +412,14 @@ let runtimeErrorToString
         PackageRefs.Fn.PrettyPrinter.RuntimeTypes.RuntimeError.toString ()
       )
     let args =
-      NEList.ofList (RT.DUuid state.branchId) [ RT2DT.RuntimeError.toDT rte ]
+      NEList.ofList (RT.DUuid state.branchId.Guid) [ RT2DT.RuntimeError.toDT rte ]
     return! executeFunction state fnName [] args
   }
 
 /// Fallback for when a pretty printer call fails: the error it raised, then the raw value.
 let private prettyPrintFallback
   (label : string)
-  (raw : obj)
+  (raw : 'raw)
   (result : RT.ExecutionResult)
   : string =
   match result with
@@ -437,29 +428,43 @@ let private prettyPrintFallback
   | Ok other ->
     $"<pretty-print failed for {label}: printer returned {other}\n  value: {raw}>"
 
+/// Calls a Dark pretty printer that returns a string: prepends the branch id to
+/// `args`, executes the fn at `fnHash`, and unwraps the `DString`; anything else
+/// goes through `prettyPrintFallback` with `label` and `raw`.
+let private callStringPrinter
+  (state : RT.ExecutionState)
+  (fnHash : string)
+  (label : string)
+  (raw : 'raw)
+  (args : List<RT.Dval>)
+  : Task<string> =
+  task {
+    let fnName = RT.FQFnName.fqPackage fnHash
+    let args = NEList.ofList (RT.DUuid state.branchId.Guid) args
+    match! executeFunction state fnName [] args with
+    | Ok(RT.DString s) -> return s
+    | result -> return prettyPrintFallback label raw result
+  }
+
 let fnNameToString
   (state : RT.ExecutionState)
   (name : RT.FQFnName.FQFnName)
   : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.fnName ())
-    let args = NEList.ofList (RT.DUuid state.branchId) [ RT2DT.FQFnName.toDT name ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "fnName" name result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.fnName ())
+    "fnName"
+    name
+    [ RT2DT.FQFnName.toDT name ]
 
 
 let dvalToRepr (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.dval ())
-    let args = NEList.ofList (RT.DUuid state.branchId) [ RT2DT.Dval.toDT dval ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "dval" dval result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.dval ())
+    "dval"
+    dval
+    [ RT2DT.Dval.toDT dval ]
 
 
 /// Like `dvalToRepr`, but laid out for a line `width` columns wide and painted for a terminal.
@@ -477,49 +482,33 @@ let dvalToReprForTerminal
   (currentModule : List<string>)
   (dval : RT.Dval)
   : Task<string> =
-  task {
-    let fnName = RT.FQFnName.fqPackage (PackageRefs.Fn.Cli.renderValue ())
-    let currentModule = currentModule |> List.map RT.DString |> Dval.list RT.KTString
-    let args =
-      NEList.ofList
-        (RT.DUuid state.branchId)
-        [ Dval.int (bigint width)
-          RT.DBool color
-          currentModule
-          RT2DT.Dval.toDT dval ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "dval" dval result
-  }
+  let currentModule = currentModule |> List.map RT.DString |> Dval.list RT.KTString
+  callStringPrinter
+    state
+    (PackageRefs.Fn.Cli.renderValue ())
+    "dval"
+    dval
+    [ Dval.int (bigint width); RT.DBool color; currentModule; RT2DT.Dval.toDT dval ]
 
 
 let typeRefToString
   (state : RT.ExecutionState)
   (typeRef : RT.TypeReference)
   : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (
-        PackageRefs.Fn.PrettyPrinter.RuntimeTypes.typeReference ()
-      )
-    let args =
-      NEList.ofList (RT.DUuid state.branchId) [ RT2DT.TypeReference.toDT typeRef ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "typeRef" typeRef result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.typeReference ())
+    "typeRef"
+    typeRef
+    [ RT2DT.TypeReference.toDT typeRef ]
 
 let dvalToTypeName (state : RT.ExecutionState) (dval : RT.Dval) : Task<string> =
-  task {
-    let fnName =
-      RT.FQFnName.fqPackage (
-        PackageRefs.Fn.PrettyPrinter.RuntimeTypes.Dval.valueTypeName ()
-      )
-    let args = NEList.ofList (RT.DUuid state.branchId) [ RT2DT.Dval.toDT dval ]
-    match! executeFunction state fnName [] args with
-    | Ok(RT.DString s) -> return s
-    | result -> return prettyPrintFallback "typeName" dval result
-  }
+  callStringPrinter
+    state
+    (PackageRefs.Fn.PrettyPrinter.RuntimeTypes.Dval.valueTypeName ())
+    "typeName"
+    dval
+    [ RT2DT.Dval.toDT dval ]
 
 
 
@@ -559,23 +548,18 @@ let callStackString
   (callStack : RT.CallStack)
   : Ply<string> =
   uply {
-    // First, convert all execution points to strings
     let! stringParts =
       Ply.List.mapSequentially (fun ep -> executionPointToString state ep) callStack
 
-    // Group consecutive identical entries with counts
     let rec groupConsecutive acc current count remaining =
       match remaining with
       | [] ->
-        // Add the final group
         let countStr = if count = 1 then "" else $" (×{count})"
         List.rev ((current + countStr) :: acc)
       | head :: tail ->
         if head = current then
-          // Same as current, increment count
           groupConsecutive acc current (count + 1) tail
         else
-          // Different, add current group and start new one
           let countStr = if count = 1 then "" else $" (×{count})"
           groupConsecutive ((current + countStr) :: acc) head 1 tail
 
@@ -584,7 +568,6 @@ let callStackString
       | [] -> []
       | head :: tail -> groupConsecutive [] head 1 tail
 
-    // Build the final string
     let result =
       groupedParts
       |> List.fold
@@ -616,7 +599,7 @@ let rec rteToString
         state
         errorMessageFn
         []
-        (NEList.ofList (RT.DUuid state.branchId) [ rteDval ])
+        (NEList.ofList (RT.DUuid state.branchId.Guid) [ rteDval ])
 
     match rteMessage with
     | Ok(RT.DString msg) -> return msg

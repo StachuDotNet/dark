@@ -63,9 +63,9 @@ let resolveLoadValues
           match valueName with
           | FQValueName.Builtin builtinName ->
             // Builtin values - look up in builtIn values
-            match Dictionary.get builtinName exeState.values.builtIn with
-            | Some v -> return Some(valueName, v.body)
-            | None -> return None
+            match exeState.values.builtIn.TryGetValue builtinName with
+            | true, v -> return Some(valueName, v.body)
+            | false, _ -> return None
           | FQValueName.Package pkgId ->
             let! pkg = exeState.values.package pkgId
             match pkg with
@@ -127,7 +127,6 @@ let fns () : List<BuiltInFn> =
         | exeState, _, _, [| DString dbName; typeHashDval |] ->
           let typeHash = PT2DT.Hash.fromDT typeHashDval
           uply {
-            // precise check: creating this datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbWrite exeState.grantedCaps dbName
             let! existing =
               Sql.query
@@ -172,15 +171,23 @@ let fns () : List<BuiltInFn> =
 
     { name = fn "dbListAll" 0
       typeParams = []
-      parameters = [ Param.make "branchId" TUuid "Branch for resolving type names" ]
+      parameters =
+        [ Param.make
+            "branchId"
+            TUuid
+            "the branch to resolve DB type names against; main is `SCM.Branch.mainBranchId`" ]
       returnType = TList(TTuple(TString, TString, []))
       description = "Returns a list of (name, typeName) tuples for all DBs"
       fn =
         (function
-        | _, _, _, [| DUuid branchId |] ->
+        | _, _, _, [| DUuid branchIdGuid |] ->
           uply {
             let! app = Toplevels.loadAllDBs ()
-            let pm = LibDB.PackageManager.pt
+            // Through the branch overlay: a DB's type can be one authored on the
+            // branch, and main's PM has no name for it. Display-only, but "unknown
+            // type" for a type you just wrote reads as breakage rather than as a
+            // listing.
+            let pm = LibDB.PackageManager.ptForBranch (PT.BranchId.Id branchIdGuid)
             let! dbs =
               app.dbs
               |> Map.values
@@ -191,7 +198,7 @@ let fns () : List<BuiltInFn> =
                     | PT.TypeReference.TCustomType({ resolved = Ok { name = PT.FQTypeName.Package typeID } },
                                                    _) ->
                       uply {
-                        let! locs = pm.getTypeLocations branchId typeID
+                        let! locs = pm.getTypeLocations typeID
                         match locs with
                         | location :: _ -> return PackageLocation.toFQN location
                         | [] -> return typeID.ToString()
@@ -217,7 +224,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, _, _, [| DString dbName |] ->
           uply {
-            // precise check: dropping this datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbWrite exeState.grantedCaps dbName
             let! matchingTlids =
               Sql.query
@@ -268,7 +274,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| value; DString key; DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbWrite exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
 
@@ -294,7 +299,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DString key; DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let! result = UserDB.getOption exeState vm.threadID db key
@@ -319,7 +323,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DList(_, keys); DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
 
@@ -357,7 +360,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DList(_, keys); DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
 
@@ -389,7 +391,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DList(_, keys); DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
 
@@ -424,7 +425,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, _, _, [| DString key; DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbWrite exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             do! UserDB.delete exeState db key
@@ -446,7 +446,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, _, _, [| DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbWrite exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             do! UserDB.deleteAll exeState db
@@ -468,7 +467,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let tst = TST.empty // TODO idk if this is reasonable
@@ -495,7 +493,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let tst = TST.empty // TODO idk if this is reasonable
@@ -523,7 +520,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, _, _, [| DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let! (count : int) = UserDB.count exeState db
@@ -561,7 +557,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, _, _, [| DDB dbname |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let! results = UserDB.getAllKeys exeState db
@@ -587,7 +582,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DDB dbname; DApplicable(AppLambda appLambda) |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState appLambda
@@ -617,7 +611,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DDB dbname; DApplicable(AppLambda appLambda) |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState appLambda
@@ -647,7 +640,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DDB dbname; DApplicable(AppLambda appLambda) |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState appLambda
@@ -677,7 +669,6 @@ let fns () : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DDB dbname; DApplicable(AppLambda appLambda) |] ->
           uply {
-            // precise check: this exact datastore must be covered (gate checked db presence).
             LibExecution.CapabilityCheck.requireDbRead exeState.grantedCaps dbname
             let db = exeState.program.dbs[dbname]
             let! compiled = compileQueryLambda exeState appLambda
