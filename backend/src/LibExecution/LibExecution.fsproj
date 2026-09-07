@@ -22,6 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DarkDateTime.fs" />
+    <Compile Include="Branching.fs" />
     <Compile Include="PackageRefs.fs" />
     <!-- Capabilities (resource-domain gating model — RT-independent) /-->
     <Compile Include="Capabilities.fs" />
