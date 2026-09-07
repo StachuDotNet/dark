@@ -408,6 +408,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+
     { name = fn "stdinIsInteractive" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
