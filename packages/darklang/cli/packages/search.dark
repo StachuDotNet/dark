@@ -243,6 +243,56 @@ val usage =
   "Usage: search <query> [--batch] [--type] [--fn] [--val] [--exact] [--shallow] [--with-docs] [--include-deprecated]"
 
 
+// The --json rendering. Typed results for the command an agent runs most; the signatures are the
+// same rendering the human view shows, minus color.
+let jsonOutput
+  (branchId: Uuid)
+  (queryText: String)
+  (results: LanguageTools.ProgramTypes.Search.SearchResults)
+  : String =
+  let fnRows =
+    results.fns
+    |> Stdlib.List.map (fun item ->
+      let ctx = contextFor branchId item
+      Stdlib.AltJson.Json.Object
+        [ ("name", Stdlib.AltJson.Json.String(fullPathOf item))
+          ("kind", Stdlib.AltJson.Json.String "fn")
+          ("signature", Stdlib.AltJson.Json.String(Signatures.formatFn ctx item.entity)) ])
+
+  let typeRows =
+    results.types
+    |> Stdlib.List.map (fun item ->
+      Stdlib.AltJson.Json.Object
+        [ ("name", Stdlib.AltJson.Json.String(fullPathOf item))
+          ("kind", Stdlib.AltJson.Json.String "type")
+          ("signature", Stdlib.AltJson.Json.String "") ])
+
+  let valueRows =
+    results.values
+    |> Stdlib.List.map (fun item ->
+      Stdlib.AltJson.Json.Object
+        [ ("name", Stdlib.AltJson.Json.String(fullPathOf item))
+          ("kind", Stdlib.AltJson.Json.String "value")
+          ("signature", Stdlib.AltJson.Json.String "") ])
+
+  let moduleRows =
+    results.submodules
+    |> Stdlib.List.map (fun modulePath ->
+      Stdlib.AltJson.Json.Object
+        [ ("name", Stdlib.AltJson.Json.String(Stdlib.String.join modulePath "."))
+          ("kind", Stdlib.AltJson.Json.String "module")
+          ("signature", Stdlib.AltJson.Json.String "") ])
+
+  Stdlib.AltJson.format (
+    Stdlib.AltJson.Json.Object
+      [ ("query", Stdlib.AltJson.Json.String queryText)
+        ("results",
+         Stdlib.AltJson.Json.Array(
+           Stdlib.List.flatten [ fnRows, typeRows, valueRows, moduleRows ]
+         )) ]
+  )
+
+
 // Execute one query. `execute` below fans batch arguments out through this
 // function so ranking, filtering, and rendering stay identical in both modes.
 let executeQuery (state: Cli.AppState) (args: List<String>) : Cli.AppState =
@@ -315,51 +365,7 @@ let executeQuery (state: Cli.AppState) (args: List<String>) : Cli.AppState =
           + submodulesCount
 
         if parsed.asJson then
-          // Typed results for the command an agent runs most; the signatures are the same rendering
-          // the human view shows, minus color.
-          let fnRows =
-            results.fns
-            |> Stdlib.List.map (fun item ->
-              let ctx = contextFor state.currentBranchId item
-              Stdlib.AltJson.Json.Object
-                [ ("name", Stdlib.AltJson.Json.String(fullPathOf item))
-                  ("kind", Stdlib.AltJson.Json.String "fn")
-                  ("signature", Stdlib.AltJson.Json.String(Signatures.formatFn ctx item.entity)) ])
-
-          let typeRows =
-            results.types
-            |> Stdlib.List.map (fun item ->
-              Stdlib.AltJson.Json.Object
-                [ ("name", Stdlib.AltJson.Json.String(fullPathOf item))
-                  ("kind", Stdlib.AltJson.Json.String "type")
-                  ("signature", Stdlib.AltJson.Json.String "") ])
-
-          let valueRows =
-            results.values
-            |> Stdlib.List.map (fun item ->
-              Stdlib.AltJson.Json.Object
-                [ ("name", Stdlib.AltJson.Json.String(fullPathOf item))
-                  ("kind", Stdlib.AltJson.Json.String "value")
-                  ("signature", Stdlib.AltJson.Json.String "") ])
-
-          let moduleRows =
-            results.submodules
-            |> Stdlib.List.map (fun modulePath ->
-              Stdlib.AltJson.Json.Object
-                [ ("name", Stdlib.AltJson.Json.String(Stdlib.String.join modulePath "."))
-                  ("kind", Stdlib.AltJson.Json.String "module")
-                  ("signature", Stdlib.AltJson.Json.String "") ])
-
-          Stdlib.printLine (
-            Stdlib.AltJson.format (
-              Stdlib.AltJson.Json.Object
-                [ ("query", Stdlib.AltJson.Json.String queryText)
-                  ("results",
-                   Stdlib.AltJson.Json.Array(
-                     Stdlib.List.flatten [ fnRows, typeRows, valueRows, moduleRows ]
-                   )) ]
-            )
-          )
+          Stdlib.printLine (jsonOutput state.currentBranchId queryText results)
         else if totalResults == 0 then
           Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText $"No results found for: {queryText}")
           Stdlib.printLine ""

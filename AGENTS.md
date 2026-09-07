@@ -85,15 +85,11 @@ tell you the tree has moved on rather than silently running a stale binary.
     ./scripts/run-backend-tests --groups Interpreter  just that part of it
     ./scripts/run-backend-tests --find mergeFavoring  what matches, and how to run it
     ./scripts/testing/test-build-planning.py          tests of the build itself
-    ./scripts/testing/test-setup                      `dark sync setup`, end to end, own rundir
-    ./scripts/testing/test-lsp-branches                the `dark/*` branch surface, as an editor drives it
-    ./scripts/testing/test-workbench-scm               the workbench SCM view with real work in the store
-    ./scripts/testing/test-workbench-views             every workbench view, ditto, one session each
-    ./scripts/testing/test-relay-routes                the relay's HTTP surface, given bad input
-    ./scripts/testing/test-sync-hostile-relay          the sync/branch CLIENTS, given a relay that lies
-    ./scripts/testing/test-sync-multi-instance         four instances, branches, review queues, agents
-    ./scripts/testing/test-first-day                   a published binary, empty home, whole SCM workflow
-    ./scripts/testing/test-gates-are-clean             that none of the above touch the shared dev store (slow)
+    ./scripts/testing/gates list                      the gate scripts, one line each
+    ./scripts/testing/gates <name>                    one gate (setup, relay-routes, first-day, ...)
+    ./scripts/testing/gates ci                        the subset CI runs, each bounded by 5m
+    ./scripts/testing/gates all                       every gate except gates-are-clean, the slow
+                                                      meta-gate that re-runs the rest itself
     ./scripts/perf/gate                               reference workload, allocation vs budget
     ./scripts/perf/suite                              six workloads, allocation per iteration
     ./scripts/perf/checks                             by-hand interpreter and error-message checks
@@ -183,7 +179,11 @@ Logs go to `rundir/logs/fsharp-tests.log`.
                           # Matter, Pure, Random, Time
     packages/darklang/    # .dark files
       cli/                # the CLI app: registry, loop, workbench, outliner
-      scm/                # SCM library (branches, merge, conflicts, propagation, wire, packageOps)
+        scm/              #   the SCM commands (branch, commit, status, ...)
+        sync/             #   the sync commands (sync, setup)
+      scm/                # SCM library (branches, merge, conflicts, propagation, packageOps)
+      sync/               # sync, on top of SCM: wire codec, import planning
+        relay/            #   the hosted relay (server, browser pages, protocol)
       stdlib/             # standard library
         cli/stdin.dark    #   reads keys
         cli/tui/          #   paints: view types, frame diffing, terminal session
@@ -193,6 +193,7 @@ Logs go to `rundir/logs/fsharp-tests.log`.
     scripts/dev/          # start, build, plan, status, watch, host-port
     scripts/build/        # the build itself; `_` ones are called by other scripts
     scripts/perf/         # perf tools, and workloads/ for the scripts they run
+    scripts/testing/      # gates (the one runner) + _gates-* (the gates), fixtures/, hand tools
     benchmarks/           # the committed benchmark record, rendered to results.md
     scripts/              # everything else
 
@@ -326,7 +327,7 @@ and `Darklang.SCM.Branch.mainBranchId` resolve; `SCM.Branch.mainBranchId` doesn'
 NOT re-export `rundir/seed.db`, and a binary built on that seed can't produce the refs it was pinned to. It
 only fails outside the source tree, since inside it the working store answers.
 `scripts/build/check-seed-carries-refs` names it in one run; fix with
-`scripts/run-local-exec export-seed rundir/seed.db` and rebuild. `test-first-day` and
+`scripts/run-local-exec export-seed rundir/seed.db` and rebuild. `gates first-day` and
 `scripts/perf/gate --published` refuse an artifact older than the tree rather than
 reporting on it.
 
@@ -353,7 +354,7 @@ family as the wildcard trap below.
 exactly; the loader will not catch it.
 
 **AOT disables System.Text.Json.** A path that is green on every dev-build test can die only in
-the published binary. Publish before the gates, always; `test-first-day` exists for exactly this.
+the published binary. Publish before the gates, always; `gates first-day` exists for exactly this.
 
 **`branch create` while standing on a branch creates a CHILD of that branch.** Switch to main
 first if you meant a sibling.
@@ -448,19 +449,21 @@ exits, so `wait` after a couple of parallel pushes hangs forever with no output 
 `wait $PA $PB`. A hung script with an empty log looks like a hung PRODUCT, so this one is worth ruling
 out first.
 
-`scripts/testing/test-sync-multi-instance` does both correctly and is the place to copy from.
+The sync-multi-instance gate (`scripts/testing/_gates-sync`) does both correctly and is the place
+to copy from.
 
 ## Interactive CLI testing
 
 **A key pressed while a frame is painting is lost.** In an `expect` script, wait a beat after the text you
 matched before sending the next key, or the key lands mid-render and is dropped. The symptom is not "that
-key did nothing", it's the NEXT assertion timing out, which reads as a broken view. `_workbench-scm.expect`
+key did nothing", it's the NEXT assertion timing out, which reads as a broken view.
+`fixtures/_workbench-scm.expect`
 has a `press` helper for this.
 
 The interactive CLI (`run-cli` with no args) needs a real TTY. Use `expect`:
 
-    ./scripts/run-in-docker expect scripts/testing/test-interactive.expect
-    ./scripts/run-in-docker expect scripts/testing/test-workbench.expect
+    ./scripts/run-in-docker expect scripts/testing/fixtures/test-interactive.expect
+    ./scripts/run-in-docker expect scripts/testing/fixtures/test-workbench.expect
 
 `run-cli` with no args opens the WORKBENCH, so that second one covers the default experience:
 switching views, resize, the too-small guard, and quitting cleanly. None of it is reachable from
@@ -565,7 +568,7 @@ notes. 85 columns, for both languages.
 
 `scripts/formatting/format` holds the F# side to it; run it before you commit. It reports
 `.dark` as `ignored`, so Dark is on you. Aim for 85 there anyway. Some existing Dark files
-don't: `scm/packageOps.dark` and `matter/relay.dark` are written wider, and are not worth
+don't: `scm/packageOps.dark` and `sync/relay/protocol.dark` are written wider, and are not worth
 reflowing just to close the gap.
 
 ## Measuring text, and what may go native

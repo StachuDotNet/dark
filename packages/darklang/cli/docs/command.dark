@@ -150,8 +150,8 @@ module Topics =
 
       DocTopic
         { name = "relay"
-          description = "Running your own relay: setup, the write secret, smoke tests"
-          aliases = [ "matter", "server" ]
+          description = "The optional sync server: setup, the write secret, smoke tests"
+          aliases = [ "matter", "server", "sync-server" ]
           context = "cli"
           content = Docs.Relay.content
           subtopics = [] }

@@ -106,7 +106,7 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
   | cs ->
     let n = Stdlib.Int.toString (Stdlib.List.length cs)
 
-    // "conflict(s)" rather than `Cli.Text.plural`: `scripts/testing/test-sync-multi-instance` matches
+    // "conflict(s)" rather than `Cli.Text.plural`: `scripts/testing/gates sync-multi-instance` matches
     // this line verbatim, so the two have to move together.
     Cli.printOk
       $"{n} conflict(s) auto-resolved by recency and recorded -- the losing version is kept, not dropped."
@@ -483,7 +483,7 @@ let executePush (state: AppState) (url: String) : AppState =
         pushTailNotes url
       else
         Cli.printOk
-          // `test-sync-multi-instance` matches "^Pushed [1-9][0-9]* op" against this line.
+          // The sync-multi-instance gate matches "^Pushed [1-9][0-9]* op" against this line.
           $"Pushed {Cli.Text.plural sent "op"}{newPart} to {url} as \"{id}\" (in {Cli.Text.plural (Stdlib.List.length chunks) "chunk"})."
 
         pushTailNotes url

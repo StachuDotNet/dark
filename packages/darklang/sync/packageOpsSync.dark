@@ -1,3 +1,4 @@
+// Lives in sync/ because sync sits ON TOP of SCM; the module name is unchanged.
 module Darklang.SCM.PackageOps
 
 // The INCOMING side of a sync: what an import will reconcile, and what to record once it has.

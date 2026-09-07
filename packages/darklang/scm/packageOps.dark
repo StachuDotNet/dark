@@ -3,8 +3,8 @@ module Darklang.SCM.PackageOps
 // Authoring is live-on-write: `add` appends ops that take effect the moment they fold. `add` and
 // `getRecent` are the substrate everything else here is built on.
 //
-// This module spans five files: this one, `packageOpsBranch.dark`, `packageOpsSync.dark`,
-// `packageOpsDraft.dark` and `packageOpsCommits.dark`. Together they would be a 2,000-line file,
+// This module spans five files: this one, `packageOpsBranch.dark`, `packageOpsSync.dark` (in
+// `../sync/`, since sync sits on top of SCM), `packageOpsDraft.dark` and `packageOpsCommits.dark`. Together they would be a 2,000-line file,
 // too big to review and too big to find anything in. Dark lets several files contribute to one
 // module and see each other's definitions unqualified, so the split is physical only: no new silo,
 // and `package_ops` still has exactly one owner.

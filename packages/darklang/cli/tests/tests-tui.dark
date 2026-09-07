@@ -297,7 +297,7 @@ let rendersView (viewIndex: Int) : Bool =
 ///
 /// `rendersView` only ever draws a view's DEFAULT section, so a non-default section can rot
 /// unrendered. The data-dependent half needs a store with a conflict in it
-/// (`scripts/testing/test-workbench-scm`); this is the cheap half.
+/// (`scripts/testing/gates workbench-scm`); this is the cheap half.
 let rendersScmSection (section: Darklang.Cli.Workbench.ScmSection) : Bool =
   let base = workbenchState ()
 
@@ -381,7 +381,7 @@ let testWorkbenchItemPageRenders (): TestResult =
 ///
 /// Opening a view draws its LIST; the preview is a separate function (`previewLines`) that nothing
 /// reaches until something focuses it. That gap is measured, not assumed: with the Traces detail pane
-/// deliberately broken, every assertion in `scripts/testing/test-workbench-views` still passed, because
+/// deliberately broken, every assertion in `scripts/testing/gates workbench-views` still passed, because
 /// none of them draw a preview. Focusing it through the terminal needs a third interaction, and the
 /// frame diff stops being reliable past two -- so it belongs here, where rendering takes no terminal.
 let rendersPreview (viewIndex: Int) : Bool =

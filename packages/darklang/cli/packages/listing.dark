@@ -17,6 +17,29 @@ let versionsOf
         { owner = owner; modules = modules; name = name })
 
 
+/// Print the `--versions` rows under one name: each version's short hash, oldest first, the
+/// live one tagged. Nothing is printed for a single-version name. What `--versions` is for is
+/// explained once, in `help`.
+let printVersionLines
+  (modulePath: List<String>)
+  (name: String)
+  (hash: LanguageTools.ProgramTypes.Hash)
+  : Unit =
+  let live = LanguageTools.ProgramTypes.hashToString hash
+
+  match versionsOf modulePath name with
+  | [] -> ()
+  | [ _single ] -> ()
+  | versions ->
+    versions
+    |> Stdlib.List.iter (fun v ->
+      let tag = if v == live then "  (live)" else ""
+
+      Stdlib.printLine
+        (Stdlib.Cli.UI.Colors.dimText
+          $"      {Stdlib.String.slice v 0 8}{tag}"))
+
+
 let listModule
   (branchId: Uuid)
   (location: PackageLocation)
@@ -58,23 +81,10 @@ let listModule
         let mark = Query.deprecationMarker depSets hash
         Stdlib.printLine $"  {name}{mark}"
 
-        // A listing names what a name MEANS, which is one version. `--versions` is how you ask what it
-        // has meant: on a branch that continues past the fork, so it is the only place the branch's own
-        // superseded versions are addressable by name.
+        // A listing names what a name MEANS, which is one version; `--versions` adds what it
+        // has meant.
         if showVersions then
-          let live = LanguageTools.ProgramTypes.hashToString hash
-
-          match versionsOf modulePath name with
-          | [] -> ()
-          | [ _single ] -> ()
-          | versions ->
-            versions
-            |> Stdlib.List.iter (fun v ->
-              let tag = if v == live then "  (live)" else ""
-
-              Stdlib.printLine
-                (Stdlib.Cli.UI.Colors.dimText
-                  $"      {Stdlib.String.slice v 0 8}{tag}")))
+          printVersionLines modulePath name hash)
 
       Stdlib.printLine ""
 

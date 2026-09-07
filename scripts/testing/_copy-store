@@ -4,7 +4,7 @@
 # The store is WAL mode (LibDB/Sqlite.fs), so `cp data.db` misses the tail in `data.db-wal`: a
 # fixture that varies by machine and silently omits the newest ops. `.backup` reads through the
 # WAL into one consistent file, taking only a read lock -- safe against the shared dev store
-# `test-gates-are-clean` watches.
+# the gates-are-clean gate watches.
 #
 # Callers strip config from the copy afterwards -- ALL of it, not just `current_branch`: the copy
 # inherits `sync.relay` and the write secret, so one sync-shaped command against it would reach the

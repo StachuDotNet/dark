@@ -119,6 +119,54 @@ let printItem
         (AtRestCheck.issueLines branchId item.blockers)
       |> Stdlib.printLines
 
+// The --json rendering. The same data the human view renders, typed: `docs for-ai` promises every
+// question-answering command takes --json, and an agent auditing a branch after a batch of
+// edits is this command's main consumer. Items are filtered the same way the human view is.
+let jsonReport
+  (branchId: Uuid)
+  (outputFilter: OutputFilter)
+  (report: LanguageTools.AtRestTypeChecker.Report)
+  (totals: Counts)
+  (total: Int)
+  : String =
+  let verdictWord (v: LanguageTools.AtRestTypeChecker.Verdict) : String =
+    match v with
+    | Checked -> "checked"
+    | Failed -> "failed"
+    | Incomplete -> "incomplete"
+
+  let wanted (item: LanguageTools.AtRestTypeChecker.ItemReport) : Bool =
+    match item.verdict with
+    | Checked -> outputFilter.showChecked
+    | Failed -> outputFilter.showFailed
+    | Incomplete -> outputFilter.showIncomplete
+
+  let items =
+    report.items
+    |> Stdlib.List.filter wanted
+    |> Stdlib.List.sortBy (fun item -> itemLabel branchId item.item)
+    |> Stdlib.List.map (fun item ->
+      let issues =
+        Stdlib.List.append
+          (AtRestCheck.issueLines branchId item.diagnostics)
+          (AtRestCheck.issueLines branchId item.blockers)
+        |> Stdlib.List.map (fun l -> Stdlib.String.trim l)
+
+      Stdlib.AltJson.Json.Object
+        [ ("name", Stdlib.AltJson.Json.String(itemLabel branchId item.item))
+          ("verdict", Stdlib.AltJson.Json.String(verdictWord item.verdict))
+          ("issues", Stdlib.AltJson.Json.Array(issues |> Stdlib.List.map (fun l -> Stdlib.AltJson.Json.String l))) ])
+
+  Stdlib.AltJson.format (
+    Stdlib.AltJson.Json.Object
+      [ ("verdict", Stdlib.AltJson.Json.String(verdictWord report.verdict))
+        ("checked", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat totals.checkedCount))
+        ("failed", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat totals.failedCount))
+        ("incomplete", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat totals.incompleteCount))
+        ("total", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat total))
+        ("items", Stdlib.AltJson.Json.Array items) ]
+  )
+
 let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   let parsed = parseArgs args
   if Stdlib.Bool.not (Stdlib.List.isEmpty parsed.parseErrors) then
@@ -145,49 +193,8 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     let total = Stdlib.List.length report.items
 
     if parsed.asJson then
-      // The same data the human view renders, typed: `docs for-ai` promises every
-      // question-answering command takes --json, and an agent auditing a branch after a batch of
-      // edits is this command's main consumer. Items are filtered the same way the human view is.
-      let verdictWord (v: LanguageTools.AtRestTypeChecker.Verdict) : String =
-        match v with
-        | Checked -> "checked"
-        | Failed -> "failed"
-        | Incomplete -> "incomplete"
-
-      let wanted (item: LanguageTools.AtRestTypeChecker.ItemReport) : Bool =
-        match item.verdict with
-        | Checked -> parsed.outputFilter.showChecked
-        | Failed -> parsed.outputFilter.showFailed
-        | Incomplete -> parsed.outputFilter.showIncomplete
-
-      let items =
-        report.items
-        |> Stdlib.List.filter wanted
-        |> Stdlib.List.sortBy (fun item -> itemLabel state.currentBranchId item.item)
-        |> Stdlib.List.map (fun item ->
-          let issues =
-            Stdlib.List.append
-              (AtRestCheck.issueLines state.currentBranchId item.diagnostics)
-              (AtRestCheck.issueLines state.currentBranchId item.blockers)
-            |> Stdlib.List.map (fun l -> Stdlib.String.trim l)
-
-          Stdlib.AltJson.Json.Object
-            [ ("name", Stdlib.AltJson.Json.String(itemLabel state.currentBranchId item.item))
-              ("verdict", Stdlib.AltJson.Json.String(verdictWord item.verdict))
-              ("issues", Stdlib.AltJson.Json.Array(issues |> Stdlib.List.map (fun l -> Stdlib.AltJson.Json.String l))) ])
-
-      Stdlib.printLine (
-        Stdlib.AltJson.format (
-          Stdlib.AltJson.Json.Object
-            [ ("verdict", Stdlib.AltJson.Json.String(verdictWord report.verdict))
-              ("checked", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat totals.checkedCount))
-              ("failed", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat totals.failedCount))
-              ("incomplete", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat totals.incompleteCount))
-              ("total", Stdlib.AltJson.Json.Number(Stdlib.Int.toFloat total))
-              ("items", Stdlib.AltJson.Json.Array items) ]
-        )
-      )
-
+      Stdlib.printLine
+        (jsonReport state.currentBranchId parsed.outputFilter report totals total)
       state
     else
 

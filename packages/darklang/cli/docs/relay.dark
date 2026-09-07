@@ -1,10 +1,11 @@
 module Darklang.Cli.Docs.Relay
 
 let content () : String =
-  """# Running a relay
+  """# Running your own sync server (the relay)
 
-A relay is a dumb store-and-forward for the op log: it holds ops and hands
-them back out. It never folds or runs what it hosts, so pushing code to it
+Syncing is OPTIONAL and opt-in: an instance is complete without one, and
+connecting is one `dark sync setup`. The relay is the sync server: a dumb
+store-and-forward for the op log that holds ops and hands them back out. It never folds or runs what it hosts, so pushing code to it
 cannot change what it serves, and the worst a bad relay can do is withhold.
 Losing one loses availability, not history -- every client holds the full log
 it has seen, and the next push repopulates a wiped relay.

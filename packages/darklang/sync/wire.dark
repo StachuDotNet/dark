@@ -1,3 +1,4 @@
+// Lives in sync/ because sync sits ON TOP of SCM; the module name is unchanged.
 module Darklang.SCM.Wire
 
 // The WIRE: how ops leave this store and arrive in another, over a relay or through a file.

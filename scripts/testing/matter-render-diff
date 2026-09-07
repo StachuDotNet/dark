@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Render every relay route and diff it against the golden copies in rundir/matter-golden.
 #
-# The relay's pages are built by string concatenation in `packages/darklang/matter.dark`. Refactoring that
+# The relay's pages are built by string concatenation in `packages/darklang/sync/relay/`. Refactoring that
 # has no test to lean on, so this is the net: capture the pages, change the code, compare byte for byte.
 #
 # Digit runs are normalised to `N` before comparing. The pages show live counts (items, ops, types) and

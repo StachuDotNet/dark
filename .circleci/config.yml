@@ -231,18 +231,12 @@ jobs:
 
       # Gate scripts covering what the F# suite structurally cannot: the relay's HTTP surface under
       # bad input, and the workbench, whose Dark views resolve at RUNTIME (a type error there is
-      # invisible to a green suite). `expect` and `sqlite3` are in the image already. Each takes its
-      # own rundir (`test-gates-are-clean` asserts that, locally). Bounded: a wedged TUI/server dies
-      # at a known point instead of burning the job's budget.
+      # invisible to a green suite). `gates ci` runs the CI subset (relay-routes, workbench-scm,
+      # workbench-views), each in its own process under its own `timeout 5m`, each against its own
+      # rundir (`gates gates-are-clean` asserts that, locally). `gates list` names the rest.
       - run:
-          name: Relay HTTP surface, given input a person would not send
-          command: timeout 5m scripts/testing/test-relay-routes
-      - run:
-          name: The workbench opens, and its SCM views render
-          command: timeout 5m scripts/testing/test-workbench-scm
-      - run:
-          name: Every workbench view draws its chrome
-          command: timeout 5m scripts/testing/test-workbench-views
+          name: Gate scripts (the CI subset)
+          command: timeout 15m scripts/testing/gates ci
 
       ## TODO: too many race conditions. Bring back later
       # Test package manager/cli integration works

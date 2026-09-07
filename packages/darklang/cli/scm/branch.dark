@@ -14,7 +14,7 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
   | cs ->
     let n = Stdlib.Int.toString (Stdlib.List.length cs)
 
-    // "conflict(s)" is the shape `scripts/testing/test-sync-multi-instance` asserts on.
+    // "conflict(s)" is the shape `scripts/testing/gates sync-multi-instance` asserts on.
     Cli.printOk
       $"{n} conflict(s) auto-resolved by recency and recorded -- the losing version is kept, not dropped."
 
@@ -309,7 +309,7 @@ let executeMerge (state: AppState) (branchRef: String) : AppState =
   | Some branchId ->
     match SCM.PackageOps.mergeBranch branchId with
     | Ok outcome ->
-      // "Merged N op(s)" is the shape `scripts/testing/test-sync-multi-instance` asserts on.
+      // "Merged N op(s)" is the shape `scripts/testing/gates sync-multi-instance` asserts on.
       Cli.printOk
         $"Merged {Stdlib.Int.toString outcome.merged} op(s) from branch \"{branchRef}\" into its parent."
 

@@ -234,124 +234,30 @@ path, still unproven.
 
 ## 2026-08-27: `push` is not slow, tracing is
 
-I spent a while building a case that `push` had a serious performance problem. It does not. The dev
-container had `DARK_CONFIG_TRACE_DETAIL=on`, and that alone accounts for every number I measured.
+Same call, same store (11,989 ops): a 2000-op export page took >600s with tracing ON and **2.1s**
+with it off; the full main export 5.6s off, never finishing on. The raw SQL is 0.014s either way.
+There is nothing to fix in push.
 
-Keeping the note because the trap is worth documenting and I nearly filed the bug.
+The trap, so nobody re-files it: `config/dev` says `DARK_CONFIG_TRACE_DETAIL=off`, but a container
+created before that change has `on` baked into its environment (recreate, not restart, to fix), and
+`run-in-docker` forwards host `DARK_*` vars -- so two terminals can measure the same binary two
+orders of magnitude apart. Trust the live process, not the file.
 
-### The numbers
-
-Same call, same store (11,989 ops), same idle box:
-
-| | tracing on | tracing off |
-|---|---|---|
-| `exportAllSince 0L` (2000-op page) | > 600s | **2.1s** |
-| `exportMainOps ()` (all 11,989) | never finished | **5.6s** |
-| the same 2000 rows via raw `sqlite3` | 0.014s | 0.014s |
-
-So the export is fine, `push`'s 2000-op chunking is fine, and a full first sync moves about twelve
-thousand ops in under six seconds. There is nothing to fix.
-
-### Why it took me so long to see it
-
-Two things pointed away from it.
-
-1. **`config/dev` already says `DARK_CONFIG_TRACE_DETAIL=off`**. So grepping the repo told me tracing
-   was off. The running container predates that change and has `on` baked into its environment, which is
-   fixed at create time. The config file and the live process disagreed, and I trusted the file.
-
-2. **I measured 2.1s early in the session and minutes later on**, which looked like the store degrading
-   under me. It was not. `scripts/run-in-docker` forwards any `DARK_*` variable from the host shell into
-   the container, so a shell where I had exported `DARK_CONFIG_TRACE_DETAIL=off` produced fast numbers
-   and a shell without it produced slow ones. Same code, same data, two orders of magnitude apart,
-   depending on which terminal I happened to be in.
-
-There was also a genuine red herring in the middle: leftover test processes at 300% CPU. I caught those and
-held off reporting anything, which was the right call for the wrong reason -- I thought I had a contention
-problem, and I had a configuration one.
-
-### Fixing it
-
-`config/dev` is already correct, so the permanent fix is to recreate the container (a plain `docker
-restart` will not do it; environment is set when the container is created). Until then, any shell can
-override it, because `run-in-docker` forwards host `DARK_*` vars:
-
-```
-export DARK_CONFIG_TRACE_DETAIL=off
-```
-
-### The part that is a real problem
-
-Tracing has no GC, and the cost is not subtle. One night of ordinary work left **15.8 GB in
-`trace_fn_calls`** -- 164 traces, roughly 96 MB each, in a store that reached 17 GB. `dark traces delete
---all` plus a `VACUUM` took it back to 152 MB, and it had climbed to 7.3 GB again within a day.
-
-Downstream of that: the relay was OOM-killed while the store was 17 GB, and the client reported `push
-failed: network error`. That message is good about what is still configured but says nothing about the
-relay possibly being down, which is the first thing to check.
-
-`Tracing.fs` already warns that a single row can reach ~1 GB and that this is why tracing defaults to off
-in the shipped binary. What is missing is anything that notices when it happens anyway. `dark status`
-reports other standing properties of the store and could report this one -- it is exactly the stale-container
-case where the operator has no reason to suspect tracing is even on.
-
+The real problem underneath: tracing has no GC. One night of ordinary work left 15.8 GB in
+`trace_fn_calls` (164 traces, ~96 MB each; the store hit 17 GB and the relay was OOM-killed --
+reported to the client as "network error"). `dark traces delete --all` + VACUUM recovers it;
+nothing yet notices it happening, which is a `dark status` candidate (in follow-ups).
 
 ## 2026-08-27: what `dark` startup actually costs
 
-Notes from instrumenting `dark` startup. They lived in a comment block in `Cli.fs`, where the numbers went
-stale the moment anyone touched the hot path.
+Shapes, not constants; re-measure before concluding. Three instrumentation seams exist, all no-ops
+when telemetry is off: `Telemetry.time` spans over the boot phases, `counterSnapshot` for items
+decoded, and `RT.InterpreterStatsSink` for instruction/builtin/frame totals; read via
+`scripts/perf/view-telemetry.py`.
 
-Every figure here is a measurement of one commit against one store. Treat them as a shape, not as constants,
-and re-measure before drawing a conclusion.
-
-### What the counters are
-
-There are three instrumentation seams, all no-ops when telemetry is off:
-
-- `Telemetry.time` spans around the boot phases: `cli.createPM`, `cli.growIfNeeded`, `cli.pmInit`,
-  `cli.buildState`, `cli.execute`.
-- `Telemetry.counterSnapshot ()`, which reports how many package items a run actually decoded. Emitted
-  alongside the spans on purpose: per-item cost and item count are useless separately.
-- `RT.InterpreterStatsSink`, a bag every VM registers into when telemetry is on, so the process can total
-  instruction / builtin-call / package-call / frame-push counts at exit. A VM is created per
-  `executeFunction` and the stats hang off it, so without the sink the object is gone before anything could
-  read it.
-
-Read them with `scripts/perf/view-telemetry.py`.
-
-### What they said
-
-Same store, same commit, warmed:
-
-```
-dark status ...  8,832 instructions,   495 builtin calls
-dark help ..... 42,958 instructions, 3,128 builtin calls
-```
-
-Both take roughly the same wall time. So:
-
-- Instruction count is not the cost. `help` runs 5x the instructions of `status` and isn't slower.
-- Package loading is not the cost either: 36ms.
-- Building the execution state is not the cost: `cli.buildState`, 3ms.
-
-What's left is a large FIXED per-process cost, and it is still unexplained. That's the open question.
-
-### Build mode, before you measure anything
-
-Debug 701ms vs release 438ms for `dark status`, warmed, 10 runs. **Measure the release binary.** A genuine
-`--aot` build, which `build-release-cli-exes.sh` only does when asked, has never been measured and is the
-obvious next thing to try.
-
-An earlier version of this note claimed 3x and ~225ms for release. That came from one uncontrolled run and
-does not reproduce; the controlled figure is 1.6x.
-
-### What `status` costs beyond that
-
-Worth separating from the fixed cost above, because it scales with the store rather than being constant.
-`SCM.Draft.counts` (the `dark status` path) calls `Constraints.pending ()`, which runs an unbounded
-three-way join over `locations x package_dependencies x locations` in `detectAll`; it reads
-`Propagation.allChoices` once rather than per finding, which is the cheap fix already taken. It also calls
-`PackageOps.draftRepoints`, which runs a recursive CTE per changed binding.
-
-If `status` is measurably slower than `help` on a large store, the join and the per-binding CTE are
-where to look first.
+Measured (warm, same store): `status` 8,832 instructions / `help` 42,958, roughly equal wall time --
+so instruction count is not the cost, package loading (36ms) is not, buildState (3ms) is not. What
+remains is a large FIXED per-process cost, still unexplained; that is the open question. Debug is
+1.6x release (701ms vs 438ms for `status`); measure the release binary, and a true `--aot` build has
+never been measured. Where `status` scales with the store: `Constraints.pending`'s three-way join
+and the per-binding recursive CTE in `draftRepoints`.

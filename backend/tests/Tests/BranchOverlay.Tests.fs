@@ -2132,18 +2132,21 @@ let foldDoesNotStrandOpsItMadeEffective =
 /// branch, and answers plausibly. The overlay helpers in `SCM.PackageOps` are the branch-aware way.
 ///
 /// Checked by reading the source, because the failure is invisible at run time on a single-branch
-/// store. `matter.dark` is exempt: a relay holds no branches, so main's projection IS its answer.
+/// store. The relay (`sync/relay/server.dark`) is exempt: a relay holds no branches, so main's
+/// projection IS its answer.
 let noDirectLocationsReadsOutsideTheSilos =
   testTask
     "only the SCM silos query `locations` from Dark, and each such read says it is main-scoped" {
     let root = System.IO.Path.Combine("..", "packages", "darklang")
 
-    // `matter.dark` is the relay: it serves the public package browser and its counts, which are main's
-    // by definition -- the relay has no branch to be standing on, so a main-scoped read is the correct
-    // answer there rather than a drifted one.
+    // `sync/relay/server.dark` is the relay's store side: it serves the public package browser and
+    // its counts, which are main's by definition -- the relay has no branch to be standing on, so a
+    // main-scoped read is the correct answer there rather than a drifted one.
     let isRelay (path : string) : bool =
-      path.Replace("\\", "/").EndsWith "matter.dark"
-    let isSilo (path : string) : bool = path.Replace("\\", "/").Contains "/scm/"
+      path.Replace("\\", "/").EndsWith "sync/relay/server.dark"
+    // "darklang/scm/", not "/scm/": the CLI's command files under `cli/scm/` are not the silo.
+    let isSilo (path : string) : bool =
+      path.Replace("\\", "/").Contains "darklang/scm/"
 
     let isRead (line : string) : bool =
       let t = line.Trim()

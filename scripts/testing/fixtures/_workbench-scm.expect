@@ -1,5 +1,5 @@
 #!/usr/bin/expect -f
-# Driven by test-workbench-scm, which builds the store. See that file for why.
+# Driven by the workbench-scm gate (scripts/testing/_gates-ui), which builds the store.
 set timeout 45
 log_user 0
 

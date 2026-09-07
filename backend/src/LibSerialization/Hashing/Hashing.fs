@@ -309,7 +309,7 @@ module Hashing =
   /// agree on no Add op at all, every binary upgrade grows every store by the whole tree, and two
   /// machines authoring the same fn make two ops. The content hash already skips the ids (see
   /// `computeFnHash`), and after stabilization it is exactly what the item's `SetName` names.
-  /// `scripts/testing/test-reload-is-reproducible` is the assertion.
+  /// `scripts/testing/gates reload-is-reproducible` is the assertion.
   ///
   /// An item with no hash yet (pre-stabilization input) falls back to the serialization: giving every
   /// unstabilized op one id would dedup them against each other. Every other op kind is identified by

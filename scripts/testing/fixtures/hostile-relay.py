@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """A relay that answers badly, so the sync and branch clients can be tested against one.
 
-Used by `scripts/testing/test-sync-hostile-relay`. The mode is chosen by the PORT, so several can run
-at once and each test names the failure it wants:
+Used by the sync-hostile-relay gate (`scripts/testing/gates sync-hostile-relay`). The mode is
+chosen by the PORT, so several can run at once and each test names the failure it wants:
 
   9081 truncated JSON
   9082 valid JSON, wrong shape

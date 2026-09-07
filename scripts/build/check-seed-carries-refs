@@ -1,20 +1,12 @@
 #!/usr/bin/env python3
 """Refuse to ship a binary whose package refs its own seed cannot produce.
 
-`dotnet publish -c Release` embeds whatever `rundir/seed.db` is lying around. The binary resolves
-`PackageRefs` by the hashes in `package-ref-hashes.txt`, which are written from the STORE after a package
-reload. Reload without re-exporting the seed and the two disagree: every command dies with "Function
-<hash> couldn't be found", and only OUTSIDE the source tree, because inside it the working store answers.
-
-The mtime check beside this one in `Cli.fsproj` is a proxy and a warning. This asks the question directly:
-for each ref hash, find the op the fold credited with that binding, and require the seed to carry it. A
-ref whose op is missing cannot be produced by that seed, whatever the timestamps say.
-
-Unrelated locally-authored ops are NOT a failure. A dev store accumulates them, and they say nothing
-about whether the refs resolve.
-
-Exit 0 when the seed carries every ref, 1 when it does not, and 0 with a note when there is nothing to
-compare (no store, no seed, or no refs) -- CI publishes from a pre-exported seed with no store at all.
+A release embeds `rundir/seed.db`; the binary resolves `PackageRefs` by hashes written from the
+STORE. Reload without re-exporting the seed and every command dies with "Function <hash> couldn't
+be found" -- only OUTSIDE the source tree, where no working store answers. This asks directly (not
+by mtime): for each ref hash, the op the fold credited with the binding must be in the seed.
+Unrelated local ops are fine. Exit 0 when every ref is carried, 1 when not, 0-with-note when there
+is nothing to compare (CI publishes from a pre-exported seed with no store).
 """
 
 import sqlite3
