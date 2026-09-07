@@ -29,7 +29,7 @@ let parsePTExpr
   (code: String)
   : Stdlib.Result.Result<ProgramTypes.Expr, String> =
   // context-free lowering is just the in-context lowering with an empty context, against main
-  parsePTExprInContext SCM.Ids.mainBranchId "" [] [] [] code
+  parsePTExprInContext SCM.Branch.mainBranchId "" [] [] [] code
 
 
 /// Lower an expression against <param branchId>, under a real module / fn-name / parameter context.
@@ -38,10 +38,8 @@ let parsePTExpr
 /// callee resolves fn-first, self-recursion -> ESelf, a match pattern shadowing a parameter) that a
 /// context-free lowering can't surface.
 ///
-/// The branch is a PARAMETER, not the process's. Reading process state here would mean the same source
-/// lowered to different names depending on which branch the process happened to be on at that moment,
-/// which is wrong for a long-lived process serving more than one branch (the LSP) and unreproducible for
-/// anything that lowers concurrently.
+/// The branch is a PARAMETER, not the process's: the same source must lower the same way whichever
+/// branch a long-lived process (the LSP) happens to sit on.
 let parsePTExprInContext
   (branchId: Uuid)
   (owner: String)

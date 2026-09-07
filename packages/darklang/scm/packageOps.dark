@@ -263,7 +263,7 @@ let bindingsFromOpRows (rows: List<Dict<String, Stdlib.Sqlite.Value>>) : List<Co
 /// never materialized in `locations`, only ever an overlay. The Dark mirror of the F# overlay walk in
 /// `LibDB.Branches.chainOverlayOps`, so a name resolves the same whichever side asks.
 ///
-/// `@p1` is main's ID, bound, never the literal "main". `SCM.Ids` exists to enforce exactly that, and
+/// `@p1` is main's ID, bound, never the literal "main". `SCM.Branch.mainBranchId` exists to enforce exactly that, and
 /// SQL is where it drifts unnoticed, because no type checker reads a string: against a store whose
 /// `parent_id` holds main's uuid, comparing to `'main'` is true for every row and the recursion walks
 /// past main instead of stopping at it.
@@ -294,7 +294,7 @@ let chainOpRows (branchId: Uuid) : List<Dict<String, Stdlib.Sqlite.Value>> =
           WHERE ob.branch_id IN (SELECT bid FROM chain)
           ORDER BY p.origin_ts, p.rowid")
     [ Stdlib.Uuid.toString branchId
-      Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
+      Stdlib.Uuid.toString SCM.Branch.mainBranchId ]
 
 
 /// <fn chainBindingEntries>, keeping only the names the chain leaves bound.
@@ -322,7 +322,7 @@ let liveBindingFor
   // The chain's last word on the name: bound to something, unbound (an `Unbind` with no later binding,
   // which hides whatever main holds), or nothing said.
   let onBranch =
-    if SCM.Ids.isMain branchId then
+    if SCM.Branch.isMain branchId then
       Stdlib.Option.Option.None
     else
       chainBindingEntries branchId
@@ -511,7 +511,7 @@ let stampLandedOps (commitHash: String) (opIds: List<String>) : Int64 =
 /// Main only. A branch's ops are branch-pending rather than draft, and they're collapsed when they merge.
 let collapseDraft () : Stdlib.Result.Result<Int, String> =
   match currentBranch () with
-  | id when SCM.Ids.isMain id -> SCM.Draft.collapse ()
+  | id when SCM.Branch.isMain id -> SCM.Draft.collapse ()
   | _ -> Stdlib.Result.Result.Ok 0
 
 
@@ -616,7 +616,7 @@ let discardDraftName
   (name: String)
   : Stdlib.Result.Result<Int, String> =
   match currentBranch () with
-  | id when SCM.Ids.isMain id -> discardMainDraftName owner modules name
+  | id when SCM.Branch.isMain id -> discardMainDraftName owner modules name
   | branchId ->
     // A branch's ops are effective=0 and never fold into main, so deleting the tagged rows for this
     // name IS the removal, exactly as `discardBranchDraft` does for all of them.
@@ -679,7 +679,7 @@ let dropBranchOps (branchId: Uuid) (ids: List<String>) : Stdlib.Result.Result<In
 /// Drop the current scope's draft, whichever it is.
 let discardDraft () : Stdlib.Result.Result<Int, String> =
   match currentBranch () with
-  | id when SCM.Ids.isMain id -> discardMainDraft ()
+  | id when SCM.Branch.isMain id -> discardMainDraft ()
   | branchId ->
     Stdlib.Result.Result.Ok(
       Stdlib.Int.fromInt64 (discardBranchDraft branchId)
@@ -730,7 +730,7 @@ let namesAtContent (branchId: Uuid) (hash: String) (itemType: String) : List<Str
         | (Some o, Some m, Some n) -> Stdlib.Option.Option.Some(Conflicts.fqn o m n)
         | _ -> Stdlib.Option.Option.None)
 
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     mainNames
   else
     // The whole CHAIN, not the branch's own frontier: a parent branch's name for this content is
@@ -805,7 +805,7 @@ let repointsFor (b: Conflicts.Binding) : List<String> =
 
   let overlay =
     match currentBranch () with
-    | id when SCM.Ids.isMain id -> []
+    | id when SCM.Branch.isMain id -> []
     | branch ->
       chainBindings branch
       |> Stdlib.List.map (fun bind ->
@@ -1034,7 +1034,7 @@ let commitDraft
 
 /// Drop the draft for <param branchId>, whichever kind of draft that is. Returns how many ops went.
 let discardDraftFor (branchId: Uuid) : Int =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     match discardMainDraft () with
     | Ok n -> n
     | Error _ -> 0
@@ -1082,7 +1082,7 @@ let commitMainOps (message: String) (fallbackAuthor: String) (opIds: List<String
         message
         author
         (Stdlib.List.sort toStamp)
-        (parentCommitFor SCM.Ids.mainBranchId)
+        (parentCommitFor SCM.Branch.mainBranchId)
 
     let _ = stampLandedOps hash toStamp
     ()
@@ -1118,7 +1118,7 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
   // retags onto the parent, whose own overlay folds it later. Folding there would leak the child's work
   // into main, which nobody asked to merge.
   let merged =
-    if SCM.Ids.isMain parent then
+    if SCM.Branch.isMain parent then
       // Flip the frontier effective, fold it into main, then close the branch. The fold is the F# half;
       // the order, and stopping if any step fails, is the decision.
       Branches.markMergedEffective branchId
@@ -1140,7 +1140,7 @@ let mergeBranch (branchId: Uuid) : Stdlib.Result.Result<MergeOutcome, String> =
     // main's draft, they read as "1 item changed" that nobody edited, and the next unrelated commit
     // sweeps them up under its message. A merge into a branch retags; the parent's own merge commits.
     let _ =
-      if SCM.Ids.isMain parent then
+      if SCM.Branch.isMain parent then
         let landed =
           Stdlib.List.append
             (moved |> Stdlib.List.map (fun id -> Stdlib.Uuid.toString id))
@@ -1201,7 +1201,7 @@ let rebaseMessage (parentId: Uuid) (rebased: Branches.Rebased) : String =
 /// Rebase a branch: accept the parent's current state as the new base; reports the names the parent changed
 /// since the fork, so the branch's own ops layer on top (LWW). Records what it reconciled, same as merge.
 let rebaseBranch (branchId: Uuid) : Stdlib.Result.Result<RebaseOutcome, String> =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     // Main has no parent to rebase onto, so this is not a thing you can do rather than a thing that found
     // nothing to do. The rewrite loops over `branch_name_bases`, and main has no rows there.
     Stdlib.Result.Result.Error
@@ -1549,7 +1549,7 @@ let exportBranch (branchId: Uuid) : String =
       { branchId = branchId
         name = branchField branchId "name" ""
         // The bundle is JSON, so the parent travels as text like every other field in it.
-        parent = branchField branchId "parent_id" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
+        parent = branchField branchId "parent_id" (Stdlib.Uuid.toString SCM.Branch.mainBranchId)
         ops = bundleOps
         commits = commits })
 

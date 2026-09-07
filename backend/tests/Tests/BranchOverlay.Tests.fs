@@ -2237,7 +2237,7 @@ let noMainLiteralInDarkSql =
       offenders
       "SQL in Dark must bind main's id as a parameter, never compare against the literal 'main'. \
        `branches.parent_id` holds a UUID, so the literal matches nothing and the comparison is dead. \
-       Use `SCM.Ids.mainBranchId` and pass it as a bound parameter."
+       Use `SCM.Branch.mainBranchId` and pass it as a bound parameter."
   }
 
 

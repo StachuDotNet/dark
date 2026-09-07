@@ -8,13 +8,14 @@ let executeDarklang () : ModelContextProtocol.ServerBuilder.Tool =
     description = "Execute Darklang code and return the result"
     handler =
       fun code ->
-        match
-          Cli.Eval.evaluateRaw (Stdlib.Option.Option.None) SCM.Ids.mainBranchId code [] false
-        with
+        let evaluated =
+          Cli.Eval.evaluateRaw (Stdlib.Option.Option.None) SCM.Branch.mainBranchId code [] false
+
+        match evaluated with
         | Ok (Some result) -> $"Result: {result}"
         | Ok None -> "Result: ()"
         | Error err ->
-            $"Error: {Cli.ExecutionError.toString SCM.Ids.mainBranchId err}"
+            $"Error: {Cli.ExecutionError.toString SCM.Branch.mainBranchId err}"
   }
 
 
@@ -33,7 +34,7 @@ let searchFunctions () : ModelContextProtocol.ServerBuilder.Tool =
               entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Fn ]
               exactMatch = false }
         let results =
-          LanguageTools.PackageManager.Search.search SCM.Ids.mainBranchId searchQuery
+          LanguageTools.PackageManager.Search.search SCM.Branch.mainBranchId searchQuery
         let resultCount = (Stdlib.List.length results.fns) |> Stdlib.Int.toString
         let formattedResults =
           results.fns
@@ -84,7 +85,7 @@ let listPackages () : ModelContextProtocol.ServerBuilder.Tool =
             entityTypes = []
             exactMatch = false }
       let results =
-        LanguageTools.PackageManager.Search.search SCM.Ids.mainBranchId query
+        LanguageTools.PackageManager.Search.search SCM.Branch.mainBranchId query
       let packageCount = (Stdlib.List.length results.submodules) |> Stdlib.Int.toString
       let formattedPackages =
         results.submodules

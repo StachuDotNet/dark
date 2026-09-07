@@ -36,7 +36,7 @@ let getAllPreviousHashes
   : List<LanguageTools.ProgramTypes.Hash> =
   let fromMain = SCM.Propagation.everBoundHashes location itemKind
 
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     fromMain
   else
     // `branchHashHistoryFor` is oldest-first and this is newest-first, so it is reversed and goes in

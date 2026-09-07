@@ -10,6 +10,40 @@ module Darklang.SCM.Branch
 // adds is the record shape and the lifecycle verbs a UI needs, including `rename`, which the LSP's
 // `dark/renameBranch` calls straight through.
 
+// Branch identity first, because everything below has an opinion about branches and
+// main's id is the one fact they all share.
+//
+// The rule these definitions exist to enforce: an id is compared against `mainBranchId`, never against a
+// literal. A literal freezes an answer that has changed more than once ("" and "main" have both been
+// it), and every call site holding the stale one still reads as correct.
+
+/// Main's branch id.
+///
+/// Well-known rather than minted, because main is the one branch that exists before anything creates it,
+/// and it has no `branches` row to mint an id into. Comes from the same F# constant the runtime compares
+/// against (`ProgramTypes.BranchId.Main`), so the two cannot disagree.
+val mainBranchId = Builtin.scmMainBranchId
+
+/// Main's branch NAME: what a person types and reads; resolved to an id at the edge.
+val mainBranchName = "main"
+
+/// Whether <param branchId> is main.
+let isMain (branchId: Uuid) : Bool = branchId == mainBranchId
+
+/// A branch id read out of a TEXT column.
+///
+/// The columns are TEXT, so this is the one direction that can fail. An absent or unreadable value is
+/// main: `parent_id` is NULL for a top-level branch, and a row nothing wrote an id into is not a branch
+/// anyone can stand on.
+let fromTextField (text: Stdlib.Option.Option<String>) : Uuid =
+  match text with
+  | Some s ->
+    match Stdlib.Uuid.parse s with
+    | Ok id -> id
+    | Error _ -> mainBranchId
+  | None -> mainBranchId
+
+
 /// A branch as a view holds it. `id` is the uuid everything internal points at; `name` is what a person
 /// reads and can change.
 type Branch =
@@ -27,7 +61,7 @@ let toBranch (row: SCM.Branches.BranchRow) : Branch =
     { id = row.id
       name = if row.name == "" then Stdlib.Uuid.toString row.id else row.name
       parentBranchId =
-        if SCM.Ids.isMain row.parent then
+        if isMain row.parent then
           Stdlib.Option.Option.None
         else
           Stdlib.Option.Option.Some row.parent
@@ -41,7 +75,7 @@ let list () : List<Branch> =
 
 /// One branch by id. None for main, and for an id nothing is registered under.
 let get (branchId: Uuid) : Stdlib.Option.Option<Branch> =
-  if SCM.Ids.isMain branchId then
+  if isMain branchId then
     Stdlib.Option.Option.None
   else
     list () |> Stdlib.List.findFirst (fun b -> b.id == branchId)
@@ -69,8 +103,8 @@ let rename (branchId: Uuid) (newName: String) : Stdlib.Result.Result<Branch, Str
 
   if trimmed == "" then
     Stdlib.Result.Result.Error "a branch needs a name"
-  else if trimmed == SCM.Ids.mainBranchName then
-    Stdlib.Result.Result.Error $"\"{SCM.Ids.mainBranchName}\" is taken; it is the trunk's name"
+  else if trimmed == mainBranchName then
+    Stdlib.Result.Result.Error $"\"{mainBranchName}\" is taken; it is the trunk's name"
   else
     let taken =
       match SCM.PackageOps.branchIdForName trimmed with

@@ -135,8 +135,7 @@ let hashListToDict
     Stdlib.Dict.setOverridingDuplicates acc key true)
 
 
-/// The deprecation sets. One builtin call (two DB queries sharing work on the backend); cache per
-/// invocation by calling once at the entry point of ls/tree/search.
+/// The deprecation sets.
 ///
 /// <param branchId> is accepted and NOT consulted: deprecations are main-only today (a Deprecate
 /// authored on a branch never folds), so the sets are the same on every branch. The parameter stays

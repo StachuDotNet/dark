@@ -14,7 +14,7 @@ module Darklang.SCM.PackageOps
 /// On MAIN the draft is uncommitted ops that aren't tagged to any branch. On a BRANCH it's that branch's own
 /// uncommitted frontier -- its ops are effective=0 by design, so the effective test doesn't apply there.
 let draftWhere (branchId: Uuid) : String =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     "p.commit_hash IS NULL AND p.effective = 1
      AND p.id NOT IN (SELECT op_id FROM op_branches)"
   else
@@ -24,7 +24,7 @@ let draftWhere (branchId: Uuid) : String =
 
 /// Params for `draftWhere` (the branch form binds one).
 let draftParams (branchId: Uuid) : List<String> =
-  if SCM.Ids.isMain branchId then [] else [ Stdlib.Uuid.toString branchId ]
+  if SCM.Branch.isMain branchId then [] else [ Stdlib.Uuid.toString branchId ]
 
 
 /// How many ops are in the draft.
@@ -130,7 +130,7 @@ let unresolvedInDraft (branchId: Uuid) : List<(String * List<String>)> =
 /// caller can intersect with what it is about to display rather than asking per item.
 let propagatedNames () : List<String> =
   match currentBranch () with
-  | id when SCM.Ids.isMain id ->
+  | id when SCM.Branch.isMain id ->
     // main-scoped: the branch arm is below.
     Stdlib.Sqlite.rowsP
       (localDb ())

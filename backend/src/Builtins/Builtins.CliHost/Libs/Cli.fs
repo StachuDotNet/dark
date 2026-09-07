@@ -541,7 +541,7 @@ let fns () : List<BuiltInFn> =
           Param.make
             "branchId"
             TUuid
-            "the branch to resolve names against (main is `SCM.Ids.mainBranchId`). A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
+            "the branch to resolve names against (main is `SCM.Branch.mainBranchId`). A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
           Param.make "filename" TString ""
           Param.make "code" TString ""
           Param.make "args" (TList TString) ""
@@ -672,7 +672,7 @@ let fns () : List<BuiltInFn> =
           Param.make
             "branchId"
             TUuid
-            "the branch to resolve names against (main is `SCM.Ids.mainBranchId`). A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
+            "the branch to resolve names against (main is `SCM.Branch.mainBranchId`). A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
           Param.make "expression" TString ""
           Param.make
             "currentModule"

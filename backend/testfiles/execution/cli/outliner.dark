@@ -1,8 +1,9 @@
 // The outliner's pure core: the tree operations, the widgets it's built from, and the import/export
 // round trips.
 //
-// They live here, as a testfile, so the backend suite runs them. A hand-rolled runner inside
-// `packages/` is reachable only by calling it by hand, which means nobody finds out when it goes red.
+// These used to live in `packages/darklang/cli/outliner/tests.dark` as 482 lines with a hand-rolled
+// TestResult/TestSummary and a printing runner, referenced by nothing: not the registry, not the backend
+// suite, not a testfile. The only way to find out whether they passed was to call `runAllTests` by hand.
 //
 // Names are fully qualified: testfiles parse with owner "Tests", so `Darklang.` prefixes are required.
 
@@ -60,12 +61,15 @@ module ListEdits =
   // Insert after a member, as normal.
   (Darklang.Cli.Outliner.insertIdAfter [ 1, 2, 3 ] 2 9) = [ 1, 2, 9, 3 ]
 
-  // Insert after a non-member still attaches the node; dropping it would orphan it in the content dict.
+  // Insert after something that isn't in the list. This used to return the list unchanged, which dropped
+  // the new node: it stayed in the content dict with nothing pointing at it, invisible and unreachable,
+  // and got written to disk on every save from then on.
   (Darklang.Cli.Outliner.insertIdAfter [ 1, 2, 3 ] 7 9) = [ 1, 2, 3, 9 ]
 
   (Darklang.Cli.Outliner.swapAt [ 1, 2, 3 ] 0 2) = [ 3, 2, 1 ]
 
-  // Out-of-range swaps leave the list alone, never writing an id no node has.
+  // Out-of-range swaps leave the list alone. They used to write a 0 into it (an id no node ever has),
+  // via a `withDefault 0` on the lookup.
   (Darklang.Cli.Outliner.swapAt [ 1, 2, 3 ] 0 9) = [ 1, 2, 3 ]
   (Darklang.Cli.Outliner.swapAt [ 1, 2, 3 ] -1 1) = [ 1, 2, 3 ]
 
@@ -145,7 +149,8 @@ module TextField =
   let noMods () : Darklang.Stdlib.Cli.Stdin.Modifiers.Modifiers =
     Darklang.Stdlib.Cli.Stdin.Modifiers.Modifiers { ctrl = false; shift = false; alt = false }
 
-  // A paste arrives as one chunk; the cursor advances by its full length, not by one.
+  // A paste arrives as one chunk. Moving the cursor by one per keypress is what made typing `abcdef` and
+  // then `X` produce `aXbcdef`.
   (let field = Darklang.Stdlib.Cli.UI.TextField.insert Darklang.Stdlib.Cli.UI.TextField.empty "abcdef"
    let typed = Darklang.Stdlib.Cli.UI.TextField.insert field "X"
    (typed.text, typed.cursor)) = ("abcdefX", 7)
@@ -295,8 +300,9 @@ module Formats =
 
 
 module Persistence =
-  // A pre-versioning file has no `version`, parent pointers or marks. It must migrate, not read as
-  // unparseable, or the next save replaces it with the demo documents.
+  // A file written before versioning had no `version`, no parent pointers and no marks. It has to be
+  // migrated: the loader used to treat anything it couldn't parse as "start fresh", which quietly replaced
+  // the file with the demo documents on the next save.
   let v1 () : String =
     "{\"activeDocId\":1,\"nextDocId\":2,\"documents\":[{\"id\":1,\"title\":\"Old\",\"outline\":"
     ++ "{\"nextId\":3,\"rootChildren\":[1],\"nodes\":{\"1\":{\"text\":\"parent\"},\"2\":{\"text\":\"child\"}},"

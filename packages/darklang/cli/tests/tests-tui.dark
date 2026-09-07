@@ -275,7 +275,7 @@ let testSessionStopRestoresOnlyWhenRunning (): TestResult =
 /// A workbench state good enough to render, without touching the terminal.
 let workbenchState () : Darklang.Cli.Workbench.State =
   Darklang.Cli.Workbench.initialState
-    Darklang.SCM.Ids.mainBranchId
+    Darklang.SCM.Branch.mainBranchId
     Stdlib.Option.Option.None
     "test"
     "test-instance"
@@ -340,7 +340,7 @@ let rendersMatterLens (lens: Darklang.Cli.Workbench.Lens) : Bool =
 let rendersMatterItemPage (path: List<String>) : Bool =
   let base = workbenchState ()
   let loc = Packages.PackageLocation.Module path
-  let items = Darklang.Cli.Workbench.loadItems Darklang.SCM.Ids.mainBranchId loc
+  let items = Darklang.Cli.Workbench.loadItems Darklang.SCM.Branch.mainBranchId loc
 
   // A path with no leaves would render the empty case and prove nothing, so say so rather than pass.
   if Stdlib.List.isEmpty items then
@@ -472,7 +472,7 @@ let testWorkbenchModuleInspectPreviewsChildren (): TestResult =
     Darklang.Cli.Packages.PackageLocation.Module [ "Darklang" ]
   let items =
     Darklang.Cli.Workbench.loadItems
-      Darklang.SCM.Ids.mainBranchId
+      Darklang.SCM.Branch.mainBranchId
       location
   let selected =
     Stdlib.List.findFirstIndex items (fun item -> item.name == "LspExtension")
@@ -798,7 +798,7 @@ let testReplCapturesRealValues (): TestResult =
   // The end of the round-trip that matters: a value goes out as source you could paste back in. Enums are
   // in here because they're what a REPL actually produces, and they only render as names because
   // `dvalToExpr` resolves the type's package location.
-  let branch = Darklang.SCM.Ids.mainBranchId
+  let branch = Darklang.SCM.Branch.mainBranchId
   let cases =
     [ (Darklang.Cli.Repl.captureValue branch 42, "ok:42")
       (Darklang.Cli.Repl.captureValue branch [ 1L, 2L ], "ok:[1L, 2L]")

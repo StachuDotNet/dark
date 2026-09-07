@@ -75,7 +75,7 @@ let executeList (state: AppState) (limit: Int64) : AppState =
   let header =
     // "on main" for main, like every other command; "on branch X" only when there is a branch.
     let where =
-      if SCM.Ids.isMain branch then "on main" else $"on branch {branchName}"
+      if SCM.Branch.isMain branch then "on main" else $"on branch {branchName}"
 
     if shown >= (Stdlib.Int.fromInt64 total) then
       $"{Stdlib.Int64.toString total} ops {where}"

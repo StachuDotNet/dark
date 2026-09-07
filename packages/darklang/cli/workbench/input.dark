@@ -361,7 +361,7 @@ let performInputAction (state: State) (inp: InputState) : Step =
           // archived branch and every later commit lands there. The classic `branch delete` does the same
           // (see scm/branch.dark) - the backend allows it, so the caller owns the follow-up.
           let landedOn =
-            if b.id == state.branchId then SCM.Ids.mainBranchId else state.branchId
+            if b.id == state.branchId then SCM.Branch.mainBranchId else state.branchId
           let msg =
             if b.id == state.branchId then "deleted " ++ b.name ++ " - switched to main"
             else "deleted " ++ b.name

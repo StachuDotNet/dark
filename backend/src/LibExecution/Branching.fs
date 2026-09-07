@@ -8,7 +8,7 @@ open Prelude
 /// A branch's identity. A type, not a string: distinct from a branch NAME, a content
 /// hash and a relay url, which are all strings.
 ///
-/// MIRRORS `Darklang.SCM.Ids`. Rule on both sides: compare against `Main`, never
+/// MIRRORS `Darklang.SCM.Branch.mainBranchId`. Rule on both sides: compare against `Main`, never
 /// against a literal "main".
 type BranchId =
   /// Named `Id`, not `BranchId`: a case with the same name as its type shadows the type for QUALIFIED

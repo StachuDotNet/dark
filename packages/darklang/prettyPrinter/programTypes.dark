@@ -72,7 +72,7 @@ module Context =
         width = 80
         preferredLocation = Stdlib.Option.Option.None }
 
-  val forMain = forBranch Darklang.SCM.Ids.mainBranchId
+  val forMain = forBranch Darklang.SCM.Branch.mainBranchId
 
   /// A context anchored at `path` (owner-first, e.g. `["Darklang", "Stdlib", "Option"]`).
   ///
@@ -1077,6 +1077,9 @@ let exprString (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
   | EFnName(_id, fnName) ->
     NameResolution.fnName ctx fnName
 
+  // LanguageTools.ID *
+  // record: LanguageTools.ProgramTypes.Expr *
+  // updates: List<String * LanguageTools.ProgramTypes.Expr>
   | ERecordUpdate(_id, record, updates) ->
     let recordPart = expr ctx record
 
@@ -1111,7 +1114,18 @@ let exprString (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
   // problem in output nobody can read. Say what happened instead, in one line that stands out.
   | _expr -> "<expression this printer doesn't handle yet>"
 
-// CLEANUP: deprecation printing not implemented
+// CLEANUP this isn't currently used
+// if/when we uncomment this, take note that the `m` argument is a function
+// that we may not fully yet support (esp in name-resolution)
+// let deprecation<'name>
+//   (m: 'name -> String)
+//   (d: LanguageTools.ProgramTypes.Deprecation)
+//   : String =
+//   match d with
+//   | NotDeprecated -> "NotDeprecated"
+//   | RenamedTo name -> $"RenamedTo {m name}"
+//   | ReplacedBy name -> $"ReplacedBy {m name}"
+//   | DeprecatedBecause reason -> $"DeprecatedBecause {reason}"
 
 module TypeDeclaration =
   let recordFieldDoc
@@ -1299,9 +1313,11 @@ module PackageFn =
     : String =
     // TODO: /// for description
     //
-    // `()` in a declaration parses as one param named `_` of type Unit; print that
-    // shape back as `()` -- the general form gives `(_: Unit)`, which the parser
-    // rejects, so nullary fns printed source that wouldn't re-parse.
+    // `()` in a declaration parses as one parameter named `_` of type Unit, so print that shape back as `()`.
+    // The general `(name: Type)` form gave `(_: Unit)`, which the parser then rejected with "expected a
+    // parameter name, found '_'" - so every nullary function printed to source that wouldn't parse again.
+    // That broke editing one in the workbench, where the buffer is prefilled from here and saved through the
+    // parser: you had to retype the signature before it would save.
     let isUnitPlaceholder =
       match p.typ with
       | TUnit -> p.name == "_"

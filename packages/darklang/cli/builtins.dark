@@ -158,7 +158,7 @@ let execute (state: AppState) (args: List<String>): AppState =
 
       fns
       |> Stdlib.List.iter (fun fn ->
-        let branchId = SCM.Ids.mainBranchId
+        let branchId = SCM.Branch.mainBranchId
 
         let params =
           fn.parameters

@@ -40,7 +40,7 @@ let private branchParam : Param =
   Param.make
     "branchId"
     TUuid
-    "the branch to resolve against; main is `SCM.Ids.mainBranchId`. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
+    "the branch to resolve against; main is `SCM.Branch.mainBranchId`. Passed rather than ambient, so a caller can ask about a branch it is not sitting on"
 
 
 /// `pmGetLocationsBy{Type,Value,Fn}`: every name a hash is bound to, seen from <param branchId>.
@@ -784,9 +784,15 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 let! parentId = LibDB.Branches.parentOf branch
                 do! LibDB.Branches.recordNameBases branch parentId ops
                 // Fold the CONTENT (never the SetNames) so the new versions resolve and carry their
-                // dependency edges, exactly as branch authoring does -- minus that path's value
-                // evaluation, which this one has never run.
-                let contentOps = PackageOps.contentOpsOf ops
+                // dependency edges, exactly as branch authoring does.
+                let contentOps =
+                  ops
+                  |> List.filter (fun op ->
+                    match op with
+                    | PT.PackageOp.AddValue _
+                    | PT.PackageOp.AddFn _
+                    | PT.PackageOp.AddType _ -> true
+                    | _ -> false)
                 if not (List.isEmpty contentOps) then
                   do! LibDB.PackageOpPlayback.applyOps contentOps
                 // Refresh the process overlay so a later eval in THIS process sees the repoints.

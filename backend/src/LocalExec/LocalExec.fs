@@ -167,11 +167,6 @@ let main (args : string[]) : int =
         "sweeping orphan package_blobs rows"
         (HandleCommand.sweepBlobs ())
 
-    | [ "experiments"; "op-anatomy" ] ->
-      handleCommand
-        "accounting for every byte in the op log"
-        (LocalExec.Experiments.OpAnatomy.run ())
-
     | [ "bench" ] ->
       handleCommand
         "running allocation/timing benchmarks"
@@ -190,7 +185,6 @@ let main (args : string[]) : int =
       print "  migrations list"
       print "  export-seed <output-path>"
       print "  pm-sweep-blobs"
-      print "  experiments op-anatomy"
       print "  bench"
       print "  bench-render"
       NonBlockingConsole.wait ()

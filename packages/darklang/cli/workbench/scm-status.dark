@@ -43,7 +43,7 @@ type ScmStatus =
 
 let emptyScmStatus () : ScmStatus =
   ScmStatus
-    { branchName = SCM.Ids.mainBranchName
+    { branchName = SCM.Branch.mainBranchName
       wipNames = []
       changed = 0
       authored = 0

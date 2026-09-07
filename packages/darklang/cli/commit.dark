@@ -116,7 +116,7 @@ let previousHashesOf
 
   let fromBranch =
     match SCM.PackageOps.currentBranch () with
-    | id when SCM.Ids.isMain id -> []
+    | id when SCM.Branch.isMain id -> []
     | branch -> SCM.PackageOps.branchHashHistoryFor branch b.owner b.modules b.name
 
   // NEWEST FIRST, and `dedup` rather than `unique`, because the order is load-bearing: `changeKind` takes

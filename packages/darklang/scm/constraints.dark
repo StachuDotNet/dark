@@ -294,7 +294,7 @@ let detectSupersededPolicies () : List<Finding> =
 /// means now. A branch holds few bindings; this runs from `dark status`, and the whole chain's
 /// bindings are decoded once.
 let detectOutdatedUsagesOn (branchId: Uuid) : List<Finding> =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     []
   else
     PackageOps.chainBindings branchId

@@ -49,240 +49,223 @@ let private opRecords (records : List<Dval>) : List<string * string * string> =
     | _ -> None)
 
 
-/// The Add* subset of a batch: content, never names. What may fold into the shared content
-/// tables when the batch lands on a branch; the name layer is what a branch keeps to itself.
-let internal contentOpsOf (ops : List<PT.PackageOp>) : List<PT.PackageOp> =
-  ops
-  |> List.filter (fun op ->
-    match op with
-    | PT.PackageOp.AddValue _
-    | PT.PackageOp.AddFn _
-    | PT.PackageOp.AddType _ -> true
-    | _ -> false)
-
-
-/// Fold a branch batch's content ops (Add*, never SetName) into the shared content tables, then
-/// evaluate values so an expression-valued one has an `rt_dval` to eval. Needed so a branch item
-/// resolves and carries its dependency edges; without it an authored or imported branch is
-/// unusable.
-let internal foldContentOps
-  (exeState : ExecutionState)
-  (ops : List<PT.PackageOp>)
-  : Ply<unit> =
-  uply {
-    let contentOps = contentOpsOf ops
-    if not (List.isEmpty contentOps) then
-      do! LibDB.PackageOpPlayback.applyOps contentOps
-      let builtins : Builtins =
-        { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
-      let! _ = LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
-      ()
-  }
-
-
-/// Refresh the process overlay after a write to <param branchId> -- but move it only when this
-/// process is ON that branch: writing to another branch must not change what this caller resolves
-/// against. Other branches are memoized, so forget them rather than leave a stale answer.
-let internal refreshOverlayFor (branchId : PT.BranchId) : Ply<unit> =
-  uply {
-    if LibDB.PackageManager.currentBranchId () = branchId then
-      let! all = LibDB.Branches.loadDeltaOps branchId
-      LibDB.PackageManager.setBranchOverlay all
-    else
-      LibDB.PackageManager.forgetBranch branchId
-  }
-
-
-/// The `Result<Int, String>` constructors the count-returning scm builtins share.
-let private resultOk = Dval.resultOk KTInt KTString
-let private resultError = Dval.resultError KTInt KTString
-
-
-/// A PackageOps builtin. Every one here is NotQueryable, needs no capabilities, takes no type
-/// params and is not deprecated, so only what varies is spelled per declaration.
-let private mk
-  (name : string)
-  (parameters : List<BuiltInParam>)
-  (returnType : TypeReference)
-  (description : string)
-  (previewable : Previewable)
-  (f : BuiltInFnSig)
-  : BuiltInFn =
-  { name = fn name 0
-    typeParams = []
-    parameters = parameters
-    returnType = returnType
-    description = description
-    fn = f
-    sqlSpec = NotQueryable
-    previewable = previewable
-    capabilities = LibExecution.Capabilities.noCaps
-    deprecated = NotDeprecated }
-
-
 // TODO: review/reconsider the accessibility of these fns
 let fns (pm : PT.PackageManager) : List<BuiltInFn> =
-  [ mk
-      "pmStabilizeHashes"
-      [ Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
-      (TList(TCustomType(NR.ok (packageOpTypeName ()), [])))
-      "Compute real content-addressed hashes for package ops (SCC-aware)."
-      Pure
-      (function
-       | _, _, _, [| DList(_vt, ops) |] ->
-         uply {
-           let ptOps = ops |> List.choose PT2DT.PackageOp.fromDT
-           let stabilized = LibDB.HashStabilization.computeRealHashes ptOps
-           return
-             Dval.list (packageOpKT ()) (stabilized |> List.map PT2DT.PackageOp.toDT)
-         }
-       | _ -> incorrectArgs ())
+  [ { name = fn "pmStabilizeHashes" 0
+      typeParams = []
+      parameters =
+        [ Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
+      returnType = TList(TCustomType(NR.ok (packageOpTypeName ()), []))
+      description =
+        "Compute real content-addressed hashes for package ops (SCC-aware)."
+      fn =
+        (function
+        | _, _, _, [| DList(_vt, ops) |] ->
+          uply {
+            let ptOps = ops |> List.choose PT2DT.PackageOp.fromDT
+            let stabilized = LibDB.HashStabilization.computeRealHashes ptOps
+            return
+              Dval.list
+                (packageOpKT ())
+                (stabilized |> List.map PT2DT.PackageOp.toDT)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Pure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
-    mk
-      "pmDuplicateDeclarations"
-      [ Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
-      (TList TString)
-      ("The names that more than one declaration in this batch would bind, as "
-       + "\"fn Owner.Module.name\" strings. Stabilizing such a batch would store one "
-       + "body under the other's hash, so authoring surfaces refuse it.")
-      Pure
-      (function
-       | _, _, _, [| DList(_vt, ops) |] ->
-         uply {
-           let ptOps = ops |> List.choose PT2DT.PackageOp.fromDT
-           return
-             LibDB.OpValidation.duplicateDeclarations ptOps
-             |> List.map Dval.string
-             |> Dval.list KTString
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "pmDuplicateDeclarations" 0
+      typeParams = []
+      parameters =
+        [ Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
+      returnType = TList TString
+      description =
+        "The names that more than one declaration in this batch would bind, as "
+        + "\"fn Owner.Module.name\" strings. Stabilizing such a batch would store one "
+        + "body under the other's hash, so authoring surfaces refuse it."
+      fn =
+        (function
+        | _, _, _, [| DList(_vt, ops) |] ->
+          uply {
+            let ptOps = ops |> List.choose PT2DT.PackageOp.fromDT
+            return
+              LibDB.OpValidation.duplicateDeclarations ptOps
+              |> List.map Dval.string
+              |> Dval.list KTString
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Pure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
-    mk
-      "pmUnresolvedNames"
-      [ Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
-      (TList(TTuple(TString, TList TString, [])))
-      "For each op still holding unresolved name references, its content hash and those names."
-      Pure
-      (function
-       | _, _, _, [| DList(_vt, ops) |] ->
-         uply {
-           // Reports; decides nothing. Whether an unresolved name should stop a commit is a decision, and
-           // decisions live in Dark -- see `Cli.Commit`.
-           let found =
-             ops
-             |> List.choose PT2DT.PackageOp.fromDT
-             |> List.choose LibDB.UnresolvedCheck.inOp
-             |> List.map (fun (hash, names) ->
-               DTuple(
-                 DString hash,
-                 Dval.list KTString (names |> List.map DString),
-                 []
-               ))
-           return Dval.list (KTTuple(VT.string, VT.list VT.string, [])) found
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "pmUnresolvedNames" 0
+      typeParams = []
+      parameters =
+        [ Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
+      returnType = TList(TTuple(TString, TList TString, []))
+      description =
+        "For each op still holding unresolved name references, its content hash and those names."
+      fn =
+        (function
+        | _, _, _, [| DList(_vt, ops) |] ->
+          uply {
+            // Reports; decides nothing. Whether an unresolved name should stop a commit is a decision, and
+            // decisions live in Dark -- see `Cli.Commit`.
+            let found =
+              ops
+              |> List.choose PT2DT.PackageOp.fromDT
+              |> List.choose LibDB.UnresolvedCheck.inOp
+              |> List.map (fun (hash, names) ->
+                DTuple(
+                  DString hash,
+                  Dval.list KTString (names |> List.map DString),
+                  []
+                ))
+            return Dval.list (KTTuple(VT.string, VT.list VT.string, [])) found
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Pure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
-    mk
-      "scmAddOps"
-      [ Param.make
-          "branchId"
-          TUuid
-          "the branch these ops land on (main is `SCM.Ids.mainBranchId`). Passed rather than ambient so a caller can author onto a branch it isn't sitting on -- which is what sync does"
-        Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
-      (TypeReference.result TInt TString)
-      ("Add package ops to <param branchId>, uncommitted. Returns the "
-       + "number inserted; duplicates are skipped, since an op's id is its content.")
-      Impure
-      (function
-       | exeState, _, _, [| DUuid branchIdGuid; DList(_vtTODO, ops) |] ->
-         uply {
-           try
-             let ops = ops |> List.choose PT2DT.PackageOp.fromDT
+    { name = fn "scmAddOps" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "branchId"
+            TUuid
+            "the branch these ops land on (main is `SCM.Branch.mainBranchId`). Passed rather than ambient so a caller can author onto a branch it isn't sitting on -- which is what sync does"
+          Param.make "ops" (TList(TCustomType(NR.ok (packageOpTypeName ()), []))) "" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Add package ops to <param branchId>, uncommitted. Returns the "
+        + "number inserted; duplicates are skipped, since an op's id is its content."
+      fn =
+        let resultOk = Dval.resultOk KTInt KTString
+        let resultError = Dval.resultError KTInt KTString
+        (function
+        | exeState, _, _, [| DUuid branchIdGuid; DList(_vtTODO, ops) |] ->
+          uply {
+            try
+              let ops = ops |> List.choose PT2DT.PackageOp.fromDT
 
-             let branchId = PT.BranchId.Id branchIdGuid
+              let branchId = PT.BranchId.Id branchIdGuid
 
-             // Branch: the edit lands on the BRANCH, stored effective=0 and tagged, never folded into
-             // main. Hashes stabilize exactly as the main path does, or a merged value's
-             // `package_values` (keyed by AddValue) and `locations` (keyed by SetName) disagree and the
-             // value cannot be found.
-             if not branchId.IsMain then
-               // Refuse, rather than write: a merged or archived branch must not be REVIVED by an
-               // edit landing on it. A workbench still holding the id after a merge in another shell
-               // would otherwise put its next edit on a branch nothing will ever merge again.
-               match! LibDB.Branches.isFinished branchId with
-               | true ->
-                 return
-                   resultError (
-                     Dval.string
-                       $"branch {branchId} has been merged or archived; `dark switch <name>` starts a new one"
-                   )
-               | false ->
+              // Branch: the edit lands on the BRANCH, stored effective=0 and tagged, never folded into
+              // main. Hashes stabilize exactly as the main path does, or a merged value's
+              // `package_values` (keyed by AddValue) and `locations` (keyed by SetName) disagree and the
+              // value cannot be found.
+              if not branchId.IsMain then
+                // Refuse, rather than write: a merged or archived branch must not be REVIVED by an
+                // edit landing on it. A workbench still holding the id after a merge in another shell
+                // would otherwise put its next edit on a branch nothing will ever merge again.
+                match! LibDB.Branches.isFinished branchId with
+                | true ->
+                  return
+                    resultError (
+                      Dval.string
+                        $"branch {branchId} has been merged or archived; `dark switch <name>` starts a new one"
+                    )
+                | false ->
 
-                 do! LibDB.Branches.registerIfNew branchId "" PT.BranchId.Main
+                  do! LibDB.Branches.registerIfNew branchId "" PT.BranchId.Main
 
-                 let stabilized = LibDB.HashStabilization.computeRealHashes ops
-                 let! n = LibDB.Branches.storeDeltaOps branchId stabilized
-                 // The parent's current hash per name touched, so a later merge can tell whether the
-                 // parent moved the same name.
-                 let! parentId = LibDB.Branches.parentOf branchId
-                 do! LibDB.Branches.recordNameBases branchId parentId stabilized
-                 // Content folds into the shared content tables; the NAME layer is what a branch
-                 // keeps to itself. Needed so an expression-valued branch value has an rt_dval to
-                 // eval, and so propagation can see the branch item's dependency edges.
-                 do! foldContentOps exeState stabilized
-                 do! refreshOverlayFor branchId
-                 return resultOk (Dval.int (bigint (int n)))
+                  let stabilized = LibDB.HashStabilization.computeRealHashes ops
+                  let! n = LibDB.Branches.storeDeltaOps branchId stabilized
+                  // The parent's current hash per name touched, so a later merge can tell whether the
+                  // parent moved the same name.
+                  let! parentId = LibDB.Branches.parentOf branchId
+                  do! LibDB.Branches.recordNameBases branchId parentId stabilized
+                  // Content (Add*, never SetName) folds into the shared content tables; the NAME layer is
+                  // what a branch keeps to itself. Needed so an expression-valued branch value has an
+                  // rt_dval to eval, and so propagation can see the branch item's dependency edges.
+                  let contentOps =
+                    stabilized
+                    |> List.filter (fun op ->
+                      match op with
+                      | PT.PackageOp.AddValue _
+                      | PT.PackageOp.AddFn _
+                      | PT.PackageOp.AddType _ -> true
+                      | _ -> false)
+                  if not (List.isEmpty contentOps) then
+                    do! LibDB.PackageOpPlayback.applyOps contentOps
+                    let builtins : Builtins =
+                      { values = exeState.values.builtIn
+                        fns = exeState.fns.builtIn }
+                    let! _ =
+                      LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
+                    ()
+                  // Move the overlay only for the branch this process is on; writing to another branch
+                  // must not change what this caller resolves against. Other branches are memoized, so
+                  // forget them rather than leave a stale answer.
+                  if LibDB.PackageManager.currentBranchId () = branchId then
+                    let! all = LibDB.Branches.loadDeltaOps branchId
+                    LibDB.PackageManager.setBranchOverlay all
+                  else
+                    LibDB.PackageManager.forgetBranch branchId
+                  return resultOk (Dval.int (bigint (int n)))
 
-             else
-               // Stabilize before inserting. Raw ops carry provisional hashes, so their SetName
-               // targets would too, and the only thing that repairs those is `WipRefresh.refresh`
-               // rewriting the ENTIRE log.
-               let stabilizedOps = LibDB.HashStabilization.computeRealHashes ops
+              else
+                // Stabilize before inserting. Raw ops carry provisional hashes, so their SetName
+                // targets would too, and the only thing that repairs those is `WipRefresh.refresh`
+                // rewriting the ENTIRE log.
+                let stabilizedOps = LibDB.HashStabilization.computeRealHashes ops
 
-               // Everything lands uncommitted; `commit` is a separate step.
-               let! insertedCount =
-                 LibDB.Inserts.insertAndApplyOpsAsWip stabilizedOps
+                // Everything lands uncommitted; `commit` is a separate step.
+                let! insertedCount =
+                  LibDB.Inserts.insertAndApplyOpsAsWip stabilizedOps
 
-               // Refresh the EXISTING draft: re-resolve names and recompute SCC-aware hashes now
-               // that new items exist. This is the forward-ref case: an earlier draft item that
-               // references THIS newly-authored one.
-               let! _refreshed = LibDB.WipRefresh.refresh pm
+                // Refresh the EXISTING draft: re-resolve names and recompute SCC-aware hashes now
+                // that new items exist. This is the forward-ref case: an earlier draft item that
+                // references THIS newly-authored one.
+                let! _refreshed = LibDB.WipRefresh.refresh pm
 
-               // Populate `rt_dval` for any package_values rows still
-               // NULL after this insert+refresh. `applyAddValue` always
-               // inserts NULL and Phase-3 `evaluateAllValues` only runs
-               // at startup when there are unapplied ops. Without this
-               // step, a CLI-added value that references another value
-               // (qualified or bare) would fail at eval with a NULL
-               // rt_dval until the next cold restart.
-               let! _ =
-                 LibDB.Seed.evaluateAllValues
-                   exeState.builtins
-                   LibDB.PackageManager.rt
+                // Populate `rt_dval` for any package_values rows still
+                // NULL after this insert+refresh. `applyAddValue` always
+                // inserts NULL and Phase-3 `evaluateAllValues` only runs
+                // at startup when there are unapplied ops. Without this
+                // step, a CLI-added value that references another value
+                // (qualified or bare) would fail at eval with a NULL
+                // rt_dval until the next cold restart.
+                let! _ =
+                  LibDB.Seed.evaluateAllValues
+                    exeState.builtins
+                    LibDB.PackageManager.rt
 
-               return resultOk (Dval.int (bigint insertedCount))
-           with ex ->
-             return resultError (Dval.string ex.Message)
-         }
-       | _ -> incorrectArgs ())
+                return resultOk (Dval.int (bigint insertedCount))
+            with ex ->
+              return resultError (Dval.string ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Which branch is THIS process on. Set by `--branch <id>` or the persistent
     // `current_branch`, both resolved in the CLI entry point before any Dark runs. Dark can't read it any
     // other way: it's process state, not a row, and `configGet "current_branch"` misses the flag form.
-    mk
-      "scmCurrentBranch"
-      [ Param.make "unit" TUnit "" ]
-      TUuid
-      "The branch this process is on, as an id."
-      Impure
-      (function
-       | _, _, _, [| DUnit |] ->
-         uply { return DUuid (LibDB.PackageManager.currentBranchId ()).Guid }
-       | _ -> incorrectArgs ())
+    { name = fn "scmCurrentBranch" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TUuid
+      description = "The branch this process is on, as an id."
+      fn =
+        (function
+        | _, _, _, [| DUnit |] ->
+          uply { return DUuid (LibDB.PackageManager.currentBranchId ()).Guid }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Turn a branch NAME into the id everything below the CLI refers to, starting the branch if that
@@ -296,25 +279,31 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     //
     // One implementation, called from both languages, because a second one that resolved names even
     // slightly differently would hand the same name two ids and split a branch in half.
-    mk
-      "scmResolveBranch"
-      [ Param.make "name" TString "the branch name a person typed"
-        Param.make
-          "parentId"
-          TUuid
-          "the branch id to parent a NEW branch to; `SCM.Ids.mainBranchId` at top level" ]
-      (TTuple(TUuid, TBool, []))
-      ("Resolves a branch name to its id, creating the branch if the name has no "
-       + "live one. Returns (id, wasCreated).")
-      Impure
-      (function
-       | _, _, _, [| DString name; DUuid parentIdGuid |] ->
-         uply {
-           let parentId = PT.BranchId.Id parentIdGuid
-           let! (id, created) = LibDB.Branches.resolveOrCreate name parentId
-           return DTuple(DUuid id.Guid, DBool created, [])
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmResolveBranch" 0
+      typeParams = []
+      parameters =
+        [ Param.make "name" TString "the branch name a person typed"
+          Param.make
+            "parentId"
+            TUuid
+            "the branch id to parent a NEW branch to; `SCM.Branch.mainBranchId` at top level" ]
+      returnType = TTuple(TUuid, TBool, [])
+      description =
+        "Resolves a branch name to its id, creating the branch if the name has no "
+        + "live one. Returns (id, wasCreated)."
+      fn =
+        (function
+        | _, _, _, [| DString name; DUuid parentIdGuid |] ->
+          uply {
+            let parentId = PT.BranchId.Id parentIdGuid
+            let! (id, created) = LibDB.Branches.resolveOrCreate name parentId
+            return DTuple(DUuid id.Guid, DBool created, [])
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Change which branch THIS process is on, without restarting it.
@@ -325,22 +314,28 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // display saying one thing and the behaviour doing another.
     //
     // Returns the branch it ended up on, so a caller reports what happened rather than what it asked for.
-    mk
-      "scmSelectBranch"
-      [ Param.make "branchId" TUuid "the branch to move this process to" ]
-      TUuid
-      ("Moves this process onto <param branchId>, loading that branch's delta ops "
-       + "as the overlay used for name resolution and execution. Returns the branch "
-       + "now active.")
-      Impure
-      (function
-       | _, _, _, [| DUuid branchIdGuid |] ->
-         uply {
-           let branchId = PT.BranchId.Id branchIdGuid
-           LibDB.PackageManager.selectBranch branchId
-           return DUuid branchId.Guid
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmSelectBranch" 0
+      typeParams = []
+      parameters =
+        [ Param.make "branchId" TUuid "the branch to move this process to" ]
+      returnType = TUuid
+      description =
+        "Moves this process onto <param branchId>, loading that branch's delta ops "
+        + "as the overlay used for name resolution and execution. Returns the branch "
+        + "now active."
+      fn =
+        (function
+        | _, _, _, [| DUuid branchIdGuid |] ->
+          uply {
+            let branchId = PT.BranchId.Id branchIdGuid
+            LibDB.PackageManager.selectBranch branchId
+            return DUuid branchId.Guid
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Does this op bind a name, without decoding it?
@@ -349,256 +344,307 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // `SetName` and `Decision` move one; `AddFn` and friends carry content and answer nothing, and they
     // are also the big ones, so nearly all of that decoding was spent producing "no". This reads the tag
     // and returns, which measured a fifth of the pull off on its own.
-    mk
-      "packageOpBindsAName"
-      [ Param.make "blob" TBlob "a package_ops op_blob" ]
-      TBool
-      ("Whether <param blob> is an op that binds a name (SetName or Decision), read from "
-       + "its tag without decoding it. False for content ops and for anything unreadable.")
-      Impure
-      (function
-       | exeState, _, _, [| DBlob blobRef |] ->
-         uply {
-           let! bytes = LibExecution.Blob.readBytes exeState blobRef
-           return DBool(LibDB.Queries.opBindsAName bytes)
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "packageOpBindsAName" 0
+      typeParams = []
+      parameters = [ Param.make "blob" TBlob "a package_ops op_blob" ]
+      returnType = TBool
+      description =
+        "Whether <param blob> is an op that binds a name (SetName or Decision), read from "
+        + "its tag without decoding it. False for content ops and for anything unreadable."
+      fn =
+        function
+        | exeState, _, _, [| DBlob blobRef |] ->
+          uply {
+            let! bytes = LibExecution.Blob.readBytes exeState blobRef
+            return DBool(LibDB.Queries.opBindsAName bytes)
+          }
+        | _ -> incorrectArgs ()
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Decode one op_blob into a PackageOp, or None when this build cannot read it. Option rather
     // than raise, and deliberately with no raising variant: a synced store holds ops from other
     // builds in its own log on purpose, so every local reader meets them.
-    mk
-      "packageOpFromBlobOption"
-      [ Param.make "id" TUuid ""; Param.make "blob" TBlob "" ]
-      (TypeReference.option (TCustomType(NR.ok (packageOpTypeName ()), [])))
-      ("Deserialize an op_blob, or None when this build cannot read it. For blobs "
-       + "received from a peer, where an unreadable one must be skipped rather than "
-       + "fatal.")
-      Impure
-      (function
-       | exeState, _, _, [| DUuid id; DBlob blobRef |] ->
-         uply {
-           let! bytes = LibExecution.Blob.readBytes exeState blobRef
+    { name = fn "packageOpFromBlobOption" 0
+      typeParams = []
+      parameters = [ Param.make "id" TUuid ""; Param.make "blob" TBlob "" ]
+      returnType =
+        TypeReference.option (TCustomType(NR.ok (packageOpTypeName ()), []))
+      description =
+        "Deserialize an op_blob, or None when this build cannot read it. For blobs "
+        + "received from a peer, where an unreadable one must be skipped rather than "
+        + "fatal."
+      fn =
+        function
+        | exeState, _, _, [| DUuid id; DBlob blobRef |] ->
+          uply {
+            let! bytes = LibExecution.Blob.readBytes exeState blobRef
 
-           let decoded =
-             try
-               Some(LibDB.Queries.deserializeOp id bytes)
-             with _ ->
-               None
+            let decoded =
+              try
+                Some(LibDB.Queries.deserializeOp id bytes)
+              with _ ->
+                None
 
-           match decoded with
-           | Some op ->
-             return
-               Dval.optionSome
-                 (KTCustomType(packageOpTypeName (), []))
-                 (PT2DT.PackageOp.toDT op)
-           | None -> return Dval.optionNone (KTCustomType(packageOpTypeName (), []))
-         }
-       | _ -> incorrectArgs ())
+            match decoded with
+            | Some op ->
+              return
+                Dval.optionSome
+                  (KTCustomType(packageOpTypeName (), []))
+                  (PT2DT.PackageOp.toDT op)
+            | None -> return Dval.optionNone (KTCustomType(packageOpTypeName (), []))
+          }
+        | _ -> incorrectArgs ()
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Bulk-import synced ops (id, op_blob-hex, origin_ts) in ONE transaction, then FOLD them
     // so they take effect. The perf path for transport: Dark's per-op insert crawls on a real
     // log, so hex-decode + bulk INSERT + fold live in F#. (Sync moves ops and they apply --
     // no approval gate; that's a later effort.) Returns count newly inserted.
-    mk
-      "scmImportOps"
-      [ Param.make
-          "commitHash"
-          TString
-          "commit the arriving ops into this commit (\"\" = leave uncommitted)"
-        Param.make
-          "records"
-          (TList(TTuple(TString, TString, [ TString ])))
-          "(id, blobHex, originTs) triples" ]
-      (TypeReference.result TInt TString)
-      "Bulk-import synced ops in one transaction, then fold them in. Returns count inserted."
-      Impure
-      (function
-       | _, _, _, [| DString commitHash; DList(_, records) |] ->
-         uply {
-           try
-             let! n = LibDB.Inserts.importOpsBulk commitHash (opRecords records)
-             let! _ = LibDB.Seed.applyUnappliedOps () // fold the just-inserted (effective=1) ops
-             return resultOk (Dval.int (bigint n))
-           with ex ->
-             return resultError (Dval.string ex.Message)
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmImportOps" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "commitHash"
+            TString
+            "commit the arriving ops into this commit (\"\" = leave uncommitted)"
+          Param.make
+            "records"
+            (TList(TTuple(TString, TString, [ TString ])))
+            "(id, blobHex, originTs) triples" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Bulk-import synced ops in one transaction, then fold them in. Returns count inserted."
+      fn =
+        let resultOk = Dval.resultOk KTInt KTString
+        let resultError = Dval.resultError KTInt KTString
+        (function
+        | _, _, _, [| DString commitHash; DList(_, records) |] ->
+          uply {
+            try
+              let! n = LibDB.Inserts.importOpsBulk commitHash (opRecords records)
+              let! _ = LibDB.Seed.applyUnappliedOps () // fold the just-inserted (effective=1) ops
+              return resultOk (Dval.int (bigint n))
+            with ex ->
+              return resultError (Dval.string ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // RELAY store: bulk-insert ops + record ownership (owner) in one transaction, NO fold
     // (a relay serves blobs, not projections). The perf path for a relay recording pushes.
-    mk
-      "scmStoreOps"
-      [ Param.make
-          "owner"
-          TString
-          "the pusher's identity (\"\" = don't record ownership)"
-        Param.make
-          "records"
-          (TList(TTuple(TString, TString, [ TString ])))
-          "(id, blobHex, originTs) triples" ]
-      (TypeReference.result TInt TString)
-      "Relay store: bulk-insert ops + record ownership, no fold. Returns count stored."
-      Impure
-      (function
-       | _, _, _, [| DString owner; DList(_, records) |] ->
-         uply {
-           try
-             let! n = LibDB.Inserts.storeOpsWithOwner owner (opRecords records)
-             return resultOk (Dval.int (bigint n))
-           with ex ->
-             return resultError (Dval.string ex.Message)
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmStoreOps" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "owner"
+            TString
+            "the pusher's identity (\"\" = don't record ownership)"
+          Param.make
+            "records"
+            (TList(TTuple(TString, TString, [ TString ])))
+            "(id, blobHex, originTs) triples" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Relay store: bulk-insert ops + record ownership, no fold. Returns count stored."
+      fn =
+        let resultOk = Dval.resultOk KTInt KTString
+        let resultError = Dval.resultError KTInt KTString
+        (function
+        | _, _, _, [| DString owner; DList(_, records) |] ->
+          uply {
+            try
+              let! n = LibDB.Inserts.storeOpsWithOwner owner (opRecords records)
+              return resultOk (Dval.int (bigint n))
+            with ex ->
+              return resultError (Dval.string ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
     // One page of the sync wire format, rendered straight from the database.
-    mk
-      "scmExportPageJson"
-      [ Param.make "sinceSeq" TInt64 "Return ops after this rowid"
-        Param.make "limit" TInt64 "How many ops at most"
-        Param.make "formatVersion" TInt64 "Wire format version to declare"
-        Param.make "darkBuild" TString "Build that wrote this bundle"
-        Param.make "kernelHash" TString "ABI fingerprint of that build"
-        Param.make "owner" TString "This instance's identity" ]
-      (TTuple(TString, TInt64, []))
-      ("One page of the sync wire format as JSON, plus the cursor to hand back. "
-       + "Reads and encodes the ops without turning any of them into Dark values.")
-      Impure
-      (function
-       | _,
-         _,
-         _,
-         [| DInt64 sinceSeq
-            DInt64 limit
-            DInt64 formatVersion
-            DString darkBuild
-            DString kernelHash
-            DString owner |] ->
-         uply {
-           let! (json, cursor) =
-             LibDB.Queries.exportPageJson
-               sinceSeq
-               limit
-               formatVersion
-               darkBuild
-               kernelHash
-               owner
+    { name = fn "scmExportPageJson" 0
+      typeParams = []
+      parameters =
+        [ Param.make "sinceSeq" TInt64 "Return ops after this rowid"
+          Param.make "limit" TInt64 "How many ops at most"
+          Param.make "formatVersion" TInt64 "Wire format version to declare"
+          Param.make "darkBuild" TString "Build that wrote this bundle"
+          Param.make "kernelHash" TString "ABI fingerprint of that build"
+          Param.make "owner" TString "This instance's identity" ]
+      returnType = TTuple(TString, TInt64, [])
+      description =
+        "One page of the sync wire format as JSON, plus the cursor to hand back. "
+        + "Reads and encodes the ops without turning any of them into Dark values."
+      fn =
+        function
+        | _,
+          _,
+          _,
+          [| DInt64 sinceSeq
+             DInt64 limit
+             DInt64 formatVersion
+             DString darkBuild
+             DString kernelHash
+             DString owner |] ->
+          uply {
+            let! (json, cursor) =
+              LibDB.Queries.exportPageJson
+                sinceSeq
+                limit
+                formatVersion
+                darkBuild
+                kernelHash
+                owner
 
-           return DTuple(DString json, DInt64 cursor, [])
-         }
-       | _ -> incorrectArgs ())
+            return DTuple(DString json, DInt64 cursor, [])
+          }
+        | _ -> incorrectArgs ()
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
-    mk
-      "scmGetCommitNamedOps"
-      [ Param.make "commitHash" TString "Commit hash"
-        Param.make "limit" TInt "How many ops to return" ]
-      (TTuple(TList(TCustomType(NR.ok (packageOpTypeName ()), [])), TInt, []))
-      ("The ops in a commit that name or deprecate something, capped at "
-       + "<param limit>, plus how many there are in total. A commit can hold "
-       + "tens of thousands of ops and a caller showing a summary wants a "
-       + "dozen, so the cap applies before they become Dark values.")
-      Impure
-      (function
-       | _, vm, _, [| DString commitHash; DInt limit |] ->
-         uply {
-           let! ops = LibDB.Queries.getCommitOps (PT.Hash commitHash)
-           let named =
-             ops
-             |> List.filter (fun op ->
-               match op with
-               | PT.PackageOp.SetName _
-               | PT.PackageOp.Unbind _
-               | PT.PackageOp.Deprecate _ -> true
-               | _ -> false)
-           let shown =
-             named
-             |> List.truncate (max 0 (intToInt32 vm limit))
-             |> List.map PT2DT.PackageOp.toDT
-           return
-             DTuple(
-               Dval.list (packageOpKT ()) shown,
-               Dval.int (bigint (List.length named)),
-               []
-             )
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmGetCommitNamedOps" 0
+      typeParams = []
+      parameters =
+        [ Param.make "commitHash" TString "Commit hash"
+          Param.make "limit" TInt "How many ops to return" ]
+      returnType =
+        TTuple(TList(TCustomType(NR.ok (packageOpTypeName ()), [])), TInt, [])
+      description =
+        "The ops in a commit that name or deprecate something, capped at "
+        + "<param limit>, plus how many there are in total. A commit can hold "
+        + "tens of thousands of ops and a caller showing a summary wants a "
+        + "dozen, so the cap applies before they become Dark values."
+      fn =
+        function
+        | _, vm, _, [| DString commitHash; DInt limit |] ->
+          uply {
+            let! ops = LibDB.Queries.getCommitOps (PT.Hash commitHash)
+            let named =
+              ops
+              |> List.filter (fun op ->
+                match op with
+                | PT.PackageOp.SetName _
+                | PT.PackageOp.Unbind _
+                | PT.PackageOp.Deprecate _ -> true
+                | _ -> false)
+            let shown =
+              named
+              |> List.truncate (max 0 (intToInt32 vm limit))
+              |> List.map PT2DT.PackageOp.toDT
+            return
+              DTuple(
+                Dval.list (packageOpKT ()) shown,
+                Dval.int (bigint (List.length named)),
+                []
+              )
+          }
+        | _ -> incorrectArgs ()
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
     // The REBUILD half of a draft rewrite, and the reason it is not in Dark: it re-mints every surviving
     // op's id (hashing) and re-inserts with the original stamps, then re-folds. The delete it performs
     // spares ops this build cannot decode, BY ID, which is the invariant that stops authoring eating a
     // peer's synced work. Dark decides what survives; this executes it.
-    mk
-      "scmRebuildDraftKeeping"
-      [ Param.make "keptIds" (TList TString) "op ids that survive the rewrite" ]
-      (TypeReference.result TUnit TString)
-      ("Delete main's uncommitted ops and re-insert the ones named by <param "
-       + "keptIds>, preserving their stamps, then re-fold. Ops this build cannot "
-       + "decode are never deleted. Ok on success; Error with the message otherwise.")
-      Impure
-      (function
-       | _, _, _, [| DList(_, ids) |] ->
-         uply {
-           try
-             // Every id must parse. This list is what SURVIVES a delete of main's whole draft, so
-             // dropping an unreadable one silently WIDENS the delete: one malformed id would be one
-             // op deleted for good. Refuse the call instead.
-             let parsed =
-               ids
-               |> List.map (fun d ->
-                 match d with
-                 | DString s ->
-                   match System.Guid.TryParse s with
-                   | true, g -> Ok g
-                   | _ -> Error s
-                 | other -> Error(string other))
+    { name = fn "scmRebuildDraftKeeping" 0
+      typeParams = []
+      parameters =
+        [ Param.make "keptIds" (TList TString) "op ids that survive the rewrite" ]
+      returnType = TypeReference.result TUnit TString
+      description =
+        "Delete main's uncommitted ops and re-insert the ones named by <param "
+        + "keptIds>, preserving their stamps, then re-fold. Ops this build cannot "
+        + "decode are never deleted. Ok on success; Error with the message otherwise."
+      fn =
+        (function
+        | _, _, _, [| DList(_, ids) |] ->
+          uply {
+            try
+              // Every id must parse. This list is what SURVIVES a delete of main's whole draft, so
+              // dropping an unreadable one silently WIDENS the delete: one malformed id would be one
+              // op deleted for good. Refuse the call instead.
+              let parsed =
+                ids
+                |> List.map (fun d ->
+                  match d with
+                  | DString s ->
+                    match System.Guid.TryParse s with
+                    | true, g -> Ok g
+                    | _ -> Error s
+                  | other -> Error(string other))
 
-             match
-               parsed
-               |> List.tryPick (function
-                 | Error s -> Some s
-                 | Ok _ -> None)
-             with
-             | Some bad ->
-               return
-                 Dval.resultError
-                   KTUnit
-                   KTString
-                   (DString $"not an op id: {bad}; nothing was changed")
-             | None ->
+              match
+                parsed
+                |> List.tryPick (function
+                  | Error s -> Some s
+                  | Ok _ -> None)
+              with
+              | Some bad ->
+                return
+                  Dval.resultError
+                    KTUnit
+                    KTString
+                    (DString $"not an op id: {bad}; nothing was changed")
+              | None ->
 
-               let kept =
-                 parsed
-                 |> List.choose (function
-                   | Ok g -> Some g
-                   | Error _ -> None)
-                 |> Set.ofList
+                let kept =
+                  parsed
+                  |> List.choose (function
+                    | Ok g -> Some g
+                    | Error _ -> None)
+                  |> Set.ofList
 
-               do! LibDB.Draft.rebuild kept
-               return Dval.resultOk KTUnit KTString DUnit
-           with e ->
-             return Dval.resultError KTUnit KTString (DString e.Message)
-         }
-       | _ -> incorrectArgs ())
+                do! LibDB.Draft.rebuild kept
+                return Dval.resultOk KTUnit KTString DUnit
+            with e ->
+              return Dval.resultError KTUnit KTString (DString e.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
     // Dark edits `locations` directly on the surgical discard path, which is the one place outside the
     // fold that does. The in-memory caches key on what that table says, so whoever changes it has to say
     // so; F# does this inline (`Caching.invalidateAll`), and Dark needs the same reach.
-    mk
-      "scmInvalidateCaches"
-      [ Param.make "unit" TUnit "" ]
-      TUnit
-      ("Drop the in-memory package caches, after a write that changed `locations` "
-       + "without going through the fold.")
-      Impure
-      (function
-       | _, _, _, [| DUnit |] ->
-         uply {
-           LibDB.Caching.invalidateAll ()
-           return DUnit
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmInvalidateCaches" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TUnit
+      description =
+        "Drop the in-memory package caches, after a write that changed `locations` "
+        + "without going through the fold."
+      fn =
+        (function
+        | _, _, _, [| DUnit |] ->
+          uply {
+            LibDB.Caching.invalidateAll ()
+            return DUnit
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
     // ARCHIVING a branch travels, for the same reason merging does: on the other machine the branch is
     // still sitting there looking like live work. The archive itself is Dark's -- `SCM.Branches.archive`
@@ -608,23 +654,28 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     //
     // Separate from the merge path: only two events exist, and a `BranchEventKind`
     // crossing the boundary would need DU marshalling for one caller each.
-    mk
-      "scmRecordBranchArchived"
-      [ Param.make "branchId" TUuid "the branch that was archived" ]
-      TUuid
-      "Author the op that says this branch was archived, so other machines learn it."
-      Impure
-      (function
-       | _, _, _, [| DUuid branchIdGuid |] ->
-         uply {
-           let branchId = PT.BranchId.Id branchIdGuid
-           // The event's id, so the Dark caller can COMMIT it. Left uncommitted it sits in main's
-           // draft, where `status` (which counts bindings) reads clean and the next unrelated commit
-           // sweeps it up under a message about something else.
-           let! eventId = recordBranchEvent branchId PT.Archived
-           return DUuid eventId
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmRecordBranchArchived" 0
+      typeParams = []
+      parameters = [ Param.make "branchId" TUuid "the branch that was archived" ]
+      returnType = TUuid
+      description =
+        "Author the op that says this branch was archived, so other machines learn it."
+      fn =
+        (function
+        | _, _, _, [| DUuid branchIdGuid |] ->
+          uply {
+            let branchId = PT.BranchId.Id branchIdGuid
+            // The event's id, so the Dark caller can COMMIT it. Left uncommitted it sits in main's
+            // draft, where `status` (which counts bindings) reads clean and the next unrelated commit
+            // sweeps it up under a message about something else.
+            let! eventId = recordBranchEvent branchId PT.Archived
+            return DUuid eventId
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Fold the ops a merge just made effective, and evaluate any values among them.
@@ -633,70 +684,89 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     // projections, and evaluating a merged value so it has an `rt_dval` to run. Everything
     // around it -- whether a merge is allowed, which arm it takes, flipping the frontier effective,
     // marking it merged -- is decided and done in Dark (`SCM.PackageOps.mergeBranch`).
-    mk
-      "scmApplyMergedOps"
-      [ Param.make "unit" TUnit "" ]
-      (TypeReference.result TUnit TString)
-      "Fold the newly-effective ops into main's projections and evaluate merged values."
-      Impure
-      (function
-       | exeState, _, _, [| DUnit |] ->
-         uply {
-           try
-             let! _ = LibDB.Seed.applyUnappliedOps ()
-             let builtins : Builtins =
-               { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
-             let! _ = LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
-             return Dval.resultOk KTUnit KTString DUnit
-           with ex ->
-             return Dval.resultError KTUnit KTString (DString ex.Message)
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmApplyMergedOps" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType = TypeReference.result TUnit TString
+      description =
+        "Fold the newly-effective ops into main's projections and evaluate merged values."
+      fn =
+        (function
+        | exeState, _, _, [| DUnit |] ->
+          uply {
+            try
+              let! _ = LibDB.Seed.applyUnappliedOps ()
+              let builtins : Builtins =
+                { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
+              let! _ = LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
+              return Dval.resultOk KTUnit KTString DUnit
+            with ex ->
+              return Dval.resultError KTUnit KTString (DString ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
-    mk
-      "scmContentOpId"
-      [ Param.make "kind" TString "'fn', 'type' or 'value'"
-        Param.make "hash" TString "the content hash" ]
-      TUuid
-      "The id of the Add op that adds this content. An Add op is identified by what it adds, so the id follows from the kind and the hash alone; a branch bundle uses this to carry the content its names point at."
-      Pure
-      (function
-       | _, _, _, [| DString kind; DString hash |] ->
-         let tag =
-           match kind with
-           | "fn" -> 0uy
-           | "type" -> 1uy
-           | "value" -> 2uy
-           | other ->
-             Exception.raiseInternal "scmContentOpId: unknown kind" [ "kind", other ]
-         let (PT.Hash h) =
-           LibSerialization.Hashing.Hashing.contentOpHash tag (PT.Hash hash)
-         Ply(DUuid(System.Guid(System.Convert.FromHexString(h)[0..15])))
-       | _ -> incorrectArgs ())
+    { name = fn "scmContentOpId" 0
+      typeParams = []
+      parameters =
+        [ Param.make "kind" TString "'fn', 'type' or 'value'"
+          Param.make "hash" TString "the content hash" ]
+      returnType = TUuid
+      description =
+        "The id of the Add op that adds this content. An Add op is identified by what it adds, so the id follows from the kind and the hash alone; a branch bundle uses this to carry the content its names point at."
+      fn =
+        (function
+        | _, _, _, [| DString kind; DString hash |] ->
+          let tag =
+            match kind with
+            | "fn" -> 0uy
+            | "type" -> 1uy
+            | "value" -> 2uy
+            | other ->
+              Exception.raiseInternal
+                "scmContentOpId: unknown kind"
+                [ "kind", other ]
+          let (PT.Hash h) =
+            LibSerialization.Hashing.Hashing.contentOpHash tag (PT.Hash hash)
+          Ply(DUuid(System.Guid(System.Convert.FromHexString(h)[0..15])))
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Pure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
-    mk
-      "scmRecordBranchMerged"
-      [ Param.make "branchId" TUuid "the branch that was merged"
-        Param.make "ops" (TList TUuid) "the ids of the ops the merge moved" ]
-      TUuid
-      "Author the op that says this branch was merged, naming what it moved, so other machines learn it. Returns the event op's id."
-      Impure
-      (function
-       | _, _, _, [| DUuid branchIdGuid; DList(_, ops) |] ->
-         uply {
-           let ids =
-             ops
-             |> List.choose (fun d ->
-               match d with
-               | DUuid g -> Some g
-               | _ -> None)
-           let! eventId =
-             recordBranchEvent (PT.BranchId.Id branchIdGuid) (PT.Merged ids)
-           return DUuid eventId
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmRecordBranchMerged" 0
+      typeParams = []
+      parameters =
+        [ Param.make "branchId" TUuid "the branch that was merged"
+          Param.make "ops" (TList TUuid) "the ids of the ops the merge moved" ]
+      returnType = TUuid
+      description =
+        "Author the op that says this branch was merged, naming what it moved, so other machines learn it. Returns the event op's id."
+      fn =
+        (function
+        | _, _, _, [| DUuid branchIdGuid; DList(_, ops) |] ->
+          uply {
+            let ids =
+              ops
+              |> List.choose (fun d ->
+                match d with
+                | DUuid g -> Some g
+                | _ -> None)
+            let! eventId =
+              recordBranchEvent (PT.BranchId.Id branchIdGuid) (PT.Merged ids)
+            return DUuid eventId
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // Store ONE op on a branch under a stamp the caller chose, effective=0 and tagged like any other
@@ -705,133 +775,167 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
     //
     // The stamp is a parameter rather than "now" because these ops lose or win by it. `storeDeltaOps`
     // stamps for you and is right for authoring; this is for an op whose stamp is the point.
-    mk
-      "scmStoreBranchOpStamped"
-      [ Param.make "branchId" TUuid "the branch the op lands on"
-        Param.make
-          "op"
-          (TCustomType(NR.ok (packageOpTypeName ()), []))
-          "the op to store"
-        Param.make "stamp" TString "its origin_ts, which is what LWW compares" ]
-      (TypeReference.result TInt TString)
-      "Store one op on a branch under the given stamp. Returns the number stored."
-      Impure
-      (function
-       | _, _, _, [| DUuid branchIdGuid; opDval; DString stamp |] ->
-         uply {
-           try
-             match PT2DT.PackageOp.fromDT opDval with
-             | None -> return resultError (Dval.string "not a package op")
-             | Some op ->
-               let! n =
-                 LibDB.Branches.storeDeltaOpsStamped
-                   (PT.BranchId.Id branchIdGuid)
-                   [ (op, stamp) ]
-               return resultOk (Dval.int (bigint (int n)))
-           with ex ->
-             return resultError (Dval.string ex.Message)
-         }
-       | _ -> incorrectArgs ())
+    { name = fn "scmStoreBranchOpStamped" 0
+      typeParams = []
+      parameters =
+        [ Param.make "branchId" TUuid "the branch the op lands on"
+          Param.make
+            "op"
+            (TCustomType(NR.ok (packageOpTypeName ()), []))
+            "the op to store"
+          Param.make "stamp" TString "its origin_ts, which is what LWW compares" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Store one op on a branch under the given stamp. Returns the number stored."
+      fn =
+        let resultOk = Dval.resultOk KTInt KTString
+        let resultError = Dval.resultError KTInt KTString
+        (function
+        | _, _, _, [| DUuid branchIdGuid; opDval; DString stamp |] ->
+          uply {
+            try
+              match PT2DT.PackageOp.fromDT opDval with
+              | None -> return resultError (Dval.string "not a package op")
+              | Some op ->
+                let! n =
+                  LibDB.Branches.storeDeltaOpsStamped
+                    (PT.BranchId.Id branchIdGuid)
+                    [ (op, stamp) ]
+                return resultOk (Dval.int (bigint (int n)))
+            with ex ->
+              return resultError (Dval.string ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated }
 
 
     // IMPORT a branch (from a portable bundle): register it, store its ops effective=0 + tag the
     // frontier (NOT folded into main), and re-derive the per-name bases against THIS instance's main
     // (recordNameBases -- the base is the destination's fork point). Cross-instance "branches follow
     // me". Returns count stored.
-    mk
-      "scmImportBranchOps"
-      [ Param.make "branchId" TUuid ""
-        Param.make "name" TString ""
-        Param.make "parent" TString ""
-        Param.make
-          "records"
-          (TList(TTuple(TString, TString, [ TString ])))
-          "(id, blobHex, originTs) triples" ]
-      (TypeReference.result TInt TString)
-      "Import a branch bundle: register + store its ops effective=0 + tag + re-base. Returns count."
-      Impure
-      (function
-       | exeState,
-         _,
-         _,
-         [| DUuid branchIdGuid; DString name; DString parentText; DList(_, records) |] ->
-         uply {
-           let branchId = PT.BranchId.Id branchIdGuid
-           // The parent arrives inside a peer's bundle, so it is text this process did not write.
-           // A value that is not an id means main, the same as a branch with no parent recorded;
-           // raising here would fail an import over a field that is only used for the parent link.
-           let parent =
-             PT.BranchId.Parse parentText |> Option.defaultValue PT.BranchId.Main
-           try
-             // An op this build cannot decode is stored RAW and inert rather than refusing the bundle,
-             // the way main sync stores such ops: present, a later build reads it. A branch three ops
-             // short does resolve differently than on the sender, but that holds for main sync too,
-             // and refusing would leave the branch absent altogether.
-             //
-             // The record's `ts` is the op's ORIGIN stamp and must survive; re-stamping locally would make
-             // this machine look like the author and resolve LWW by who imported last.
-             let parsed =
-               opRecords records
-               |> List.map (fun (id, hex, ts) ->
-                 (System.Guid.Parse id, System.Convert.FromHexString hex, ts))
+    { name = fn "scmImportBranchOps" 0
+      typeParams = []
+      parameters =
+        [ Param.make "branchId" TUuid ""
+          Param.make "name" TString ""
+          Param.make "parent" TString ""
+          Param.make
+            "records"
+            (TList(TTuple(TString, TString, [ TString ])))
+            "(id, blobHex, originTs) triples" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Import a branch bundle: register + store its ops effective=0 + tag + re-base. Returns count."
+      fn =
+        let resultOk = Dval.resultOk KTInt KTString
+        let resultError = Dval.resultError KTInt KTString
+        (function
+        | exeState,
+          _,
+          _,
+          [| DUuid branchIdGuid; DString name; DString parentText; DList(_, records) |] ->
+          uply {
+            let branchId = PT.BranchId.Id branchIdGuid
+            // The parent arrives inside a peer's bundle, so it is text this process did not write.
+            // A value that is not an id means main, the same as a branch with no parent recorded;
+            // raising here would fail an import over a field that is only used for the parent link.
+            let parent =
+              PT.BranchId.Parse parentText |> Option.defaultValue PT.BranchId.Main
+            try
+              // An op this build cannot decode is stored RAW and inert rather than refusing the bundle,
+              // the way main sync stores such ops: present, a later build reads it. A branch three ops
+              // short does resolve differently than on the sender, but that holds for main sync too,
+              // and refusing would leave the branch absent altogether.
+              //
+              // The record's `ts` is the op's ORIGIN stamp and must survive; re-stamping locally would make
+              // this machine look like the author and resolve LWW by who imported last.
+              let parsed =
+                opRecords records
+                |> List.map (fun (id, hex, ts) ->
+                  (System.Guid.Parse id, System.Convert.FromHexString hex, ts))
 
-             // Shape first, then decode: the stored-inert note below claims ops were kept, and a
-             // malformed bundle is about to be refused whole.
-             if List.length parsed <> List.length records then
-               return
-                 resultError (
-                   Dval.string
-                     "a record was not an (id, blobHex, originTs) triple; nothing was imported"
-                 )
-             else
+              // Shape first, then decode: the stored-inert note below claims ops were kept, and a
+              // malformed bundle is about to be refused whole.
+              if List.length parsed <> List.length records then
+                return
+                  resultError (
+                    Dval.string
+                      "a record was not an (id, blobHex, originTs) triple; nothing was imported"
+                  )
+              else
 
-               let decoded =
-                 parsed
-                 |> List.map (fun (id, blob, ts) ->
-                   ((id, blob, ts), BS.PT.PackageOp.tryDeserialize id blob))
-               let stamped =
-                 decoded
-                 |> List.choose (fun ((_, _, ts), op) ->
-                   op |> Option.map (fun op -> (op, ts)))
-               let rawRecords =
-                 decoded
-                 |> List.choose (fun (record, op) ->
-                   if Option.isNone op then Some record else None)
+                let decoded =
+                  parsed
+                  |> List.map (fun (id, blob, ts) ->
+                    ((id, blob, ts), BS.PT.PackageOp.tryDeserialize id blob))
+                let stamped =
+                  decoded
+                  |> List.choose (fun ((_, _, ts), op) ->
+                    op |> Option.map (fun op -> (op, ts)))
+                let rawRecords =
+                  decoded
+                  |> List.choose (fun (record, op) ->
+                    if Option.isNone op then Some record else None)
 
-               if not (List.isEmpty rawRecords) then
-                 System.Console.Error.WriteLine(
-                   $"note: {List.length rawRecords} op(s) in this bundle were written in a format this build cannot "
-                   + "read, and are stored inert. They are kept, not dropped, so a later build can apply them."
-                 )
+                if not (List.isEmpty rawRecords) then
+                  System.Console.Error.WriteLine(
+                    $"note: {List.length rawRecords} op(s) in this bundle were written in a format this build cannot "
+                    + "read, and are stored inert. They are kept, not dropped, so a later build can apply them."
+                  )
 
-               do! LibDB.Branches.createBranch branchId name parent
-               let ops = stamped |> List.map fst
-               let! nDecoded = LibDB.Branches.storeDeltaOpsStamped branchId stamped
-               let! nRaw = LibDB.Branches.storeDeltaBlobsStamped branchId rawRecords
-               let n = nDecoded + nRaw
-               // Re-derive bases against THIS instance's parent state (the bundle's bases don't travel).
-               do! LibDB.Branches.recordNameBases branchId parent ops
+                do! LibDB.Branches.createBranch branchId name parent
+                let ops = stamped |> List.map fst
+                let! nDecoded = LibDB.Branches.storeDeltaOpsStamped branchId stamped
+                let! nRaw = LibDB.Branches.storeDeltaBlobsStamped branchId rawRecords
+                let n = nDecoded + nRaw
+                // Re-derive bases against THIS instance's parent state (the bundle's bases don't travel).
+                do! LibDB.Branches.recordNameBases branchId parent ops
 
-               // Fold the content ops exactly as authoring onto a branch does -- see
-               // scmAddOps: the overlay binds names, not bodies, so without this the
-               // imported branch is unusable.
-               do! foldContentOps exeState ops
+                // Fold the content ops (Add*, never SetName) exactly as authoring
+                // onto a branch does -- see scmAddOps: the overlay binds names, not
+                // bodies, so without this the imported branch is unusable.
+                let contentOps =
+                  ops
+                  |> List.filter (fun op ->
+                    match op with
+                    | PT.PackageOp.AddValue _
+                    | PT.PackageOp.AddFn _
+                    | PT.PackageOp.AddType _ -> true
+                    | _ -> false)
+                if not (List.isEmpty contentOps) then
+                  do! LibDB.PackageOpPlayback.applyOps contentOps
+                  let builtins : Builtins =
+                    { values = exeState.values.builtIn; fns = exeState.fns.builtIn }
+                  let! _ =
+                    LibDB.Seed.evaluateAllValues builtins LibDB.PackageManager.rt
+                  ()
 
-               // A merge event for this branch may already be in the log, folded against a store that
-               // had none of these ops (pull main, then pull the branch: the natural order). It
-               // DEFERRED itself for exactly this moment, so re-arm it and fold now rather than at
-               // the next startup, or the branch reads as live work that is already merged.
-               do! LibDB.Branches.undeferBranchEvents branchId
-               let! _ = LibDB.Seed.applyUnappliedOps ()
+                // A merge event for this branch may already be in the log, folded against a store that
+                // had none of these ops (pull main, then pull the branch: the natural order). It
+                // DEFERRED itself for exactly this moment, so re-arm it and fold now rather than at
+                // the next startup, or the branch reads as live work that is already merged.
+                do! LibDB.Branches.undeferBranchEvents branchId
+                let! _ = LibDB.Seed.applyUnappliedOps ()
 
-               // An overlay this process is already holding predates the import, so drop it rather
-               // than let a memoized read answer for the branch as it was before its ops arrived.
-               do! refreshOverlayFor branchId
-               return resultOk (Dval.int (bigint (int n)))
-           with ex ->
-             return resultError (Dval.string ex.Message)
-         }
-       | _ -> incorrectArgs ()) ]
+                // An overlay this process is already holding predates the import, so drop it rather than
+                // let a memoized read answer for the branch as it was before its ops arrived.
+                if LibDB.PackageManager.currentBranchId () = branchId then
+                  let! all = LibDB.Branches.loadDeltaOps branchId
+                  LibDB.PackageManager.setBranchOverlay all
+                else
+                  LibDB.PackageManager.forgetBranch branchId
+                return resultOk (Dval.int (bigint (int n)))
+            with ex ->
+              return resultError (Dval.string ex.Message)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      capabilities = LibExecution.Capabilities.noCaps
+      deprecated = NotDeprecated } ]
 
 
 /// One constant, two languages. Dark compares against this rather than spelling main's id, for the same

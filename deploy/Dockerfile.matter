@@ -1,31 +1,9 @@
-# The matter relay, as a deployable image.
+# The matter relay as a deployable image: one published binary and its runtime -- NOT the dev
+# container. The binary embeds the package seed, so a redeploy is safe: the store on the volume
+# survives and is topped up, and the relay's code comes from the binary, never from a client push.
 #
-# NOT the Dockerfile at the repo root: that one is the dev container, which carries a compiler, the
-# package sources and a shell you can work in. This is the opposite -- one published binary and the
-# runtime it needs.
-#
-# The binary embeds the package seed, so the image has no packages of its own to keep in sync. On first
-# boot it grows a store; on later boots it tops that store up with whatever this build added. That is what
-# makes a redeploy safe: the hosted ops on the volume survive, and the relay's own code comes from the
-# binary rather than from whatever a client last pushed.
-#
-# The publish output is copied OUT of the dev container first, because that is where the build happens
-# and `docker build` reads its context from the host:
-#   scripts/build/_dotnet-wrapper publish -c Release fsdark.sln
-#   docker cp <container>:/home/dark/app/backend/Build/out/Cli/Release/net10.0/publish/. rundir/deploy/
-#   cp deploy/Dockerfile.matter rundir/deploy/
-#   fly deploy rundir/deploy --config deploy/fly.toml --dockerfile Dockerfile.matter -a <app>
-#
-# The Dockerfile is COPIED INTO the payload because flyctl resolves `--dockerfile` against the build
-# context, not the working directory: passing `deploy/Dockerfile.matter` fails with "dockerfile
-# '<context>/deploy/Dockerfile.matter' not found", which reads like the file is missing.
-#
-# The build context IS the payload directory, hence the bare `COPY .` below.
-
-# `runtime`, not `runtime-deps`: this publish is framework-dependent, so the image has to carry .NET
-# itself. A self-contained publish would let this be `runtime-deps` and shave ~50MB, and
-# `scripts/build/build-release-cli-exes.sh` already produces one -- worth switching to once image size
-# matters.
+# Build: publish inside the dev container, `docker cp` the output to rundir/deploy/, copy this file
+# into that payload, then `fly deploy` it with the app name passed at the command line.
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble
 
 RUN useradd --create-home --shell /bin/bash dark

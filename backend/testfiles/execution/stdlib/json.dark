@@ -1,5 +1,9 @@
-// TDB and TFn aren't supported as <> type args in the parser,
-// so there's nothing to test for them here.
+// Unsupported stuff:
+// - TDB
+// - TFn
+// None of these are supported as <> type args in the parser,
+// so do we really have to do anything here?
+// It feels like a "no" to me - ignoring for now.
 
 type Person = { Name: String; Age: Int64 }
 
@@ -9,7 +13,7 @@ type Option<'t> = Stdlib.Option.Option<'t>
 let err
   (v: Stdlib.Result.Result<'a, Stdlib.Json.ParseError.ParseError>)
   : Result<'a, String> =
-  v |> Stdlib.Result.mapError (Stdlib.Json.ParseError.toString Darklang.SCM.Ids.mainBranchId)
+  v |> Stdlib.Result.mapError (Stdlib.Json.ParseError.toString Darklang.SCM.Branch.mainBranchId)
 
 
 module Unit =
@@ -1416,4 +1420,80 @@ module Package =
   Stdlib.Json.parse<Darklang.LanguageTools.Sign> "{\"Positive\":[]}" = Result.Ok
     Darklang.LanguageTools.Sign.Positive
 
-  // TODO: re-add enum/list-of-enum round-trip cases against types that still exist
+  // TODO use types that actually still dexist
+  // Stdlib.Json.serialize<Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType> (
+  //   Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.InvalidPackageName
+  //     [ "NamePart" ]
+  // ) = "{\"InvalidPackageName\":[[\"NamePart\"]]}"
+
+  // Stdlib.Json.parse<Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType>
+  //   "{\"NotFound\":[[\"NamePart\"]]}" = Result.Ok(
+  //   Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.NotFound
+  //     [ "NamePart" ]
+  // )
+
+  // Stdlib.Json.serialize<List<Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType>>
+  //   [ (Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.InvalidPackageName
+  //       [ "NamePart" ])
+  //     (Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.MissingEnumModuleName
+  //       "Ok")
+  //     (Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.NotFound
+  //       [ "NamePart" ]) ] = "[{\"InvalidPackageName\":[[\"NamePart\"]]},{\"MissingEnumModuleName\":[\"Ok\"]},{\"NotFound\":[[\"NamePart\"]]}]"
+
+  // Stdlib.Json.parse<List<Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType>>
+  //   "[{\"InvalidPackageName\":[[\"NamePart\"]]},{\"MissingEnumModuleName\":[\"Ok\"]},{\"NotFound\":[[\"NamePart\"]]}]" = Result
+  //   .Ok(
+  //     [ (Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.InvalidPackageName
+  //         [ "NamePart" ])
+  //       (Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.MissingEnumModuleName
+  //         "Ok")
+  //       (Darklang.LanguageTools.RuntimeErrors.NameResolution.ErrorType.NotFound
+  //         [ "NamePart" ]) ]
+  //   )
+
+
+// from old tests - worth reviewing to see if we have missing cases
+
+
+//Stdlib.Json.parse<TODO> "{Id : 1.0}" = null
+//Stdlib.Json.parse<TODO> "{Id : 1.}" = null
+
+//Stdlib.Json.parse<TODO> "[ {date : \"2013-11-05\", locations : {Japan: 3, Germany: 1}} ]" = null
+//Stdlib.Json.parse<TODO> "({id : 555, edition : \"First\", author : \"Dennis Ritchie\"})" = null
+//Stdlib.Json.parse<TODO> "" = null
+//Stdlib.Json.parse<TODO> "1,0/0,0" = null
+//Stdlib.Json.parse<TODO> "1" = 1
+
+//Stdlib.Json.parse<TODO> "{Id : 1.0}" = Builtin.Test.runtimeError "'I' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 1."
+//Stdlib.Json.parse<TODO> "{\"Id\" : 1.}" = Builtin.Test.runtimeError "'}' is invalid within a number, immediately after a decimal point ('.'). Expected a digit ('0'-'9'). LineNumber: 0 | BytePositionInLine: 10."
+//Stdlib.Json.parse<TODO> "{id : 555, edition : \"First\", author : \"Dennis Ritchie\"}" =  Builtin.Test.runtimeError "'i' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 1."
+//Stdlib.Json.parse<TODO> "\"\"" = ""
+
+//Stdlib.Json.parse<TODO> "" = Builtin.Test.runtimeError "JSON string was empty"
+
+//Stdlib.Json.parse<TODO> "{ \"v\": 4611686018427387903 }" = { v = 4611686018427387903L }
+//Stdlib.Json.parse<TODO> "{ \"v\": 4611686018427387904 }" = { v = 4611686018427387904L }
+
+//Stdlib.Json.parse<TODO> "''" = Builtin.Test.runtimeError "''' is an invalid start of a value. LineNumber: 0 | BytePositionInLine: 0."
+//Stdlib.Json.parse<TODO> "" = Builtin.Test.runtimeError "JSON string was empty"
+//Stdlib.Json.parse<TODO> "{Id : 1.0}" = Builtin.Test.runtimeError "'I' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 1."
+//Stdlib.Json.parse<TODO> "{\"Id\" : 1.}" = Builtin.Test.runtimeError "'}' is invalid within a number, immediately after a decimal point ('.'). Expected a digit ('0'-'9'). LineNumber: 0 | BytePositionInLine: 10.")"
+//Stdlib.Json.parse<TODO> "{id : 555, edition : \"First\", author : \"Dennis Ritchie\"}" =  Builtin.Test.runtimeError "'i' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 1."
+
+//Stdlib.Json.parse<TODO> "{ \"v\": 4611686018427387903 }" = Result.Ok { v = 4611686018427387903L }
+//Stdlib.Json.parse<TODO> "{ \"v\": 4611686018427387904 }" = Result.Ok { v = 4611686018427387904L }
+
+//Stdlib.Json.parse<TODO> "" = Result.Error "JSON string was empty"
+//Stdlib.Json.parse<TODO> "{3: false}" = Result.Error "'3' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 1."
+
+//Stdlib.Json.parse<TODO> "{Id : 1.0}" = Result.Error "'I' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 1."
+//Stdlib.Json.parse<TODO> "{\"Id\" : Infinity }" = Result.Error "'I' is an invalid start of a value. LineNumber: 0 | BytePositionInLine: 8."
+//Stdlib.Json.parse<TODO> "{\"Id\" : -Infinity }" = Result.Error "'I' is invalid within a number, immediately after a sign character ('+' or '-'). Expected a digit ('0'-'9'). LineNumber: 0 | BytePositionInLine: 9."
+//Stdlib.Json.parse<TODO> "{\"Id\" : NaN }" = Result.Error "'N' is an invalid start of a value. LineNumber: 0 | BytePositionInLine: 8."
+//Stdlib.Json.parse<TODO> "{\"Id\" : 1.}" = Result.Error "'}' is invalid within a number, immediately after a decimal point ('.'). Expected a digit ('0'-'9'). LineNumber: 0 | BytePositionInLine: 10."
+//Stdlib.Json.parse<TODO> "[ {\"date\" : \"2013-11-05\", locations : {Japan: 3, Germany: 1}} ]" = Result.Error "'l' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 26."
+//Stdlib.Json.parse<TODO> "{\"id\" : 555, edition : \"First\", author : \"Dennis Ritchie\"}" = Result.Error "'e' is an invalid start of a property name. Expected a '\"'. LineNumber: 0 | BytePositionInLine: 13."
+//Stdlib.Json.parse<TODO> "{\"id\" : 555, \"edition\" : 'First' }" = Result.Error "''' is an invalid start of a value. LineNumber: 0 | BytePositionInLine: 25."
+//Stdlib.Json.parse<TODO> "({\"id\" : 555, \"edition\" : \"First\", \"author\" : \"Dennis Ritchie\"})" = Result.Error "'(' is an invalid start of a value. LineNumber: 0 | BytePositionInLine: 0."
+
+// ## Nested types (lists, tuples, records, etc.)

@@ -9,6 +9,7 @@ type NamePrinter<'name> = 'name -> string
 
 // Lowercase starting letter for modules and users
 let modulePattern = @"^[A-Z][a-z0-9A-Z_]*$"
+//let typeNamePattern = @"^[A-Z][a-z0-9A-Z_]*$"
 let fnNamePattern = @"^[a-z][a-z0-9A-Z_']*$"
 let builtinNamePattern = @"^(__|[a-z])[a-z0-9A-Z_]\w*$"
 let valueNamePattern = @"^[a-z][a-z0-9A-Z_']*$"
@@ -123,11 +124,23 @@ type PackageLocation =
     name : string }
 
 
-// Names in ProgramTypes are already resolved (WrittenTypesToProgramTypes looked
-// them up). Resolution can fail -- the user named something that doesn't exist --
-// and PT's job is to keep the program as written and run invalid programs as far as
-// possible, so a bad name is data, not a parse error: a Result of resolved name or
-// the text name plus error.
+// In ProgramTypes, names (FnNames, TypeNames, ValueNames) have already been
+// resolved. The user wrote them in WrittenTypes, and the WrittenTypesToProgramTypes
+// pass looked them up and specified them exactly in ProgramTypes.
+//
+// However, sometimes the name/fn/type/value could not be found, which means the
+// user specified a name that doesn't exist (it shouldn't be for any other reason -
+// things like "the internet was down" should error differently).
+//
+// When there is an error, we still want to keep the rest of the expression around,
+// as ProgramTypes's job is to keep the program as it was written by the user. We
+// also have a goal of running invalid programs as much as possible. As such, an
+// incorrectly specified name shouldn't cause a compile-time/parse-time error, nor
+// should it lose information that was specified by the user.
+//
+// As a result, we model those cases as a Result type, where the Ok case is the
+// resolved name, and the Error case models the text name of the type and some error
+// information.
 
 type NameResolutionError =
   | NotFound
@@ -164,6 +177,9 @@ type LetPattern =
 
   /// `let _ = 1`
   | LPWildcard of id
+
+  // /// let (x) = 1
+  //| LPParens of inner : LetPattern
 
   /// `let (x, _) = (1, 2)`
   | LPTuple of
@@ -355,8 +371,15 @@ type Expr =
   // cases is a list to represent when a user starts typing but doesn't complete it
   | EMatch of id * arg : Expr * cases : List<MatchCase>
 
-  /// `let str = expr1` then `expr2`: binding pattern, bound expr, and the body the
-  /// bindings are visible in.
+  // <summary>
+  // Composed of binding pattern, the expression to create bindings for,
+  // and the expression that follows, where the bound values are available
+  // </summary>
+  //
+  // <code>
+  // let str = expr1
+  // expr2
+  // </code>
   | ELet of id * LetPattern * Expr * Expr
 
   // Reference some local variable by name
@@ -583,6 +606,11 @@ module TypeDeclaration =
 
 /// Used to mark whether a function/type has been deprecated, and if so,
 /// details about possible replacements/alternatives, and reasoning
+///
+/// Our use of this is sort of minimal currently.
+/// I'm not sure if it's still an appropriate model going forward.
+/// TODO reconsider
+/// TODO has this changed at all since -classic? Check the old source.
 type Deprecation<'name> =
   | NotDeprecated
 
@@ -671,8 +699,28 @@ type PackageOp =
   /// identity is (owner, modules, name), so no kind: whatever kind holds the name is what goes.
   | Unbind of location : PackageLocation * previous : Option<Hash>
 
-  // Deprecation: author-initiated annotation on a specific content hash. Always explicit; implicit
-  // deprecation signals raised as Constraints are a later design, not this.
+  // Deprecation: author-initiated annotation on a specific content hash.
+  //
+  // Future: implicit deprecations as Constraints.
+  //
+  // Some SCM events raise an implicit deprecation signal — e.g. a
+  // propagation leaves an item with no inbound refs, or a newly-bound fn
+  // shadows an existing one with an identical signature. Surface these as
+  // Constraints alongside merge and propagation conflicts, routed through
+  // the same `status` / `review` / LSP flow the other conflict types use.
+  //
+  // Auto-resolution defaults to "ignore": the item stays live, no op is
+  // emitted, the signal is informational. The Constraint stays visible to
+  // the author, who can then pick from:
+  //   (a) commit the auto-ignore ("reviewed, intentional") — records the
+  //       acknowledgement so the signal doesn't re-fire on every future op,
+  //   (b) emit an explicit resolution: a Deprecate op (usually Obsolete
+  //       with a message, or SupersededBy pointing at the new item), a
+  //       SetName rebinding, or an Unbind.
+  //
+  // The point is a prompt-for-committed-resolution loop that parallels
+  // merge-conflict resolution — system surfaces what it noticed, author
+  // commits their intent, op log carries both.
   | Deprecate of target : Reference * kind : DeprecationKind * message : string
 
   // Clear any prior deprecation on a target.
@@ -717,6 +765,17 @@ type PackageOp =
 // what a COMMIT says, and "this version lost" is what a recorded conflict says; a cascade is just
 // the `AddFn`/`SetName` pairs it produced.
 
+//   | MoveItem of item: uuid * from : Location * to_: Location
+//   // we can punt this for now, I think
+//   //| MoveModule of from: Location * to_: Location // hmm what about the _timing_ of this?
+//   // maybe this isn't supported, and we instead need _many_ moveItem
+
+
+// prob belongs in LibMatter
+// type BranchMergeConflict =
+//   | TypeIntroducedButNotReferenced of FQTypeName.Package
+//   | ...IntroducedButNotReferenced of ...
+
 
 /// The kind of package item (function, type, or value)
 and ItemKind =
@@ -734,8 +793,7 @@ and ItemKind =
 
   /// Convert to database string representation
   /// CLEANUP might be appropriate to either migrate these fns to LibSerialization,
-  // or replace them w/ _binary_ serializer equivs (but, then DB is less queryable by
-  // humans directly)
+  // or replace them w/ _binary_ serializer equivs (but, then DB is less queryable by humans directly)
   member this.toString() : string =
     match this with
     | Fn -> "fn"
@@ -806,8 +864,8 @@ and PropagationPolicy =
     | Follow -> "follow"
     | Unset -> "unset"
 
-/// Why a package item has been deprecated. Author-supplied metadata on the Deprecate op; consumers
-/// (LSP, CLI, runtime) decide how loud to be.
+/// Why a package item has been deprecated. Author-supplied metadata on the
+/// Deprecate op; consumers (LSP, CLI, runtime) decide how loud to be.
 /// TODO: `Harmful` is the only kind SCM can't already express via rebinding;
 ///   if usage confirms `SupersededBy`/`Obsolete` overlap, fold into one.
 and DeprecationKind =
@@ -816,6 +874,9 @@ and DeprecationKind =
 
   /// Actively dangerous (security, correctness, data loss).
   /// Runtime halts on invocation by default; `--allow-harmful` overrides.
+  /// Nothing currently prevents a Type from being marked Harmful, which
+  /// seems silly — maybe address somehow, probably ignore. (A value can
+  /// legitimately be Harmful if it holds a secret accidentally.)
   | Harmful
 
   /// Don't use this anymore (catch-all; no halt, no replacement pointer).
@@ -872,7 +933,9 @@ module Search =
 
 /// Functionality written in Dark stored and managed outside of user space
 ///
-/// The `getX` fns return Options because Local <-> Cloud can be out of sync.
+/// Note: It may be tempting to think the `getX` fns shouldn't return Options,
+/// but there's a chance of Local <-> Cloud not being fully in sync,
+/// for whatever reasons.
 type PackageManager =
   { findType : PackageLocation -> Ply<Option<FQTypeName.Package>>
     findValue : PackageLocation -> Ply<Option<FQValueName.Package>>
@@ -1020,6 +1083,89 @@ type PackageManager =
       init = pm.init }
 
 
+
+
+
+(*
+the source of truth is our core tables, which sync:
+  package_ops, branches, instances
+  should branch operations be separate from package ops? hmm idk.
+  we should sync all ops that you have permissions to...
+  oh, how _should_ we do permissioning?
+  iI guess there's an SetName thing and later an ApproveName thing? Not sure I actually worked that out...
+  | AddBranch? hmm.
+  what if an Op referring to a branch is received before the AddBranch op? Prob ignore that for now, right?
+  we really need to timestamp these ops in a super-safe way
+  I guess working internationally helps us test this a bit...
+  what about timezone switches and ... probably need NodaTime if we don't already have it
+
+the package stuff is all a projection of that
+  package types, values, fns
+  locations, and how they map to those package items
+*)
+
+
+
+
+
+// /// Atomic operations that can be tracked and validated
+// module Op =
+//   type T =
+//     // Content Operations - create new immutable content
+//     | AddFunctionContent of hash: string * content: PackageFn.PackageFn
+//     | AddTypeContent of hash: string * content: PackageType.PackageType
+//     | AddValueContent of hash: string * content: PackageValue.PackageValue
+
+//     // Name Operations - manage name pointers
+//     | CreateName of location: PackageLocation.T * hash: string * contentType: string
+//     | UpdateNamePointer of location: PackageLocation.T * oldHash: string * newHash: string
+//     | MoveName of oldLocation: PackageLocation.T * newLocation: PackageLocation.T
+//     | UnassignName of location: PackageLocation.T
+
+//     // Content Operations - deprecate content (by hash)
+//     | DeprecateContent of hash: string * reason: string * replacement: string option
+
+// /// Types of conflicts that can occur when we try to apply an Op
+// type Conflict =
+//   | TODO
+
+
+
+
+// /// A development session
+// /// informally a 'branch'
+// module Session =
+//   type State =
+//     | Active
+//     | Abandoned
+//     | Merged
+
+//   type T = {
+//     id: uuid
+//     title: string
+//     ops: List<uuid>
+//     createdAt: System.DateTime
+//     lastActiveAt: System.DateTime
+//     state: SessionState.T
+//     workspace: WorkspaceState.T
+//   }
+
+
+
+// /// Darklang instance definition -- what can we sync against
+// module Instance =
+//   type Location =
+//     | LocalCLI of pathToExe: string // or maybe this should be path to dir? prob not.
+//     | HttpServer of url: string
+
+//   type T = {
+//     id: uuid
+//     name: string
+//     location: Location
+//   }
+
+
+
 // --
 // User things
 // --
@@ -1027,7 +1173,11 @@ module DB =
   type T = { tlid : tlid; name : string; version : int; typ : TypeReference }
 
 
-/// Compatibility shim: `DB.T` is the only toplevel now; `toTLID` stays so
-/// callsites don't all churn shape at once.
+/// Compatibility shim: callers used to wrap a `DB.T` in `Toplevel.TLDB`
+/// and read tlids via `Toplevel.toTLID`. Handler / TLHandler are gone
+/// (Worker / Cron / REPL had no live consumers; HTTP went earlier with
+/// the BwdServer rewrite). `DB.T` IS the toplevel now — keep the
+/// `Toplevel.toTLID` accessor as a one-line shim so the noisier
+/// callsites don't all churn shape simultaneously.
 module Toplevel =
   let toTLID (db : DB.T) : tlid = db.tlid

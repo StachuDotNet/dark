@@ -79,11 +79,11 @@ let recordPrevious
   // The parent's overlay, resolved ONCE for the batch: `chainBindings` decodes every op in the chain.
   // Empty for main and for a first-level branch, whose parent's bindings are `locations`.
   let parentOverlay =
-    if SCM.Ids.isMain branchId then
+    if SCM.Branch.isMain branchId then
       []
     else
       match SCM.PackageOps.branchParentOf branchId with
-      | parent when SCM.Ids.isMain parent -> []
+      | parent when SCM.Branch.isMain parent -> []
       | parent -> SCM.PackageOps.chainBindings parent
 
   ops

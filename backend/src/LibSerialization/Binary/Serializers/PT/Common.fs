@@ -13,7 +13,7 @@ module Hash =
   /// Raw bytes, not hex text.
   ///
   /// A hash is 32 bytes of entropy; as 64 hex characters plus a length prefix it costs 65 to carry 32.
-  /// Hashes are the single largest category in the op log (`LocalExec experiments op-anatomy` measures
+  /// Hashes are the single largest category in the op log (measured at ~37% of it
   /// it), with tens of thousands of occurrences of a few thousand distinct values, so halving them is
   /// the cheapest large win available and it changes nothing about what is stored.
   ///

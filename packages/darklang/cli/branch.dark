@@ -25,7 +25,7 @@ let reportConflicts (conflicts: List<SCM.Conflicts.Conflict>) : Unit =
 /// Where a branch id is, in words: `main`, or `branch "<name>"`. Main is never quoted and a branch
 /// always is, so the two read differently in every message that names one.
 let whereLabel (id: Uuid) : String =
-  if SCM.Ids.isMain id then SCM.Ids.mainBranchName
+  if SCM.Branch.isMain id then SCM.Branch.mainBranchName
   else $"branch \"{SCM.PackageOps.branchName id}\""
 
 /// The id of the branch <param branchRef> refers to, WITHOUT creating anything, or None.
@@ -84,7 +84,7 @@ let branchRows (unit: Unit) : List<ScmJson.BranchJson> =
         name = if b.name == "" then Stdlib.Uuid.toString b.id else b.name
         parent = Stdlib.Uuid.toString b.parent
         parentName =
-          if SCM.Ids.isMain b.parent then
+          if SCM.Branch.isMain b.parent then
             ""
           else
             SCM.PackageOps.branchName b.parent
@@ -117,19 +117,19 @@ let executeSwitch (state: AppState) (branchRef: String) : AppState =
 
       let _ = Cli.printHint "  `dark switch <branch>`, and `dark branches` lists them."
       SCM.PackageOps.currentBranch ()
-    | ref when (ref == "") || (ref == SCM.Ids.mainBranchName) ->
-      let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
-      let _ = Stdlib.LocalStore.configSet "current_branch_name" SCM.Ids.mainBranchName
-      let _ = SCM.PackageOps.selectBranch SCM.Ids.mainBranchId
-      let _ = Cli.printOk $"switched to {SCM.Ids.mainBranchName}."
-      SCM.Ids.mainBranchId
+    | ref when (ref == "") || (ref == SCM.Branch.mainBranchName) ->
+      let _ = Stdlib.LocalStore.configSet "current_branch" (Stdlib.Uuid.toString SCM.Branch.mainBranchId)
+      let _ = Stdlib.LocalStore.configSet "current_branch_name" SCM.Branch.mainBranchName
+      let _ = SCM.PackageOps.selectBranch SCM.Branch.mainBranchId
+      let _ = Cli.printOk $"switched to {SCM.Branch.mainBranchName}."
+      SCM.Branch.mainBranchId
     | ref ->
       // A branch started while on another branch is parented to it (branches off branches). The parent
       // is whatever we're currently on, BY ID -- the parent link is a reference, and references don't
       // follow a rename. An existing branch is never re-parented, so switching onto one can't move it.
       let parentId =
         match SCM.PackageOps.currentBranch () with
-        | id when SCM.Ids.isMain id -> SCM.Ids.mainBranchId
+        | id when SCM.Branch.isMain id -> SCM.Branch.mainBranchId
         | cur -> cur
 
       // Resolve BEFORE creating; `lookupRef` takes a name or an id. It also resolves MERGED branches,
@@ -171,7 +171,7 @@ let executeSwitch (state: AppState) (branchRef: String) : AppState =
       let _ = SCM.PackageOps.selectBranch branchId
 
       let parentNote =
-        if SCM.Ids.isMain parentId then
+        if SCM.Branch.isMain parentId then
           ""
         else
           $" (off \"{SCM.PackageOps.branchName parentId}\")"
@@ -207,7 +207,7 @@ let executeSwitch (state: AppState) (branchRef: String) : AppState =
 let parentOf (branchId: Uuid) : (Uuid * String) =
   match SCM.Branches.list () |> Stdlib.List.findFirst (fun b -> b.id == branchId) with
   | Some b -> (b.parent, SCM.PackageOps.branchName b.parent)
-  | None -> (SCM.Ids.mainBranchId, SCM.Ids.mainBranchName)
+  | None -> (SCM.Branch.mainBranchId, SCM.Branch.mainBranchName)
 
 /// `dark branch rename <branch> <new-name>`
 ///
@@ -218,7 +218,7 @@ let executeRename (state: AppState) (branchRef: String) (newName: String) : AppS
   match resolveRef branchRef with
   | None -> state
   | Some branchId ->
-    if SCM.Ids.isMain branchId then
+    if SCM.Branch.isMain branchId then
       Cli.printErr "main is the trunk; it has no name to change."
       state
     else
@@ -325,7 +325,7 @@ let executeMerge (state: AppState) (branchRef: String) : AppState =
           let _ =
             Stdlib.LocalStore.configSet
               "current_branch_name"
-              (if SCM.Ids.isMain parentId then "" else parentName)
+              (if SCM.Branch.isMain parentId then "" else parentName)
           let _ = SCM.PackageOps.selectBranch parentId
           let _ = Cli.printOk $"now on {whereLabel parentId} -- that's where the next edit lands."
           parentId
@@ -347,7 +347,7 @@ let executeMerge (state: AppState) (branchRef: String) : AppState =
 let executeRebaseDryRun (state: AppState) (branchRef: String) : AppState =
   match resolveRef branchRef with
   | None -> state
-  | Some branchId when SCM.Ids.isMain branchId ->
+  | Some branchId when SCM.Branch.isMain branchId ->
     // Reachable only when main is NAMED: the bare form goes through `bareTargetBranch`, which has its
     // own message for standing on main. So this describes the ARGUMENT, not where you are.
     Cli.printErr "main is the trunk -- rebase moves a BRANCH onto its parent, and main has none."
@@ -571,7 +571,7 @@ let executeArchive
         let _ =
           Stdlib.LocalStore.configSet
             "current_branch_name"
-            (if SCM.Ids.isMain parentId then "" else parentName)
+            (if SCM.Branch.isMain parentId then "" else parentName)
         let _ = SCM.PackageOps.selectBranch parentId
         Cli.printOk $"now on {whereLabel parentId} -- that's where the next edit lands."
         { state with currentBranchId = parentId }
@@ -923,7 +923,7 @@ let bareTargetBranch
   (verb: String)
   : Stdlib.Result.Result<String, Unit> =
   match SCM.PackageOps.currentBranch () with
-  | id when SCM.Ids.isMain id ->
+  | id when SCM.Branch.isMain id ->
     Cli.printErr $"usage: dark {verb} <branch>"
     Cli.printHint $"  on main there is no branch to {verb}. `dark branches` lists them."
     Stdlib.Result.Result.Error()
@@ -1064,7 +1064,7 @@ let executeLogCmd (state: AppState) (args: List<String>) : AppState =
       executeLog state id
   | [] ->
     match SCM.PackageOps.currentBranch () with
-    | id when SCM.Ids.isMain id ->
+    | id when SCM.Branch.isMain id ->
       if wantsJson then
         // On main `log` IS the commit history, so it answers with exactly what `commits --json` answers.
         Stdlib.printLine (ScmJson.commitsJson (Commits.commitRows 20L))
@@ -1135,7 +1135,7 @@ let complete
   | [ partial ] -> matching (Stdlib.List.append branchNames subcommands) partial
   | [ sub, partial ] ->
     if Stdlib.List.member branchTakingSubcommands sub then
-      matching (Stdlib.List.append branchNames [ SCM.Ids.mainBranchName ]) partial
+      matching (Stdlib.List.append branchNames [ SCM.Branch.mainBranchName ]) partial
     else
       []
   | _ -> []

@@ -62,7 +62,7 @@ let branchOverlayBindings
   ()
   : List<(String * LanguageTools.ProgramTypes.PackageLocation * LanguageTools.ProgramTypes.ItemKind)> =
   match SCM.PackageOps.currentBranch () with
-  | id when SCM.Ids.isMain id -> []
+  | id when SCM.Branch.isMain id -> []
   | branch ->
     SCM.PackageOps.chainBindings branch
     |> Stdlib.List.map (fun b ->

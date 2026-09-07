@@ -41,7 +41,7 @@ let branchExists (branchId: Uuid) : Bool =
 
 
 /// A branch's registered parent, or MAIN's id when it has none. The id, not the name "main"
-/// (see `SCM.Ids`).
+/// (see `SCM.Branch.mainBranchId`).
 let branchParentOf (branchId: Uuid) : Uuid =
   match
     Stdlib.Sqlite.queryOneP
@@ -50,8 +50,8 @@ let branchParentOf (branchId: Uuid) : Uuid =
       [ Stdlib.Uuid.toString branchId ]
   with
   | Some row ->
-    SCM.Ids.fromTextField (Stdlib.Sqlite.textField row "parent_id")
-  | None -> SCM.Ids.mainBranchId
+    SCM.Branch.fromTextField (Stdlib.Sqlite.textField row "parent_id")
+  | None -> SCM.Branch.mainBranchId
 
 
 /// What the PARENT binds for <param names> -- the LOCAL side a branch merges into. parent=main is just
@@ -59,7 +59,7 @@ let branchParentOf (branchId: Uuid) : Uuid =
 let parentBindings (parentId: Uuid) (names: List<String>) : List<Conflicts.Binding> =
   let fromMain = Conflicts.localBindingsFor names
 
-  if SCM.Ids.isMain parentId then
+  if SCM.Branch.isMain parentId then
     fromMain
   else
     let overlay = chainBindings parentId
@@ -166,8 +166,8 @@ let currentBranch () : Uuid = Branches.current ()
 /// people read, so anything user-facing goes through here rather than printing the id.
 let branchName (branchId: Uuid) : String =
   // Main has no `branches` row, so a lookup would fall through to showing its raw id.
-  if SCM.Ids.isMain branchId then
-    SCM.Ids.mainBranchName
+  if SCM.Branch.isMain branchId then
+    SCM.Branch.mainBranchName
   else
     let fallback = Stdlib.Uuid.toString branchId
 
@@ -198,9 +198,9 @@ let resolveBranchRef (branchRef: String) : BranchRefResult =
 
   // Main is resolvable by name and by id like any other branch, and has to be: it has no `branches`
   // row, so neither the name lookup nor the id-prefix search below can find it.
-  if (branchRef == SCM.Ids.mainBranchName)
-     || (asId == Stdlib.Option.Option.Some SCM.Ids.mainBranchId) then
-    BranchRefResult.Found SCM.Ids.mainBranchId
+  if (branchRef == SCM.Branch.mainBranchName)
+     || (asId == Stdlib.Option.Option.Some SCM.Branch.mainBranchId) then
+    BranchRefResult.Found SCM.Branch.mainBranchId
   else
     match branchIdForName branchRef with
     | Some id -> BranchRefResult.Found id

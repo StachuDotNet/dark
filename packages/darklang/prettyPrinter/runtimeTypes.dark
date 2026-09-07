@@ -77,9 +77,6 @@ let typeNameWith
       Darklang.LanguageTools.PackageManager.pickLocation
         (LanguageTools.PackageManager.PickContext
           { currentModule = opts.currentModule
-            // Nothing was asked for here: this is a type named inside a runtime
-            // error, not something a caller requested, so context scoring is the
-            // right and only answer.
             preferredLocation = Stdlib.Option.Option.None })
         locations
     with
@@ -102,10 +99,14 @@ let caseNameStandsAlone
   | Package hash ->
     let locations = Darklang.LanguageTools.PackageManager.Type.locations branchId hash
 
-    // Several names, nothing in context to choose between them: content-addressing
-    // makes same-shaped types ONE type with several names (see `declaredValueType`'s
-    // doc for the ParseError example). Picking one guesses wrong most of the time; the
-    // case name alone is the most that can honestly be said.
+    // Several names for one type, and nothing in the reader's context to choose between them.
+    //
+    // Types are content-addressed, so two declarations with the same shape ARE one type:
+    // `Stdlib.Int.ParseError`, `Stdlib.Float.ParseError` and `Stdlib.Uuid.ParseError` are all
+    // `| BadFormat`, which makes them a single type with three names. Printing one of those names is
+    // picking arbitrarily, and it picks wrong most of the time -- `Stdlib.Int.parse "abc"` reporting a
+    // `Stdlib.Uuid.ParseError` is a real thing this used to print. The case name alone is the most that
+    // can honestly be said, so say that.
     let ambiguous =
       match locations with
       | []

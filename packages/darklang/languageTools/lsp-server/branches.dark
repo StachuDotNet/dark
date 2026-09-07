@@ -141,10 +141,10 @@ let handleGetCurrentBranchRequest
   let active = activeBranch ()
 
   let result =
-    if SCM.Ids.isMain active then
+    if SCM.Branch.isMain active then
       Json.Object
-        [ ("id", idJson SCM.Ids.mainBranchId)
-          ("name", Json.String SCM.Ids.mainBranchName)
+        [ ("id", idJson SCM.Branch.mainBranchId)
+          ("name", Json.String SCM.Branch.mainBranchName)
           // Main is the root, so it genuinely has no parent. A top-level branch's parent is main's id.
           ("parentBranchId", Json.String "")
           ("isActive", Json.Bool true) ]
@@ -235,9 +235,9 @@ let handleDeleteBranchRequest
       // Archiving the branch you're standing on leaves you nowhere; go back to main.
       let landedOn =
         if activeBranch () == branchId then
-          moveTo SCM.Ids.mainBranchId SCM.Ids.mainBranchName
-          notifyBranchChanged SCM.Ids.mainBranchId SCM.Ids.mainBranchName
-          SCM.Ids.mainBranchId
+          moveTo SCM.Branch.mainBranchId SCM.Branch.mainBranchName
+          notifyBranchChanged SCM.Branch.mainBranchId SCM.Branch.mainBranchName
+          SCM.Branch.mainBranchId
         else
           notifyBranchChanged (activeBranch ()) (SCM.PackageOps.branchName (activeBranch ()))
           state.currentBranchId
@@ -413,7 +413,7 @@ let handleRenameBranchRequest
   (newName: String)
   : LspState =
   withBranch state requestID branchRef (fun branchId ->
-    if SCM.Ids.isMain branchId then
+    if SCM.Branch.isMain branchId then
       respondError requestID "main is the trunk; it has no name to change"
       state
     else

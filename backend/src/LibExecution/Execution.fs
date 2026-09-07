@@ -101,6 +101,9 @@ let execute
         // TODO: handle secrets and DBs by explicit references instead of relying on
         // the symbol table.
 
+        // TODO: handle secrets and DBs by explicit references instead of relying on symbol table
+        // vm.symbolTable <- Interpreter.withGlobals state inputVars
+
         let! result = Interpreter.execute exeState vm
         return Ok result
 
@@ -416,7 +419,7 @@ let runtimeErrorToString
 /// Fallback for when a pretty printer call fails: the error it raised, then the raw value.
 let private prettyPrintFallback
   (label : string)
-  (raw : obj)
+  (raw : 'raw)
   (result : RT.ExecutionResult)
   : string =
   match result with
@@ -432,7 +435,7 @@ let private callStringPrinter
   (state : RT.ExecutionState)
   (fnHash : string)
   (label : string)
-  (raw : obj)
+  (raw : 'raw)
   (args : List<RT.Dval>)
   : Task<string> =
   task {
@@ -514,6 +517,17 @@ let executionPointToString
   (ep : RT.ExecutionPoint)
   : Ply<string> =
   uply {
+    // CLEANUP improve here
+    // let handleFn (fn : Option<RT.PackageFn.PackageFn>) : Ply<string> =
+    //   uply {
+    //     match fn with
+    //     | None -> return $"<Couldn't find package function {fn.id}>"
+    //     | Some fn ->
+    //       let fnName = string fn.id
+    //       let! exprString = exprString state fn.body exprId
+    //       return fnName + ": " + exprString
+    //   }
+
     match ep with
     | RT.Source -> return "Source"
     | RT.Function(RT.FQFnName.Package _ as name) ->

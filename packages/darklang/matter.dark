@@ -841,7 +841,7 @@ let itemHandlerFn (req: HttpRequest) : HttpResponse =
     let h = LanguageTools.ProgramTypes.Hash.Hash hashStr
 
     // The relay holds no branches of its own, so everything it serves is main's view.
-    let ctx = PrettyPrinter.ProgramTypes.Context.forBranch SCM.Ids.mainBranchId
+    let ctx = PrettyPrinter.ProgramTypes.Context.forBranch SCM.Branch.mainBranchId
 
     let src =
       match kind with

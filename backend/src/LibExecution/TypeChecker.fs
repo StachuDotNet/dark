@@ -28,6 +28,10 @@ let private unifiesTrivially (expected : TypeReference) (actual : ValueType) : b
   // Matches on `expected` and then on `actual` rather than on the pair. F# allocates the tuple for a
   // two-value match here rather than eliding it -- the same change to `inferTVarsFromArg` moved total
   // allocation 3.3% -- and this runs on every unification.
+  //
+  // `TVariable` is deliberately excluded rather than folded into the `Unknown` case: the full matcher
+  // tries `TVariable name, _` FIRST, so a type variable meeting `Unknown` binds the variable to
+  // `Unknown`, and short-circuiting that here would skip the binding and change inference.
   match expected with
   | TVariable _ -> false
   | _ ->
@@ -588,6 +592,15 @@ let private unifyDvalSync
   | _ -> unifyValueTypeSync tst expected (Dval.toValueType actual)
 
 
+/// The unification behind both the parameter and the result checks, answered without a computation
+/// expression when it needs no type lookup.
+///
+/// Runs on every argument of every call and on every frame return, so the point is that the ordinary case
+/// allocates nothing at all: no Ply, no continuation closure, no state machine.
+///
+/// `ValueNone` means "go the async route". That covers an aliased type, a compound type needing recursion,
+/// and *any* failure: building the error message resolves the expected type, which can hit the package
+/// store. Failures are rare and already the slow path, so they are not worth a sync variant.
 /// The type arguments of a custom type, unified pairwise without awaiting.
 ///
 /// Parameterised types are not a corner case: `Option` and `Result` are the two most common types in
@@ -607,15 +620,6 @@ let rec private unifyTypeArgsSync
   | Undecided -> ValueNone
 
 
-/// The unification behind both the parameter and the result checks, answered without a computation
-/// expression when it needs no type lookup.
-///
-/// Runs on every argument of every call and on every frame return, so the point is that the ordinary case
-/// allocates nothing at all: no Ply, no continuation closure, no state machine.
-///
-/// `ValueNone` means "go the async route". That covers an aliased type, a compound type needing recursion,
-/// and *any* failure: building the error message resolves the expected type, which can hit the package
-/// store. Failures are rare and already the slow path, so they are not worth a sync variant.
 let tryUnifySync
   (tst : TypeSymbolTable)
   (expected : TypeReference)
@@ -795,12 +799,22 @@ let checkFnResult
   }
 
 
-/// Helpers for creating type-checked Dvals (lists, records, enums).
+/// Helpers for creating type-checked Dvals
+/// (lists, records, enums, etc.)
 ///
-/// A Dval must carry the right ValueType (`DList(Known KTInt64, [DString "hi"])` is
-/// malformed) and merging conflicting ValueTypes must fail (`List.append [1] ["hi"]`).
-/// Checking at construction is what keeps run-time type-checking cheap; use these
-/// where `Dval.fs` can't know the sub-types.
+/// Dvals should be created carefully,:
+/// - to have the correct `ValueType`s, where appropriate
+///  i.e. we should not have `DList(Known KTInt64, [ DString("hi") ])`
+///
+/// - similarly, we should fail when trying to merge `Dval`s with conflicting `ValueType`s
+///   i.e. `List.append [1] ["hi"]` should fail
+///   because we can't merge `Known KTInt64` and `Known KTString`
+///
+/// These functions are intended to help with both of these,
+/// in cases where the functions in `Dval.fs` are insufficient
+/// (i.e. we don't know the Dark sub-types of a Dval in some F# code).
+///
+/// Doing this at-construction is important to ensure efficient run-time type-checking.
 module DvalCreator =
   /// Merge each element's type into the list's, accumulating in reverse. A top-level recursion
   /// rather than a fold over a tuple: the lambda would be a closure and the accumulator a tuple,
@@ -1059,6 +1073,9 @@ module DvalCreator =
 
 
 
+  /// One field of an enum case being constructed. Same shape as `checkRecordFields`, and the same
+  /// reason for existing: as a lambda over a three-element accumulator this costs a closure, a state
+  /// machine and a tuple per field of every enum built.
   /// The type-argument walk from the checked-field slow path, without the builder.
   ///
   /// `ValueNone` when a merge fails, so the caller falls through to the asynchronous path and the
@@ -1567,9 +1584,9 @@ module DvalCreator =
             if List.isEmpty currentTypeArgs then
               ValueSome(struct (currentTypeArgs, newTST))
             else
-              // Parameterised types stay on the fast path: the type-argument walk is synchronous
-              // apart from building an error message, so it runs here and only a genuine merge
-              // failure falls through to the builder.
+              // Parameterised types used to fail this gate outright and take the builder. The
+              // type-argument walk is synchronous apart from building an error message, so it runs
+              // here and only a genuine merge failure falls through.
               match updateTypeArgsSync newTST [] currentTypeArgs with
               | ValueSome updated -> ValueSome(struct (updated, newTST))
               | ValueNone -> ValueNone
@@ -1649,6 +1666,9 @@ module DvalCreator =
           }
 
 
+  /// Constructs a Dval.DRecord, ensuring that the fields match the expected shape
+  ///
+  /// note: if provided, the typeArgs must match the # of typeArgs expected by the type
   /// Reject a record that is missing a declared field, or build it. Top-level, as above.
   let private finishRecord
     (threadID : ThreadID)
@@ -1763,6 +1783,9 @@ module DvalCreator =
       }
 
 
+  /// Constructs a Dval.DRecord, ensuring that the fields match the expected shape
+  ///
+  /// note: if provided, the typeArgs must match the # of typeArgs expected by the type
   /// The half of a record update after the type is known. Top-level, as above.
   let private recordUpdateAfterResolve
     (types : Types)

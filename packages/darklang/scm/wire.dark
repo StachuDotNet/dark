@@ -386,7 +386,7 @@ let importFrom
   // message compute the same id, which is the property the whole content-addressed story rests on.
   let incomingIds = ops |> Stdlib.List.map (fun op -> op.id) |> Stdlib.List.sort
   let importCommit =
-    Commits.create importMessage importAuthor incomingIds (PackageOps.parentCommitFor SCM.Ids.mainBranchId)
+    Commits.create importMessage importAuthor incomingIds (PackageOps.parentCommitFor SCM.Branch.mainBranchId)
 
   match Builtin.scmImportOps importCommit records with
   | Ok n ->
@@ -439,7 +439,7 @@ let reviewImportTo
 
   // The queue is named, like any branch a person types; its id is resolved here so re-importing to the
   // same queue lands on the same branch rather than starting a second one beside it.
-  let (queueId, _) = PackageOps.resolveBranch reviewBranch SCM.Ids.mainBranchId
+  let (queueId, _) = PackageOps.resolveBranch reviewBranch SCM.Branch.mainBranchId
 
   // `parent` is TEXT here on purpose: on the ordinary import path it arrives inside a peer's bundle and
   // may be anything, so the builtin parses it and treats a non-id as main. A review queue's parent is
@@ -448,7 +448,7 @@ let reviewImportTo
     PackageOps.stageOpsOnBranch
       queueId
       reviewBranch
-      (Stdlib.Uuid.toString SCM.Ids.mainBranchId)
+      (Stdlib.Uuid.toString SCM.Branch.mainBranchId)
       records
   with
   | Ok _newlyStored ->

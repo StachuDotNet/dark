@@ -491,7 +491,7 @@ let executePush (state: AppState) (url: String) : AppState =
       // Push is main-only (see the top of this function), and the success line looks the same from a
       // branch whether or not your day's work is in it -- so say which it was.
       match SCM.PackageOps.currentBranch () with
-      | branch when SCM.Ids.isMain branch -> ()
+      | branch when SCM.Branch.isMain branch -> ()
       | branchId ->
         // `current_branch_name` is kept beside the id purely for display, which is what this is.
         let named = Stdlib.LocalStore.configGet "current_branch_name"

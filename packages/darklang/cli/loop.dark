@@ -5,9 +5,10 @@ module Darklang.Cli
 
 /// Prepend the "you got here from somewhere, here's the way back" row when this prompt sits on a page stack.
 ///
-/// A row directly above the prompt, rather than a bottom status bar: a status bar reserves the last
-/// terminal row with a scroll region, and a scroll region and an inline prompt region fight over the
-/// same rows. Next to what you're typing is the better home regardless.
+/// This used to be the right-hand side of the bottom status bar. The status bar is gone: it reserved the last
+/// terminal row with a scroll region, and a scroll region and an inline prompt region fight over the same
+/// rows. A row directly above the prompt is arguably the better home anyway, since it's next to what you're
+/// typing rather than parked at the far edge of the screen.
 ///
 /// Presentation only. It's added on the render path and not by `releasePromptRegion`, so it disappears rather
 /// than piling up in scrollback behind every command you run.
@@ -64,6 +65,7 @@ let clearPromptRegion (state: AppState) : AppState =
 
 
 let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers) (keyChar: Stdlib.Option.Option<String>) : AppState =
+  // Ctrl+C exits from any page
   if modifiers.ctrl && key == Stdlib.Cli.Stdin.Key.Key.C then
     let state =
       match state.currentPage with
@@ -82,8 +84,10 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
 
   match state.currentPage with
   | MainPrompt ->
+    // Normal command mode key handling
     match key with
     | Enter ->
+      // Execute the current command
       if Stdlib.String.isEmpty (Stdlib.String.trim state.prompt.text) then
         let released = releasePromptRegion state
         Stdlib.printLine ""
@@ -111,6 +115,7 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
           prompt = Prompt.Editing.deleteAtCursor state.prompt }
 
     | Tab ->
+      // Handle tab completion
       let tTab = Telemetry.now ()
       let completions = Registry.getCompletions state state.prompt.text
       Telemetry.logWithContext "tabComplete" tTab [("resultCount", Stdlib.Int.toString (Stdlib.List.length completions)), ("input", state.prompt.text)]
@@ -120,10 +125,12 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
       match completions with
       | [] -> state  // No completions available
       | [singleCompletion] ->
+        // Single completion - auto-complete it
         let parsed = Completion.parseInput state.prompt.text
         let newPromptText = Completion.buildCompletedCommand parsed singleCompletion.value
         { state with prompt = Prompt.Editing.setText state.prompt newPromptText }
       | multiple ->
+        // Multiple completions - open interactive picker
         let released = releasePromptRegion state
         Stdlib.printLine ""
         let pickerState = CompletionPicker.create state.prompt.text multiple
@@ -161,6 +168,7 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
           prompt = Prompt.Editing.moveCursorEnd state.prompt }
 
     | _ ->
+      // Add character to prompt at cursor position
       match keyChar with
       | Some char ->
         { state with
@@ -168,9 +176,11 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
       | None -> state
 
   | InteractiveNav session ->
+    // Interactive navigation key handling
     Packages.NavInteractive.handleKey state key keyChar session
 
   | CompletionPicker session ->
+    // Completion picker key handling
     let size = Stdlib.Cli.Tui.TerminalSession.currentSize ()
     match
       CompletionPicker.handleKeyAtSize
@@ -187,6 +197,7 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
       { state with
           currentPage = Page.CompletionPicker nextSession }
     | SelectItem selection ->
+      // User selected an item - update prompt and return to main
       let _stopped = CompletionPicker.stop session
       let newPromptText =
         CompletionPicker.buildCompletedCommand
@@ -196,6 +207,7 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
           currentPage = Page.MainPrompt
           prompt = Prompt.Editing.setText state.prompt newPromptText }
     | Cancel ->
+      // User cancelled - return to main with original prompt
       let _stopped = CompletionPicker.stop session
       { state with
           currentPage = Page.MainPrompt }
@@ -243,15 +255,17 @@ let handleKeyInput (state: AppState) (key: Stdlib.Cli.Stdin.Key.Key) (modifiers:
       // Launching from a live page is interactive by definition, even when the CLI itself was started
       // one-shot (`dark wb` takes the args path, which marks the session non-interactive). Without this, a
       // command that degrades when non-interactive prints its summary and leaves, instead of taking the
-      // screen.
+      // screen: `:review` from a workbench opened with `dark wb` did exactly that, while the same command
+      // from a workbench opened with a bare `dark` worked.
       //
       // Safe to clear: LaunchCommand always pushes onto the page stack, so the launched app's exit pops back
       // here rather than consulting this flag to decide whether to leave the CLI.
       //
-      // `currentPage` is pointed at MainPrompt before handing off, as a marker for "nobody took the screen",
-      // so a command that bails before taking the terminal doesn't leave a page that repaints nothing above a
-      // stack entry that never pops. MainPrompt is the only page recognisable afterwards: a SubApp holds
-      // nothing but functions, so two of them can't be compared.
+      // `currentPage` is pointed at MainPrompt before handing off, as a marker for "nobody took the screen".
+      // It used to stay on this app, whose session `onTerminate` just stopped - so a command that bailed
+      // before taking the terminal left a page that repaints nothing above a stack entry that never pops.
+      // MainPrompt is the only page that can be recognised afterwards: a SubApp holds nothing but functions,
+      // so two of them can't be compared.
       let launched =
         Registry.executeCommand
           cmd
@@ -360,6 +374,7 @@ let runInteractiveLoop (state: AppState) : Int =
     if state.telemetryEnabled then
       Telemetry.logWithContext "completionHint" tHint [("inputLen", Stdlib.Int.toString (Stdlib.String.length state.prompt.text)), ("cached", Stdlib.Bool.toString hintCached), ("contextCached", Stdlib.Bool.toString contextCached)]
 
+    // Display current page
     let tRender = if state.telemetryEnabled then Telemetry.now () else 0
 
     let renderedState =
@@ -425,6 +440,7 @@ let runInteractiveLoop (state: AppState) : Int =
         Telemetry.logWithContext "render" tRender [("page", pageName)]
         Telemetry.log "preInput" tLoopStart
 
+      // Read keystroke input
       let tReadKey =
         if renderedState.telemetryEnabled then Telemetry.now () else 0
       let keyInput = Stdlib.Cli.Stdin.readKey ()

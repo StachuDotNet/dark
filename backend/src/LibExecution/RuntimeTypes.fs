@@ -725,8 +725,13 @@ type Instruction =
 
   | CopyVal of copyTo : Register * copyFrom : Register
 
-  // TODO: short-circuit And/Or -- single arg plus jumpIfFalse (And) / jumpIfTrue
-  // (Or) so the RHS instructions can be skipped.
+  // TODO: update both of these to take a _single_ arg,
+  // and replace the 'rhs' component with a 'jumpIfFalse' component
+  // hmm or maybe jumpIfTrue.
+  // the point here is to allow for short-circuiting, allowing the RHS instructions to be skipped
+  // if the first argument resolves the condition.
+  // So I guess Or needs jumpIfTrue, and And needs jumpIfFalse.
+  // and the jumpIfFalse/jumpIfTrue might have a 0-instr skip for the RHS.
   | Or of createTo : Register * lhs : Register * rhs : Register
   | And of createTo : Register * lhs : Register * rhs : Register
 
@@ -1079,8 +1084,11 @@ and DvalOrdering private () =
 and DictMap = Map<DictKey, Dval>
 
 
-/// Lambdas close over variables and carry their own instruction set.
-/// Removing typeSymbolTable causes scoping issues; don't.
+/// Lambdas are a bit special:
+/// they have to close over variables, and have their own set of instructions, not embedded in the main set
+///
+/// Note to self: trying to remove typeSymbolTable here
+/// causes all sorts of scoping issues. Beware.
 and LambdaImpl =
   {
     // -- Things we know as soon as we create the lambda --
@@ -1359,7 +1367,7 @@ module StreamImpl =
   /// for type-checking `streamMap` results and `toValueType` on
   /// long pipelines. Cheap fix: cache at construction (the type is
   /// invariant once the StreamImpl is built — Concat's head doesn't
-  /// change once frozen at construction).
+  /// change once frozen at construction). 🔧
   let rec elemType (impl : StreamImpl) : ValueType =
     match impl with
     | FromIO(_, t, _, _) -> t
@@ -1441,7 +1449,22 @@ module RuntimeError =
 
 
   module Lets =
-    // TODO: consider a JSON-errors-style path to the failing sub-pattern
+    // TODO consider some kinda _path_ thing like with JSON errors:
+    // type Details =
+    //   /// Unit pattern does not match
+    //   | UnitPatternDoesNotMatch
+
+    //   /// Tuple pattern does not match
+    //   | TuplePatternDoesNotMatch
+
+    //   /// Tuple pattern has wrong number of elements
+    //   | TuplePatternWrongLength of expected: Int * actual: Int
+
+    // maybe it'd be better to present:
+    // - top-level path we're matching against
+    // - the path to failure
+    // - (?) ??
+
     type Error =
       /// Could not decompose `{someFn dval}` with pattern `{someFn pat}` in `let` expression
       | PatternDoesNotMatch of dval : Dval * pat : LetPattern
@@ -1465,7 +1488,10 @@ module RuntimeError =
         typeName : FQTypeName.FQTypeName *
         caseName : string
 
-      // `declaredType` supplies names only; see `FnParameterNotExpectedType`.
+      // `declaredType` is the field's type as written in the type declaration,
+      // or None where the constructor is builtin and nothing was written. It
+      // supplies names only; `expectedType` remains the authority on shape. See
+      // the note on `FnParameterNotExpectedType` for why both are needed.
       | ConstructionFieldOfWrongType of
         caseName : string *
         fieldIndex : int *
@@ -1476,8 +1502,9 @@ module RuntimeError =
 
 
   module Records =
-    // CLEANUP: fieldless records (`type WIP = {}`) may be fine; if not, it's a
-    // dev-time error, not an RTE
+    // CLEANUP _maybe_ "Record must have at least one field" (Q: for defs, or instances?)
+    // I'm not totally convinced, though - `type WIP = {}` seems useful.
+    // Later note -- this^ should be in some separate error tree for _dev-time_ errors
 
     type Error =
       // -- Creation --
@@ -1486,7 +1513,10 @@ module RuntimeError =
       | CreationMissingField of fieldName : string
       | CreationDuplicateField of fieldName : string
       | CreationFieldNotExpected of fieldName : string
-      // `declaredType` supplies names only; see `FnParameterNotExpectedType`.
+      // `declaredType` is the field's type as written in the type declaration,
+      // or None where the constructor is builtin and nothing was written. It
+      // supplies names only; `expectedType` remains the authority on shape. See
+      // the note on `FnParameterNotExpectedType` for why both are needed.
       | CreationFieldOfWrongType of
         fieldName : string *
         declaredType : Option<TypeReference> *
@@ -1499,7 +1529,10 @@ module RuntimeError =
       | UpdateEmptyKey
       | UpdateDuplicateField of fieldName : string
       | UpdateFieldNotExpected of fieldName : string
-      // `declaredType` supplies names only; see `FnParameterNotExpectedType`.
+      // `declaredType` is the field's type as written in the type declaration,
+      // or None where the constructor is builtin and nothing was written. It
+      // supplies names only; `expectedType` remains the authority on shape. See
+      // the note on `FnParameterNotExpectedType` for why both are needed.
       | UpdateFieldOfWrongType of
         fieldName : string *
         declaredType : Option<TypeReference> *
@@ -1652,8 +1685,12 @@ module RuntimeError =
     /// SQL compiler errors when compiling lambdas to SQL queries
     | SqlCompiler of errMsg : string
 
-    // Punted until DBs return: a Datastore-field-access RTE, and SqlCompiler's
-    // error wiring.
+    // punting these until DBs are supported again
+    // - bring back this RTE where/when relevant "Attempting to access field '{fieldName}' of a Datastore (use `DB.*` standard library functions to interact with Datastores. Field access only work with records)"
+    // - in backend/src/LibCloud/SqlCompiler.fs:
+    //   - 1223: | SqlCompilerException errStr -> return Error(RuntimeError.oldError errStr)
+    //   - 1224: // return Error(RuntimeError.oldError (errStr + $"\n\nIn body: {body}"))
+    //   - | SqlCompiler of SqlCompiler.Error // -- or maybe this should happen during PT2RT? hmm.
 
 
     /// Sometimes, very-unexpected things happen. This is a catch-all for those.
@@ -1948,7 +1985,12 @@ module Dval =
     | DApplicable applicable ->
       match applicable with
       | AppLambda _lambda ->
-        // TODO: could be KTFn of Unknowns
+        // TODO something
+        //   KTFn(
+        //     NEList.map (fun _ -> ValueType.Unknown) lambda.parameters,
+        //     ValueType.Unknown
+        //   )
+        //   |> ValueType.Known
         ValueType.Unknown
 
       // TODO look up type, etc
@@ -2194,7 +2236,11 @@ module PackageFn =
 
 /// Functionality written in Dark stored and managed outside of user space
 ///
-/// Options: a referenced item may exist only locally, not yet in the Cloud PM.
+/// Note: it may be tempting to think these shouldn't return Options,
+/// but if/when Package items may live (for some time) only on local systems,
+/// there's a chance some code will be committed, referencing something
+/// not yet in the Cloud PM.
+/// (though, we'll likely demand deps. in the PM before committing something upstream...)
 type PackageManager =
   {
     getType : FQTypeName.Package -> Ply<Option<PackageType.PackageType>>
@@ -2338,6 +2384,8 @@ type SqlSpec =
   /// Can be implemented by a given builtin function with extra arguments that go last
   | SqlFunctionWithSuffixArgs of string * List<string>
 
+  /// Can be implemented by given callback that receives 1 SQLified-string argument
+  /// | SqlCallback of (string -> string)
   /// Can be implemented by given callback that receives 2 SQLified-string argument
   | SqlCallback2 of (string -> string -> string)
 
@@ -2785,9 +2833,10 @@ type InterpreterStats =
     (name : string)
     (elapsedTicks : int64)
     =
-    // Raw ticks, not microseconds: `interpreterStatsGet` converts once at the
-    // reporting boundary. Converting here double-converts and puts a division in
-    // the hot path.
+    // Raw ticks, not microseconds. The reporting boundary (`interpreterStatsGet`) documents that these
+    // accumulators hold ticks and converts once there; dividing here both contradicted that -- so the
+    // report multiplied ticks-per-ns by a value already in microseconds and under-reported by 1000x on a
+    // 1 GHz clocksource -- and put a division in the hot path that the comment there says it avoids.
     match timingDict.TryGetValue(name) with
     | true, v -> timingDict[name] <- v + elapsedTicks
     | false, _ -> timingDict[name] <- elapsedTicks

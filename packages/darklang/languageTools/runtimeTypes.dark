@@ -220,10 +220,7 @@ type Instructions =
 
 
 type LambdaImpl =
-  { /// `UInt64`, not `ID`. `ID` is `Int64` and correct for ProgramTypes, whose converter narrows with
-    /// `DInt64(int64 id)`. RuntimeTypes does not: it hands the raw `DUInt64` across, so declaring this
-    /// `ID` makes every reader call `Int64.toString` on a `UInt64` and fail on the first lambda.
-    exprId: UInt64
+  { exprId: UInt64
     patterns: List<LetPattern>
     registersToCloseOver: List<(Register * Register)>
     selfRegister: Option<Register>
@@ -235,8 +232,7 @@ type ApplicableNamedFn =
     argsSoFar: List<Dval> }
 
 type ApplicableLambda =
-  { /// See `LambdaImpl.exprId`: RuntimeTypes carries these as `UInt64`.
-    exprId: UInt64
+  { exprId: UInt64
     closedRegisters: List<(Register * Dval)>
     typeSymbolTable: TypeSymbolTable
     argsSoFar: List<Dval> }

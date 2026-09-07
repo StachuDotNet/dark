@@ -933,7 +933,7 @@ let private theDarkDetectorSeesTheStoreItIsOn =
         // whose name was set by hand legitimately share one, and the assertion would depend on whether
         // anything else in the run had named the dev store.
         let liveHere =
-          "Darklang.SCM.PackageOps.liveBindingFor Darklang.SCM.Ids.mainBranchId "
+          "Darklang.SCM.PackageOps.liveBindingFor Darklang.SCM.Branch.mainBranchId "
           + "(Darklang.LanguageTools.ProgramTypes.PackageLocation "
           + "{ owner = \"MultiInstance\"; modules = [\"Converge\"]; name = \"seen\" })"
         let! bSees = darkOn liveHere
@@ -1099,7 +1099,7 @@ let anOverrideRepointsCallers =
         let (PT.Hash origHash) = hashBoundTo shared "base"
         let repoint (fromHash : string) (toHash : string) =
           darkOn (
-            "Darklang.SCM.Propagation.repointDependents Darklang.SCM.Ids.mainBranchId "
+            "Darklang.SCM.Propagation.repointDependents Darklang.SCM.Branch.mainBranchId "
             + "(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Cascade\"]; name = \"base\" }) "
             + "Darklang.LanguageTools.ProgramTypes.ItemKind.Fn "
             + "[ Darklang.LanguageTools.ProgramTypes.Hash.Hash \""
@@ -1134,7 +1134,7 @@ let anOverrideRepointsCallers =
           darkOn (
             "let c = "
             + conflictLiteral "cascade01" "base" mineHash theirsHash
-            + "\nDarklang.SCM.PackageOps.settleConflict Darklang.SCM.Ids.mainBranchId c \""
+            + "\nDarklang.SCM.PackageOps.settleConflict Darklang.SCM.Branch.mainBranchId c \""
             + mineHash
             + "\""
           )
@@ -1160,7 +1160,7 @@ let anOverrideRepointsCallers =
         // candidate is still a real question.
         let! _ =
           darkOn (
-            "Darklang.SCM.Conflicts.record Darklang.SCM.Ids.mainBranchId [ "
+            "Darklang.SCM.Conflicts.record Darklang.SCM.Branch.mainBranchId [ "
             + conflictLiteral "moot01" "caller" "aaaa" "bbbb"
             + "; "
             + conflictLiteral "live01" "base" mineHash theirsHash
@@ -1277,7 +1277,7 @@ let supersededReportsCheckAuthorship =
             "let op = Darklang.LanguageTools.ProgramTypes.PackageOp.Decision(\"peerpin01\", "
             + "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Sup\"]; name = \"f\" }, \"\", "
             + "Darklang.LanguageTools.ProgramTypes.DecisionKind.Propagation Darklang.LanguageTools.ProgramTypes.PropagationPolicy.Pin) in "
-            + "Darklang.SCM.PackageOps.add Darklang.SCM.Ids.mainBranchId [ op ]"
+            + "Darklang.SCM.PackageOps.add Darklang.SCM.Branch.mainBranchId [ op ]"
           )
         do!
           execSql
@@ -1292,7 +1292,7 @@ let supersededReportsCheckAuthorship =
             "let op = Darklang.LanguageTools.ProgramTypes.PackageOp.Decision(\"peerpin02\", "
             + "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"TwoStore\"; modules = [\"Sup\"]; name = \"f\" }, \"\", "
             + "Darklang.LanguageTools.ProgramTypes.DecisionKind.Propagation Darklang.LanguageTools.ProgramTypes.PropagationPolicy.Follow) in "
-            + "Darklang.SCM.PackageOps.add Darklang.SCM.Ids.mainBranchId [ op ]"
+            + "Darklang.SCM.PackageOps.add Darklang.SCM.Branch.mainBranchId [ op ]"
           )
         do!
           execSql
@@ -1320,7 +1320,7 @@ let supersededReportsCheckAuthorship =
             + "Darklang.LanguageTools.ProgramTypes.DecisionKind.Override (Darklang.LanguageTools.ProgramTypes.Reference.PackageFn (Darklang.LanguageTools.ProgramTypes.Hash.Hash \""
             + gHash
             + "\"))) in "
-            + "Darklang.SCM.PackageOps.add Darklang.SCM.Ids.mainBranchId [ op ]"
+            + "Darklang.SCM.PackageOps.add Darklang.SCM.Branch.mainBranchId [ op ]"
           )
         // The conflicts-table guard is what makes the fold run at all.
         do!

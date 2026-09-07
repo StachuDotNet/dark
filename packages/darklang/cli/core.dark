@@ -48,7 +48,7 @@ type AppState =
     /// Pages to return to, innermost first. A SubApp that launches another page (e.g. the workbench opening a
     /// foreground app) pushes itself here; when the launched page exits, we pop back instead of quitting.
     pageStack: List<Page>
-    /// The branch this session is on, `SCM.Ids.mainBranchId` for main. A NAME is what you type; the
+    /// The branch this session is on, `SCM.Branch.mainBranchId` for main. A NAME is what you type; the
     /// entry point resolves it once.
     currentBranchId: Uuid
     accountID: Stdlib.Option.Option<Uuid>
@@ -94,7 +94,7 @@ let locationStr (state: AppState) : String =
   let where = Packages.formatLocation state.packageData.currentLocation
 
   match state.currentBranchId with
-  | id when SCM.Ids.isMain id -> where
+  | id when SCM.Branch.isMain id -> where
   | id -> $"{where} @{SCM.PackageOps.branchName id}"
 
 /// Refuse arguments a command does not understand, naming the first and the rest.
@@ -185,7 +185,7 @@ let restoreSessionAccount () : (Stdlib.Option.Option<Uuid> * String) =
         (Stdlib.Option.Option.Some account.id, account.name)
 
 
-/// The branch this run starts on, `SCM.Ids.mainBranchId` for main.
+/// The branch this run starts on, `SCM.Branch.mainBranchId` for main.
 ///
 /// The three-tier resolution (`--branch` for this command, `DARK_BRANCH` for this shell, the
 /// `current_branch` config for this machine) happens in the CLI entry point before any Dark runs, so all

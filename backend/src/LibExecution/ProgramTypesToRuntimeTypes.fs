@@ -287,6 +287,10 @@ module MatchPattern =
       RT.MPVariable rc, (symbols |> Map.add name rc), rc + 1
 
     | PT.MPOr(_, patterns) ->
+      // Transform each pattern into a tuple containing:
+      // - the converted pattern (to RT)
+      // - the symbols used in the pattern
+      // - the register count needed by the pattern
       let patternsWithSymbols =
         patterns
         |> NEList.toList
@@ -294,8 +298,12 @@ module MatchPattern =
           let pat, patSymbols, patRc = toRT Map.empty rc pat
           (pat, patSymbols, patRc))
 
+      // Find the highest register count needed across all patterns
+      // to make sure we allocate enough registers to handle any of the patterns
       let maxRc = patternsWithSymbols |> List.map (fun (_, _, rc) -> rc) |> List.max
 
+      // build a consistent symbol-to-register mapping across all patterns
+      // maintains consistency by using the same register for the same symbol across patterns
       let commonSymbolMapping =
         let symbols =
           patternsWithSymbols
@@ -316,8 +324,11 @@ module MatchPattern =
             (Map.empty, rc)
           |> fst // take just the mapping, discard the final nextFreeRegister since we don't need it anymore
 
-      // Rewrite variable registers to the shared mapping; variables not common to
-      // all patterns keep their own.
+      // Update all patterns to use the consistent register mapping.
+      // For each variable pattern encountered:
+      // - If the variable appears in all patterns (is in commonSymbolMapping),
+      //   replace its register with the common register assigned to that symbol
+      // - Otherwise, leave its original register unchanged
       let patternsWithConsistentRegisters =
         patternsWithSymbols
         |> List.map (fun (pat, symbolMap, _) ->
@@ -340,6 +351,7 @@ module MatchPattern =
             | RT.MPChar c -> RT.MPChar c
             | RT.MPString s -> RT.MPString s
             | RT.MPVariable reg ->
+              // when we find a variable, check if it should use a common register
               match Map.tryFindKey (fun _ v -> v = reg) symbolMap with
               | Some varName ->
                 match Map.tryFind varName commonSymbolMapping with
@@ -936,13 +948,24 @@ module Expr =
 
 
     | PT.EMatch(_id, expr, cases) ->
-      // Two-phase compile; see `MatchCase.IntermediateValue`. `resultReg` gives
-      // every case one place to put the result.
+      // Building a `match` expression is a bit more involved than other expressions.
+      // We do this in multiple phases, and have a helper type to assist.
+
+      // First, the easy part - compile the expression we're `match`ing against.
       let expr = toRT symbols rc currentFnName expr
 
+      // Shortly, we'll compile each of the cases.
+      // We'll use this `resultReg` to store the final result of the match
+      // , so we have a consistent place to look for it.
+      // (similar to how we handle `EIf` -- refer to that for a simpler example)
       let resultReg, rcAfterResultIsReserved =
         expr.registerCount, expr.registerCount + 1
 
+      // We compile each `case` in two phases, because some instrs require knowing
+      // how many instrs to jump over, which we can't know until we know the basics
+      // of all the cases.
+      //
+      // See `MatchCase.IntermediateValue` for more info.
       let casesAfterFirstPhase : List<MatchCase.IntermediateValue> =
         cases
         |> List.map (fun c ->
@@ -1038,8 +1061,9 @@ module Expr =
     | PT.ERecord(_id, { resolved = Ok { name = typeName } }, typeArgs, fields) ->
       let recordReg, rc = rc, rc + 1
 
-      // CLEANUP: decide whether a fieldless record is an error, and where to
-      // enforce it
+      // CLEANUP: complain if there are no fields
+      // , or maybe that should happen during interpretation?
+      // - actually- is there anything _wrong_ with a fieldless record?
       let (rcAfterFields, instrs, fields) =
         fields
         |> List.fold

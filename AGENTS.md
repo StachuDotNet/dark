@@ -318,7 +318,7 @@ hash not found". After adding a ref:
 
 **Name resolution in test files.** `backend/testfiles/` is parsed with owner "Tests", so
 `Darklang.*` names need full qualification or the `Stdlib.` shortcut. `Stdlib.Json.ParseError.toString`
-and `Darklang.SCM.Ids.mainBranchId` resolve; `SCM.Branch.mainBranchId` doesn't. Impl:
+and `Darklang.SCM.Branch.mainBranchId` resolve; `SCM.Branch.mainBranchId` doesn't. Impl:
 `backend/src/LibParser/NameResolver.fs` and `packages/darklang/languageTools/nameResolver.dark`.
 
 **A published artifact older than your tree fails like a broken product.** Every command dies with

@@ -29,7 +29,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
   let scope =
     match SCM.PackageOps.currentBranch () with
-    | id when SCM.Ids.isMain id -> SCM.Ids.mainBranchName
+    | id when SCM.Branch.isMain id -> SCM.Branch.mainBranchName
     | id -> $"branch \"{SCM.PackageOps.branchName id}\""
 
   // `dark discard <name>` drops just that name's uncommitted bindings. It is the only way out for a

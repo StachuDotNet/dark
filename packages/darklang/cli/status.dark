@@ -37,8 +37,8 @@ let statusJson (state: AppState) : ScmJson.StatusJson =
 /// same on main as on a branch.
 let branchLine (state: AppState) : Unit =
   match state.currentBranchId with
-  | id when SCM.Ids.isMain id ->
-    Stdlib.printLine (Stdlib.Cli.UI.Colors.hint $"On branch {SCM.Ids.mainBranchName}")
+  | id when SCM.Branch.isMain id ->
+    Stdlib.printLine (Stdlib.Cli.UI.Colors.hint $"On branch {SCM.Branch.mainBranchName}")
   | id ->
     // Fall back to the id: a branch first registered by authoring rather than by `switch` has no name, and
     // "On branch " with nothing after it is worse than an id you can act on.

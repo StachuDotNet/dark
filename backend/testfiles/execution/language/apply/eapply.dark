@@ -12,6 +12,15 @@
  |> Stdlib.List.map (fun l -> l 1L)) =
     [ 1L, 2L, 3L, 4L, 5L ]
 
+// ---------------------------
+// DarkInternal tests are internal
+// ---------------------------
+// module DarkInternal =
+//   (let _ = Builtin.testSetExpectedExceptionCount 1L
+//    Builtin.darkInternalInfraSchedulingRuleList ()) =
+//      (error="Unknown error")
+
+
 let stringFn (key: String) : String = key ++ " appended string"
 
 let fnWithTypeArgAndOneParam<'a> (arg: 'a) : 'a = arg
@@ -100,6 +109,9 @@ module InvalidFnCalls =
   fnWithTypeArgAndOneParam<Int64, String> 1L "str" = error="fnWithTypeArgAndOneParam expects 1 type argument, but got 2 type arguments"
   // misc errors
   derrorFn "msg" = error="Uncaught exception: msg"
+  // (let _ = Builtin.testSetExpectedExceptionCount 1L
+  //  throwsException ()) =
+  // = error="Unknown error"
 
 
 // this is making sure that generic type args aren't "carried" into incorrect contexts
@@ -109,9 +121,7 @@ module GenericTypeArgsAreOK =
     [ (Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.ErrorSegment.String "a")
       (Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.ErrorSegment.String "b") ]
 
-  Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.segmentsToString
-    Darklang.SCM.Ids.mainBranchId
-    segments
+  Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.segmentsToString Darklang.SCM.Branch.mainBranchId segments
   ) = "ab"
 
 

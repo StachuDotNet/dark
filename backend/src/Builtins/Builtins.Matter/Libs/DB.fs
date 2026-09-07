@@ -175,7 +175,7 @@ let fns () : List<BuiltInFn> =
         [ Param.make
             "branchId"
             TUuid
-            "the branch to resolve DB type names against; main is `SCM.Ids.mainBranchId`" ]
+            "the branch to resolve DB type names against; main is `SCM.Branch.mainBranchId`" ]
       returnType = TList(TTuple(TString, TString, []))
       description = "Returns a list of (name, typeName) tuples for all DBs"
       fn =

@@ -2237,7 +2237,7 @@ let private conflictsBelongToTheBranchTheyHappenedOn =
       let! _ =
         runCli
           state
-          [ "eval"; recordConflictOn "Darklang.SCM.Ids.mainBranchId" "cnfmain0001" ]
+          [ "eval"; recordConflictOn "Darklang.SCM.Branch.mainBranchId" "cnfmain0001" ]
 
       // Each branch has its own list. Dropping the branch filter from `pending`
       // shows both here.

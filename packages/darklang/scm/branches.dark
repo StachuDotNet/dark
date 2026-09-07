@@ -75,7 +75,7 @@ let relayListBranches (owner: String) : List<String> =
 /// The DECISION is here; the merge MECHANISM (flipping ops effective, folding, retagging) is transactional
 /// and stays in F#.
 let canMerge (branchId: Uuid) : Stdlib.Result.Result<Unit, String> =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     Stdlib.Result.Result.Error
       "main is the trunk -- merge moves a BRANCH into its parent. `dark branches` lists them."
   else
@@ -221,7 +221,7 @@ let list () : List<BranchRow> =
             { id = id
               name = Stdlib.Sqlite.textOr row "name"
               parent =
-                SCM.Ids.fromTextField (Stdlib.Sqlite.textField row "parent_id")
+                SCM.Branch.fromTextField (Stdlib.Sqlite.textField row "parent_id")
               ops = Stdlib.Sqlite.intField row "ops" |> Stdlib.Option.withDefault 0L
               merged =
                 (Stdlib.Sqlite.intField row "merged" |> Stdlib.Option.withDefault 0L) > 0L }
@@ -245,8 +245,8 @@ let listLines (includeMerged: Bool) : List<String> =
   let branches = list ()
 
   let parentLabel (parentId: Uuid) : String =
-    if SCM.Ids.isMain parentId then
-      SCM.Ids.mainBranchName
+    if SCM.Branch.isMain parentId then
+      SCM.Branch.mainBranchName
     else
       // A parent this store has never registered is a colleague's branch that was not pulled
       // with its child. The id alone reads as corruption; say what it is instead.
@@ -344,7 +344,7 @@ let parentHashesForBases (parentId: Uuid) (branchId: Uuid) : Dict<String, String
 
   // A name the chain UNBOUND reads as "", the same spelling `divergedIn` gives a name main unlisted.
   let overlay =
-    if SCM.Ids.isMain parentId then
+    if SCM.Branch.isMain parentId then
       []
     else
       SCM.PackageOps.chainBindingEntries parentId

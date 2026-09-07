@@ -216,7 +216,7 @@ let whyFrom (args: List<String>) : String =
 /// pin), so they're scoped by `branch_id`. An ack isn't like that -- if the finding is real it's real
 /// everywhere, and one answer is the right number of answers.
 let onBranch () : Bool =
-  Stdlib.Bool.not (SCM.Ids.isMain (SCM.PackageOps.currentBranch ()))
+  Stdlib.Bool.not (SCM.Branch.isMain (SCM.PackageOps.currentBranch ()))
 
 
 let executeAck (state: AppState) (args: List<String>) : AppState =

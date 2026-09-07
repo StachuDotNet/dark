@@ -361,12 +361,6 @@ let parsePackageLocation (nameToParse: String): PackageLocation =
     // Empty name (shouldn't happen, but handle it)
     PackageLocation { owner = ""; modules = []; name = "" }
 
-/// A branch's stable id. Main's is well-known rather than minted (`SCM.Ids.mainBranchId`), because main
-/// exists before anything creates it.
-///
-/// NOT the branch's name. The name is what a person types and can rename or reuse; this is what op tags,
-/// per-name bases, bundles and parent links point at. The CLI turns one into the other at its edge, and
-/// they are different TYPES so that the edge is the only place they can be confused.
 type BranchID = Uuid
 
 /// Content-addressed hash for package items (hex-encoded SHA-256)
@@ -472,11 +466,6 @@ module Reference =
     | PackageValue _ -> ItemKind.Value
     | PackageFn _ -> ItemKind.Fn
 
-  /// The reference to <param h> as an item of kind <param k>.
-  ///
-  /// Construction must NAME the type (`Reference.PackageFn`), not just the case: a bare `PackageFn h`
-  /// only resolves in a match arm, where the matched value supplies the type. Unqualified in a
-  /// constructor position it is "PackageFn is not a valid name", at runtime, for every caller.
   let fromHashAndKind (h: Hash) (k: ItemKind) : Reference =
     match k with
     | Type -> Reference.PackageType h
@@ -548,9 +537,9 @@ type PackageOp =
   /// reachable by hash. `previous` is the hash it unbound. Not a Deprecate, which is about content and would
   /// mark every other name on the same body; a deprecated name still resolves, an unbound one does not.
   | Unbind of location: PackageLocation * previous: Stdlib.Option.Option<Hash>
-  /// Author-initiated deprecation annotation on a specific hash.
+  // Author-initiated deprecation annotation on a specific hash.
   | Deprecate of target: Reference * kind: DeprecationKind * message: String
-  /// Clear any prior deprecation on a target.
+  // Clear any prior deprecation on a target.
   | Undeprecate of target: Reference
   /// A human's judgment about a NAME, recorded so that it travels. Overriding a binding, acking a
   /// finding and choosing a propagation policy are one class of act -- someone decided something about

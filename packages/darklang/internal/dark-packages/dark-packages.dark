@@ -93,7 +93,7 @@ let parseExactMatch (s: String) : Stdlib.Result.Result<Bool, String> =
 
 /// Branch the package server reads/writes against. Single-tenant install →
 /// always main.
-val serverBranchId = Darklang.SCM.Ids.mainBranchId
+val serverBranchId = Darklang.SCM.Branch.mainBranchId
 
 
 // ────────────────────────── handlers ──────────────────────────

@@ -77,7 +77,7 @@ let count () : Int64 =
 ///
 /// Takes the branch id as a bound parameter; there is no caller-supplied predicate.
 let visibleWhere (branchId: Uuid) : String =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     "id NOT IN (SELECT op_id FROM op_branches)"
   else
     // The CHAIN, not the branch alone: a branch off a branch sees its parent's ops too. `chainCteSql`
@@ -89,10 +89,10 @@ let visibleWhere (branchId: Uuid) : String =
 
 
 let visibleParams (branchId: Uuid) : List<String> =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     []
   else
-    [ Stdlib.Uuid.toString branchId, Stdlib.Uuid.toString SCM.Ids.mainBranchId ]
+    [ Stdlib.Uuid.toString branchId, Stdlib.Uuid.toString SCM.Branch.mainBranchId ]
 
 
 /// Which ops a branch OWNS, which is a different question from what it can see. A branch owns the ops
@@ -102,14 +102,14 @@ let visibleParams (branchId: Uuid) : List<String> =
 ///
 /// Column names are prefixed `p.`, for queries that join `package_ops p` against something else.
 let ownedWhere (branchId: Uuid) : String =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     "p.effective = 1 AND p.id NOT IN (SELECT op_id FROM op_branches)"
   else
     "p.id IN (SELECT op_id FROM op_branches WHERE branch_id = @p0)"
 
 
 let ownedParams (branchId: Uuid) : List<String> =
-  if SCM.Ids.isMain branchId then [] else [ Stdlib.Uuid.toString branchId ]
+  if SCM.Branch.isMain branchId then [] else [ Stdlib.Uuid.toString branchId ]
 
 
 /// How many ops this branch can see.
@@ -209,7 +209,7 @@ let parentCommitFor (branchId: Uuid) : String =
   // What this branch can SEE, committed: its own ops plus main's, which is why a fresh branch's first
   // commit follows main's latest rather than nothing.
   let where =
-    if SCM.Ids.isMain branchId then
+    if SCM.Branch.isMain branchId then
       "p.commit_hash IS NOT NULL AND p.effective = 1
        AND p.id NOT IN (SELECT op_id FROM op_branches)"
     else

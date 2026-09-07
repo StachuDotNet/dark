@@ -105,10 +105,10 @@ let allChoices () : List<Choice> =
         (Stdlib.Result.Result.Error
           $"couldn't read propagation policy, so no pin can be trusted: {e}")
 
-  if SCM.Ids.isMain branch then
-    rows SCM.Ids.mainBranchId
+  if SCM.Branch.isMain branch then
+    rows SCM.Branch.mainBranchId
   else
-    Stdlib.List.append (rows branch) (rows SCM.Ids.mainBranchId)
+    Stdlib.List.append (rows branch) (rows SCM.Branch.mainBranchId)
 
 
 /// The explicit choices that could cover <param loc>: the item itself, its module, then each parent module,
@@ -208,7 +208,7 @@ let targetExists (owner: String) (modules: String) (name: String) : Bool =
     // branch has no `locations` row -- then main.
     let onBranch =
       match SCM.PackageOps.currentBranch () with
-      | id when SCM.Ids.isMain id -> false
+      | id when SCM.Branch.isMain id -> false
       | branch ->
         SCM.PackageOps.chainBindings branch
         |> Stdlib.List.findFirst (fun b ->
@@ -341,7 +341,7 @@ let forkBaseOf
   (branchId: Uuid)
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Option.Option<String> =
-  if SCM.Ids.isMain branchId then
+  if SCM.Branch.isMain branchId then
     Stdlib.Option.Option.None
   else
     SCM.Conflicts.branchBases branchId
@@ -357,7 +357,7 @@ let previousHash
   (loc: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Option.Option<LanguageTools.ProgramTypes.Hash> =
   match SCM.PackageOps.currentBranch () with
-  | id when SCM.Ids.isMain id -> mainPreviousHash loc
+  | id when SCM.Branch.isMain id -> mainPreviousHash loc
   | branch ->
     let live =
       currentHash loc
@@ -526,7 +526,7 @@ let authoringOrder
   // branch-authored version with nowhere to step back to; running past it makes `undo` step onto a
   // version main authored after you forked, which the branch never had.
   match SCM.PackageOps.currentBranch () with
-  | id when SCM.Ids.isMain id -> fromMain
+  | id when SCM.Branch.isMain id -> fromMain
   | branch ->
     let fromBranch =
       SCM.PackageOps.branchHashHistoryFor branch loc.owner (modulesOf loc) loc.name
