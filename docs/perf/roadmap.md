@@ -135,6 +135,10 @@ takes 320 ms):
 | `sql.total` | 2.0 ms |
 | `cli.extractResources` | 1.0 ms |
 
+Reconcile that last row before trusting it: measured on a copy of the dev store in 2026-09, the
+same phase on the same build shape cost 48 ms, 46 of it `reseedFromEmbedded`. See the 2026-09-09
+entry in `history.md`. Either the store or the embedded resource differs between the two probes.
+
 `preMain` and `cli.total` overlap, so they do not sum to the process time; read them as two views.
 
 Inside `preMain`, `strace` finds a single **15.9 ms window with zero syscalls**, so it is
@@ -149,6 +153,23 @@ the rest of that class. A profiler that can see inside a no-syscall window is th
 **Worth keeping in proportion.** 21 ms for a no-op is already good, and runtime performance matters
 more. This is written down because the question was open for two rounds and is now settled, not
 because it is the next thing to do.
+
+### `growIfNeeded` re-evaluates every value forever when one of them cannot evaluate
+
+A correctness bug as much as a perf one, and small. `LibDB.Seed.growIfNeeded` decides "this store
+has values that need evaluating" from `rt_dval IS NULL`. If a value can never evaluate, that stays
+true, so it re-evaluates ALL of them on every startup, for the life of the store:
+
+| store | `cli.growIfNeeded` |
+|---|---|
+| 0 values with a NULL `rt_dval` | 21 ms |
+| 72 of them | 450 ms, every command, unchanged over four runs |
+
+The dev store has none, which is why nobody has hit it; `rundir/test-data.db` has 72, which is how
+it turned up. A user with one bad `val` pays it on every command they ever run.
+
+The fix is to record that a value was TRIED and failed rather than inferring "needs evaluating"
+from NULL alone, and to retry when the store gains ops rather than on every boot.
 
 ### Package deserialization: real, but unmeasurable -- parked
 

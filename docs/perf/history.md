@@ -292,6 +292,48 @@ The real problem underneath: tracing has no GC. One night of ordinary work left 
 reported to the client as "network error"). `dark traces delete --all` + VACUUM recovers it;
 nothing yet notices it happening, which is a `dark status` candidate (in follow-ups).
 
+## 2026-09-09: which binary you measure changes the answer several-fold
+
+Answering the open question from 2026-08-27 below: a true `--aot` build had never been measured,
+and it is the one that matters, because `release-clis` ships AOT for linux-x64, linux-arm64 and
+macOS. Windows and the two AOT-incapable linux runtimes get R2R.
+
+`dark eval "1L+1L"`, warm, clean store, one box:
+
+| build | |
+|---|---|
+| Debug | 1000 ms |
+| `publish -c Release` | 700 ms | what CI's `build-backend` makes |
+| ReadyToRun | 235 ms | what win-* and the AOT-incapable linux runtimes get |
+| NativeAOT | 85 ms | what linux-x64/arm64 and macOS ship |
+| NativeAOT, after the fix below | 42 ms | |
+
+So a claim that "dark is slow" means nothing without naming the build. Forcing JIT on the R2R
+binary (`DOTNET_ReadyToRun=0`) takes the same command to 910 ms, which is most of what separates
+the top two rows from the bottom two; `DOTNET_TieredCompilation=0` and `TieredPGO=0` change
+nothing worth having.
+
+The shape is worth naming too: heavy commands got FASTER since August and trivial ones got
+slower. `status` was 438 ms then and 258 ms now on the same R2R shape. What grew is the FLOOR
+every command pays before doing anything, which a heavy command amortises and `1L+1L` does not.
+
+**`reseedFromEmbedded` ran on every command.** It decompresses the binary's entire embedded store
+to a temp file and diffs its ops against the local one, to answer a question whose answer is
+almost always "nothing". On NativeAOT, where there is no JIT to hide behind, that was 46 of the
+48 ms `cli.extractResources` cost, on a store copied from the dev store. The seed is fixed per
+binary and the top-up only ever adds that binary's own ops, so a store this build has already
+reconciled cannot need it again; recording which build did it, in the store so it travels with
+the file, takes it to ~1 ms.
+
+Note the disagreement with the roadmap's startup table, which has `cli.extractResources` at
+1.0 ms on the shipped AOT binary. Same build shape, so either the store or the embedded resource
+differs between the two probes. Worth reconciling before trusting either number in isolation.
+
+Method note, paid for twice in one night: I wrote this fix, measured the R2R binary, saw it skips
+that path entirely, reverted it as "helps only a build shape nothing ships", then measured AOT,
+which does take it, and put it back. Measure the artifact people actually run, and say which one
+you measured.
+
 ## 2026-08-27: what `dark` startup actually costs
 
 Shapes, not constants; re-measure before concluding. Three instrumentation seams exist, all no-ops
