@@ -320,6 +320,21 @@ let makeFloat (sign : Sign) (whole : string) (fraction : string) : float =
       [ "sign", sign; "whole", whole; "fraction", fraction; "inner", e ]
 
 
+/// A finite float as text, the way Float.toString, Json.serialize and the user DB all print one.
+///
+/// "R" is the shortest string that parses back to the same float. It replaced "G12" (toString, the
+/// DB) and "G16" (JSON), which rounded: `0.1 + 0.2` printed as `0.3`, two different floats could
+/// print the same, and a value written to a DB did not read back as the value written.
+///
+/// `.0` is added to a whole number so it still reads as a float, but not to an exponent form:
+/// `1e+17.0` is neither valid JSON nor something Float.parse accepts. NaN and the infinities are
+/// the caller's, since each site spells them differently.
+let floatToShortestString (f : float) : string =
+  let r =
+    f.ToString("R", System.Globalization.CultureInfo.InvariantCulture).Replace('E', 'e')
+  if r.Contains '.' || r.Contains 'e' then r else r + ".0"
+
+
 
 
 

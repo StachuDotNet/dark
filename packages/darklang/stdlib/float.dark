@@ -138,7 +138,8 @@ let parse (s: String) : Stdlib.Result.Result<Float, ParseError> =
   Builtin.floatParse s
 
 
-/// Stringify <param float>
+/// Stringify <param float>: the shortest decimal that parses back to the same value. Whole numbers
+/// keep a `.0`; very large or small magnitudes use exponent form, like `1e+17`.
 let toString (a: Float) : String = Builtin.floatToString a
 
 
