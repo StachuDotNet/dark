@@ -64,10 +64,7 @@ module Varint = LibSerialization.Binary.Serializers.Common.Varint
 /// both get nonsense. The lock is per PROCESS rather than global, so two platforms do not block
 /// each other, and it is held across the whole request and response rather than around each write.
 type private Running =
-  { proc : Process
-    writer : BinaryWriter
-    reader : BinaryReader
-    gate : obj }
+  { proc : Process; writer : BinaryWriter; reader : BinaryReader; gate : obj }
 
 /// A platform that has been described but not necessarily started.
 ///
@@ -123,7 +120,8 @@ let handleFor
 
 /// The same handle with a different deadline. For tests, which should not wait two minutes to
 /// prove that waiting ends.
-let withDeadline (ms : int) (handle : Handle) : Handle = { handle with deadlineMs = ms }
+let withDeadline (ms : int) (handle : Handle) : Handle =
+  { handle with deadlineMs = ms }
 
 /// One sentence about how confined this platform is, for a person reading about it.
 let confinement (handle : Handle) : string = handle.plan.confinement
@@ -147,22 +145,32 @@ let private readFramed
   (handle : Handle)
   (running : Running)
   : Result<byte[], string> =
+  // The read happens on another thread so it can be given a deadline, and that changes what an
+  // exception looks like from here: anything raised inside the task comes out of `Wait` wrapped in
+  // an `AggregateException`, which no `:? EndOfStreamException` handler upstream will ever match.
+  // So the two ways a platform stops talking are turned into answers HERE, on the thread that saw
+  // them, and the caller only ever sees a `Result`.
   let read =
     System.Threading.Tasks.Task.Run(fun () ->
-      let length = running.reader.ReadInt32()
-      // Checked BEFORE it is used to allocate. The platform chose this number and it is under no
-      // obligation to have chosen a sane one.
-      if length < 0 then
-        Error $"announced a frame of {length} bytes, which is not a size"
-      elif length > maxFrameBytes then
-        Error
-          $"announced a frame of {length} bytes, past the {maxFrameBytes / (1024 * 1024)}MB limit"
-      else
-        // `ReadBytes` stops at end of stream without complaining, so a platform that dies
-        // mid-answer returns a short buffer rather than raising. Compared here, where the promised
-        // length is still in hand.
-        let body = running.reader.ReadBytes length
-        if body.Length = length then Ok body else Error "stopped mid-answer")
+      try
+        let length = running.reader.ReadInt32()
+        // Checked BEFORE it is used to allocate. The platform chose this number and it is under
+        // no obligation to have chosen a sane one.
+        if length < 0 then
+          Error $"announced a frame of {length} bytes, which is not a size"
+        elif length > maxFrameBytes then
+          Error
+            $"announced a frame of {length} bytes, past the {maxFrameBytes / (1024 * 1024)}MB limit"
+        else
+          // `ReadBytes` stops at end of stream without complaining, so a platform that dies
+          // mid-answer returns a short buffer rather than raising. Compared here, where the
+          // promised length is still in hand.
+          let body = running.reader.ReadBytes length
+          if body.Length = length then Ok body else Error "stopped mid-answer"
+      with
+      | :? EndOfStreamException ->
+        Error "exited without answering. It may have crashed"
+      | :? IOException as e -> Error $"went quiet: {e.Message}")
   if read.Wait handle.deadlineMs then
     match read.Result with
     | Ok response -> Ok response
@@ -208,20 +216,21 @@ let private handshake (handle : Handle) (running : Running) : Result<unit, strin
     | Error e -> Error e
     | Ok response ->
 
-    use rs = new MemoryStream(response)
-    use br = new BinaryReader(rs)
-    let theirs = Varint.read br
-    if theirs = protocolVersion then
-      Ok()
-    else
-      Error
-        $"the {handle.platformName} platform speaks wire version {theirs}, and this build speaks {protocolVersion}"
+      use rs = new MemoryStream(response)
+      use br = new BinaryReader(rs)
+      let theirs = Varint.read br
+      if theirs = protocolVersion then
+        Ok()
+      else
+        Error
+          $"the {handle.platformName} platform speaks wire version {theirs}, and this build speaks {protocolVersion}"
   with
   | :? EndOfStreamException ->
     Error
       $"the {handle.platformName} platform exited during startup, without saying what it speaks"
   | :? IOException as e ->
-    Error $"lost contact with the {handle.platformName} platform at startup: {e.Message}"
+    Error
+      $"lost contact with the {handle.platformName} platform at startup: {e.Message}"
 
 /// One line a platform wrote to its stderr, made safe to show and impossible to mistake for ours.
 ///
@@ -251,8 +260,7 @@ let sanitizeDiagnostic (line : string) : string =
   |> String.filter (fun c -> c = '\t' || not (System.Char.IsControl c))
 
 let private reportDiagnostic (platformName : string) (line : string) : unit =
-  if not (isNull line) then
-    eprintfn $"[{platformName}] {sanitizeDiagnostic line}"
+  if not (isNull line) then eprintfn $"[{platformName}] {sanitizeDiagnostic line}"
 
 let private start (handle : Handle) : Result<Running, string> =
   try
@@ -291,7 +299,10 @@ let private ensureRunning (handle : Handle) : Result<Running, string> =
         | Error e ->
           // Never recorded as running, so the next call starts fresh rather than talking to a
           // process this one has already decided it cannot understand.
-          (try r.proc.Kill() with _ -> ())
+          (try
+            r.proc.Kill()
+           with _ ->
+             ())
           Error e
         | Ok() ->
           handle.running <- Some r
@@ -348,22 +359,22 @@ let private call
       | Error e -> Error e
       | Ok response ->
 
-      use rs = new MemoryStream(response)
-      use br = new BinaryReader(rs)
-      let returned = Wire.readTable br
-      let status = br.ReadByte()
-      let dval = DvalWire.readDval br
-      if status = 0uy then
-        // Before anything else looks at it. A well-formed frame can still carry a value that is
-        // not data but a handle into this runtime, and the type checker cannot see the
-        // difference for all of them.
-        match Wire.refuseForgedHandles handle.platformName dval with
-        | Error e -> Error e
-        | Ok() -> Ok(dval, returned)
-      else
-        match dval with
-        | RT.DString message -> Error $"{handle.platformName}: {message}"
-        | other -> Error $"{handle.platformName} failed: {other}"
+        use rs = new MemoryStream(response)
+        use br = new BinaryReader(rs)
+        let returned = Wire.readTable br
+        let status = br.ReadByte()
+        let dval = DvalWire.readDval br
+        if status = 0uy then
+          // Before anything else looks at it. A well-formed frame can still carry a value that is
+          // not data but a handle into this runtime, and the type checker cannot see the
+          // difference for all of them.
+          match Wire.refuseForgedHandles handle.platformName dval with
+          | Error e -> Error e
+          | Ok() -> Ok(dval, returned)
+        else
+          match dval with
+          | RT.DString message -> Error $"{handle.platformName}: {message}"
+          | other -> Error $"{handle.platformName} failed: {other}"
     with
     | :? EndOfStreamException ->
       // The pipe closed. Nothing is coming, so say so rather than waiting for it.
@@ -381,7 +392,8 @@ let invoke (handle : Handle) : Platform.External.Invoke =
   fun state name args ->
     uply {
       match ensureRunning handle with
-      | Error e -> return RT.RuntimeError.UncaughtException(e, []) |> RT.raiseUntargetedRTE
+      | Error e ->
+        return RT.RuntimeError.UncaughtException(e, []) |> RT.raiseUntargetedRTE
       | Ok running ->
         // Bytes leave the arguments here and travel beside them, because the at-rest encoding has
         // nowhere to put an ephemeral blob and the far side has no store to look a reference up in.

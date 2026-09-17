@@ -2546,7 +2546,15 @@ let aCrashedPlatformIsAnErrorNotAHang =
     try
       let! crashed = callSpawned handle "echoCrash" RT.DUnit
       match crashed with
-      | Error _ -> ()
+      // The designed message, not merely some error. The read runs on another thread so it can
+      // be given a deadline, and an exception raised there surfaces wrapped, which the handlers
+      // written for it never matched: the crash came out as an internal error and the dead
+      // process was never dropped. `executeFunction` turns any exception into `Error`, so a
+      // test that only asks for `Error _` cannot tell the two apart.
+      | Error(RT.RuntimeError.UncaughtException(message, _), _) ->
+        Expect.stringContains message "exited without answering" "says what happened"
+      | Error(other, _) ->
+        failtest $"a crashed platform was an internal error, not a message: {other}"
       | Ok other -> failtest $"a crashed platform answered: {other}"
 
       // And the handle recovers: the dead process is dropped, so the next call starts a fresh one
