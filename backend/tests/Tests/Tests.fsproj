@@ -32,6 +32,7 @@
     <Compile Include="Prelude.Tests.fs" />
 
     <Compile Include="PT2RT.Tests.fs" />
+    <Compile Include="PermissionsGate.Tests.fs" />
     <Compile Include="Interpreter.Tests.fs" />
     <Compile Include="Platform.Tests.fs" />
     <Compile Include="Builtin.Tests.fs" />
@@ -48,6 +49,7 @@
     <!-- cloud stuff /-->
     <Compile Include="HttpServer.Tests.fs" />
     <Compile Include="Toplevels.Tests.fs" />
+    <Compile Include="CliInstance.fs" />
     <Compile Include="CliTestHarness.fs" />
     <Compile Include="CliDsl.fs" />
     <Compile Include="CliSurface.Tests.fs" />
@@ -55,9 +57,9 @@
     <Compile Include="CliScmRegression.Tests.fs" />
     <Compile Include="CliPackages.Tests.fs" />
     <Compile Include="CliWorkspace.Tests.fs" />
+    <Compile Include="CliJson.Tests.fs" />
+    <Compile Include="CliAuthoring.Tests.fs" />
     <Compile Include="CliSyncSurface.Tests.fs" />
-    <Compile Include="ScmArrivalOrder.Tests.fs" />
-    <Compile Include="CliScmRound2.Tests.fs" />
     <Compile Include="CliTraces.Tests.fs" />
     <Compile Include="CliScriptLowering.Tests.fs" />
     <Compile Include="DvalReprInternalQueryable.Tests.fs" />
@@ -77,7 +79,9 @@
     <Compile Include="Lww.Tests.fs" />
     <Compile Include="PropagationPolicy.Tests.fs" />
     <Compile Include="AtRestTypeChecker.Tests.fs" />
+    <Compile Include="MultiInstanceHarness.fs" />
     <Compile Include="MultiInstance.Tests.fs" />
+    <Compile Include="MultiInstanceDark.Tests.fs" />
     <Compile Include="Stream.Tests.fs" />
     <Compile Include="Permissions.Tests.fs" />
     <Compile Include="PackagePermissions.Tests.fs" />

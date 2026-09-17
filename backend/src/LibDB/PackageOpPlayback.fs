@@ -29,14 +29,6 @@ open LibSerialization.Hashing
 open LibDB.PreparedBatch
 
 
-/// Bind the location key nearly every projection statement filters on: $owner,
-/// $modules (dot-joined) and $name. Per call site, only the location varies.
-let private pLoc (cmd : SqliteCommand) (location : PT.PackageLocation) : unit =
-  p cmd "$owner" location.owner
-  p cmd "$modules" (String.concat "." location.modules)
-  p cmd "$name" location.name
-
-
 // ------------------------------------------------------------------
 // Dependency table maintenance.
 // ------------------------------------------------------------------
@@ -547,62 +539,6 @@ let private applyUndeprecate
   writeDeprecationState ctx target ts "undeprecated" None
 
 
-/// Apply a Describe op: the item's stored text becomes <param text>.
-///
-/// A rewrite in place rather than a row in a projection table, and that is only sound because the
-/// doc is not in the identity hash: the blob for hash H carries H's behaviour plus whatever H is
-/// currently said to be, and only the first half is what H means. So there is nothing to reconcile
-/// -- last writer wins by `origin_ts`, like every other fold here.
-///
-/// Both the blob and the `description` column, because both are read: the column by the listings
-/// and search, the blob by anything that loads the item.
-let private applyDescribe
-  (ctx : Ctx)
-  (target : PT.Reference)
-  (text : string)
-  : Task<unit> =
-  task {
-    let (Hash hashStr) = target.hash
-
-    let table, reserialize =
-      match target.kind with
-      | PT.ItemKind.Fn ->
-        "package_functions",
-        (fun (bytes : byte[]) ->
-          let fn = BS.PT.PackageFn.deserialize target.hash bytes
-          BS.PT.PackageFn.serialize hashStr { fn with description = text })
-      | PT.ItemKind.Type ->
-        "package_types",
-        (fun bytes ->
-          let t = BS.PT.PackageType.deserialize target.hash bytes
-          BS.PT.PackageType.serialize hashStr { t with description = text })
-      | PT.ItemKind.Value ->
-        "package_values",
-        (fun bytes ->
-          let v = BS.PT.PackageValue.deserialize target.hash bytes
-          BS.PT.PackageValue.serialize hashStr { v with description = text })
-
-    let! stored =
-      bytesOption ctx $"SELECT pt_def FROM {table} WHERE hash = $hash" (fun cmd ->
-        p cmd "$hash" hashStr)
-
-    // Nothing here to describe: the item has not arrived (a Describe can travel ahead of the
-    // AddFn that carries its subject). Dropped rather than stored, the same as every other op
-    // whose target this store does not hold.
-    match stored with
-    | None -> return ()
-    | Some bytes ->
-      do!
-        exec
-          ctx
-          $"UPDATE {table} SET pt_def = $pt_def, description = $description WHERE hash = $hash"
-          (fun cmd ->
-            p cmd "$hash" hashStr
-            p cmd "$pt_def" (reserialize bytes)
-            p cmd "$description" text)
-  }
-
-
 // ------------------------------------------------------------------
 // Op dispatch.
 // ------------------------------------------------------------------
@@ -948,7 +884,20 @@ let private applyOp
     | PT.PackageOp.Undeprecate target ->
       let! ts = originTsOf ctx (Hashing.computeOpRowId op)
       do! applyUndeprecate ctx ts target
-    | PT.PackageOp.Describe(target, text) -> do! applyDescribe ctx target text
+    | PT.PackageOp.UpdateDoc(location, part, text, previous, _) ->
+      // The op's own time, so the NEWEST statement wins rather than the last to arrive.
+      let! ts = originTsOf ctx (Hashing.computeOpRowId op)
+      // This fold is main's: a branch keeps its own wording as a delta op and `LibDB.Docs` reads it
+      // from there, so a conflict recorded here is main's too.
+      do!
+        Docs.applyUpdateDoc
+          ctx
+          PT.BranchId.Main
+          (Option.defaultValue "" ts)
+          location
+          part
+          text
+          previous
     | PT.PackageOp.Decision(id, loc, reason, kind) ->
       match kind with
       | PT.DecisionKind.Override target ->

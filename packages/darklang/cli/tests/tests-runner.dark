@@ -6,7 +6,12 @@ module Darklang.Cli.Tests
 type TestFunction = Unit -> TestResult
 
 let allTests (): List<String * TestFunction> =
-  [ ("Help", fun () -> testHelpCommand ())
+  [ ("Instance Answers", fun () -> testInstanceAnswers ())
+    ("Instances Are Isolated", fun () -> testInstancesAreIsolated ())
+    ("Dispose Removes The Store", fun () -> testDisposeRemovesTheStore ())
+    ("Workbench Paints", fun () -> testWorkbenchPaints ())
+
+    ("Help", fun () -> testHelpCommand ())
     ("Version", fun () -> testVersionCommand ())
     ("Status", fun () -> testStatusCommand ())
     ("Merge Round Trip", fun () -> testMergeRoundTrip ())
@@ -118,7 +123,12 @@ let allTests (): List<String * TestFunction> =
     ("REPL Captures Real Values", fun () -> testReplCapturesRealValues ())
     ("Workbench Captures Stray Output", fun () -> testWorkbenchCapturesStrayOutput ())
     ("Workbench Views Show Chrome", fun () -> testWorkbenchViewsShowTheirChrome ())
-    ("Workbench Sidebar Navigation", fun () -> testWorkbenchSidebarNavigation ())
+    ("Workbench Home Overview", fun () -> testWorkbenchHomeOverview ())
+    ("Workbench Navbar Navigation", fun () -> testWorkbenchNavbarNavigation ())
+    ("Workbench History Round Trip", fun () -> testWorkbenchHistoryRoundTrip ())
+    ("Workbench Document Scroll", fun () -> testWorkbenchDocumentScroll ())
+    ("Workbench Sync Standing", fun () -> testWorkbenchSyncStanding ())
+    ("Workbench Branch Picker", fun () -> testWorkbenchBranchPicker ())
   ]
 
 type TestSummary =

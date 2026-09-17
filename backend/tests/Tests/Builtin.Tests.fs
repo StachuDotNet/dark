@@ -88,19 +88,25 @@ let private allBuiltinNames () : List<string> =
 
 let private languageIdioms = PackageSurface.languageIdioms
 
-/// `convert` and `tryConvert` are the two builtins that replaced 116 typed width conversions
-/// (`Int8.fromInt64`, `UInt32.toFloat` and the rest). Every one of those wrappers still exists with
-/// its old name and signature and delegates to one of these, so there are many call sites by
-/// construction and the one-wrapper rule does not apply: the wrappers ARE the per-type surface, and
-/// these two are the primitive underneath them. Wrapping the primitive again would just add one
-/// more name for the same thing.
+/// Builtins intentionally referenced from more than one place in `packages/`.
+///
+/// Nearly empty, and worth keeping that way: when a builtin picks up a second caller, wrap it.
+/// Before adding an entry, check whether a wrapper already exists and the new caller simply has
+/// not been pointed at it.
+///
+/// The two here are the one legitimate shape. `convert` and `tryConvert` replaced the typed width
+/// conversions (`Int8.fromInt64`, `UInt32.toFloat` and the rest). Every one of those wrappers still
+/// exists with its old name and signature and delegates to one of these, so there are many call
+/// sites by construction: the wrappers ARE the per-type surface, and these two are the primitive
+/// underneath them. Wrapping the primitive again would just add one more name for the same thing.
 let private multiUseAllowlist : Set<string> = Set.ofList [ "convert"; "tryConvert" ]
 
 
 let private findRepoRoot = PackageSurface.findRepoRoot
 let private packagesText = PackageSurface.packagesText
 let private repoDarkText = PackageSurface.repoDarkText
-let private countReferencesIn = PackageSurface.countReferencesIn
+let private packagesRefCounts = PackageSurface.packagesRefCounts
+let private repoRefCounts = PackageSurface.repoRefCounts
 let private countReferences = PackageSurface.countReferences
 
 
@@ -161,7 +167,7 @@ let everyBuiltinIsReferenced =
       |> Seq.filter (fun name ->
         not (Set.contains name unusedAllowlist)
         && not (PT.InfixFnName.isOperatorDispatched name)
-        && countReferencesIn repoDarkText.Value name = 0)
+        && not (Map.containsKey name repoRefCounts.Value))
       |> List.ofSeq
 
     if not (List.isEmpty unused) then

@@ -578,6 +578,11 @@ module InfixFnName =
       | PT.ArithmeticDivide -> "ArithmeticDivide", []
       | PT.ArithmeticModulo -> "ArithmeticModulo", []
       | PT.ArithmeticPower -> "ArithmeticPower", []
+      | PT.BitwiseAnd -> "BitwiseAnd", []
+      | PT.BitwiseOr -> "BitwiseOr", []
+      | PT.BitwiseXor -> "BitwiseXor", []
+      | PT.ShiftLeft -> "ShiftLeft", []
+      | PT.ShiftRight -> "ShiftRight", []
       | PT.ComparisonGreaterThan -> "ComparisonGreaterThan", []
       | PT.ComparisonGreaterThanOrEqual -> "ComparisonGreaterThanOrEqual", []
       | PT.ComparisonLessThan -> "ComparisonLessThan", []
@@ -596,6 +601,11 @@ module InfixFnName =
     | DEnum(_, _, [], "ArithmeticDivide", []) -> PT.ArithmeticDivide
     | DEnum(_, _, [], "ArithmeticModulo", []) -> PT.ArithmeticModulo
     | DEnum(_, _, [], "ArithmeticPower", []) -> PT.ArithmeticPower
+    | DEnum(_, _, [], "BitwiseAnd", []) -> PT.BitwiseAnd
+    | DEnum(_, _, [], "BitwiseOr", []) -> PT.BitwiseOr
+    | DEnum(_, _, [], "BitwiseXor", []) -> PT.BitwiseXor
+    | DEnum(_, _, [], "ShiftLeft", []) -> PT.ShiftLeft
+    | DEnum(_, _, [], "ShiftRight", []) -> PT.ShiftRight
     | DEnum(_, _, [], "ComparisonGreaterThan", []) -> PT.ComparisonGreaterThan
     | DEnum(_, _, [], "ComparisonGreaterThanOrEqual", []) ->
       PT.ComparisonGreaterThanOrEqual
@@ -1459,6 +1469,32 @@ module Reference =
     | _ -> Exception.raiseInternal "Invalid Reference" []
 
 
+module DocPart =
+  let typeName () =
+    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.docPart ())
+  let knownType () = KTCustomType(typeName (), [])
+
+  let toDT (p : PT.DocPart) : Dval =
+    let (caseName, fields) =
+      match p with
+      | PT.WholeItem -> "WholeItem", []
+      | PT.RecordField name -> "RecordField", [ DString name ]
+      | PT.EnumCase name -> "EnumCase", [ DString name ]
+      | PT.Parameter index -> "Parameter", [ DInt(DarkInt.Finite(int64 index)) ]
+    DEnum(typeName (), typeName (), [], caseName, fields)
+
+  let fromDT (d : Dval) : PT.DocPart =
+    match d with
+    | DEnum(_, _, [], "WholeItem", []) -> PT.WholeItem
+    | DEnum(_, _, [], "RecordField", [ DString name ]) -> PT.RecordField name
+    | DEnum(_, _, [], "EnumCase", [ DString name ]) -> PT.EnumCase name
+    // A parameter position, so a value that does not fit an int is not a large index, it is a
+    // corrupt op. 0 is as wrong as anything else and does not crash the fold.
+    | DEnum(_, _, [], "Parameter", [ DInt index ]) ->
+      PT.Parameter(DarkInt.toInt32 index |> Option.defaultValue 0)
+    | _ -> Exception.raiseInternal "Invalid DocPart" []
+
+
 module DeprecationKind =
   let typeName () =
     FQTypeName.fqPackage (
@@ -1762,8 +1798,13 @@ module PackageOp =
         "Deprecate",
         [ Reference.toDT target; DeprecationKind.toDT kind; DString message ]
       | PT.PackageOp.Undeprecate target -> "Undeprecate", [ Reference.toDT target ]
-      | PT.PackageOp.Describe(target, text) ->
-        "Describe", [ Reference.toDT target; DString text ]
+      | PT.PackageOp.UpdateDoc(location, part, text, previous, restating) ->
+        "UpdateDoc",
+        [ PackageLocation.toDT location
+          DocPart.toDT part
+          DString text
+          previousToDT previous
+          restating |> Option.map DString |> Dval.option KTString ]
       | PT.PackageOp.Decision(id, location, reason, kind) ->
         "Decision",
         [ DString id
@@ -1803,8 +1844,24 @@ module PackageOp =
       )
     | DEnum(_, _, [], "Undeprecate", [ target ]) ->
       Some(PT.PackageOp.Undeprecate(Reference.fromDT target))
-    | DEnum(_, _, [], "Describe", [ target; DString text ]) ->
-      Some(PT.PackageOp.Describe(Reference.fromDT target, text))
+    | DEnum(_,
+            _,
+            [],
+            "UpdateDoc",
+            [ location; part; DString text; previous; restating ]) ->
+      let restating =
+        match restating with
+        | DEnum(_, _, _, "Some", [ DString s ]) -> Some s
+        | _ -> None
+      Some(
+        PT.PackageOp.UpdateDoc(
+          PackageLocation.fromDT location,
+          DocPart.fromDT part,
+          text,
+          previousFromDT previous,
+          restating
+        )
+      )
     | DEnum(_, _, [], "Decision", [ DString id; location; DString reason; kind ]) ->
       Some(
         PT.PackageOp.Decision(

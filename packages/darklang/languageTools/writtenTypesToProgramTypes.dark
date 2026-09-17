@@ -320,6 +320,11 @@ module InfixFnName =
     | ArithmeticDivide -> ProgramTypes.InfixFnName.ArithmeticDivide
     | ArithmeticModulo -> ProgramTypes.InfixFnName.ArithmeticModulo
     | ArithmeticPower -> ProgramTypes.InfixFnName.ArithmeticPower
+    | BitwiseAnd -> ProgramTypes.InfixFnName.BitwiseAnd
+    | BitwiseOr -> ProgramTypes.InfixFnName.BitwiseOr
+    | BitwiseXor -> ProgramTypes.InfixFnName.BitwiseXor
+    | ShiftLeft -> ProgramTypes.InfixFnName.ShiftLeft
+    | ShiftRight -> ProgramTypes.InfixFnName.ShiftRight
     | ComparisonGreaterThan -> ProgramTypes.InfixFnName.ComparisonGreaterThan
     | ComparisonGreaterThanOrEqual ->
       ProgramTypes.InfixFnName.ComparisonGreaterThanOrEqual
@@ -1199,7 +1204,7 @@ module TypeDeclaration =
       (ProgramTypes.TypeDeclaration.RecordField
         { name = name
           typ = typ
-          description = "" },
+          description = f.description },
         unresolvedNames)
 
 
@@ -1238,7 +1243,7 @@ module TypeDeclaration =
       (ProgramTypes.TypeDeclaration.EnumCase
         { name = name
           fields = fields
-          description = "" },
+          description = c.description },
         unresolvedNames |> Stdlib.List.flatten)
 
   module Definition =
@@ -1346,7 +1351,7 @@ module FunctionDeclaration =
         (ProgramTypes.PackageFn.Parameter
           { name = p.name.name
             typ = typ
-            description = "" },
+            description = p.description },
           unresolvedNames)
 
   /// Walk a PT TypeReference collecting all TVariable names. Used to

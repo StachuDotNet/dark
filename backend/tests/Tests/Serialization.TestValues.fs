@@ -793,9 +793,34 @@ module ProgramTypes =
         "use the other one"
       )
       Undeprecate(Reference.PackageValue hashPT)
-      Describe(Reference.PackageFn hashPT, "What it says about itself.")
+      UpdateDoc(loc, DocPart.WholeItem, "What it says about itself.", None, None)
       // The empty text is a real op: it is how a doc is cleared.
-      Describe(Reference.PackageType hashPT, "")
+      UpdateDoc(loc, DocPart.WholeItem, "", Some shortHash, None)
+      // A restatement: the same text said again, made a distinct op by its stamp.
+      UpdateDoc(
+        loc,
+        DocPart.WholeItem,
+        "What it says about itself.",
+        None,
+        Some "2026-09-08T22:00:00.000Z"
+      )
+      // One per nested part, because each carries a name or an index the whole-item case does not,
+      // and a serializer that dropped it would still round-trip the ones above.
+      UpdateDoc(
+        loc,
+        DocPart.RecordField "theField",
+        "what the field is for",
+        Some hashPT,
+        None
+      )
+      UpdateDoc(
+        loc,
+        DocPart.EnumCase "TheCase",
+        "when this case applies",
+        None,
+        None
+      )
+      UpdateDoc(loc, DocPart.Parameter 2, "what to pass", Some shortHash, None)
 
       Decision(
         "d1",

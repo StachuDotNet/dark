@@ -93,9 +93,12 @@ installation permits package/local-store access, stdio, clock, and randomness;
 rules allow (or deny) additional effects and resources:
 
   permissions list
+  permissions profile                         # list starting policies
+  permissions profile read-only /home/me/project       # preview: reads, HTTPS GET
+  permissions profile local-dev /home/me/project --yes # apply: adds writes, serving
   permissions allow clock
   permissions allow http GET https://api.stripe.com/v1
-  permissions allow file write /srv/app/data     # roots are absolute; ~ is not expanded
+  permissions allow file write /home/me/project/data   # absolute; ~ not expanded
   permissions deny http POST https://api.stripe.com/v1
   permissions allow native             # raw fds, process handles, SQL against another
                                        # database: cannot be scoped, so it is granted
@@ -106,19 +109,22 @@ rules allow (or deny) additional effects and resources:
 
 Consumer approvals are local to the logged-in account on this installation.
 The instance policy remains machine-wide, while each account gets its own
-package approvals and logical-function pins. The normal workflow uses the
-logical function name; immutable hashes stay behind the approval:
+package approvals and its own approved version per logical function name. The
+normal workflow uses the logical function name; immutable hashes stay behind
+the approval:
 
   permissions approve Darklang.Vendor.Package.function
   permissions update Darklang.Vendor.Package.function
-  permissions pins                      # name  shorthash
-  permissions unpin Darklang.Vendor.Package.function
+  permissions approved                  # name  shorthash
+  permissions unapprove Darklang.Vendor.Package.function
   permissions approvals                 # approved hashes; revoke-package <hash> drops one
 
 Approval computes the function's inferred transitive needs; changing the code
 changes its hash and requires a new decision, without changing the user's
-logical name. `unpin` only releases the name; the version's approval stays
-until `revoke-package`.
+logical name. An approved version is what the name RESOLVES to when you run
+something, so approving is how you stay on a reviewed version while the package
+moves on. `unapprove` only releases the name; the version's approval stays until
+`revoke-package`.
 
 ## SCM (version control)
 
@@ -167,7 +173,7 @@ each, and they never see each other's work until someone merges.
   dark branches [--json]           # what exists
   dark diff feature                # what it changes vs its parent
   dark rebase feature              # take the parent's current state
-  dark merge feature               # fold it in
+  dark merge feature -y            # fold it in (-y: nothing is there to answer the prompt)
 
 Conflicts never block. Both sides converge on the same winner, the loser is
 kept, and `dark conflicts` is where you review it after.
@@ -230,10 +236,14 @@ Rules:
 - String concat: ++ (not @)
 - String interpolation: $"x = {expr}; total = {a ++ b}" -- does NOT auto-coerce
   non-strings; wrap with Stdlib.Int.toString / Stdlib.Float.toString
-- Numeric operators (+ - * / % ^ < > <= >= and unary -) are polymorphic over
+- Numeric operators (+ - * / % ** < > <= >= and unary -) are polymorphic over
   numeric types; operands must match (`1 + 2`, `1.0 + 2.0`). `/` is integer
-  division on ints; float division on floats. A bare `1` is an arbitrary-
-  precision `Int` and never overflows.
+  division on ints; float division on floats. `**` is power. A bare `1` is an
+  arbitrary-precision `Int` and never overflows.
+- Bitwise operators (& | ^ << >> and unary ~) work on every integer type, not
+  Float; both operands (the shift count included) must be the same type.
+- `!x` is boolean not. Inside a `match`, `|` is the arm separator, so bitwise-or
+  there needs parens: `| A -> (a | b)`.
 
 ## Records
   MyRecord { a = 1; b = 2 }

@@ -257,6 +257,11 @@ type InfixFnName =
   | ArithmeticDivide
   | ArithmeticModulo
   | ArithmeticPower
+  | BitwiseAnd
+  | BitwiseOr
+  | BitwiseXor
+  | ShiftLeft
+  | ShiftRight
   | ComparisonGreaterThan
   | ComparisonGreaterThanOrEqual
   | ComparisonLessThan
@@ -506,6 +511,11 @@ module InfixFnName =
     | ArithmeticDivide -> "divide"
     | ArithmeticModulo -> "modulo"
     | ArithmeticPower -> "power"
+    | BitwiseAnd -> "bitwiseAnd"
+    | BitwiseOr -> "bitwiseOr"
+    | BitwiseXor -> "bitwiseXor"
+    | ShiftLeft -> "shiftLeft"
+    | ShiftRight -> "shiftRight"
     | ComparisonGreaterThan -> "greaterThan"
     | ComparisonGreaterThanOrEqual -> "greaterThanOrEqualTo"
     | ComparisonLessThan -> "lessThan"
@@ -522,6 +532,11 @@ module InfixFnName =
       ArithmeticDivide
       ArithmeticModulo
       ArithmeticPower
+      BitwiseAnd
+      BitwiseOr
+      BitwiseXor
+      ShiftLeft
+      ShiftRight
       ComparisonGreaterThan
       ComparisonGreaterThanOrEqual
       ComparisonLessThan
@@ -537,6 +552,12 @@ module InfixFnName =
   /// The unary-minus builtin the parser lowers `-x` (non-literal) to.
   let negateBuiltinName = "negate"
 
+  /// The unary `~` builtin the parser lowers bitwise NOT to.
+  let bitwiseNotBuiltinName = "bitwiseNot"
+
+  /// The unary `!` builtin the parser lowers boolean NOT to.
+  let boolNotBuiltinName = "boolNot"
+
   /// Is this builtin reached through operator syntax rather than by name?
   ///
   /// Such a builtin has no textual `Builtin.x` reference anywhere in `packages/`, which otherwise
@@ -546,6 +567,8 @@ module InfixFnName =
   /// this replaced.
   let isOperatorDispatched (builtinName : string) : bool =
     builtinName = negateBuiltinName
+    || builtinName = bitwiseNotBuiltinName
+    || builtinName = boolNotBuiltinName
     || (tryFromBuiltinName builtinName |> Option.isSome)
 
 
@@ -755,26 +778,36 @@ type PackageOp =
   //   shouldn't silently un-Harmful on merge).
   | Undeprecate of target : Reference
 
-  /// What an item SAYS about itself, as a thing said about content rather than part of it.
+  /// What the thing at a NAME says about itself, or one named part of it.
   ///
-  /// A doc comment is not behaviour, so it is not in the identity hash (see `Canonical`): editing
-  /// one leaves the hash alone, and every caller keeps resolving to the same item. That is only
-  /// possible with an op of its own -- ops are content-addressed, so an `AddFn` that differs only
-  /// in its docs IS the earlier `AddFn` and folds to nothing, which is exactly how a doc edit came
-  /// to be reported as saved and then dropped.
+  /// Scoped to a location, not to content, and that is the whole point: content is shared. Ten
+  /// names hold `type ParseError = | BadFormat | OutOfRange`, and what `Int64.ParseError` means is
+  /// not what `UInt64.ParseError` means. A doc comment is written beside a NAME.
   ///
-  /// Keyed on content, like `Deprecate`: every name bound to this body describes the same thing.
-  /// Last one wins by `origin_ts`, and a branch's own text overlays main's.
+  /// The declaration's own `///` still travels in the item, and is what a lookup BY HASH shows and
+  /// what a name with nothing of its own falls back to. This op is how a name says something else.
   ///
-  /// TODO: the shape this wants to become is a package VALUE of a broadly-known type, roughly
-  /// `{ text: String; reference: PackageThing }`, so that examples, deprecation notes and a third
-  /// party's annotations of code they do not own are all the same mechanism. This op is the same
-  /// idea with the vocabulary we have.
+  /// Prose is not behaviour, so it is not in the identity hash (see `Canonical`) and needs an op of
+  /// its own: an `AddFn` differing only in its docs IS the earlier `AddFn`, and folds to nothing.
   ///
-  /// It also leaves one gap that shape would close: this carries the ITEM's text, and a field's doc
-  /// comment has never been part of identity either, so editing one alone has no op to ride on. A
-  /// reload picks it up and nothing else does.
-  | Describe of target : Reference * text : string
+  /// `previous` is the hash of the text being replaced, None when there was nothing there. Same
+  /// role as `SetName.previous`: it tells an edit made on top of what this store holds from one
+  /// made against a text it never had, so the second is a recorded conflict rather than a silent
+  /// overwrite.
+  ///
+  /// `restating` is empty except on one path and is never read. Ops are content-addressed, so
+  /// putting a doc back to what it said before produces the op that already exists -- the hole
+  /// `Decision.id` fills for a name. `Inserts` and `Branches.restateReverts` stamp it.
+  ///
+  /// TODO: this wants to become a package VALUE of a broadly-known type, roughly
+  /// `{ text: String; about: PackageThing }`, so that examples, deprecation notes and a third
+  /// party's annotations of code they do not own are all one mechanism.
+  | UpdateDoc of
+    location : PackageLocation *
+    part : DocPart *
+    text : string *
+    previous : Option<Hash> *
+    restating : Option<string>
 
   /// A human's judgment about a NAME, recorded so that it travels.
   ///
@@ -879,6 +912,24 @@ and Reference =
     | ItemKind.Fn -> PackageFn h
 
 
+/// WHICH piece of prose an `UpdateDoc` sets: the declaration's own, or one named part of it.
+///
+/// One op with a part, not four ops: everything downstream is identical per case, and only the
+/// reach into the declaration differs (`LibDB.Docs`).
+///
+/// The nested parts are the point. A doc on a field, a case or a parameter is outside the identity
+/// hash too, so before these there was no op that could carry an edit to one.
+and DocPart =
+  | WholeItem
+  | RecordField of fieldName : string
+  | EnumCase of caseName : string
+
+  /// By POSITION, not name: a parameter's name is not in the identity hash (a body references
+  /// parameters by position), so a name would not survive the version it was written against.
+  /// Field and case names ARE hashed, hence the split.
+  | Parameter of parameterIndex : int
+
+
 /// What a `Decision` DID. The shared part of a decision (who, where, why) lives on the op; this is the
 /// part that varies, so that a decision which binds a name and one which only closes a finding cannot be
 /// confused for each other.
@@ -950,7 +1001,11 @@ and PropagateRepoint =
 ///
 /// Here rather than beside a writer, because main authoring and a branch's must say it identically
 /// or a restatement syncs as a different op than the one that was made.
-let restatingBinding (ts : string) (op : PackageOp) : Option<PackageOp> =
+///
+/// A doc restatement is the same shape one level down -- putting a doc back to text it held before
+/// produces the op that set it then -- and is said by stamping the op's own `restating` field,
+/// since prose is about CONTENT and there is no location for a `Decision` to answer about.
+let restating (ts : string) (op : PackageOp) : Option<PackageOp> =
   match op with
   | PackageOp.SetName(location, target, _) ->
     let (Hash h) = target.hash
@@ -964,6 +1019,8 @@ let restatingBinding (ts : string) (op : PackageOp) : Option<PackageOp> =
         DecisionKind.Override target
       )
     )
+  | PackageOp.UpdateDoc(location, part, text, previous, _) ->
+    Some(PackageOp.UpdateDoc(location, part, text, previous, Some ts))
   | _ -> None
 
 

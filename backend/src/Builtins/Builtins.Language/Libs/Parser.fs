@@ -76,6 +76,11 @@ module WrittenTypesToDarkTypes =
       | WT.ArithmeticDivide -> "ArithmeticDivide"
       | WT.ArithmeticModulo -> "ArithmeticModulo"
       | WT.ArithmeticPower -> "ArithmeticPower"
+      | WT.BitwiseAnd -> "BitwiseAnd"
+      | WT.BitwiseOr -> "BitwiseOr"
+      | WT.BitwiseXor -> "BitwiseXor"
+      | WT.ShiftLeft -> "ShiftLeft"
+      | WT.ShiftRight -> "ShiftRight"
       | WT.ComparisonGreaterThan -> "ComparisonGreaterThan"
       | WT.ComparisonGreaterThanOrEqual -> "ComparisonGreaterThanOrEqual"
       | WT.ComparisonLessThan -> "ComparisonLessThan"
@@ -267,7 +272,7 @@ module WrittenTypesToDarkTypes =
         "Unit",
         [ DRecord(ut, ut, [], Map [ "range", rangeToDT r ]) ]
       )
-    | WT.FPNormal(r, name, typ, lp, colon, rp) ->
+    | WT.FPNormal(r, name, typ, lp, colon, rp, description) ->
       let nt = tn WTRefs.fnNormalParameter
       let normal =
         DRecord(
@@ -278,6 +283,7 @@ module WrittenTypesToDarkTypes =
             [ "range", rangeToDT r
               "name", identifierToDT WTRefs.variableIdentifier name
               "typ", typeReferenceToDT typ
+              "description", DString description
               "symbolLeftParen", rangeToDT lp
               "symbolColon", rangeToDT colon
               "symbolRightParen", rangeToDT rp ]
@@ -1027,7 +1033,7 @@ module WrittenTypesToDarkTypes =
         [ "range", rangeToDT f.range
           "name", rangedString nr nm
           "typ", typeReferenceToDT f.typ
-          "description", DString ""
+          "description", DString f.description
           "symbolColon", rangeToDT f.symbolColon ]
     )
 
@@ -1067,7 +1073,7 @@ module WrittenTypesToDarkTypes =
             VT.customType (tn WTRefs.typeDeclEnumField) [],
             List.map enumFieldToDT c.fields
           )
-          "description", DString ""
+          "description", DString c.description
           "keywordOf", ofDval ]
     )
 

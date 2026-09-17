@@ -149,6 +149,11 @@ type InfixFnName =
   | ArithmeticDivide
   | ArithmeticModulo
   | ArithmeticPower
+  | BitwiseAnd
+  | BitwiseOr
+  | BitwiseXor
+  | ShiftLeft
+  | ShiftRight
   | ComparisonGreaterThan
   | ComparisonGreaterThanOrEqual
   | ComparisonLessThan
@@ -375,6 +380,18 @@ let hashToShort (hash: Hash) : String =
   let h = hashToString hash
   Stdlib.String.first h 8
 
+/// The hash of a piece of PROSE, which is not content and so is not hashed the way an item is.
+///
+/// `UpdateDoc.previous` names the text it replaces, and naming it needs a way to say WHICH text
+/// without carrying it. Same construction as an item hash (SHA-256, lowercase hex) so the two are
+/// indistinguishable in a column, and deliberately not the same function: an item hash is over a
+/// canonical serialization and this is over the bytes of a string. Must agree with
+/// `LibExecution.ProgramTypes.Hash.ofText`, which is what reads it back.
+let hashOfText (text: String) : Hash =
+  (Stdlib.Blob.toHex (Stdlib.Crypto.sha256 (Stdlib.String.toBlob text)))
+  |> Stdlib.String.toLowercase
+  |> Hash.Hash
+
 /// A package entity paired with its location
 type LocatedItem<'entity> =
   { entity: 'entity
@@ -530,6 +547,41 @@ type PropagationPolicy =
   | Follow
   | Unset
 
+/// WHICH piece of prose an `UpdateDoc` sets: the declaration's own, or one named part of it.
+///
+/// The nested parts are the point. A doc on a field, a case or a parameter is outside the identity
+/// hash too, so before these there was no op that could carry an edit to one.
+type DocPart =
+  | WholeItem
+  | RecordField of fieldName: String
+  | EnumCase of caseName: String
+  /// By POSITION, not name: a parameter's name is not in the identity hash, so a name would not
+  /// survive the version it was written against. Field and case names ARE hashed.
+  | Parameter of parameterIndex: Int
+
+module DocPart =
+  /// The part a stored key names ("item", "record-field:x", "parameter:0"), or None for one this
+  /// build cannot read. Must agree with `LibDB.Docs.partKey`, which writes them.
+  let fromKey (key: String) : Stdlib.Option.Option<DocPart> =
+    match Stdlib.String.split key ":" with
+    | [ "item" ] -> Stdlib.Option.Option.Some DocPart.WholeItem
+    | [ "record-field", name ] -> Stdlib.Option.Option.Some(DocPart.RecordField name)
+    | [ "enum-case", name ] -> Stdlib.Option.Option.Some(DocPart.EnumCase name)
+    | [ "parameter", index ] ->
+      Stdlib.Int.parse index
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map (fun i -> DocPart.Parameter i)
+    | _ -> Stdlib.Option.Option.None
+
+  /// How it reads in a listing: which part of the declaration is being described.
+  let describe (p: DocPart) : String =
+    match p with
+    | WholeItem -> "the item"
+    | RecordField name -> $"field {name}"
+    | EnumCase name -> $"case {name}"
+    | Parameter index -> $"parameter {Stdlib.Int.toString (index + 1)}"
+
+
 type PackageOp =
   | AddType of PackageType.PackageType
   | AddValue of PackageValue.PackageValue
@@ -552,11 +604,22 @@ type PackageOp =
   | Deprecate of target: Reference * kind: DeprecationKind * message: String
   // Clear any prior deprecation on a target.
   | Undeprecate of target: Reference
-  /// What an item SAYS about itself. A doc comment is not behaviour, so it is not in the identity
-  /// hash: editing one leaves the hash alone and every caller keeps resolving to the same item.
-  /// That needs an op of its own, because an `AddFn` differing only in its docs IS the earlier
-  /// `AddFn` and folds to nothing. Keyed on content, like `Deprecate`; last one wins.
-  | Describe of target: Reference * text: String
+  /// What the thing at a NAME says about itself, or one named part of it.
+  ///
+  /// Scoped to a location, not to content, and that is the point: content is shared. Ten names hold
+  /// `type ParseError = | BadFormat | OutOfRange`, and what `Int64.ParseError` means is not what
+  /// `UInt64.ParseError` means. The declaration's own `///` still travels in the item and is the
+  /// fallback; this is how one name says something else.
+  ///
+  /// `previous` is the hash of the text being replaced, None when there was nothing there. It is
+  /// what lets two people editing one doc comment produce a recorded conflict rather than one of
+  /// them losing their words silently. `restating` is empty except on the restatement path.
+  | UpdateDoc of
+      location: PackageLocation *
+      part: DocPart *
+      text: String *
+      previous: Stdlib.Option.Option<Hash> *
+      restating: Stdlib.Option.Option<String>
   /// A human's judgment about a NAME, recorded so that it travels. Overriding a binding, acking a
   /// finding and choosing a propagation policy are one class of act -- someone decided something about
   /// a location, and it has to hold on every machine -- so they are one op differing by `kind`. `id` is what makes each decision distinct,

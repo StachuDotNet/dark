@@ -84,6 +84,76 @@ let private notCurrentlyBound (ops : List<PT.PackageOp>) : Task<List<PT.PackageO
   }
 
 
+/// Which of these doc ops say something the NAME does not currently say.
+///
+/// The doc half of the question `notCurrentlyBound` asks about bindings. A doc op the log already
+/// holds is either a re-run of the same command (the register already says this, nothing to do) or
+/// a RESTATEMENT: putting the text back to something the name held before, which is unsayable as
+/// itself because ops are content-addressed. The register is what tells them apart.
+///
+/// A name with no row has never had a doc edited: its text comes from the declaration, so an op
+/// saying something else is new rather than a restatement of the register.
+let private docsNotCurrentlySaid
+  (ops : List<PT.PackageOp>)
+  : Task<List<PT.PackageOp>> =
+  task {
+    let candidates =
+      ops
+      |> List.choose (fun op ->
+        match op with
+        | PT.PackageOp.UpdateDoc(location, part, text, _, _) ->
+          Some(op, location, part, text)
+        | _ -> None)
+
+    if List.isEmpty candidates then
+      return []
+    else
+      let key (location : PT.PackageLocation) (part : PT.DocPart) =
+        String.concat
+          "\u0000"
+          [ location.owner
+            String.concat "." location.modules
+            location.name
+            Docs.kind part
+            Docs.within part ]
+
+      let keyParams =
+        candidates
+        |> List.mapi (fun i (_, location, part, _) ->
+          ($"key_{i}", Sql.string (key location part)))
+
+      let keyClause =
+        candidates |> List.mapi (fun i _ -> $"@key_{i}") |> String.concat ", "
+
+      let! rows =
+        Sql.query
+          $"""
+          SELECT owner, modules, name, kind, within, text
+          FROM location_docs
+          WHERE owner || char(0) || modules || char(0) || name || char(0)
+                || kind || char(0) || within IN ({keyClause})
+          """
+        |> Sql.parameters keyParams
+        |> Sql.executeAsync (fun read ->
+          (String.concat
+            "\u0000"
+            [ read.string "owner"
+              read.string "modules"
+              read.string "name"
+              read.string "kind"
+              read.string "within" ],
+           read.string "text"))
+
+      let said = Map.ofList rows
+
+      return
+        candidates
+        |> List.filter (fun (_, location, part, text) ->
+          Map.tryFind (key location part) said <> Some text)
+        |> List.map (fun (op, _, _, _) -> op)
+  }
+
+
 let rec insertAndApplyOpsWith
   (tsFor : System.Guid -> string)
   (commitFor : System.Guid -> string option)
@@ -171,15 +241,19 @@ let rec insertAndApplyOpsWith
       do! PackageOpPlayback.recordDependenciesOnly ignored
 
       // A `SetName` already in the log, for a name bound to something else right now, is a revert:
-      // unsayable as a `SetName` (`PT.restatingBinding`), so it is re-authored as the decision it
-      // is. Never recurses -- what goes back in is a `Decision`, and only `SetName` produces one.
-      let! toRestate = notCurrentlyBound ignored
+      // unsayable as a `SetName` (`PT.restating`), so it is re-authored as the decision it is. An
+      // `UpdateDoc` already in the log, saying something the target does not currently say, is the
+      // same thing one level down, and goes back in stamped. Recursion terminates: a `SetName`
+      // becomes a `Decision`, and a stamped `UpdateDoc` is a new op id, so neither is ignored again.
+      let! toRestateNames = notCurrentlyBound ignored
+      let! toRestateDocs = docsNotCurrentlySaid ignored
+      let toRestate = toRestateNames @ toRestateDocs
       let! restated =
         if List.isEmpty toRestate then
           Task.FromResult 0L
         else
           toRestate
-          |> List.choose (PT.restatingBinding (nextOriginTs ()))
+          |> List.choose (PT.restating (nextOriginTs ()))
           |> insertAndApplyOpsWith tsFor commitFor source
 
       // Bookkeeping only: the fold above already ran, so a failure here costs a redundant re-fold on

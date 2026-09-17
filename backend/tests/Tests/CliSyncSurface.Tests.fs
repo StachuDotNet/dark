@@ -20,7 +20,7 @@ open Tests.CliDsl
 
 
 let identityIsStableAndSharedBetweenBothNames =
-  cliTest "whoami and identity name the same instance" (fun state ->
+  instanceTest "whoami and identity name the same instance" (fun state ->
     task {
       let! whoami = runCli state [ "whoami" ]
       let! identity = runCli state [ "identity" ]
@@ -41,7 +41,7 @@ let identityIsStableAndSharedBetweenBothNames =
 /// fresh install has no relay, and each of these has to say so and say what to do
 /// about it, rather than erroring about a url it never had.
 let everySyncVerbSaysThereIsNoRelayYet =
-  cliTest "the sync verbs say there's no relay, and what to do" (fun state ->
+  instanceTest "the sync verbs say there's no relay, and what to do" (fun state ->
     task {
       do!
         showsAll
@@ -62,7 +62,7 @@ let everySyncVerbSaysThereIsNoRelayYet =
 /// reads its lone argument as a url. Carried to the http client it comes back as "push failed:
 /// bad url", which reads like a broken relay rather than a mistyped command.
 let aVerbInTheUrlPositionIsRefusedThere =
-  cliTest "a word in the url position is refused as a url" (fun state ->
+  instanceTest "a word in the url position is refused as a url" (fun state ->
     task {
       do!
         refuses
@@ -88,7 +88,7 @@ let aVerbInTheUrlPositionIsRefusedThere =
 /// that could never work. An unreachable url is kept on purpose (connecting offline
 /// is legitimate); one with no scheme is not a url at all.
 let connectRefusesSomethingThatIsNotAUrl =
-  cliTest "connect refuses a string that could never be a relay" (fun state ->
+  instanceTest "connect refuses a string that could never be a relay" (fun state ->
     task {
       do!
         refuses
@@ -102,8 +102,58 @@ let connectRefusesSomethingThatIsNotAUrl =
       do! shows state [ "sync"; "status" ] "no relay" "nothing was remembered"
     })
 
+/// `pull --all` rewinds this relay's cursor before pulling, so it has to be a flag the verb knows
+/// rather than something it takes for a url. With no relay there is nothing to rewind, and the
+/// answer is the same "no relay" every other sync verb gives.
+let pullKnowsItsOwnFlags =
+  instanceTest "pull takes --all, and refuses a flag it does not know" (fun state ->
+    task {
+      do!
+        refuses
+          state
+          [ "pull"; "--nope" ]
+          "unknown flag"
+          "re-pulling"
+          "an unknown flag is named, not read as a url"
+      do! exits state [ "pull"; "--nope" ] 1L "and it is a failed command"
+
+      do!
+        shows
+          state
+          [ "pull"; "--all" ]
+          "no relay"
+          "--all is understood, and there is still nowhere to pull from"
+    })
+
+/// `dark sync --branches` is the whole tree in one verb. The behaviour already existed behind
+/// `config set sync.branches all`, which is a thing to remember rather than a thing to type when you
+/// sit down at the other machine.
+let syncTakesBranchesFlag =
+  instanceTest
+    "sync understands --branches, and still refuses one it doesn't"
+    (fun state ->
+      task {
+        do!
+          refuses
+            state
+            [ "sync"; "--nope" ]
+            "isn't a url"
+            "pushed"
+            "an unknown flag is named rather than read as a url"
+        do! exits state [ "sync"; "--nope" ] 1L "and it is a failed command"
+
+        // With no relay there is nothing to sync either way; what matters is that the flag parses
+        // rather than being refused alongside the unknown ones.
+        do!
+          shows
+            state
+            [ "sync"; "--branches" ]
+            "no relay"
+            "--branches is understood, and there is still nowhere to sync to"
+      })
+
 let syncHelpNamesItsVerbs =
-  cliTest "sync help names the verbs it has" (fun state ->
+  instanceTest "sync help names the verbs it has" (fun state ->
     task {
       do!
         showsAll
@@ -120,7 +170,7 @@ let syncHelpNamesItsVerbs =
     })
 
 let exportSeedExplainsItself =
-  cliTest "export-seed explains what it wants" (fun state ->
+  instanceTest "export-seed explains what it wants" (fun state ->
     task {
       do!
         showsAll
@@ -131,10 +181,49 @@ let exportSeedExplainsItself =
     })
 
 
+/// An identity travels as a query parameter and comes back in the relay's owner listing, one per
+/// line. A space makes that listing unparseable, so every peer's automatic branch sync skips you; an
+/// `&` reads as a second parameter, so ops land under two owners. Both fail silently, which is why
+/// the refusal belongs at the point the name is chosen.
+let anIdentityIsRefusedIfItCannotTravel =
+  instanceTest
+    "an identity that would break sync is refused when it is set"
+    (fun state ->
+      task {
+        do!
+          refuses
+            state
+            [ "identity"; "has a space" ]
+            "can't contain"
+            "is now"
+            "a space is refused"
+        do!
+          refuses
+            state
+            [ "identity"; "amp&sand" ]
+            "can't contain"
+            "is now"
+            "an ampersand is refused"
+        do!
+          exits state [ "identity"; "has a space" ] 1L "and it is a failed command"
+
+        do!
+          shows
+            state
+            [ "identity"; "alice-laptop_2.0" ]
+            "alice-laptop_2.0"
+            "an ordinary name is taken"
+        // Leave the store as it was found: identity is per-instance config every later test reads.
+        do! run state [ "identity"; "inst-test-restored" ]
+      })
+
 let tests : List<Test> =
   [ identityIsStableAndSharedBetweenBothNames
     everySyncVerbSaysThereIsNoRelayYet
     aVerbInTheUrlPositionIsRefusedThere
     connectRefusesSomethingThatIsNotAUrl
+    pullKnowsItsOwnFlags
+    syncTakesBranchesFlag
     syncHelpNamesItsVerbs
-    exportSeedExplainsItself ]
+    exportSeedExplainsItself
+    anIdentityIsRefusedIfItCannotTravel ]

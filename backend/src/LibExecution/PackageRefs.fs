@@ -279,7 +279,7 @@ module Type =
       let effect = p [] "Effect"
       let rule = p [] "Rule"
       let policy = p [] "Policy"
-      let pinFailure = p [] "PinFailure"
+      let approvalFailure = p [] "ApprovalFailure"
 
     module Parser =
       let private p addl = p ("Parser" :: addl)
@@ -468,6 +468,7 @@ module Type =
       let packageOp = p [] "PackageOp"
       let itemKind = p [] "ItemKind"
       let reference = p [] "Reference"
+      let docPart = p [] "DocPart"
       let deprecationKind = p [] "DeprecationKind"
       let branchEventKind = p [] "BranchEventKind"
       let decisionKind = p [] "DecisionKind"

@@ -106,6 +106,31 @@ module DecisionKind =
     | b -> raiseFormatError $"Invalid DecisionKind tag: {b}"
 
 
+// -- DocPart --
+
+module DocPart =
+  let write (w : BinaryWriter) (part : DocPart) : unit =
+    match part with
+    | DocPart.WholeItem -> w.Write(0uy)
+    | DocPart.RecordField name ->
+      w.Write(1uy)
+      String.write w name
+    | DocPart.EnumCase name ->
+      w.Write(2uy)
+      String.write w name
+    | DocPart.Parameter index ->
+      w.Write(3uy)
+      w.Write(index)
+
+  let read (r : BinaryReader) : DocPart =
+    match r.ReadByte() with
+    | 0uy -> DocPart.WholeItem
+    | 1uy -> DocPart.RecordField(String.read r)
+    | 2uy -> DocPart.EnumCase(String.read r)
+    | 3uy -> DocPart.Parameter(r.ReadInt32())
+    | b -> raiseFormatError $"Invalid DocPart tag: {b}"
+
+
 // -- PackageOp --
 
 let write (w : BinaryWriter) (op : PackageOp) : unit =
@@ -146,13 +171,25 @@ let write (w : BinaryWriter) (op : PackageOp) : unit =
   | PackageOp.Undeprecate target ->
     w.Write(5uy)
     Reference.write w target
-  | PackageOp.Describe(target, text) ->
-    w.Write(13uy)
-    Reference.write w target
+  | PackageOp.UpdateDoc(location, part, text, previous, restating) ->
+    w.Write(14uy)
+    PackageLocation.write w location
+    DocPart.write w part
     String.write w text
-  // 11, not one of the retired 6-9. A retired tag is never recycled: an old blob would then decode
-  // as a DIFFERENT op rather than failing, and silently decoding as something else is the worst
-  // thing a format can do. Cheap to avoid -- tags are arbitrary and there is no shortage of them.
+    (match previous with
+     | None -> w.Write(0uy)
+     | Some(Hash h) ->
+       w.Write(1uy)
+       String.write w h)
+    match restating with
+    | None -> w.Write(0uy)
+    | Some stamp ->
+      w.Write(1uy)
+      String.write w stamp
+  // 11, not one of the retired 6-9 (nor 13, which was `Describe` before docs learned to name a
+  // predecessor). A retired tag is never recycled: an old blob would then decode as a DIFFERENT op
+  // rather than failing, and silently decoding as something else is the worst thing a format can
+  // do. Cheap to avoid -- tags are arbitrary and there is no shortage of them.
   | PackageOp.Decision(id, location, reason, kind) ->
     w.Write(11uy)
     String.write w id
@@ -201,10 +238,21 @@ let read (r : BinaryReader) : PackageOp =
   | 5uy ->
     let target = Reference.read r
     PackageOp.Undeprecate target
-  | 13uy ->
-    let target = Reference.read r
+  | 14uy ->
+    let location = PackageLocation.read r
+    let part = DocPart.read r
     let text = String.read r
-    PackageOp.Describe(target, text)
+    let previous =
+      match r.ReadByte() with
+      | 0uy -> None
+      | 1uy -> Some(Hash(String.read r))
+      | b -> raiseFormatError $"Invalid UpdateDoc previous tag: {b}"
+    let restating =
+      match r.ReadByte() with
+      | 0uy -> None
+      | 1uy -> Some(String.read r)
+      | b -> raiseFormatError $"Invalid UpdateDoc restating tag: {b}"
+    PackageOp.UpdateDoc(location, part, text, previous, restating)
   | 10uy ->
     let branchId = LibExecution.Branching.BranchId.Id(Guid.read r)
     let event = BranchEventKind.read r

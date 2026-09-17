@@ -28,40 +28,53 @@ module RTT = LibExecution.RuntimeTypes
 // entry that starts parsing cleanly again is flagged stale by the rot-guard.
 let private corpusAllowlist : Set<string> = Set.empty
 
+let private corpusRoot : Option<string> =
+  [ "../packages/darklang"; "packages/darklang"; "/home/dark/app/packages/darklang" ]
+  |> List.tryFind System.IO.Directory.Exists
+
+/// Every `.dark` file under `packages/darklang`, parsed once: `(path, relative path,
+/// parse result or the message it threw)`.
+///
+/// Two tests below walk the whole corpus, one checking that it parses cleanly and one
+/// checking range containment, and parsing is the expensive half of both. Sharing the
+/// parse halves the work; doing it in parallel means neither test is a single-threaded
+/// minute in the middle of an otherwise parallel suite.
+let private parsedCorpus =
+  lazy
+    (match corpusRoot with
+     | None -> [||] // no package dir (not a CI environment) -- nothing to gate
+     | Some root ->
+       System.IO.Directory.GetFiles(
+         root,
+         "*.dark",
+         System.IO.SearchOption.AllDirectories
+       )
+       |> Array.Parallel.map (fun f ->
+         let rel = f.Substring(root.Length).TrimStart('/', '\\').Replace('\\', '/')
+         let parsed =
+           try
+             Ok(LibParser.Parser.parse (System.IO.File.ReadAllText f))
+           with e ->
+             Error("THREW: " + e.Message)
+         (f, rel, parsed)))
+
 let private corpusTests =
   testList
     "parser-corpus"
     [ testCase "the parser cleanly parses every valid .dark package file" (fun _ ->
-        let root =
-          [ "../packages/darklang"
-            "packages/darklang"
-            "/home/dark/app/packages/darklang" ]
-          |> List.tryFind System.IO.Directory.Exists
-        match root with
-        | None -> () // package dir not found (not a CI environment) — nothing to gate
-        | Some root ->
-          let relOf (f : string) =
-            f.Substring(root.Length).TrimStart('/', '\\').Replace('\\', '/')
-          let files =
-            System.IO.Directory.GetFiles(
-              root,
-              "*.dark",
-              System.IO.SearchOption.AllDirectories
-            )
+        match corpusRoot with
+        | None -> ()
+        | Some _ ->
           // (relPath, first-diagnostic-message) for every file that does NOT parse cleanly
           let failures =
-            files
-            |> Array.choose (fun f ->
-              let rel = relOf f
-              try
-                match
-                  (LibParser.Parser.parse (System.IO.File.ReadAllText f))
-                    .diagnostics
-                with
+            parsedCorpus.Value
+            |> Array.choose (fun (_, rel, parsed) ->
+              match parsed with
+              | Error msg -> Some(rel, msg)
+              | Ok r ->
+                match r.diagnostics with
                 | [] -> None
-                | d :: _ -> Some(rel, d.message)
-              with e ->
-                Some(rel, "THREW: " + e.Message))
+                | d :: _ -> Some(rel, d.message))
           // regression gate: every non-allowlisted file must parse cleanly
           let unexpected =
             failures
@@ -614,12 +627,58 @@ let private parserStructureTests =
                                                          _) ] }) -> ()
         | other -> failtest $"bool: {other}")
 
+      // A `///` on a field, a case or a parameter. The lexer has always attached a doc comment to the
+      // next token; until these fields existed the parser read the token and dropped the comment, so
+      // every nested doc in the tree was silently empty and no op could carry an edit to one.
+      testCase "keeps a doc comment written on a record field" (fun _ ->
+        match
+          (P.parse "type T =\n  { /// how far along\n    x: Int64 }").parsed
+        with
+        | Some(WT.SourceFile { declarations = [ WT.DType t ] }) ->
+          match t.definition with
+          | WT.TDRecord [ (field, _) ] ->
+            Expect.equal field.description "how far along" "the field's doc"
+          | other -> failtest $"record: {other}"
+        | other -> failtest $"type decl: {other}")
+
+      testCase "keeps a doc comment written on an enum case" (fun _ ->
+        match
+          (P.parse "type T =\n  /// stop here\n  | Halting\n  | Going").parsed
+        with
+        | Some(WT.SourceFile { declarations = [ WT.DType t ] }) ->
+          match t.definition with
+          | WT.TDEnum((_, first) :: _) ->
+            Expect.equal first.description "stop here" "the case's doc"
+          | other -> failtest $"enum: {other}"
+        | other -> failtest $"type decl: {other}")
+
+      // Both spellings, because both occur: above the whole parameter, and just inside its paren.
+      testCase
+        "keeps a doc comment written on a parameter, either side of the paren"
+        (fun _ ->
+          let docOf (source : string) =
+            match (P.parse source).parsed with
+            | Some(WT.SourceFile { declarations = [ WT.DFunction f ] }) ->
+              match f.parameters with
+              | [ WT.FPNormal(_, _, _, _, _, _, description) ] -> description
+              | other -> failtest $"parameters: {other}"
+            | other -> failtest $"fn decl: {other}"
+
+          Expect.equal
+            (docOf "let f\n  /// who to greet\n  (name: String) : String = name")
+            "who to greet"
+            "written above the parameter"
+          Expect.equal
+            (docOf "let f (/// who to greet\n       name: String) : String = name")
+            "who to greet"
+            "written inside the paren")
+
       testCase "parses type variables in a generic signature" (fun _ ->
         match (P.parse "let f (x: 'a) : 'a = x").parsed with
         | Some(WT.SourceFile { declarations = [ WT.DFunction f ] }) ->
           match f.returnType, f.parameters with
           | WT.TVariable(_, _, (_, "a")),
-            [ WT.FPNormal(_, _, WT.TVariable(_, _, (_, "a")), _, _, _) ] -> ()
+            [ WT.FPNormal(_, _, WT.TVariable(_, _, (_, "a")), _, _, _, _) ] -> ()
           | other -> failtest $"type var: {other}"
         | other -> failtest $"generic fn: {other}")
 
@@ -632,6 +691,7 @@ let private parserStructureTests =
                                                                                                  _),
                                                                                           _,
                                                                                           _,
+                                                                                          _,
                                                                                           _) ] } ] }) ->
           ()
         | other -> failtest $"fn type: {other}"
@@ -639,6 +699,7 @@ let private parserStructureTests =
         | Some(WT.SourceFile { declarations = [ WT.DFunction { parameters = [ WT.FPNormal(_,
                                                                                           _,
                                                                                           WT.TTuple _,
+                                                                                          _,
                                                                                           _,
                                                                                           _,
                                                                                           _) ] } ] }) ->
@@ -650,6 +711,7 @@ let private parserStructureTests =
         | Some(WT.SourceFile { declarations = [ WT.DFunction { parameters = [ WT.FPNormal(_,
                                                                                           _,
                                                                                           WT.TCustom q,
+                                                                                          _,
                                                                                           _,
                                                                                           _,
                                                                                           _) ] } ] }) ->
@@ -1250,7 +1312,10 @@ let private recoveryTests =
   testList
     "recovery"
     [ testCase "reserved expression syntax diagnoses explicitly" (fun _ ->
-        for source in [ "<<"; ">>"; "&"; "|||"; "~~~"; "!"; "..." ] do
+        // `<<`, `>>`, `&`, `|`, `^` and `~` used to be here; they are real
+        // operators now. `...` is the only token left that is reserved and
+        // still unsupported.
+        for source in [ "..." ] do
           Expect.exists
             (P.parse source).diagnostics
             (fun diagnostic ->
@@ -1742,27 +1807,21 @@ let private rangeInvariantTests =
     [ testCase
         "child expr ranges are contained in their parents (whole corpus)"
         (fun _ ->
-          let root =
-            [ "../packages/darklang"
-              "packages/darklang"
-              "/home/dark/app/packages/darklang" ]
-            |> List.tryFind System.IO.Directory.Exists
-          match root with
+          match corpusRoot with
           | None -> ()
-          | Some root ->
+          | Some _ ->
             let violations = ResizeArray<string>()
-            for f in
-              System.IO.Directory.GetFiles(
-                root,
-                "*.dark",
-                System.IO.SearchOption.AllDirectories
-              ) do
-              match (P.parse (System.IO.File.ReadAllText f)).parsed with
-              | Some(WT.SourceFile sf) ->
-                for e in
-                  (sf.declarations |> List.collect declExprs) @ sf.exprsToEval do
-                  check f violations e
-              | None -> ()
+            // A file that threw is reported by `parser-corpus` above, not here.
+            for (f, _, parsed) in parsedCorpus.Value do
+              match parsed with
+              | Ok r ->
+                match r.parsed with
+                | Some(WT.SourceFile sf) ->
+                  for e in
+                    (sf.declarations |> List.collect declExprs) @ sf.exprsToEval do
+                    check f violations e
+                | _ -> ()
+              | Error _ -> ()
             if violations.Count > 0 then
               let detail = violations |> Seq.truncate 10 |> String.concat "\n"
               failtest $"{violations.Count} range-containment violations:\n{detail}") ]
@@ -1806,16 +1865,28 @@ let private internalUnitTests =
           Expect.isTrue (bp Tok.TAnd < bp Tok.TEqEq) "&& looser than =="
           Expect.isTrue (bp Tok.TEqEq < bp Tok.TPlus) "== looser than +"
           Expect.isTrue (bp Tok.TPlus < bp Tok.TStar) "+ looser than *"
-          Expect.isTrue (bp Tok.TStar < bp Tok.TBitXor) "* looser than ^"
+          Expect.isTrue (bp Tok.TStar < bp Tok.TStarStar) "* looser than **"
+          // The bitwise levels sit BETWEEN the comparisons and `+`, in Python's
+          // order rather than C's: `a & b == c` is `(a & b) == c`.
+          Expect.isTrue (bp Tok.TEqEq < bp Tok.TBar) "== looser than |"
+          Expect.isTrue (bp Tok.TBar < bp Tok.TBitXor) "| looser than ^"
+          Expect.isTrue (bp Tok.TBitXor < bp Tok.TBitAnd) "^ looser than &"
+          Expect.isTrue (bp Tok.TBitAnd < bp Tok.TShl) "& looser than <<"
+          Expect.equal (bp Tok.TShl) (bp Tok.TShr) "<< and >> bind equally"
+          Expect.isTrue (bp Tok.TShl < bp Tok.TPlus) "<< looser than +"
           // right-assoc ops
           Expect.equal
             (P.infixBindingPower Tok.TAt |> Option.map snd)
             (Some true)
             "@ is right-assoc"
           Expect.equal
-            (P.infixBindingPower Tok.TBitXor |> Option.map snd)
+            (P.infixBindingPower Tok.TStarStar |> Option.map snd)
             (Some true)
-            "^ is right-assoc")
+            "** is right-assoc"
+          Expect.equal
+            (P.infixBindingPower Tok.TBitXor |> Option.map snd)
+            (Some false)
+            "^ (xor) is left-assoc")
       testCase "a parse constructs fresh state (no cross-parse leakage)" (fun _ ->
         // parse something that leaves pendingGt / scopes in interesting states,
         // then confirm an unrelated parse is unaffected

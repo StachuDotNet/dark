@@ -106,6 +106,29 @@ let testHttpConfig : LibExecution.HostHttp.Configuration =
 let installTestHttpConfig () : unit =
   LibExecution.HostHttp.setGuestConfig testHttpConfig
 
+/// FNV-1a over a test's name. .NET's own string hash is randomised per process, so it
+/// cannot be used to decide anything two processes have to agree on: which shard owns a
+/// test, or which width a test sweeps at.
+let stableHash (s : string) : uint32 =
+  let mutable h = 2166136261u
+  for b in System.Text.Encoding.UTF8.GetBytes s do
+    h <- (h ^^^ uint32 b) * 16777619u
+  h
+
+
+/// The builtin table for a package manager, built once per manager.
+///
+/// Building it is not free: `Builtin.combine` validates every builtin and rebuilds two
+/// maps over roughly a thousand of them. `executionStateFor` asks for one per call, and
+/// the testfile suite alone calls that once per case, so this was thousands of rebuilds
+/// of a table that only ever varies with `pm`.
+///
+/// Weak-keyed rather than a dictionary because the round-trip parser tests construct a
+/// fresh package manager per print; those should die with the test, not accumulate for
+/// the life of the run.
+let private builtinsByPm =
+  System.Runtime.CompilerServices.ConditionalWeakTable<PT.PackageManager, RT.Builtins>()
+
 /// The shipped platform set over the caller's package manager, plus `LibTest`.
 ///
 /// The `pm` is load-bearing: `Store`'s builtins resolve names through whatever package manager they
@@ -115,9 +138,13 @@ let installTestHttpConfig () : unit =
 /// the catalog, where `dark platforms` would offer to install it.
 let builtins (pm : PT.PackageManager) : RT.Builtins =
   installTestHttpConfig ()
-  LibExecution.Builtin.combine
-    [ LibTest.builtins (); (Platforms.Sets.everythingFor pm).builtins ]
-    []
+  builtinsByPm.GetValue(
+    pm,
+    fun pm ->
+      LibExecution.Builtin.combine
+        [ LibTest.builtins (); (Platforms.Sets.everythingFor pm).builtins ]
+        []
+  )
 
 /// Compatibility alias for existing test call sites.
 let localBuiltIns (pm : PT.PackageManager) = builtins pm
@@ -971,6 +998,9 @@ let interestingDvals () : List<string * RT.Dval * RT.TypeReference> =
     ("float2", DFloat -7.2, TFloat)
     ("float3", DFloat 15.0, TFloat)
     ("float4", DFloat -15.0, TFloat)
+    // Not representable in twelve digits; the queryable roundtrip would have lost them under "G12".
+    ("float_no_short_decimal", DFloat(0.1 + 0.2), TFloat)
+    ("float_third", DFloat(1.0 / 3.0), TFloat)
     ("int5", DInt64 5L, TInt64)
     ("int_8_bits", DInt8 127y, TInt8)
     ("int_16_bits", DInt16 32767s, TInt16)

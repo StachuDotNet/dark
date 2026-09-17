@@ -71,6 +71,16 @@ let private loadHarmful () : Set<string> =
     harmfulCache <- Some harmful
     harmful
 
+/// Fill the Harmful cache without blocking. `isHarmful` is synchronous by contract (the
+/// interpreter asks it before every package call), so the miss path above waits on the
+/// query. A host with one thread and no blocking wait, the browser, calls this once at boot
+/// instead, and every later lookup is a cache hit.
+let preloadHarmful () : System.Threading.Tasks.Task<unit> =
+  task {
+    let! harmful = Queries.getHarmfulFnHashes ()
+    harmfulCache <- Some(harmful |> Set.map (fun (PT.Hash h) -> h))
+  }
+
 /// Drop the Harmful set so the next lookup re-reads `deprecations`.
 let invalidateHarmful () : unit = harmfulCache <- None
 
@@ -100,6 +110,55 @@ let rt : RT.PackageManager =
 
 /// The PT PackageManager for MAIN: name resolution against `locations`, which by design holds only
 /// main's bindings. A branch is this plus its delta ops -- branch-aware callers want `ptForBranch`.
+/// <param pm>'s LOCATED results, with each name's own doc in place of its declaration's.
+///
+/// Only the located reads: a search result knows which NAME it answered for, and that is what a doc
+/// is scoped to. `getFn hash` does not, and keeps the declaration's words -- which is the honest
+/// answer to a question that named no name.
+///
+/// One query for the whole batch, and none at all when nothing matched.
+let withLocationDocs
+  (branchId : PT.BranchId)
+  (pm : PT.PackageManager)
+  : PT.PackageManager =
+  { pm with
+      search =
+        fun query ->
+          uply {
+            let! r = pm.search query
+
+            let locations =
+              (r.types |> List.map _.location)
+              @ (r.values |> List.map _.location)
+              @ (r.fns |> List.map _.location)
+
+            let! docs = Docs.docsForLocations branchId locations
+
+            if Map.isEmpty docs then
+              return r
+            else
+              let patch
+                (set : PT.DocPart -> string -> 'item -> 'item)
+                (i : PT.LocatedItem<'item>)
+                =
+                match Map.tryFind i.location docs with
+                | None -> i
+                | Some parts ->
+                  { i with
+                      entity =
+                        parts
+                        |> List.fold
+                          (fun acc (part, text) -> set part text acc)
+                          i.entity }
+
+              return
+                { r with
+                    types = r.types |> List.map (patch Docs.onType)
+                    values = r.values |> List.map (patch Docs.onValue)
+                    fns = r.fns |> List.map (patch Docs.onFn) }
+          } }
+
+
 let pt : PT.PackageManager =
   // `withCache` allocates a fresh `ConcurrentDictionary` per invocation, so hoist the cached
   // lambdas out here to reuse one dict. Caching by location is safe precisely because this PM only
@@ -136,44 +195,45 @@ let pt : PT.PackageManager =
     init = uply { return () } }
 
 
-/// NOT REACHED YET, and worth knowing before you trust a pin.
+/// <param pm>, with an account's APPROVED VERSIONS narrowing how a function NAME resolves.
 ///
-/// `permissions` stores pins and shows them, and `PackagePermissions` reads one when reviewing a
-/// version, but nothing narrows RESOLUTION by them: execution builds its state from the
-/// process-wide `pt`, and an account never reaches this. Wiring it means threading the account into
-/// wherever the run's PM is chosen, which is a change to how a run is set up rather than to this.
+/// An approved version says "when I call `Acme.charge`, I mean this exact body, until I review a
+/// newer one". So it belongs at name resolution and nowhere else: a hash lookup still answers for
+/// any version (the update commands read the latest that way, and a caller that already holds a
+/// hash is not asking a question about names).
 ///
-/// Main's manager with an account's version pins narrowing FN resolution. A pin maps a
-/// logical name to the approved hash and only narrows normal name resolution; update
-/// commands use the raw lookup for latest. Built per entry (a script or eval run), so a
-/// later `permissions` change is picked up by the next one. Pins ride ON TOP of the one
-/// shared main manager rather than being baked into it, because `pt` is branch-blind and
-/// account-blind by design.
-let ptForAccount (accountID : System.Guid option) : PT.PackageManager =
-  let pins = PolicyStore.functionPins accountID
-  if Map.isEmpty pins then
-    pt
+/// Applied per RUN, over whichever manager that run resolves through, rather than baked into the
+/// shared `pt`: `pt` is branch-blind and account-blind by design, and an approval is one account's
+/// decision on one branch's names. Building it per run is also what makes a `permissions approve`
+/// take effect on the next command rather than the next process.
+let narrowedToApprovedVersions
+  (accountID : System.Guid option)
+  (pm : PT.PackageManager)
+  : PT.PackageManager =
+  let approved = PolicyStore.approvedVersions accountID
+  if Map.isEmpty approved then
+    pm
   else
-    { pt with
+    { pm with
         findFn =
           fun location ->
             uply {
-              match! pt.findFn location with
+              match! pm.findFn location with
               | None -> return None
               | Some hash ->
-                match Map.tryFind (PackageLocation.toFQN location) pins with
-                | Some pinned ->
-                  // A pin whose hash disappeared after a reset or partial sync gets
-                  // a clear diagnostic instead of failing later as an unknown name.
-                  match! PMPT.Fn.get (Hash pinned) with
-                  | Some _ -> return Some(Hash pinned)
+                match Map.tryFind (PackageLocation.toFQN location) approved with
+                | Some approvedHash ->
+                  // An approval whose hash disappeared after a reset or partial sync gets a clear
+                  // diagnostic instead of failing later as an unknown name.
+                  match! PMPT.Fn.get (Hash approvedHash) with
+                  | Some _ -> return Some(Hash approvedHash)
                   | None ->
                     return
                       Exception.raiseInternal
-                        ("A pinned function version no longer exists in the package store. "
-                         + "Run `dark permissions unpin <fn>` to release the pin.")
+                        ("An approved version of this function is no longer in the package store. "
+                         + "Run `dark permissions unapprove <fn>` to release the approval.")
                         [ "location", PackageLocation.toFQN location
-                          "pinned", pinned ]
+                          "approved", approvedHash ]
                 | None -> return Some hash
             } }
 
@@ -217,11 +277,11 @@ let createInMemoryOver
     | PT.PackageOp.AddFn _ -> ()
 
     // None of these change what a name points at -- an ack or a policy records what a person decided ABOUT a
-    // name, a Describe changes what an item says about itself (`described` applies those), a
+    // name, an UpdateDoc changes what a NAME says about itself (`LibDB.Docs` answers those), a
     // BranchEvent is about the branch -- so an overlay of bindings has nothing to do here.
     | PT.PackageOp.Deprecate _
     | PT.PackageOp.Undeprecate _
-    | PT.PackageOp.Describe _
+    | PT.PackageOp.UpdateDoc _
     | PT.PackageOp.Decision(_,
                             _,
                             _,
@@ -551,81 +611,6 @@ let hide
                     fns = shown r.fns }
             } }
 
-/// The text each `Describe` in <param ops> sets, last one winning.
-let private describedBy (ops : List<PT.PackageOp>) : Map<Hash, string> =
-  ops
-  |> List.fold
-    (fun acc op ->
-      match op with
-      | PT.PackageOp.Describe(target, text) -> Map.add target.hash text acc
-      | _ -> acc)
-    Map.empty
-
-/// <param pm>, with <param texts> applied to whatever it hands back.
-///
-/// A branch's `Describe` must not reach main's stored blob -- the fold is main-only for exactly
-/// that reason -- so the branch's own text is applied as the item is read, over whichever layer
-/// answered. At this seam rather than inside the overlay's item map, because a branch usually
-/// describes something MAIN holds, and the overlay has no copy of that to patch.
-let private described
-  (texts : Map<Hash, string>)
-  (pm : PT.PackageManager)
-  : PT.PackageManager =
-  if Map.isEmpty texts then
-    pm
-  else
-    /// The item, with this overlay's text for it, or unchanged when the overlay is silent.
-    let redescribe (hash : Hash) (set : 'item -> string -> 'item) (item : 'item) =
-      match Map.tryFind hash texts with
-      | Some text -> set item text
-      | None -> item
-
-    let inResults
-      (items : List<PT.LocatedItem<'item>>)
-      (hashOf : 'item -> Hash)
-      (set : 'item -> string -> 'item)
-      : List<PT.LocatedItem<'item>> =
-      items
-      |> List.map (fun i ->
-        { i with entity = redescribe (hashOf i.entity) set i.entity })
-
-    let typeText (t : PT.PackageType.PackageType) text =
-      { t with description = text }
-    let valueText (v : PT.PackageValue.PackageValue) text =
-      { v with description = text }
-    let fnText (f : PT.PackageFn.PackageFn) text = { f with description = text }
-
-    { pm with
-        getType =
-          fun h ->
-            uply {
-              let! r = pm.getType h
-              return r |> Option.map (redescribe h typeText)
-            }
-        getValue =
-          fun h ->
-            uply {
-              let! r = pm.getValue h
-              return r |> Option.map (redescribe h valueText)
-            }
-        getFn =
-          fun h ->
-            uply {
-              let! r = pm.getFn h
-              return r |> Option.map (redescribe h fnText)
-            }
-        search =
-          fun query ->
-            uply {
-              let! r = pm.search query
-              return
-                { r with
-                    types = inResults r.types (fun t -> t.hash) typeText
-                    values = inResults r.values (fun v -> v.hash) valueText
-                    fns = inResults r.fns (fun f -> f.hash) fnText }
-            } }
-
-
 /// `basePM` with `ops` overlaid on top: the branch overlay, and the parse-time PM for tests and
 /// from-disk parsing.
 let withExtraOps
@@ -633,7 +618,7 @@ let withExtraOps
   (ops : List<PT.PackageOp>)
   : PT.PackageManager =
   let opsPM = createInMemoryOver (Some basePM) ops
-  described (describedBy ops) (combine opsPM (hide (unboundBy ops) basePM))
+  combine opsPM (hide (unboundBy ops) basePM)
 
 
 // BRANCH OVERLAYS.
@@ -701,12 +686,18 @@ let opsForBranch (branchId : PT.BranchId) : List<PT.PackageOp> =
 /// resolves through COMMITTED main plus its own work, so main's uncommitted draft never leaks
 /// into a branch's view. The branch's own ops come later in the list and win over the mask.
 let ptForBranch (branchId : PT.BranchId) : PT.PackageManager =
-  if branchId.IsMain then
-    pt
-  else
-    match (Queries.mainDraftMaskOps ()).Result @ opsForBranch branchId with
-    | [] -> pt
-    | ops -> withExtraOps pt ops
+  // The doc overlay goes on OUTSIDE the branch overlay, and carries the branch id: a name's own
+  // words come from `location_docs` on main and from the branch's ops on a branch, and only this
+  // layer knows which branch is being asked.
+  let base' =
+    if branchId.IsMain then
+      pt
+    else
+      match (Queries.mainDraftMaskOps ()).Result @ opsForBranch branchId with
+      | [] -> pt
+      | ops -> withExtraOps pt ops
+
+  withLocationDocs branchId base'
 
 /// Where a branch binds <param hash>, for hash-to-NAME lookups.
 ///

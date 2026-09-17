@@ -22,6 +22,36 @@ let formatDocComment (description: String) : String =
     |> fun s -> s ++ "\n"
 
 
+/// A description as `///` lines, ending in a hard line break, or nothing when there is no text.
+///
+/// The break is HARD on purpose: `///` runs to the end of the line, so a doc rendered onto the same
+/// line as the thing it documents would comment that thing out. This is the form used inside a
+/// declaration -- for a field, a case or a parameter -- where the surrounding doc may otherwise be
+/// laid out on one line.
+let inlineDocDoc (description: String) : Stdlib.Option.Option<Stdlib.Pretty.Doc> =
+  if description == "" then
+    Stdlib.Option.Option.None
+  else
+    description
+    |> Stdlib.String.split "\n"
+    |> Stdlib.List.map (fun line -> Stdlib.Pretty.text $"/// {line}")
+    |> fun docs -> Stdlib.Pretty.join docs Stdlib.Pretty.hardLine
+    |> fun doc ->
+      Stdlib.Option.Option.Some(
+        Stdlib.Pretty.concat doc Stdlib.Pretty.hardLine
+      )
+
+
+/// <param doc>, with <param description> written above it as `///` lines.
+let withInlineDoc
+  (description: String)
+  (doc: Stdlib.Pretty.Doc)
+  : Stdlib.Pretty.Doc =
+  match inlineDocDoc description with
+  | None -> doc
+  | Some docLines -> Stdlib.Pretty.concat docLines doc
+
+
 /// Format a hash for display when PM lookup fails.
 let shortHash (hash: LanguageTools.ProgramTypes.Hash) : String =
   $"<hash:{Darklang.LanguageTools.ProgramTypes.hashToShort hash}>"
@@ -537,7 +567,12 @@ let infixFnName (i: LanguageTools.ProgramTypes.InfixFnName) : String =
   | ArithmeticMultiply -> "*"
   | ArithmeticDivide -> "/"
   | ArithmeticModulo -> "%"
-  | ArithmeticPower -> "^"
+  | ArithmeticPower -> "**"
+  | BitwiseAnd -> "&"
+  | BitwiseOr -> "|"
+  | BitwiseXor -> "^"
+  | ShiftLeft -> "<<"
+  | ShiftRight -> ">>"
   | ComparisonGreaterThan -> ">"
   | ComparisonGreaterThanOrEqual -> ">="
   | ComparisonLessThan -> "<"
@@ -633,7 +668,8 @@ let docOfText (s: String) : Stdlib.Pretty.Doc =
 /// Binding power of an infix operator, and whether it associates right.
 ///
 /// Mirrors `infixBindingPower` in `LibParser/Parser.fs`, loosest to tightest:
-///   1 `||`  2 `&&`  3 comparisons  4 `@` (right)  5 `+ - ++`  6 `* / %`  7 `^` (right)
+///   1 `||`  2 `&&`  3 comparisons  4 `|`  5 `^`  6 `&`  7 `<< >>`  8 `@` (right)
+///   9 `+ - ++`  10 `* / %`  11 `**` (right)
 /// If that table moves, this has to move with it, or the printer starts emitting parens that change
 /// what the parser builds.
 let infixPower (i: LanguageTools.ProgramTypes.Infix) : (Int * Bool) =
@@ -648,13 +684,18 @@ let infixPower (i: LanguageTools.ProgramTypes.Infix) : (Int * Bool) =
     | ComparisonGreaterThan
     | ComparisonLessThanOrEqual
     | ComparisonGreaterThanOrEqual -> (3, false)
+    | BitwiseOr -> (4, false)
+    | BitwiseXor -> (5, false)
+    | BitwiseAnd -> (6, false)
+    | ShiftLeft
+    | ShiftRight -> (7, false)
     | ArithmeticPlus
     | ArithmeticMinus
-    | StringConcat -> (5, false)
+    | StringConcat -> (9, false)
     | ArithmeticMultiply
     | ArithmeticDivide
-    | ArithmeticModulo -> (6, false)
-    | ArithmeticPower -> (7, true)
+    | ArithmeticModulo -> (10, false)
+    | ArithmeticPower -> (11, true)
 
 
 /// How tightly an expression binds, for deciding whether it needs parentheses inside a larger one.
@@ -681,7 +722,7 @@ let exprPower (e: LanguageTools.ProgramTypes.Expr) : Int =
 /// Whether an operand of an infix expression has to be parenthesised.
 ///
 /// Looser than its parent always does. At equal power it depends on the side: `a - b - c` groups left,
-/// so a right operand of the same power needs parens to mean anything else; `2 ^ 3 ^ 2` groups right,
+/// so a right operand of the same power needs parens to mean anything else; `2 ** 3 ** 2` groups right,
 /// so the left one does.
 let infixOperandNeedsParens
   (operand: LanguageTools.ProgramTypes.Expr)
@@ -697,6 +738,45 @@ let infixOperandNeedsParens
     if parentIsRightAssoc then Stdlib.Bool.not isRightOperand else isRightOperand
   else
     false
+
+
+/// Does printing `e` leave a bitwise-or bare in a match-arm body?
+let hasBareBitwiseOr (e: LanguageTools.ProgramTypes.Expr) : Bool =
+  match e with
+  | EInfix(_, InfixFnCall BitwiseOr, _, _) -> true
+
+  | EInfix(_, op, left, right) ->
+    let (power, rightAssoc) = infixPower op
+
+    let bareSide (operand: LanguageTools.ProgramTypes.Expr) (isRight: Bool) : Bool =
+      if infixOperandNeedsParens operand power rightAssoc isRight then
+        false
+      else
+        hasBareBitwiseOr operand
+
+    (bareSide left false) || (bareSide right true)
+
+  | EIf(_, cond, thenExpr, elseExpr) ->
+    (hasBareBitwiseOr cond)
+    || (hasBareBitwiseOr thenExpr)
+    || (match elseExpr with
+        | Some e -> hasBareBitwiseOr e
+        | None -> false)
+
+  | ELet(_, _, rhs, body) -> (hasBareBitwiseOr rhs) || (hasBareBitwiseOr body)
+
+  | EStatement(_, first, next) -> (hasBareBitwiseOr first) || (hasBareBitwiseOr next)
+
+  | ELambda(_, _, body) -> hasBareBitwiseOr body
+
+  // A nested match prints its own arms on their own rows, indented past this one,
+  // so only its SUBJECT shares a line with the enclosing arm.
+  | EMatch(_, arg, _) -> hasBareBitwiseOr arg
+
+  // A pipe's segments are each `|> …`; a bare `|` can only come from the head.
+  | EPipe(_, first, _) -> hasBareBitwiseOr first
+
+  | _ -> false
 
 
 /// Whether an argument in an application has to be parenthesised.
@@ -767,11 +847,17 @@ let exprDoc (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : Stdlib.Pretty.
           | Some cond -> $" when {expr ctx cond}"
           | None -> ""
 
+        // A bare `|` in the body would be read back as the next ARM, so wrap it.
+        let body =
+          if hasBareBitwiseOr case.rhs then
+            parens (exprDoc ctx case.rhs)
+          else
+            exprDoc ctx case.rhs
+
         Stdlib.Pretty.group (
           Stdlib.Pretty.concat
             (txt $"| {matchPattern case.pat}{whenPart} ->")
-            (Stdlib.Pretty.nest 2 (
-              Stdlib.Pretty.concat Stdlib.Pretty.line (exprDoc ctx case.rhs)))))
+            (Stdlib.Pretty.nest 2 (Stdlib.Pretty.concat Stdlib.Pretty.line body))))
       |> Stdlib.Pretty.join Stdlib.Pretty.hardLine
 
     Stdlib.Pretty.concat
@@ -1132,9 +1218,11 @@ module TypeDeclaration =
     (ctx: Context)
     (d: LanguageTools.ProgramTypes.TypeDeclaration.RecordField)
     : Stdlib.Pretty.Doc =
-    Stdlib.Pretty.concat
-      (Stdlib.Pretty.text $"{PrettyPrinter.formatFieldName d.name}: ")
-      (typeReferenceDoc ctx d.typ)
+    withInlineDoc
+      d.description
+      (Stdlib.Pretty.concat
+        (Stdlib.Pretty.text $"{PrettyPrinter.formatFieldName d.name}: ")
+        (typeReferenceDoc ctx d.typ))
 
   let recordField
     (ctx: Context)
@@ -1167,7 +1255,7 @@ module TypeDeclaration =
     (c: LanguageTools.ProgramTypes.TypeDeclaration.EnumCase)
     : Stdlib.Pretty.Doc =
     match c.fields with
-    | [] -> Stdlib.Pretty.text ("| " ++ c.name)
+    | [] -> withInlineDoc c.description (Stdlib.Pretty.text ("| " ++ c.name))
     | fields ->
       let fieldPart =
         fields
@@ -1181,10 +1269,9 @@ module TypeDeclaration =
               Stdlib.Pretty.line)
         |> Stdlib.Pretty.group
 
-      Stdlib.Pretty.hang
-        2
-        (Stdlib.Pretty.text $"| {c.name} of")
-        [ fieldPart ]
+      withInlineDoc
+        c.description
+        (Stdlib.Pretty.hang 2 (Stdlib.Pretty.text $"| {c.name} of") [ fieldPart ])
 
   let enumCase
     (ctx: Context)
@@ -1311,7 +1398,9 @@ module PackageFn =
     (ctx: Context)
     (p: LanguageTools.ProgramTypes.PackageFn.Parameter)
     : String =
-    // TODO: /// for description
+    // No `///` here: this is the one-line form (a signature in a listing), and a doc comment runs to
+    // the end of the line, so writing one would comment out the rest of the signature.
+    // `parameterDoc` is the form that renders back to source and does carry them.
     //
     // `()` in a declaration parses as one parameter named `_` of type Unit, so print that shape back as `()`.
     // The general `(name: Type)` form gave `(_: Unit)`, which the parser then rejected with "expected a
@@ -1342,10 +1431,12 @@ module PackageFn =
       Stdlib.Pretty.text "()"
     else
       parens (
-        Stdlib.Pretty.hang
-          2
-          (Stdlib.Pretty.text $"{p.name}:")
-          [ typeReferenceDoc ctx p.typ ])
+        withInlineDoc
+          p.description
+          (Stdlib.Pretty.hang
+            2
+            (Stdlib.Pretty.text $"{p.name}:")
+            [ typeReferenceDoc ctx p.typ ]))
 
 
   let signature
@@ -1530,8 +1621,8 @@ module PackageOp =
       let hash = LanguageTools.ProgramTypes.Reference.hash target
       $"Undeprecate [{LanguageTools.ProgramTypes.hashToShort hash}]"
 
-    | Describe(target, text) ->
-      let hash = LanguageTools.ProgramTypes.Reference.hash target
+    | UpdateDoc(location, part, text, _previous, _restating) ->
+      let path = PackageLocation.packageLocation location
       // The first line of it, and only that: an op listing is for scanning, and a doc comment is
       // the one op payload with no length limit at all.
       let firstLine =
@@ -1547,7 +1638,11 @@ module PackageOp =
         else
           firstLine
 
-      $"Describe [{LanguageTools.ProgramTypes.hashToShort hash}] {summary}"
+      // Which PART, because four parts of one name are four different edits and a listing that
+      // named only the name showed them as four identical lines.
+      let which = LanguageTools.ProgramTypes.DocPart.describe part
+
+      $"UpdateDoc {path} {which}: {summary}"
 
     | Decision(id, location, reason, kind) ->
       let name = PackageLocation.packageLocation location
@@ -1579,4 +1674,3 @@ module PackageOp =
       let who = Darklang.SCM.PackageOps.branchName eventBranchId
 
       $"BranchEvent {who} {what}"
-

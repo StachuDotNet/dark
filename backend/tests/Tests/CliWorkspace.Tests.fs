@@ -22,7 +22,7 @@ open Tests.CliDsl
 // ─── this instance ────────────────────────────────────────────────────────
 
 let versionAndStatusAnswer =
-  cliTest "version and install-status describe this install" (fun state ->
+  instanceTest "version and install-status describe this install" (fun state ->
     task {
       do! sane state [ "version" ] "version says something about itself"
       do!
@@ -34,7 +34,7 @@ let versionAndStatusAnswer =
     })
 
 let configRoundTrips =
-  cliTest "config set is what config get reads back" (fun state ->
+  instanceTest "config set is what config get reads back" (fun state ->
     task {
       do!
         shows
@@ -57,7 +57,7 @@ let configRoundTrips =
     })
 
 let scriptsRoundTrip =
-  cliTest "a script can be added, listed and read back" (fun state ->
+  instanceTest "a script can be added, listed and read back" (fun state ->
     task {
       do! run state [ "scripts"; "add"; "tests-probe"; "1L + 2L" ]
       do! shows state [ "scripts"; "list" ] "tests-probe" "the listing names it"
@@ -80,23 +80,25 @@ let scriptsRoundTrip =
 /// error rather than a `false`. It goes through SQLite's online backup now, which is
 /// also the only way to copy an open store.
 let backupsCanBeTaken =
-  cliTest "backups now copies the store instead of dying on the guard" (fun state ->
-    task {
-      do! shows state [ "backups"; "now" ] "copied the store" "the copy is taken"
-      do! shows state [ "backups"; "list" ] "manual-" "and the listing names it"
-      // Clean up: the store is not small, and every run of this would leave another
-      // copy.
-      do! run state [ "backups"; "prune"; "0"; "-y" ]
-      do!
-        shows
-          state
-          [ "backups"; "list" ]
-          "no backups"
-          "and pruning to zero leaves none"
-    })
+  instanceTest
+    "backups now copies the store instead of dying on the guard"
+    (fun state ->
+      task {
+        do! shows state [ "backups"; "now" ] "copied the store" "the copy is taken"
+        do! shows state [ "backups"; "list" ] "manual-" "and the listing names it"
+        // Clean up: the store is not small, and every run of this would leave another
+        // copy.
+        do! run state [ "backups"; "prune"; "0"; "-y" ]
+        do!
+          shows
+            state
+            [ "backups"; "list" ]
+            "no backups"
+            "and pruning to zero leaves none"
+      })
 
 let backupsRefusesToRestoreWhatIsNotThere =
-  cliTest "backups restore refuses a name it doesn't have" (fun state ->
+  instanceTest "backups restore refuses a name it doesn't have" (fun state ->
     task {
       do!
         refuses
@@ -108,7 +110,7 @@ let backupsRefusesToRestoreWhatIsNotThere =
     })
 
 let appsCatalogLists =
-  cliTest "apps list-available names the catalog" (fun state ->
+  instanceTest "apps list-available names the catalog" (fun state ->
     task {
       do!
         shows
@@ -119,11 +121,11 @@ let appsCatalogLists =
     })
 
 let appsInstalledLists =
-  cliTest "apps list answers on an instance with none" (fun state ->
+  instanceTest "apps list answers on an instance with none" (fun state ->
     task { do! sane state [ "apps"; "list" ] "the installed list answers" })
 
 let permissionsLists =
-  cliTest "permissions list names the effects the policy covers" (fun state ->
+  instanceTest "permissions list names the effects the policy covers" (fun state ->
     task {
       do!
         shows
@@ -133,8 +135,65 @@ let permissionsLists =
           "the policy lists what it covers"
     })
 
+/// An approved version is the point of the whole permissions surface: it says "when I call this
+/// name, I mean the body I reviewed", and it has to hold when code actually RUNS.
+///
+/// This is what was missing until now. The approval was stored, listed and shown, and nothing
+/// narrowed name resolution by it, so every run took the latest version regardless.
+let anApprovedVersionIsWhatRuns =
+  instanceTest
+    "an approved version is what a run resolves, until it is withdrawn"
+    (fun state ->
+      task {
+        do! start state
+        do! fn state "Tests.Appr.rate" "() : Int64 = 6101L"
+        do! commit state "rate v1"
+        do! run state [ "permissions"; "approve"; "Tests.Appr.rate"; "--yes" ]
+        do!
+          shows
+            state
+            [ "permissions"; "approved" ]
+            "Tests.Appr.rate"
+            "the approval is recorded against the name"
+
+        // A newer version, published and live: the NAME now points at it for everything that has
+        // not approved a version.
+        do! fn state "Tests.Appr.rate" "() : Int64 = 6102L"
+        do! commit state "rate v2"
+
+        do!
+          evals
+            state
+            "Tests.Appr.rate ()"
+            "6101"
+            "a run resolves the version this account approved, not the latest"
+
+        do! run state [ "permissions"; "unapprove"; "Tests.Appr.rate" ]
+        do!
+          evals
+            state
+            "Tests.Appr.rate ()"
+            "6102"
+            "and follows the latest again once the approval is withdrawn"
+        do! discardAll state
+      })
+
+/// Withdrawing what was never approved says so, rather than reporting a release that did not
+/// happen.
+let unapprovingAnUnapprovedNameSaysSo =
+  instanceTest "withdrawing an approval nobody made says so" (fun state ->
+    task {
+      do!
+        shows
+          state
+          [ "permissions"; "unapprove"; "Tests.Appr.neverApproved" ]
+          "has no approved version"
+          "an unmatched name withdraws nothing and says so"
+    })
+
+
 let dbAndTracesAnswer =
-  cliTest "db and traces answer without a canvas or a recording" (fun state ->
+  instanceTest "db and traces answer without a canvas or a recording" (fun state ->
     task {
       do! sane state [ "db"; "list" ] "db list answers on an empty canvas"
       do! sane state [ "traces"; "stats" ] "traces stats answers"
@@ -144,7 +203,7 @@ let dbAndTracesAnswer =
 // ─── the log ──────────────────────────────────────────────────────────────
 
 let opsAndCommitsDescribeTheLog =
-  cliTestOnMain "ops, commits and log describe the same log" (fun state ->
+  instanceTest "ops, commits and log describe the same log" (fun state ->
     task {
       do! start state
       do!
@@ -159,7 +218,7 @@ let opsAndCommitsDescribeTheLog =
     })
 
 let showTellsYouWhatACommitHolds =
-  cliTestOnMain
+  instanceTest
     "show explains a commit, and says so when there's nothing to show"
     (fun state ->
       task {
@@ -177,15 +236,15 @@ let showTellsYouWhatACommitHolds =
       })
 
 let constraintsAndConflictsReportQuiet =
-  cliTestOnMain "constraints and conflicts say nothing is pending" (fun state ->
+  instanceTest "constraints and conflicts say nothing is pending" (fun state ->
     task {
       do! start state
-      // Not "no constraints": constraints are a standing property of the STORE, and
-      // every CLI test shares one store, so whether any stand here depends on what
-      // ran before. What is worth pinning is that the command answers and that a
-      // finding id nobody has says so.
+      // Not "no constraints", and not "no conflicts": both are standing properties of the STORE,
+      // and every CLI test shares one store, so whether any stand here depends on what ran before
+      // -- the doc tests put a divergence in deliberately. What is worth pinning is that each
+      // command answers, and that an id nobody has says so.
       do! sane state [ "constraints" ] "constraints answers"
-      do! shows state [ "conflicts" ] "no conflicts" "and nothing is conflicted"
+      do! sane state [ "conflicts" ] "conflicts answers"
       do!
         shows
           state
@@ -209,6 +268,8 @@ let tests : List<Test> =
     appsCatalogLists
     appsInstalledLists
     permissionsLists
+    anApprovedVersionIsWhatRuns
+    unapprovingAnUnapprovedNameSaysSo
     dbAndTracesAnswer
     opsAndCommitsDescribeTheLog
     showTellsYouWhatACommitHolds

@@ -151,9 +151,13 @@
     <!-- The schema, so an EXISTING store can be brought up to this binary's shape. Every statement in it
          is `IF NOT EXISTS` (or `INSERT OR IGNORE`), so replaying it against a live store adds what is
          missing and touches nothing else. Without it, a store keeps whatever shape the seed it was born
-         from had, and a binary carrying a new TABLE cannot run against it. -->
-    <EmbeddedResource Include="../../migrations/schema.sql">
-      <LogicalName>schema.sql</LogicalName>
+         from had, and a binary carrying a new TABLE cannot run against it.
+
+         One resource per file, named `schema/<file>`: `EmbeddedResources.embeddedSchema` sorts them by
+         name and concatenates, which is the same order `LocalExec.Migrations` reads them from disk in.
+         A glob, so adding a file to the directory is all adding a file takes. -->
+    <EmbeddedResource Include="../../migrations/schema/*.sql">
+      <LogicalName>schema/%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 
@@ -188,9 +192,10 @@
        failure; a missing ref-producing op is, whatever the timestamps say.
        An error rather than a warning, because the failure it prevents is a binary that dies on every
        command outside the source tree. It skips itself when there is no store to compare against, which
-       is the CI path: it takes a pre-exported seed and has no local store at all. -->
+       is the CI path: it takes a pre-exported seed and has no local store at all. The store check is
+       repeated here so the release images, which have no python3, never invoke the script. -->
   <Target Name="CheckSeedCarriesRefs" BeforeTargets="PrepareForBuild"
-          Condition="'$(Configuration)' == 'Release' And Exists('../../../rundir/seed.db')">
+          Condition="'$(Configuration)' == 'Release' And Exists('../../../rundir/seed.db') And Exists('../../../rundir/data.db')">
     <Exec Command="python3 ../../../scripts/build/check-seed-carries-refs"
           ContinueOnError="true" IgnoreExitCode="true">
       <Output TaskParameter="ExitCode" PropertyName="SeedMissingRefs" />

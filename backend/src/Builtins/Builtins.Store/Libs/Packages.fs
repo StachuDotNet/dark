@@ -952,11 +952,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       parameters = [ Param.make "fnName" TString "e.g. Darklang.Stdlib.List.map" ]
       returnType =
         TypeReference.option (
-          TTuple(
-            TList TString,
-            TList TString,
-            [ TBool; TInt64 ]
-          )
+          TTuple(TList TString, TList TString, [ TBool; TInt64 ])
         )
       description =
         "The MINIMUM set of platforms needed to run <param fnName>, by walking its call graph: "
@@ -983,9 +979,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
               | name :: revRest ->
                 match List.rev revRest with
                 | owner :: modules ->
-                  Some
-                    ({ owner = owner; modules = modules; name = name }
-                    : PT.PackageLocation)
+                  Some(
+                    { owner = owner; modules = modules; name = name }
+                    : PT.PackageLocation
+                  )
                 | [] -> None
 
             match location with
@@ -1041,6 +1038,41 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                       ),
                       [ DBool complete; DInt64(int64 (Map.count closure)) ]
                     ))
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.PackageRead ]
+      deprecated = NotDeprecated }
+    { name = fn "pmDocsAt" 0
+      typeParams = []
+      parameters =
+        [ branchParam
+          Param.make
+            "location"
+            (TCustomType(NR.ok (PT2DT.PackageLocation.typeName ()), []))
+            "" ]
+      returnType =
+        TList(
+          TTuple(TCustomType(NR.ok (PT2DT.DocPart.typeName ()), []), TString, [])
+        )
+      description =
+        "Every doc this NAME has of its own, by part. Empty for a name that has never had one "
+        + "edited, which is most of them: the text a reader sees then comes from the declaration."
+      fn =
+        (function
+        | _, _, _, [| DUuid branchId; location |] ->
+          uply {
+            let location = PT2DT.PackageLocation.fromDT location
+            let! docs = LibDB.Docs.docsAt (branchOfParam branchId) location
+
+            let partKT = VT.known (PT2DT.DocPart.knownType ())
+
+            return
+              docs
+              |> List.map (fun (part, text) ->
+                DTuple(PT2DT.DocPart.toDT part, DString text, []))
+              |> fun rows -> DList(VT.tuple partKT VT.string [], rows)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

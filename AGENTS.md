@@ -106,6 +106,7 @@ tell you the tree has moved on rather than silently running a stale binary.
 ## Tests
 
     ./scripts/run-backend-tests                       all of them, a few minutes
+    scripts/dev/build --optimize --test               the same, published and much faster
     ./scripts/run-backend-tests --groups              the tree, with counts
     ./scripts/run-backend-tests --groups Interpreter  just that part of it
     ./scripts/run-backend-tests --find mergeFavoring  what matches, and how to run it
@@ -121,6 +122,12 @@ tell you the tree has moved on rather than silently running a stale binary.
 
 Find what you want before guessing at a filter: `--groups` and `--find` need no
 database and no package reload, and print the exact command for what they found.
+
+Run the WHOLE suite published. Debug compiles F# with optimisations off, and the interpreter
+the suite spends its time in is F#, so the suite takes several times longer in Debug than the
+extra build costs. `--optimize` builds Release INSTEAD of Debug, so `run-cli` will say the debug
+tree is behind until the next plain build. While iterating on one group, stay in Debug -- a
+filtered run is seconds either way.
 
 `run-backend-tests` does NOT compile. It reloads packages and runs the test binary that is
 already there, so an `.fs` change you have not built yet is simply not in the run. It looks
@@ -216,7 +223,8 @@ Logs go to `rundir/logs/fsharp-tests.log`.
         cli/stdin.dark    #   reads keys
         cli/tui/          #   paints: view types, frame diffing, terminal session
         cli/ui/           #   composes: widgets, layout, the palette
-    backend/migrations/   # schema.sql, plus incremental/ for additive migrations
+    backend/migrations/   # schema/, the from-scratch shape; changes to an existing store go in
+                          # LibDB/Releases.fs
     rundir/logs/          # log files
     scripts/dev/          # start, build, plan, status, watch, host-port
     scripts/build/        # the build itself; `_` ones are called by other scripts
@@ -718,7 +726,7 @@ Clearing only `current_branch%` is the trap: it looks like isolation and leaves 
 One consequence worth knowing: an isolated store usually looks like a FIRST RUN, and Home shows its welcome
 PANEL instead of a row's detail, so a test waiting for anything a populated Home draws waits forever. Do not
 anchor a workbench test on the greeting either way: "Welcome, <name>" is on every Home, and the panel is the
-part that distinguishes a new instance. The context row (`instance:`) is the stable "it started" marker.
+part that distinguishes a new instance. The header's `who @ where` (` @ `) is the stable "it started" marker.
 
 ## Standing up a relay in a test
 

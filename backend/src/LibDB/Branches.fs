@@ -22,7 +22,7 @@ module Hashing = LibSerialization.Hashing.Hashing
 /// The content-addressed row id for an op. One definition, shared with authoring and
 /// the fold, so a branch tags the same op id those two mint.
 /// An op's row id: its content hash. Public because the branch authoring path asks whether the log
-/// already holds an op before deciding it needs restating (see `PT.restatingBinding`).
+/// already holds an op before deciding it needs restating (see `PT.restating`).
 let opRowId (op : PT.PackageOp) : System.Guid = Hashing.computeOpRowId op
 
 /// Create a branch off `parentId` (main for a top-level branch). The fork point is tracked PER
@@ -338,6 +338,34 @@ let heldOpIds (ids : List<System.Guid>) : Task<Set<System.Guid>> =
   }
 
 
+/// Which of <param ids> are already this branch's own ops.
+///
+/// The doc half of the restatement question: an `UpdateDoc` the log holds is a re-run of the same
+/// command when this branch already carries it, and a RESTATEMENT when it does not -- the op is
+/// somebody else's (main's, usually, after a merge) and saying it again here has to be a distinct
+/// op or it dedupes into theirs and folds nothing.
+let opsAlreadyOnBranch
+  (branchId : PT.BranchId)
+  (ids : List<System.Guid>)
+  : Task<Set<System.Guid>> =
+  task {
+    if List.isEmpty ids then
+      return Set.empty
+    else
+      let clause = ids |> List.mapi (fun i _ -> $"@id_{i}") |> String.concat ", "
+      let! rows =
+        Sql.query
+          $"SELECT op_id FROM op_branches
+            WHERE branch_id = @branch AND op_id IN ({clause})"
+        |> Sql.parameters (
+          ("branch", Sql.string (string branchId))
+          :: (ids |> List.mapi (fun i id -> ($"id_{i}", Sql.uuid id)))
+        )
+        |> Sql.executeAsync (fun read -> read.uuid "op_id")
+      return Set.ofList rows
+  }
+
+
 let storeDeltaOpsStampedFrom
   (source : string)
   (branchId : PT.BranchId)
@@ -470,7 +498,7 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
            SELECT b.parent_id FROM branches b JOIN chain c ON b.id = c.bid
            WHERE b.parent_id <> @mainId
          )
-         SELECT p.id, p.op_blob
+         SELECT p.id, p.op_blob, p.origin_ts AS ts
          FROM package_ops p
          JOIN op_branches ob ON ob.op_id = p.id
          WHERE ob.branch_id IN (SELECT bid FROM chain)
@@ -482,10 +510,9 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
          -- tied exactly, and showed different code. An op id is a content hash, so this order is
          -- the same everywhere.
          --
-         -- Not yet the same tie-break as the FOLD, which compares the bound item's hash
-         -- (`Lww.isStale`): a branch and main can still disagree on an exact tie until the overlay
-         -- learns that rule. Same-stamp ties need two authorings in the same instant, so this is
-         -- the ordering half of the fix, not the whole of it.
+         -- The FOLD's tie-break is finer still (`Lww.isStale` compares the bound item's hash), so
+         -- the sort below re-orders what this returns. The stamp is selected only to sort by and
+         -- then dropped, which is why the signature is unchanged.
          ORDER BY p.origin_ts, p.id"
       // `@mainId`, never the literal 'main': `parent_id` holds main's UUID, so comparing against the
       // NAME is true of every row, and the walk then terminates only because main has no `branches`
@@ -495,8 +522,24 @@ let chainOverlayOps (branchId : PT.BranchId) : Task<List<PT.PackageOp>> =
         [ "start", Sql.string (string branchId)
           "mainId", Sql.string (string PT.BranchId.Main) ]
       |> Sql.executeAsync (fun read ->
-        BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob"))
-    return decoded |> List.choose (fun o -> o)
+        (read.string "ts",
+         BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob")))
+
+    // `Lww.isStale`'s order, so every reader of these ops lands where the fold would: later stamp
+    // wins, an equal stamp goes to the greater bound hash, a binding beats an `Unbind`. SQL cannot
+    // supply it -- the bound hash is inside the blob -- so it happens here, over a branch's ops,
+    // which are bounded.
+    let sortKey (ts : string, op : PT.PackageOp) : string * string * string =
+      match op with
+      | PT.PackageOp.SetName(_, target, _) -> (ts, "1", string target.hash)
+      | PT.PackageOp.Unbind _ -> (ts, "0", "")
+      | _ -> (ts, "1", "")
+
+    return
+      decoded
+      |> List.choose (fun (ts, o) -> o |> Option.map (fun op -> (ts, op)))
+      |> List.sortBy sortKey
+      |> List.map snd
   }
 
 /// Re-arm every branch event <param branchId>'s bundle may have been waiting on, so
@@ -641,9 +684,11 @@ let parentNameHashes (parentId : PT.BranchId) : Task<Map<NameKey, string>> =
   }
 
 
-/// <param ops> with any REVERT re-authored as the decision it is (`PT.restatingBinding`).
+/// <param ops> with any REVERT re-said so that it is a distinct op (`PT.restating`).
 ///
-/// A `SetName` the log already holds, for a name this branch currently binds to something else.
+/// A `SetName` the log already holds, for a name this branch currently binds to something else; or
+/// an `UpdateDoc` the log holds that is not already this branch's, which is the same thing one
+/// level down (main's wording, said again here after a merge carried it away).
 /// Authoring only: an incoming duplicate really is a duplicate, so the receive paths that share
 /// `storeDeltaOps` never come through here. Liveness is the branch's own -- its chain folded over
 /// main, since its items have no `locations` row.
@@ -652,14 +697,16 @@ let restateReverts
   (ops : List<PT.PackageOp>)
   : Task<List<PT.PackageOp>> =
   task {
-    let bindings =
-      ops |> List.filter (fun op -> Option.isSome (PT.restatingBinding "" op))
+    let restatable =
+      ops |> List.filter (fun op -> Option.isSome (PT.restating "" op))
 
-    if List.isEmpty bindings then
+    if List.isEmpty restatable then
       return ops
     else
+      let ids = restatable |> List.map opRowId
       let! liveHere = parentNameHashes branchId
-      let! held = heldOpIds (bindings |> List.map opRowId)
+      let! held = heldOpIds ids
+      let! mine = opsAlreadyOnBranch branchId ids
 
       let saidAgain (op : PT.PackageOp) : bool =
         match op with
@@ -668,13 +715,17 @@ let restateReverts
           let key =
             (location.owner, String.concat "." location.modules, location.name)
           Map.tryFind key liveHere <> Some h
+        // Authoring only gets here having decided the text CHANGED (the CLI compares what was
+        // written against what this branch reads), so an op the branch does not already carry is
+        // saying something new whatever the log holds.
+        | PT.PackageOp.UpdateDoc _ -> not (Set.contains (opRowId op) mine)
         | _ -> false
 
       return
         ops
         |> List.map (fun op ->
           if saidAgain op && Set.contains (opRowId op) held then
-            PT.restatingBinding (OriginTs.next ()) op |> Option.defaultValue op
+            PT.restating (OriginTs.next ()) op |> Option.defaultValue op
           else
             op)
   }

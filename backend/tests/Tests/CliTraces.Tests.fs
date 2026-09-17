@@ -16,6 +16,7 @@ module RT = LibExecution.RuntimeTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
 module Exe = LibExecution.Execution
 module Dval = LibExecution.Dval
+module P = LibExecution.Permissions
 
 open TestUtils.TestUtils
 
@@ -241,7 +242,7 @@ let private testMkdirRecursiveUnderPolicyAncestor =
         | None -> Tests.failtestf "Stdlib.Cli.Dir.createRecursive not found"
       let createRecursive () =
         Exe.executeFunction
-          state
+          (executionState state)
           (RT.FQFnName.fqPackage hash)
           []
           (NEList.singleton (RT.DString target))
@@ -692,6 +693,148 @@ let private testTracesTruncatedStillShowsRoot =
         })
   }
 
+// ─── Permission profiles ─────────────────────────────────────────────────
+
+/// Exercise real CLI dispatch and persisted policies in a temporary host store.
+/// The surrounding CliTraces sequence isolates the process-global override.
+let private testPermissionProfiles =
+  cliTest
+    "permission profiles preview, validate and apply through the host"
+    (fun state ->
+      task {
+        let dir =
+          System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            $"dark-profile-{System.Guid.NewGuid()}"
+          )
+        System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
+        let restore = LibExecution.HostSecurity.policyDirectoryForTesting dir
+        try
+          // The harness state already manages policies, as the CLI's own control code does.
+          let admin = state
+          let guest =
+            InProcess { executionState state with canManagePolicies = false }
+          let initial =
+            P.Policy.create
+              [ P.Rule.All ]
+              [ P.Rule.Effect LibExecution.Effects.Effect.Clock ]
+          LibDB.PolicyStore.setInstancePolicy initial
+          let root = System.IO.Path.Combine(dir, "project 'quoted'; all")
+          let profileArgs name = [ "permissions"; "profile"; name; root ]
+
+          let! listing = runCli admin [ "permissions"; "profile" ]
+          for name in [ "default"; "read-only"; "local-dev" ] do
+            Expect.stringContains listing name "the preset is listed"
+            let args =
+              if name = "default" then
+                [ "permissions"; "profile"; name ]
+              else
+                profileArgs name
+            let! preview = runCli admin args
+            Expect.stringContains preview "Preview only" "no implicit approval"
+            Expect.stringContains
+              preview
+              "including denies"
+              "replacement is explicit"
+            Expect.equal
+              (LibDB.PolicyStore.instancePolicy ())
+              initial
+              "preview preserves policy"
+
+          for args in
+            [ [ "--yes" ]
+              [ "unknown"; "--yes" ]
+              [ "default"; "extra"; "--yes" ]
+              [ "default"; "--yess" ]
+              [ "read-only"; "--yes" ]
+              [ "local-dev"; "relative"; "--yes" ]
+              [ "local-dev"; "~/project"; "--yes" ]
+              [ "local-dev"; "*"; "--yes" ]
+              [ "local-dev"; root; "extra"; "--yes" ] ] do
+            let! output = runCli admin ([ "permissions"; "profile" ] @ args)
+            Expect.isFalse
+              (output.Contains "applied profile")
+              "bad input cannot apply"
+            Expect.isNonEmpty output "bad input gets a diagnostic"
+            Expect.equal
+              (LibDB.PolicyStore.instancePolicy ())
+              initial
+              "bad input preserves policy"
+
+          let allowed request =
+            match request with
+            | Ok request ->
+              P.Policy.allows request (LibDB.PolicyStore.instancePolicy ())
+            | Error reason -> failtest reason
+          let checkSharedLimits () =
+            Expect.isFalse (allowed (P.Request.native "test")) "no native authority"
+            Expect.isFalse
+              (allowed (P.Request.processSpawn "/bin/echo" []))
+              "no process authority"
+            Expect.isFalse
+              (allowed (P.Request.env P.AccessKind.Read "HOME"))
+              "no env access"
+            Expect.isTrue
+              (allowed (P.Request.http "GET" "https://example.com/x"))
+              "HTTPS GET"
+            Expect.isFalse
+              (allowed (P.Request.http "POST" "https://example.com/x"))
+              "no POST"
+            Expect.isFalse
+              (allowed (P.Request.http "GET" "http://example.com/x"))
+              "HTTPS only"
+            Expect.isFalse
+              (allowed (P.Request.http "GET" "https://example.com:8443/x"))
+              "port 443 only"
+
+          let! applied = runCli admin (profileArgs "read-only" @ [ "--yes" ])
+          Expect.stringContains
+            applied
+            "applied profile read-only"
+            "explicit application"
+          Expect.isTrue
+            (allowed (P.Request.file P.AccessKind.Read (root + "/input")))
+            "quoted root is kept as one rule field"
+          Expect.isFalse
+            (allowed (P.Request.file P.AccessKind.Read (root + "-other/input")))
+            "a sibling prefix is outside the root"
+          Expect.isFalse
+            (allowed (P.Request.file P.AccessKind.Write (root + "/output")))
+            "no writes"
+          Expect.isFalse (allowed (P.Request.httpServer 9090)) "no serving"
+          checkSharedLimits ()
+
+          let! _ = runCli admin (profileArgs "local-dev" @ [ "--yes" ])
+          Expect.isTrue
+            (allowed (P.Request.file P.AccessKind.Write (root + "/output")))
+            "project writes"
+          Expect.isFalse
+            (allowed (P.Request.file P.AccessKind.Write (dir + "/outside")))
+            "scoped writes"
+          Expect.isTrue (allowed (P.Request.httpServer 9090)) "HTTP serving"
+          checkSharedLimits ()
+
+          let! _ = runCli admin [ "permissions"; "profile"; "default"; "--yes" ]
+          let rules policy =
+            let allow, deny = P.Policy.rules policy
+            Set.ofList allow, Set.ofList deny
+          Expect.equal
+            (rules (LibDB.PolicyStore.instancePolicy ()))
+            (rules P.Policy.defaultInstance)
+            "default agrees with the host seed and replaces previous grants and denies"
+
+          let beforeGuest = LibDB.PolicyStore.instancePolicy ()
+          let! denied = runCliCatching guest (profileArgs "local-dev" @ [ "--yes" ])
+          Expect.isError denied "guest callers cannot apply a profile"
+          Expect.equal
+            (LibDB.PolicyStore.instancePolicy ())
+            beforeGuest
+            "host-only writer"
+        finally
+          restore.Dispose()
+          System.IO.Directory.Delete(dir, true)
+      })
+
 /// The four cases that dominate this file's time: about 34 of its 61 seconds.
 ///
 /// `Tests.CliSurface.everyCommandSurvivesABogusArgument` drives every registered command with an argument that means
@@ -716,25 +859,24 @@ let private slowCliTests =
       Tests.CliScm.partialCommitTakesOnlyWhatYouNamed
       Tests.CliScm.commitRefusesUnresolvedReferences ]
 
+/// Tracing costs more than anything else these tests do: it records every call's ARGUMENTS,
+/// so an `eval` pays to write whatever it materialises, and a page of sync ops is 2000
+/// records carrying hex-encoded blobs.
+///
+/// So it is on only for the tests that are ABOUT tracing, and each of those carries the
+/// setting itself, in `cliTestWithFreshTraces`. Do not put it back as a test at the head of
+/// this list: `--shard` partitions by test, so the toggle lands on one node and the tests it
+/// enabled land on another.
+///
+/// Assert on counts and identifiers here, not on op bodies; anything needing real blobs
+/// belongs in a suite that does not trace, like `MultiInstance`.
+
 let tests =
   testSequenced
   <| testList
     "CliTraces"
-    ([ // Tracing is ON for every test below, because most of them are about the trace surface itself.
-       // It records each call's ARGUMENTS, so an `eval` here pays to write whatever it materialises: a
-       // page of sync ops is 2000 records carrying hex-encoded blobs, which takes this list from four
-       // minutes to over nine. Assert on counts and identifiers here, not op bodies; anything needing
-       // real blobs belongs in a suite that does not trace, like `MultiInstance`.
-       test "set trace detail" {
-         LibDB.Tracing.TraceDetail.setForTesting LibDB.Tracing.TraceDetail.On
-       } ]
-     @ Tests.CliSurface.tests
+    (Tests.CliSurface.tests
      @ Tests.CliScm.tests
-     @ Tests.CliScmRegression.tests
-     @ Tests.CliPackages.tests
-     @ Tests.CliWorkspace.tests
-     @ Tests.CliSyncSurface.tests
-     @ Tests.CliScmRound2.tests
      @ [ testVersionCommand
          testStatusCommand
          testRunCases
@@ -746,8 +888,8 @@ let tests =
          testViewFunction
          testListTypes
          testHelpForRun
-         testHelpForLs
-         // Trace surface
+         testHelpForLs ]
+     @ [ // Trace surface
          testTracesHelp
          testTracesTailShowsLastEval
          testTracesDeleteEmpties
@@ -771,5 +913,6 @@ let tests =
          testTracesArity1Catchalls
          testTracesRouteEmptyRejection
          testTracesFindEscapesLikeWildcards
-         testTracesTruncatedStillShowsRoot ]
+         testTracesTruncatedStillShowsRoot
+         testPermissionProfiles ]
      @ slowCliTests)

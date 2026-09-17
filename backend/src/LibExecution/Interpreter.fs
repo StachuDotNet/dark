@@ -976,18 +976,18 @@ let private invokeBuiltin
     else
       0L
   if not (Set.isEmpty fn.callEffects) then
-    // `Native` names what no rule can scope, so a policy grants it whole or not at all --
-    // which would put `dark status` behind `permissions allow native` on a stock install,
-    // since the SCM reads its own store through raw SQLite. Bundled first-party code is
-    // trusted for it instead, the same boundary the private-network sync transport uses;
-    // a pulled package calling the same builtin still needs the grant. Every other effect
-    // is checked for everyone.
+    // Bundled first-party code is trusted for the effects in `trustedForBundledCallers`
+    // (why each is there is written beside the set), the same boundary the private-network
+    // sync transport uses; a pulled package calling the same builtin still needs the grant.
+    // Every other effect is checked for everyone.
     let effects =
       if
-        Set.contains Effects.Effect.Native fn.callEffects
+        not (
+          Set.isEmpty (Set.intersect Effects.trustedForBundledCallers fn.callEffects)
+        )
         && PermissionCheck.callerIsBundled exeState vm
       then
-        Set.remove Effects.Effect.Native fn.callEffects
+        Set.difference fn.callEffects Effects.trustedForBundledCallers
       else
         fn.callEffects
     if not (Set.isEmpty effects) then
@@ -2224,11 +2224,14 @@ let private applyInstruction
           if exeState.inactiveBuiltins.TryGetValue(builtin, &inactive) then
             let effects =
               inactive.builtins.fns.Values
-              |> Seq.fold (fun acc f -> Set.union acc f.callEffects) inactive.dynamicEffects
+              |> Seq.fold
+                (fun acc f -> Set.union acc f.callEffects)
+                inactive.dynamicEffects
               |> Set.toList
               |> List.map Effects.name
               |> List.sort
-            RTE.BuiltinNotActive(builtin, inactive.name, effects) |> raiseRTE vm.threadID
+            RTE.BuiltinNotActive(builtin, inactive.name, effects)
+            |> raiseRTE vm.threadID
           else
             RTE.FnNotFound(FQFnName.Builtin builtin) |> raiseRTE vm.threadID
         else

@@ -338,7 +338,7 @@ let private aMergeCommitsWhatItLands =
         // in the parent under a message somebody wrote. What this test is about is the OTHER
         // draft -- main's, which must survive the merge untouched.
         do! commit state "mergecommit work"
-        let! merged = runCli state [ "merge"; "mergecommit" ]
+        let! merged = runCli state [ "merge"; "mergecommit"; "-y" ]
         Expect.stringContains merged "Merged" $"the merge went through: {merged}"
 
         do!
@@ -420,7 +420,7 @@ let private anUnbindRemovesANameThroughTheCli =
             [ "eval"; "Tests.Gone.f ()" ]
             "1"
             "main still has it before the merge"
-        do! shows state [ "merge"; "gonebr" ] "Merged" "the branch merges"
+        do! shows state [ "merge"; "gonebr"; "-y" ] "Merged" "the branch merges"
         do!
           shows
             state
@@ -983,6 +983,11 @@ let private commitRefusesDefiniteTypeErrors =
     "commit refuses a definite type error, and --allow-type-errors takes it"
     (fun state ->
       task {
+        // This counts the ops its own commit carries, so it needs the draft to hold only
+        // what it put there. Anything an earlier test left behind is counted too, and the
+        // failure reads as a wrong op count rather than as pollution.
+        do! discardAll state
+
         // A one-field enum case given two arguments. Definite, and cheap to state.
         let source =
           "type Wrapped = Wrap of (Int * String)\n\n"
@@ -1972,7 +1977,7 @@ let private dependentsSeeTheBranchYouAreOn =
 /// A `record` call as an eval expression. The candidates are empty because nothing
 /// here reads them; what is under test is which branch the row lands on.
 let private recordConflictOn (branchIdExpr : string) (id : string) : string =
-  $"""Darklang.SCM.Conflicts.record ({branchIdExpr}) [Darklang.SCM.Conflicts.Conflict {{ id = "{id}"; owner = "Zz"; modules = "Confl"; name = "f"; itemType = "fn"; kind = "same-name-different-hash"; candidates = []; autoResolvedTo = "bbb"; reason = "test"; status = "pending"; resolvedBy = "" }}]"""
+  $"""Darklang.SCM.Conflicts.record ({branchIdExpr}) [Darklang.SCM.Conflicts.Conflict {{ id = "{id}"; owner = "Zz"; modules = "Confl"; name = "f"; itemType = "fn"; part = ""; kind = "same-name-different-hash"; candidates = []; autoResolvedTo = "bbb"; reason = "test"; status = "pending"; resolvedBy = "" }}]"""
 
 /// A branch bundle carrying an op this build cannot decode is imported anyway: the readable ops land,
 /// the unreadable one is stored raw and inert for a later build, and a note says so. That is what main
@@ -2059,6 +2064,41 @@ let private branchBundleKeepsWhatItCannotRead =
         do! archiveBranches state [ "importedbr"; "bundlebr" ]
       })
 
+/// A merge moves committed work onto main and there is no undo verb for it, so it asks first, and a
+/// stdin nobody is holding counts as no.
+///
+/// The piped case is the one that matters and the one a test can reach: naming the branch is not the
+/// confirmation, so `merge <name>` on a pipe has to refuse and say how to mean it. A structural
+/// refusal still reports the REASON rather than a declined prompt, which is why the gates above test
+/// what they test.
+let private mergeAsksBeforeItGoes =
+  cliTestOnMain
+    "a merge on a pipe refuses without -y, and goes with it"
+    (fun state ->
+      task {
+        do! switch state "askbr"
+        do! fn state "Tests.Ask.a" "() : Int64 = 31L"
+        do! commit state "ask work"
+        do! onMain state
+
+        do!
+          refuses
+            state
+            [ "merge"; "askbr" ]
+            "not merged"
+            "Merged"
+            "a piped merge with no -y refuses, and does not claim it merged"
+
+        // Refusing has to mean the branch is still there to merge. A refusal that half-merged would
+        // pass the assertion above and lose the work anyway.
+        do!
+          shows
+            state
+            [ "merge"; "askbr"; "-y" ]
+            "Merged"
+            "and -y merges the same branch, so the refusal changed nothing"
+      })
+
 /// Whether a merge is ALLOWED is a decision, so it is decided in Dark; the builtin only does the work.
 ///
 /// Two structural gates. Conflicts deliberately do NOT gate: they are auto-resolved by the fold's
@@ -2101,7 +2141,7 @@ let private mergeGatesAreDecidedInDark =
         do!
           shows
             state
-            [ "merge"; "gateparent" ]
+            [ "merge"; "gateparent"; "-y" ]
             "Merged"
             "and archiving the child clears the gate, rather than repeating the advice"
 
@@ -2597,7 +2637,8 @@ let private mergeCommitsWhatASiblingStillTags =
         do! commit state "shared2 work"
         do! switch state "main"
 
-        do! shows state [ "merge"; "shared1" ] "erged" "the merge went through"
+        do!
+          shows state [ "merge"; "shared1"; "-y" ] "erged" "the merge went through"
 
         // The shared content op is tagged by shared2 still; it must carry the merge's commit.
         let! unstamped =
@@ -2625,6 +2666,170 @@ let private mergeCommitsWhatASiblingStillTags =
 
 /// In the run order CliTraces.Tests.fs composes; sequencing lives there too.
 /// Ocean's review, #1: `discard <name>` on a branch dropped every op for that name, committed
+/// Ops are content-addressed, so re-binding a name to a hash it held before is byte-identical to
+/// the op that first bound it: it dedupes, folds nothing, and the revert silently does not happen
+/// while the CLI reports success. `Decision`/`Override` is the op that means "this binding again,
+/// and I mean it" -- it is what `propagate pin` already authors for exactly this reason.
+let revertingToAnEarlierVersionTakesEffect =
+  cliTestOnMain "going back to an earlier version actually goes back" (fun state ->
+    task {
+      do! start state
+      do! switch state "revertbr"
+      do! fn state "Tests.Revert.b" "() : Int64 = 611L"
+      do! commit state "611"
+      do! fn state "Tests.Revert.b" "() : Int64 = 622L"
+      do! commit state "622"
+      do! evals state "Tests.Revert.b ()" "622" "the second version is live"
+
+      do! fn state "Tests.Revert.b" "() : Int64 = 611L"
+      do!
+        evals
+          state
+          "Tests.Revert.b ()"
+          "611"
+          "and going back to the first takes effect"
+      do! dirty state "the revert is a change, so the draft holds it"
+
+      do! commit state "back to 611"
+      do! evals state "Tests.Revert.b ()" "611" "and it survives the commit"
+      do! onMain state
+    })
+
+/// The same on main, where authoring is live-on-write.
+let revertingOnMainTakesEffect =
+  cliTestOnMain "going back to an earlier version works on main too" (fun state ->
+    task {
+      do! start state
+      do! fn state "Tests.RevertMain.f" "() : Int64 = 1L"
+      do! commit state "one"
+      do! fn state "Tests.RevertMain.f" "() : Int64 = 2L"
+      do! commit state "two"
+      do! fn state "Tests.RevertMain.f" "() : Int64 = 1L"
+      do! evals state "Tests.RevertMain.f ()" "1" "back to the first version"
+      do! discardAll state
+    })
+
+
+/// `--include=<caller>` on a branch committed the caller and left its dependency's NAME in the
+/// draft, so a reader downstream could run the caller but could not find what it called.
+let aPartialCommitTakesItsDependencysName =
+  cliTestOnMain
+    "a partial commit on a branch carries the names it depends on"
+    (fun state ->
+      task {
+        do! start state
+        do! switch state "partialbr"
+        do! fn state "Tests.Partial2.dep" "() : Int64 = 5L"
+        do!
+          fn state "Tests.Partial2.caller" "() : Int64 = Tests.Partial2.dep () + 1L"
+
+        do! commitOnly state "caller" "Tests.Partial2.caller"
+        do! evals state "Tests.Partial2.caller ()" "6" "the caller runs here"
+        do!
+          clean
+            state
+            "and nothing of it is left uncommitted: the dependency came along"
+        do! onMain state
+      })
+
+
+/// Commit B, then A, then C: C's parent must be A, the commit that actually precedes it. Taking
+/// "the newest commit" by arrival instead put A on nobody's chain.
+let commitsFollowTheCommitBeforeThem =
+  cliTestOnMain
+    "each commit follows the one before it, whatever order they were made in"
+    (fun state ->
+      task {
+        do! start state
+        do! fn state "Tests.Chain.a" "() : Int64 = 1L"
+        do! fn state "Tests.Chain.b" "() : Int64 = 2L"
+        do! commitOnly state "B" "Tests.Chain.b"
+        do! commitOnly state "A" "Tests.Chain.a"
+
+        let! afterA = runCliPlain state [ "commits"; "1" ]
+        let aHash =
+          System.Text.RegularExpressions.Regex.Match(afterA, @"[0-9a-f]{8}").Value
+
+        do! fn state "Tests.Chain.c" "() : Int64 = 3L"
+        do! commit state "C"
+
+        let! newest = runCliPlain state [ "commits"; "1" ]
+        let cHash =
+          System.Text.RegularExpressions.Regex.Match(newest, @"[0-9a-f]{8}").Value
+
+        let! shown = runCliPlain state [ "show"; cHash ]
+        Expect.stringContains
+          shown
+          aHash
+          $"C ({cHash}) follows A ({aHash}), the commit before it, got: {shown}"
+        do! discardAll state
+      })
+
+
+/// A pin made on a parent branch APPLIES on a child (resolution walks the chain), but `propagate`
+/// listed only the child's own rows, so the child was told nothing was pinned while being governed
+/// by one.
+let aParentsPinIsListedOnTheChild =
+  cliTestOnMain "a child branch lists the pins that govern it" (fun state ->
+    task {
+      do! start state
+      do! switch state "pinpar"
+      do! fn state "Tests.Pin2.base" "() : Int64 = 10L"
+      do! fn state "Tests.Pin2.caller" "() : Int64 = Tests.Pin2.base () + 1L"
+      do! pin state "Tests.Pin2.caller"
+      do! commit state "par"
+
+      do! switch state "pinkid"
+      do!
+        shows
+          state
+          [ "propagate" ]
+          "Tests.Pin2.caller"
+          "the child lists the pin it inherits"
+
+      // And the pin is really in force here, which is what makes the listing's silence a lie.
+      do! fn state "Tests.Pin2.base" "() : Int64 = 20L"
+      do!
+        evals
+          state
+          "Tests.Pin2.caller ()"
+          "11"
+          "the inherited pin held the caller back"
+      do! onMain state
+    })
+
+
+/// `conflicts override <name>` took the OLDEST row for that name, resolved or not, while the
+/// listing shows only pending ones. With one name conflicted twice, answering by name acted on the
+/// settled conflict and left the open one open, reporting success either way.
+let overrideByNameAnswersThePendingConflict =
+  cliTestOnMain "answering a conflict by name answers the open one" (fun state ->
+    task {
+      do! start state
+      do! switch state "confl2"
+
+      let record (id : string) (hash : string) =
+        $"""Darklang.SCM.Conflicts.record (Builtin.scmCurrentBranch ()) [Darklang.SCM.Conflicts.Conflict {{ id = "{id}"; owner = "Tests"; modules = "Confl2"; name = "same"; itemType = "fn"; part = ""; kind = "same-name-different-hash"; candidates = []; autoResolvedTo = "{hash}"; reason = "test"; status = "pending"; resolvedBy = "" }}]"""
+
+      do! run state [ "eval"; record "r2first001" "aaa" ]
+      do! run state [ "conflicts"; "ack"; "r2first001" ]
+      do! run state [ "eval"; record "r2second02" "bbb" ]
+
+      // By NAME: the settled one must not be what answers.
+      let! answered = runCliPlain state [ "conflicts"; "ack"; "Tests.Confl2.same" ]
+      Expect.stringContains
+        answered
+        "r2second02"
+        $"the open conflict is the one answered, got: {answered}"
+
+      let! left = runCliPlain state [ "conflicts" ]
+      Expect.isFalse
+        (left.Contains "r2second02")
+        $"and it is closed afterwards, got: {left}"
+      do! onMain state
+    })
+
+
 let tests : List<Test> =
   [ commitRefusesDefiniteTypeErrors
     deprecationIsReversible
@@ -2638,6 +2843,7 @@ let tests : List<Test> =
     conflictsBelongToTheBranchTheyHappenedOn
     discardOnABranchLeavesMainAlone
     diffAndLogAnswerInJson
+    mergeAsksBeforeItGoes
     mergeGatesAreDecidedInDark
     branchBundleKeepsWhatItCannotRead
     bareDiffShowsTheDraft
@@ -2674,4 +2880,10 @@ let tests : List<Test> =
     mergeCommitsWhatASiblingStillTags
     editingAColleaguesVersionSaysSo
     commitsHideHousekeeping
-    commitsChainToTheirParent ]
+    commitsChainToTheirParent
+    revertingToAnEarlierVersionTakesEffect
+    revertingOnMainTakesEffect
+    aPartialCommitTakesItsDependencysName
+    commitsFollowTheCommitBeforeThem
+    aParentsPinIsListedOnTheChild
+    overrideByNameAnswersThePendingConflict ]

@@ -1,17 +1,19 @@
 /// Shape changes to CANONICAL tables, on stores that already exist.
 ///
-/// `schema.sql` declares the from-scratch shape, but `CREATE TABLE IF NOT EXISTS` no-ops against a table
-/// that already exists, so a new column never reaches an existing store from that file.
+/// `migrations/schema/*.sql` declares the from-scratch shape, but `CREATE TABLE IF NOT EXISTS` no-ops
+/// against a table that already exists, so a new column never reaches an existing store from those files.
 ///
 /// In principle a PROJECTION needs no step, since dropping and re-folding it rebuilds the new shape. In
 /// practice nothing on the shipped path does that: `rebuildProjections` is reachable only from LocalExec,
 /// which is not shipped. So a projection whose shape changed needs a step here too, and `locations` has
 /// two. Fixing that properly means teaching startup to notice the drift and re-fold; until then, a step.
 ///
-/// Not an incremental `.sql` file, because those run on FRESH stores too, where `schema.sql` has already
-/// created the table with the new shape; `ALTER TABLE ... ADD COLUMN` then fails with "duplicate column
-/// name" and SQLite has no `ADD COLUMN IF NOT EXISTS`. A step has to LOOK at the store before acting,
-/// which a raw SQL file cannot.
+/// This is THE mechanism, and the only one. There used to be a second (`migrations/incremental/*.sql`,
+/// now deleted) with no written rule for choosing between them, which is how the same migration got
+/// written twice and failed in both directions: a raw `.sql` file runs on FRESH stores too, where the
+/// schema has already created the table with the new shape, and `ALTER TABLE ... ADD COLUMN` then fails
+/// with "duplicate column name" -- SQLite has no `ADD COLUMN IF NOT EXISTS`. A step has to LOOK at the
+/// store before acting, which a raw SQL file cannot.
 ///
 /// So steps are code: stable name, at most once per store, recorded in `system_migrations_v0` inside a
 /// transaction. Every step must be safe against a store that already has the desired shape, since that is
@@ -40,7 +42,7 @@ let private tableExists (table : string) : bool =
   |> Sql.executeExistsSync
 
 
-/// Add a column, or do nothing if it is already there (the FRESH store, where `schema.sql` just declared
+/// Add a column, or do nothing if it is already there (the FRESH store, where the schema just declared
 /// it).
 let addColumnIfMissing
   (table : string)
@@ -66,7 +68,7 @@ type Step = { name : string; run : unit -> unit }
 let steps : List<Step> =
   [
     // A conflict is recorded against a name; this scopes it to a BRANCH too. Note the default here is
-    // '' while `schema.sql` declares main's uuid, so a conflict row that predates the column is
+    // '' while the schema declares main's uuid, so a conflict row that predates the column is
     // scoped to no branch at all and no listing shows it. Deliberate: a conflict is a finding about a
     // log this store has since replaced, and re-detection produces it again under a real branch id.
     { name = "20260731_000001_conflicts_branch_id"
@@ -112,25 +114,26 @@ let steps : List<Step> =
     { name = "20260828_000006_locations_previous"
       run = fun () -> addColumnIfMissing "locations" "previous" "TEXT NULL" }
 
-    // The branch twin of `locations.source`; see schema.sql. Without it a branch records no provenance.
+    // The branch twin of `locations.source`; see `migrations/schema/`. Without it a branch records no
+    // provenance.
     { name = "20260904_000001_op_branches_source"
       run =
         fun () ->
           addColumnIfMissing "op_branches" "source" "TEXT NOT NULL DEFAULT 'op'" }
 
     // A store made under the previous SCM has `branch_ops`, its separate op log for branch structure.
-    // Nothing reads it now, and the branches recorded there do not carry over: say so ONCE, at the
-    // first boot that sees it, rather than let `dark branches` come up empty with no explanation. The
-    // table is left where it is; wiping is the person's call.
+    // Nothing reads it now, and NOTHING in it carries over -- not the branches, and not main's ops
+    // either, whatever an earlier version of this note claimed. Say so ONCE, at the first boot that
+    // sees it, rather than let `dark branches` come up empty with no explanation. The table is left
+    // where it is; wiping is the person's call.
     { name = "20260904_000002_previous_scm_store"
       run =
         fun () ->
           if tableExists "branch_ops" then
             System.Console.Error.WriteLine
               "note: this store was made by a previous version of the SCM (it has a `branch_ops` table). \
-               Branches recorded there do not carry over; main's ops do. For a clean start, wipe the store \
-               (`rm ~/.darklang/data.db*`): the packages re-grow from this binary, and `dark pull` brings \
-               the rest back from your relay." }
+               Nothing in it carries over. Wipe the store (`rm ~/.darklang/data.db*`): the packages \
+               re-grow from this binary, and `dark pull` brings the rest back from your relay." }
 
     // What a relay's stored bundle CONTAINS, so a push can be compared with it rather than replacing
     // it blind. `relay_branches` is hosted data, not a projection, so nothing else brings these to a
@@ -140,7 +143,110 @@ let steps : List<Step> =
       run =
         fun () ->
           addColumnIfMissing "relay_branches" "max_ts" "TEXT NOT NULL DEFAULT ''"
-          addColumnIfMissing "relay_branches" "op_count" "INTEGER NOT NULL DEFAULT 0" } ]
+          addColumnIfMissing "relay_branches" "op_count" "INTEGER NOT NULL DEFAULT 0" }
+
+    // The LWW register for doc comments. A whole table rather than a column, so `IF NOT EXISTS`
+    // WOULD have reached an existing store from the schema -- but only because the bootstrap
+    // replays it, which it does not promise to. Named here so the store records having got it, and
+    // so the answer to "how does a shape change reach an existing store" stays one answer.
+    { name = "20260908_000002_item_docs"
+      run =
+        fun () ->
+          Sql.query
+            "CREATE TABLE IF NOT EXISTS item_docs (
+               item_hash TEXT NOT NULL,
+               part TEXT NOT NULL,
+               within TEXT NOT NULL,
+               text TEXT NOT NULL,
+               origin_ts TEXT NOT NULL,
+               PRIMARY KEY (item_hash, part, within))"
+          |> Sql.executeStatementSync }
+
+    // ...and then keyed on the LOCATION instead, because content is shared and ten names holding one
+    // declaration do not mean one thing. `item_docs` never reached a released build; it goes.
+    { name = "20260909_000001_location_docs"
+      run =
+        fun () ->
+          Sql.query "DROP TABLE IF EXISTS item_docs" |> Sql.executeStatementSync
+
+          Sql.query
+            "CREATE TABLE IF NOT EXISTS location_docs (
+               owner TEXT NOT NULL,
+               modules TEXT NOT NULL,
+               name TEXT NOT NULL,
+               kind TEXT NOT NULL,
+               within TEXT NOT NULL,
+               text TEXT NOT NULL,
+               origin_ts TEXT NOT NULL,
+               PRIMARY KEY (owner, modules, name, kind, within))"
+          |> Sql.executeStatementSync }
+
+    // A doc divergence is about one PART of a declaration, and settling it means writing that part.
+    // Without this the resolution path could name the conflict but not what it was about.
+    { name = "20260909_000002_conflicts_part"
+      run =
+        fun () -> addColumnIfMissing "conflicts" "part" "TEXT NOT NULL DEFAULT ''" }
+
+    // The write secret out of the store, into the credential database beside it. A plain SELECT on
+    // `config_v0` used to read it with a grant every install has; see `LibDB.Config.credentialsPath`.
+    //
+    // Copy first, delete only what copied: a store that still has the row is recoverable, one that
+    // lost it means re-running `dark connect --secret`.
+    { name = "20260909_000003_secrets_leave_the_store"
+      run =
+        fun () ->
+          if tableExists "config_v0" then
+            let rows =
+              (Sql.query
+                "SELECT key, value FROM config_v0 WHERE key LIKE 'sync.secret.%'"
+               |> Sql.executeAsync (fun read ->
+                 (read.string "key", read.string "value")))
+                .Result
+
+            for (key, value) in rows do
+              Config.set key value |> Async.AwaitTask |> Async.RunSynchronously
+
+              Sql.query "DELETE FROM config_v0 WHERE key = @key"
+              |> Sql.parameters [ "key", Sql.string key ]
+              |> Sql.executeStatementSync
+
+            if not (List.isEmpty rows) then
+              print
+                $"  release: moved {List.length rows} write secret(s) out of the store into credentials.db" }
+
+    // `Candidate` gained `removed`, and a stored candidate JSON without it fails the parse -- which
+    // reads as a conflict with no sides rather than as an error. Add it where it is missing.
+    { name = "20260909_000004_candidates_gain_removed"
+      run =
+        fun () ->
+          if tableExists "conflicts" then
+            let rows =
+              (Sql.query
+                "SELECT id, candidates FROM conflicts WHERE candidates NOT LIKE '%\"removed\"%'"
+               |> Sql.executeAsync (fun read ->
+                 (read.string "id", read.string "candidates")))
+                .Result
+
+            for (id, json) in rows do
+              // After the hash, which both shapes carry: a name divergence and a doc divergence
+              // write the same field order.
+              let patched =
+                System.Text.RegularExpressions.Regex.Replace(
+                  json,
+                  "(\"hash\":\"[^\"]*\")",
+                  "$1,\"removed\":false"
+                )
+
+              Sql.query "UPDATE conflicts SET candidates = @c WHERE id = @id"
+              |> Sql.parameters [ "c", Sql.string patched; "id", Sql.string id ]
+              |> Sql.executeStatementSync
+
+            if not (List.isEmpty rows) then
+              print
+                $"  release: added `removed` to {List.length rows} stored conflict(s)" }
+
+    // NEW STEPS GO ABOVE THIS LINE -- `scripts/migrations/new` appends here, and edits nothing else.
+    ]
 
 
 let private alreadyRun () : Set<string> =
@@ -153,7 +259,7 @@ let private alreadyRun () : Set<string> =
     |> Set.ofList
 
 
-/// Replay the statements of `schema.sql` that `keep` selects, against an existing store.
+/// Replay the schema statements that `keep` selects, against an existing store.
 ///
 /// Every statement in that file is `CREATE ... IF NOT EXISTS` or `INSERT OR IGNORE`, so this is safe on
 /// every startup and does nothing once the store is current. Passed in rather than read from disk: the
@@ -165,10 +271,10 @@ let private alreadyRun () : Set<string> =
 ///   2. columns  -- `steps` below, which is the only thing that can widen a table that already exists
 ///   3. indexes  -- `CREATE INDEX IF NOT EXISTS`, which FAILS if it names a column step 2 just added
 ///
-/// Doing it in one pass fails exactly there: `schema.sql` indexes `package_ops(effective)`, and on a
+/// Doing it in one pass fails exactly there: the schema indexes `package_ops(effective)`, and on a
 /// store predating that column the index cannot be created.
 let private runStatements (keep : string -> bool) (schemaSql : string) : unit =
-  // Comments FIRST, then split. `schema.sql`'s comments contain semicolons ("NULL = DRAFT; Gates
+  // Comments FIRST, then split. The schema's comments contain semicolons ("NULL = DRAFT; Gates
   // nothing"), so splitting first cuts statements in half and SQLite reports "incomplete input".
   // No `--` appears inside a string literal in that file, so truncating at one is safe here.
   let stripped =

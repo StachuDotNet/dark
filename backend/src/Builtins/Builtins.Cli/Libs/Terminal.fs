@@ -52,10 +52,13 @@ module TerminalRestoreGuard =
       ()
 
   do
-    System.AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> restoreToTerminal ())
-    System.AppDomain.CurrentDomain.UnhandledException.Add(fun _ ->
-      restoreToTerminal ())
-    System.Console.CancelKeyPress.Add(fun _ -> restoreToTerminal ())
+    // A browser tab has no process exit and no Ctrl-C; subscribing to CancelKeyPress
+    // there throws PlatformNotSupportedException out of this module's initializer.
+    if not (System.OperatingSystem.IsBrowser()) then
+      System.AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> restoreToTerminal ())
+      System.AppDomain.CurrentDomain.UnhandledException.Add(fun _ ->
+        restoreToTerminal ())
+      System.Console.CancelKeyPress.Add(fun _ -> restoreToTerminal ())
 
 
 module TerminalCapabilities =
@@ -90,7 +93,7 @@ let private getDimension
 
 /// Read the kernel's current terminal window size without a process spawn.
 let private tryUnixTerminalSize () : (int64 * int64) option =
-  [ 1; 0; 2 ] |> List.tryPick LibExecution.HostLibc.tryTerminalWindowSize
+  [ 1; 0; 2 ] |> List.tryPick LibExecution.Host.terminalWindowSize
 
 
 /// Return the current terminal size.

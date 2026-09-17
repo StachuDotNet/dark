@@ -103,11 +103,44 @@ let area (relativePath : string) : string =
 let private referencePattern (builtinName : string) : string =
   $@"Builtin\.{Regex.Escape builtinName}(?:_v[0-9]+)?(?![a-zA-Z0-9_])"
 
+/// How many times each builtin name appears as `Builtin.<name>` in a corpus.
+///
+/// One regex and one pass for the whole corpus, rather than a compiled regex per builtin name:
+/// there are about a thousand builtins and the corpus is megabytes, and asking the question one
+/// name at a time made the two tests that ask it the slowest in the suite by a wide margin.
+///
+/// `Builtin.foo_v0` counts towards `foo`, and towards a builtin actually named `foo_v0` if one
+/// exists. Both were true of the per-name pattern this replaced.
+let referenceCounts (corpus : string) : Map<string, int> =
+  let token = Regex(@"Builtin\.([A-Za-z0-9_]+)", RegexOptions.Compiled)
+  let versionSuffix = Regex(@"_v[0-9]+$")
+
+  let mutable counts = Map.empty
+  let bump (name : string) =
+    counts <-
+      Map.add name (1 + (counts |> Map.tryFind name |> Option.defaultValue 0)) counts
+
+  for m in token.Matches corpus do
+    let name = m.Groups[1].Value
+    bump name
+    let stripped = versionSuffix.Replace(name, "")
+    if stripped <> name then bump stripped
+
+  counts
+
+let packagesRefCounts : Lazy<Map<string, int>> =
+  lazy (referenceCounts packagesText.Value)
+
+let repoRefCounts : Lazy<Map<string, int>> =
+  lazy (referenceCounts repoDarkText.Value)
+
+/// Per-name count over an arbitrary corpus. For `packagesText` and `repoDarkText` use the cached
+/// maps above; this is for a corpus built once and asked once.
 let countReferencesIn (corpus : string) (builtinName : string) : int =
   Regex.Matches(corpus, referencePattern builtinName).Count
 
 let countReferences (builtinName : string) : int =
-  countReferencesIn packagesText.Value builtinName
+  packagesRefCounts.Value |> Map.tryFind builtinName |> Option.defaultValue 0
 
 let referencesBuiltin (contents : string) (builtinName : string) : bool =
   Regex.IsMatch(contents, referencePattern builtinName)

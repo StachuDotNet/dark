@@ -149,6 +149,23 @@ let fromName (wanted : string) : Option<Effect> =
 /// OS-facing ones, by the checked host boundary from the `Operation`. An
 /// ambient effect has no resource and is checked once, from the builtin's
 /// declared effects, before the body runs.
+/// Effects the interpreter does not check when every frame in the call chain is bundled
+/// first-party code. A pulled package calling the same builtin is checked like anyone else.
+///
+/// `Native` is here because no rule can scope it, so a policy grants it whole or not at all,
+/// which would put `dark status` behind `permissions allow native` on a stock install: the SCM
+/// reads its own store through raw SQLite. `PolicyRead` is here for the narrower version of the
+/// same reason: the workbench and `dark permissions` show what this instance's policy says, and
+/// the CLI reading its own policy is not something a person should have to grant. The writes
+/// are deliberately absent. `PolicyWrite` stays checked, and `hostOnly` refuses guest code before
+/// the effect is even consulted.
+///
+/// Before `Policy` moved off `Native` this was one effect and the waiver was implicit in it. The
+/// move made bundled code strictly more restricted than it had been, and the workbench listing
+/// stopped rendering under a stock policy, which is how this set came to be written down.
+let trustedForBundledCallers : Set<Effect> =
+  Set.ofList [ Effect.Native; Effect.PolicyRead ]
+
 let isScoped (effect : Effect) : bool =
   match effect with
   | Effect.Http

@@ -41,11 +41,11 @@ let line (f: SCM.Constraints.Finding) : String =
     let was = SCM.Deps.kindString f.dependencyKind
     $"  #{f.id}  {u}\n         uses {d} as a {was}; that name is something else now (still resolves, by hash)"
   | (StaleUsage, Versions(using, current)) ->
-    $"  #{f.id}  {u}\n         uses {d} @ {Cli.shortHash using}, current is {Cli.shortHash current}"
+    $"  #{f.id}  {u}\n         still on the version it was written against ({Cli.shortHash using}); {d} is at {Cli.shortHash current} now"
   // Its own sentence: `dependency` is the location itself here, so the stale-usage phrasing ("uses X")
   // would read as if the name called itself.
   | (DecisionSuperseded, Versions(using, current)) ->
-    $"  #{f.id}  {u}\n         you overrode this to {Cli.shortHash using}; a later edit rebound it to {Cli.shortHash current}"
+    $"  #{f.id}  {u}\n         you overrode this to the version you chose ({Cli.shortHash using}); a later edit rebound it to {Cli.shortHash current}"
   | (DecisionSuperseded, PolicyReplaced(was, now, by)) ->
     let whose = if by == "" then "a later choice" else by
 
@@ -110,17 +110,37 @@ let kindArgChecked (args: List<String>) : Stdlib.Result.Result<Unit, String> =
 
 
 let executeJson (state: AppState) (args: List<String>) : AppState =
-  let findings = SCM.Constraints.pending () |> (fun fs -> selectKind fs args)
+  let detected = SCM.Constraints.pending ()
+  let findings = selectKind detected.findings args
   let body = findings |> Stdlib.List.map toJson |> (fun ls -> Stdlib.String.join ls ",")
-  Stdlib.printLine $"{{\"findings\":[{body}]}}"
+
+  // Add-only, normally `[]`. Without it an agent reads "we didn't look" as "nothing to see".
+  let blocked =
+    detected.blocked
+    |> Stdlib.List.map (fun b -> Stdlib.Json.serialize<String> b)
+    |> (fun ls -> Stdlib.String.join ls ",")
+
+  Stdlib.printLine $"{{\"findings\":[{body}],\"blocked\":[{blocked}]}}"
   state
 
 
 let executeList (state: AppState) (args: List<String>) : AppState =
-  match SCM.Constraints.pending () |> (fun fs -> selectKind fs args) with
+  let detected = SCM.Constraints.pending ()
+
+  // Before the findings: "no constraints" is a claim about what was checked.
+  let _ =
+    detected.blocked
+    |> Stdlib.List.iter (fun b ->
+      Cli.printErr $"couldn't check everything: {b}")
+
+  match selectKind detected.findings args with
   | [] ->
     // Says what was CHECKED, not just that nothing turned up, and short enough for a narrow terminal.
-    Cli.printOk "no constraints: nothing has drifted off its current version."
+    if Stdlib.List.isEmpty detected.blocked then
+      Cli.printOk "no constraints: nothing has drifted off its current version."
+    else
+      Cli.printOk "nothing found by the checks that DID run."
+
     state
   | findings ->
     Cli.printOk (Cli.Text.plural (Stdlib.List.length findings) "constraint")
@@ -154,9 +174,9 @@ let selectTargets
   // `detectAll` re-runs detection so a prefix can match a finding that has never been listed; `pending`
   // is enough for `--all`, which means "everything currently outstanding".
   if Stdlib.List.member ids "--all" then
-    (SCM.Constraints.pending (), [])
+    ((SCM.Constraints.pending ()).findings, [])
   else
-    let all = SCM.Constraints.detectAll ()
+    let all = (SCM.Constraints.detectAll ()).findings
 
     // Findings are printed as `#1d8740cd`, so a pasted id arrives with the `#`. Accept what we print.
     let normalize (i: String) : String =
@@ -378,8 +398,7 @@ let executeResolve (state: AppState) (args: List<String>) : AppState =
 
 
 let help (_state: AppState) : String =
-  [ "dark constraints - standing findings about the store, and what you've decided about them."
-    ""
+  [ ""
     "  Checks you RUN, not warnings at commit. Three kinds today:"
     ""
     "    stale-usage    a live item still uses a version that is not"
