@@ -15,11 +15,16 @@ let builtins () =
 
 /// Darklang looking at itself: the parser, reflection over runtime values, and instrumentation.
 ///
-/// It does NOT require the `Store` platform. Its builtins take no package manager and its assembly
-/// does not reference `LibDB` at all; the package store its parser resolves against arrives through
-/// the execution state, not through another platform's builtins. The Dark code written on top of it
-/// does wrap `Store` builtins, which is a fact about `darklang/languageTools` rather than about this
-/// platform.
+/// It does NOT require the `Store` platform, and it needs no store handle. Its parser builtins
+/// answer WrittenTypes, which are unresolved: turning a written name into a package reference is
+/// Dark code in `darklang/languageTools` over `Store`'s builtins, which declare `package-read`. So
+/// the store read a person might expect here happens one platform over and is gated there. This
+/// was checked when the question "does `Lang` under-declare what it reaches" came up: no builtin in
+/// this assembly takes a package manager or reads the execution state's.
+///
+/// The one host-state read is `platformsInstalled` answering an installed platform's artifact hash,
+/// which describes the runtime the way `getAllBuiltinFns` does and is what `dark platforms` shows
+/// anyone.
 let platform : LibExecution.Platform.Platform =
   { name = "Lang"
     version = 0
@@ -27,4 +32,5 @@ let platform : LibExecution.Platform.Platform =
     builtins = builtins ()
     requires = [ "Core" ]
     dynamicEffects = Set.empty
-    requiresStore = true }
+    // False, and it was wrongly true: nothing here opens or reads a package database.
+    requiresStore = false }
