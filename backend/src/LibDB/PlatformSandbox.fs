@@ -50,9 +50,33 @@ let private wantsNetwork (effects : Set<Effects.Effect>) : bool =
 /// Looked up once. Absent on macOS and on a minimal container, and its absence is a sentence rather
 /// than an error.
 let private unsharePath : Lazy<Option<string>> =
+  lazy ([ "/usr/bin/unshare"; "/bin/unshare" ] |> List.tryFind System.IO.File.Exists)
+
+/// Whether this machine lets an unprivileged process enter a user and network namespace at all.
+///
+/// The binary being present is not the same question. Docker's default seccomp profile refuses the
+/// syscall (the devcontainer sets `seccomp=unconfined` precisely so it does not), Ubuntu 24.04's
+/// AppArmor restricts unprivileged user namespaces, and `kernel.unprivileged_userns_clone=0` turns
+/// them off outright. On any of those `unshare` exits with EPERM before it ever execs the platform,
+/// and the platform reads as one that "exited during startup, without saying what it speaks",
+/// which blames the wrong thing. Probed once, with `true` as the payload, so the answer is a
+/// sentence in the listing rather than a mystery at spawn.
+let private unshareWorks : Lazy<Option<string>> =
   lazy
-    ([ "/usr/bin/unshare"; "/bin/unshare" ]
-     |> List.tryFind System.IO.File.Exists)
+    (match unsharePath.Force() with
+     | None -> None
+     | Some unshare ->
+       try
+         let psi = System.Diagnostics.ProcessStartInfo(unshare)
+         for a in [ "--map-current-user"; "--net"; "--"; "/bin/true" ] do
+           psi.ArgumentList.Add a
+         psi.RedirectStandardError <- true
+         psi.RedirectStandardOutput <- true
+         psi.UseShellExecute <- false
+         use p = System.Diagnostics.Process.Start psi
+         if p.WaitForExit 5000 && p.ExitCode = 0 then Some unshare else None
+       with _ ->
+         None)
 
 let private onLinux () =
   System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform
@@ -68,12 +92,17 @@ let plan (effects : Set<Effects.Effect>) (executable : string) : Plan =
         confinement = "not confined: it asked for the network, so it is given one" }
   elif not (onLinux ()) then
     { bare with
-        confinement = "not confined: this machine has no way to do it without privileges" }
+        confinement =
+          "not confined: this machine has no way to do it without privileges" }
   else
-    match unsharePath.Force() with
-    | None ->
+    match unsharePath.Force(), unshareWorks.Force() with
+    | None, _ ->
       { bare with confinement = "not confined: `unshare` is not on this machine" }
-    | Some unshare ->
+    | Some _, None ->
+      { bare with
+          confinement =
+            "not confined: this machine does not let an unprivileged process enter a network namespace" }
+    | Some _, Some unshare ->
       // `--map-current-user` rather than `--map-root-user`: the process needs a user namespace to
       // be allowed a network namespace at all, and it does not need to be root inside it. Mapping
       // to root would hand it capabilities over its own namespaces for no reason.

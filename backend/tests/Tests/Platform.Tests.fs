@@ -2098,7 +2098,24 @@ let theSandboxFollowsTheDeclaration =
 
     // Only meaningful where a namespace can actually be entered; elsewhere all three say why not,
     // which is the correct answer on that machine and not a failure.
+    //
+    // And when the plan DOES confine, the wrapper it chose has to work here: the plan used to
+    // check only that `unshare` existed, and on a host that refuses unprivileged namespaces every
+    // no-network platform then died at startup blaming the platform. So: run the plan's own
+    // command with `true` as the payload, and expect it to succeed.
     if confined.confinement.StartsWith "no network" then
+      let psi = System.Diagnostics.ProcessStartInfo(confined.executable)
+      for a in
+        confined.arguments |> List.map (fun a -> if a = "/x" then "/bin/true" else a) do
+        psi.ArgumentList.Add a
+      psi.RedirectStandardError <- true
+      psi.UseShellExecute <- false
+      use p = System.Diagnostics.Process.Start psi
+      Expect.isTrue (p.WaitForExit 5000) "the wrapper returns"
+      Expect.equal
+        p.ExitCode
+        0
+        "a plan that says it confines can actually enter the namespace"
       Expect.notEqual
         confined.executable
         "/x"
