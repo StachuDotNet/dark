@@ -14,7 +14,7 @@ module Darklang.Stdlib.Cli.File
 let ofFileError (e: FileSystem.FileError) : Posix.Error =
   match e with
   | NotFound -> Posix.Error { errno = 2; message = "No such file or directory" }
-  | PermissionDenied -> Posix.Error { errno = 13; message = "Permission denied" }
+  | OsAccessDenied -> Posix.Error { errno = 13; message = "Permission denied" }
   | Other msg -> Posix.Error { errno = -1; message = msg }
 
 
