@@ -333,13 +333,22 @@ let stop (handle : Handle) : unit =
 /// The first was found by the spike. The third was found by writing a platform that sleeps: a
 /// crash is loud and a hang is not, so the case that never announces itself is the one to build a
 /// deadline for.
+/// Why a call did not answer with a value. The two are treated differently afterwards: a
+/// platform that ANSWERED with an error is healthy and keeps its process, and the error is the
+/// program's to see; a platform that is BROKEN (dead, mid-frame, lying about a handle) is stopped
+/// so the next call starts a fresh one rather than talking into a pipe nobody holds.
+[<RequireQualifiedAccess>]
+type private CallFailure =
+  | Answered of string
+  | Broken of string
+
 let private call
   (handle : Handle)
   (running : Running)
   (name : string)
   (blobs : Wire.Table)
   (args : List<RT.Dval>)
-  : Result<RT.Dval * Wire.Table, string> =
+  : Result<RT.Dval * Wire.Table, CallFailure> =
   lock running.gate (fun () ->
     try
       use body = new MemoryStream()
@@ -356,7 +365,7 @@ let private call
       running.writer.Flush()
 
       match readFramed handle running with
-      | Error e -> Error e
+      | Error e -> Error(CallFailure.Broken e)
       | Ok response ->
 
         use rs = new MemoryStream(response)
@@ -369,19 +378,27 @@ let private call
           // not data but a handle into this runtime, and the type checker cannot see the
           // difference for all of them.
           match Wire.refuseForgedHandles handle.platformName dval with
-          | Error e -> Error e
+          | Error e -> Error(CallFailure.Broken e)
           | Ok() -> Ok(dval, returned)
         else
+          // Status 1 is the protocol's ordinary "no": the platform is fine, the call is not.
           match dval with
-          | RT.DString message -> Error $"{handle.platformName}: {message}"
-          | other -> Error $"{handle.platformName} failed: {other}"
+          | RT.DString message ->
+            Error(CallFailure.Answered $"{handle.platformName}: {message}")
+          | other ->
+            Error(CallFailure.Answered $"{handle.platformName} failed: {other}")
     with
     | :? EndOfStreamException ->
       // The pipe closed. Nothing is coming, so say so rather than waiting for it.
-      Error
-        $"the {handle.platformName} platform exited without answering. It may have crashed."
+      Error(
+        CallFailure.Broken
+          $"the {handle.platformName} platform exited without answering. It may have crashed."
+      )
     | :? IOException as e ->
-      Error $"lost contact with the {handle.platformName} platform: {e.Message}")
+      Error(
+        CallFailure.Broken
+          $"lost contact with the {handle.platformName} platform: {e.Message}"
+      ))
 
 /// The `Invoke` a described platform runs on.
 ///
@@ -400,7 +417,12 @@ let invoke (handle : Handle) : Platform.External.Invoke =
         let! (blobs, args) = Wire.collect state args
         match call handle running name blobs args with
         | Ok(dval, returned) -> return! Wire.rehydrate returned dval
-        | Error e ->
+        | Error(CallFailure.Answered e) ->
+          // The platform said no and is still healthy. Killing it here cost a spawn and a
+          // handshake on the next call, and whatever state it held: a counter, a pooled
+          // connection. The error is the program's to see; the process is not the problem.
+          return RT.RuntimeError.UncaughtException(e, []) |> RT.raiseUntargetedRTE
+        | Error(CallFailure.Broken e) ->
           // A broken pipe leaves the process useless, so drop it. The next call starts a fresh one
           // rather than talking into a socket nobody is holding.
           stop handle

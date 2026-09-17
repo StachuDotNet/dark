@@ -2019,7 +2019,15 @@ let private spawnedFns : List<External.Fn> =
       parameters = [ ("unit", TUnit) ]
       returnType = TUnit
       effects = Set.singleton describedEffect
-      description = "exits without answering" } ]
+      description = "exits without answering" }
+    // Declared here and unknown to the fixture, which answers it with the protocol's ordinary
+    // error status. That is a platform saying no, not a platform breaking.
+    { name = "echoRefuse"
+      version = 0
+      parameters = [ ("unit", TUnit) ]
+      returnType = TUnit
+      effects = Set.singleton describedEffect
+      description = "the fixture does not know this one" } ]
 
 let private spawnedPlatform (handle : LibDB.PlatformSpawn.Handle) : Platform =
   { name = "EchoPlatform"
@@ -2588,6 +2596,43 @@ let aSpawnedPlatformIsPermissionChecked =
       LibDB.PlatformSpawn.stop handle
   }
 
+let aPlatformSayingNoKeepsItsProcess =
+  testTask "a platform answering an error keeps its process and its state" {
+    // The protocol's status-1 reply is the ordinary way a platform says no. It used to be treated
+    // like a broken pipe: the healthy process was killed, and the next call paid a spawn and a
+    // handshake and lost whatever the process held. The counter is that state, made visible.
+    let handle =
+      LibDB.PlatformSpawn.handleFor
+        "EchoPlatform"
+        (echoPlatformPath ())
+        (Set.singleton describedEffect)
+        echoTypes
+    try
+      let! first = callSpawned handle "echoCounter" RT.DUnit
+      match first with
+      | Ok(RT.DInt64 1L) -> ()
+      | other -> failtest $"first call: {other}"
+
+      let! refused = callSpawned handle "echoRefuse" RT.DUnit
+      match refused with
+      | Error(RT.RuntimeError.UncaughtException(message, _), _) ->
+        Expect.stringContains
+          message
+          "no such builtin"
+          "the platform's own answer, verbatim"
+      | other -> failtest $"expected the platform's error answer, got {other}"
+
+      // Same process: the counter carried on.
+      let! second = callSpawned handle "echoCounter" RT.DUnit
+      match second with
+      | Ok(RT.DInt64 2L) -> ()
+      | Ok(RT.DInt64 1L) ->
+        failtest "the process was restarted after an ordinary error answer"
+      | other -> failtest $"second call: {other}"
+    finally
+      LibDB.PlatformSpawn.stop handle
+  }
+
 let aCrashedPlatformIsAnErrorNotAHang =
   testTask "a platform that exits without answering is an error, not a hang" {
     // The spike found this and its harness did not handle it: a crashed plugin is a CLOSED PIPE
@@ -2914,6 +2959,7 @@ let tests =
       aSpawnedPlatformCarriesBytes
       aSpawnedPlatformIsPermissionChecked
       aCrashedPlatformIsAnErrorNotAHang
+      aPlatformSayingNoKeepsItsProcess
       testSequenced theShippedFetchManifestStillResolves
       testSequenced installingAnExternalPlatformMakesItReconstructable
       testSequenced anUpgradeReplacesItselfAndALinkedNameIsRefused
