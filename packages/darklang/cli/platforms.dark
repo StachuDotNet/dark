@@ -634,7 +634,12 @@ let executeInstall
 
       match cached with
       | Error e ->
+        // The record was written before the executable was looked at, so an install that fails
+        // here would otherwise stand, listed as "installed but not running" under a message that
+        // said it failed. Undone, so a failed install is not an install.
+        Platforms.uninstall name
         Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+        Stdlib.printLine (Stdlib.Cli.UI.Colors.hint $"    {name} was not installed.")
         { state with exitCode = 1 }
 
       | Ok wasCached ->
@@ -645,9 +650,17 @@ let executeInstall
             (Stdlib.Cli.UI.Colors.hint
               "    No executable yet. Pass one: `platforms install <manifest> <executable>`.")
 
-        Stdlib.printLine
-          (Stdlib.Cli.UI.Colors.hint
-            $"    It is not on yet. `platforms activate {name}` turns it on.")
+        // The set a process runs is fixed when it starts, so in the REPL the platform just
+        // installed is not in this session's set yet and `platforms activate` here would answer
+        // "no platform named". The hint has to say so rather than hand over a command that fails.
+        if state.nonInteractive then
+          Stdlib.printLine
+            (Stdlib.Cli.UI.Colors.hint
+              $"    It is not on yet. `platforms activate {name}` turns it on.")
+        else
+          Stdlib.printLine
+            (Stdlib.Cli.UI.Colors.hint
+              $"    It is not on yet. It joins this instance's set on the next start; `dark platforms activate {name}` from a shell turns it on.")
 
         state
 

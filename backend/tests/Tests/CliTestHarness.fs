@@ -99,7 +99,11 @@ let buildState () : Task<RT.ExecutionState> =
           (Exe.createState builtins pmRT Exe.noTracing sendException notify program) with
           canManagePolicies = true
           canUsePrivateNetworkHttp = true
-          isBundledPackageFn = fun (RT.Hash h) -> bundled.Contains h }
+          isBundledPackageFn = fun (RT.Hash h) -> bundled.Contains h
+          // What the CLI records, so the platform verbs see the same set the builtins came
+          // from. Without it `platforms install` cannot tell a requires line names something
+          // real, and nothing clashes with anything, which hid a real check for a while.
+          platforms = (Platforms.Sets.cli ()).platforms }
   }
 
 /// What a CLI test drives.
