@@ -306,8 +306,15 @@ PACKAGE_NEUTRAL_PREFIXES = (
 # Builtins are the interesting case, and the reason the platform manifest has a
 # fingerprint at all. The reload resolves names against the builtin SET, so a builtin's
 # name, version, signature or effects changing can change what a package resolves to,
-# while a change to a builtin's BODY cannot. Paths cannot tell those apart. The
-# fingerprint can, so these are neutral exactly when it has not moved.
+# and a change to a builtin's BODY cannot change resolution. Paths cannot tell those
+# apart. The fingerprint can, so these are neutral exactly when it has not moved.
+#
+# One thing this skip knowingly leaves stale: the reload also EVALUATES every package
+# value and stores the result, and a value that calls a builtin at evaluation time keeps
+# the answer the old body gave. Fixing a bug in a Pure builtin that some `val` calls is
+# the case. The stored value is refreshed by the next real reload; `reload-packages` by
+# hand is the fix when it matters. Making the skip re-evaluate values on its own is a
+# smaller step than the full reload and would close this; it is not built.
 PACKAGE_NEUTRAL_IF_MANIFEST_UNCHANGED = (
   "backend/src/Builtins/",
   "backend/src/Platforms/",

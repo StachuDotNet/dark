@@ -226,10 +226,17 @@ def current_manifest_fingerprint():
   first run) has to land on the safe side, because the only thing this gates is whether
   to run a step that is always correct to run.
   """
+  # The binary this build produced, not whichever one happens to be lying around. An
+  # --optimize build produces only the published LocalExec, so asking the Debug one here
+  # read a STALE fingerprint: change a builtin signature, build --optimize, the old Debug
+  # binary reports the old hash, it matches, and the reload is skipped against a package
+  # database resolved against the old signatures.
+  args = ["scripts/run-local-exec"]
+  if optimize:
+    args.append("--published")
+  args.append("platform-fingerprint")
   try:
-    out = subprocess.run(
-      ["scripts/run-local-exec", "platform-fingerprint"],
-      capture_output=True, text=True, timeout=120)
+    out = subprocess.run(args, capture_output=True, text=True, timeout=120)
   except (OSError, subprocess.SubprocessError):
     return None
   if out.returncode != 0:
