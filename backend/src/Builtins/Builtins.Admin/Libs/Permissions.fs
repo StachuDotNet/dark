@@ -182,8 +182,30 @@ let fns : List<BuiltInFn> =
           uply {
             let shipped = shipped state
             if Set.contains name shipped then
-              Activation.deactivate shipped name
-              return Dval.resultOk KTUnit KTString DUnit
+              // Refused HERE, where a person can act on it: switching off something another
+              // platform requires would leave a choice the read side has to route around, and
+              // the platform that needed it silently off with it.
+              let stillNeededBy =
+                state.platforms
+                |> List.filter (fun p ->
+                  p.name <> name
+                  && List.contains name p.requires
+                  && (match Activation.get () with
+                      | None -> true
+                      | Some on -> Set.contains p.name on))
+                |> List.map _.name
+              match stillNeededBy with
+              | [] ->
+                Activation.deactivate shipped name
+                return Dval.resultOk KTUnit KTString DUnit
+              | needy ->
+                let who = String.concat ", " needy
+                return
+                  Dval.resultError
+                    KTUnit
+                    KTString
+                    (DString
+                      $"{who} requires {name}. Deactivate {who} first, or leave {name} on.")
             else
               return
                 Dval.resultError

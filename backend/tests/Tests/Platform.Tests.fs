@@ -2186,6 +2186,43 @@ let theFirstPartyListMatchesTheSource =
       "every builtin that checks caller trust is listed, and nothing else is"
   }
 
+let aPlatformWhoseRequirementIsOffIsOffToo =
+  test "a platform whose requirement is switched off is off too, not fatal" {
+    // `activatingFrom` used to hand `make` an active set with a hole in it: an installed platform
+    // declaring `requires Terminal` stayed on when Terminal was switched off, and `make` raised on
+    // the missing requirement inside every guest run. The write side now refuses that choice; the
+    // read side has to survive a stored one regardless.
+    let core = Platforms.Sets.sealedCompute ()
+    // No builtins of its own, so it cannot collide with Needy's.
+    let terminal =
+      { describedPlatform Set.empty "T" with
+          name = "Terminal"
+          builtins = LibExecution.Builtin.make [] []
+          requires = [ "Core" ] }
+    let needy =
+      { describedPlatform (Set.singleton describedEffect) "N" with
+          name = "Needy"
+          requires = [ "Core"; "Terminal" ] }
+    let available = core.platforms @ [ terminal; needy ]
+
+    // Both on: both in the set.
+    let (both, _) = Platforms.Sets.activatingFrom available [ "Terminal"; "Needy" ]
+    Expect.contains
+      (both.platforms |> List.map _.name)
+      "Needy"
+      "on when its requirement is"
+
+    // Terminal off, Needy still chosen: Needy is off too, and its builtins are reported as
+    // inactive rather than absent, so reaching for one names the platform.
+    let (narrowed, inactive) = Platforms.Sets.activatingFrom available [ "Needy" ]
+    Expect.isFalse
+      (narrowed.platforms |> List.exists (fun p -> p.name = "Needy"))
+      "off with the platform it requires"
+    Expect.isTrue
+      (inactive.Values |> Seq.exists (fun p -> p.name = "Needy"))
+      "and its builtins are known-but-inactive"
+  }
+
 let aPlatformRequiringWhatTheBuildLacksIsSkippedNotFatal =
   test
     "a platform requiring something this build does not have is skipped, not fatal" {
@@ -2781,6 +2818,7 @@ let tests =
       theFirstPartyListMatchesTheSource
       aCollidingPlatformIsSkippedNotFatal
       aPlatformRequiringWhatTheBuildLacksIsSkippedNotFatal
+      aPlatformWhoseRequirementIsOffIsOffToo
       aPlatformCannotPaintTheTerminal
       aFrameLengthIsNotTrusted
       aSilentPlatformDoesNotWedgeTheCaller

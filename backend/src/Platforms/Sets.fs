@@ -238,14 +238,17 @@ let effectDoors (set : PlatformSet) : List<string> =
     |> List.collect (fun p ->
       p.builtins.fns.Values
       |> Seq.collect (fun fn ->
-        fn.callEffects |> Set.toList |> List.map (fun e -> (e, p.name, fn.name.name)))
+        fn.callEffects
+        |> Set.toList
+        |> List.map (fun e -> (e, p.name, fn.name.name)))
       |> List.ofSeq)
 
   let byEffect =
     doors
     |> List.groupBy (fun (e, _, _) -> e)
     |> Map.map (fun rows ->
-      let platforms = rows |> List.map (fun (_, p, _) -> p) |> List.distinct |> List.sort
+      let platforms =
+        rows |> List.map (fun (_, p, _) -> p) |> List.distinct |> List.sort
       let fns = rows |> List.map (fun (_, _, f) -> f) |> List.distinct |> List.sort
       (platforms, fns))
 
@@ -255,28 +258,30 @@ let effectDoors (set : PlatformSet) : List<string> =
     |> List.filter (fun fn -> not (Set.isEmpty fn.callEffects))
     |> List.length
 
-  let total =
-    set.platforms |> List.sumBy (fun p -> p.builtins.fns.Count)
+  let total = set.platforms |> List.sumBy (fun p -> p.builtins.fns.Count)
 
   let lines =
     byEffect
     |> Map.toList
     // Most doors first: that is the effect whose rules mean the least and the one worth splitting.
-    |> List.sortBy (fun (e, (_, fns)) -> (-(List.length fns), LibExecution.Effects.name e))
+    |> List.sortBy (fun (e, (_, fns)) ->
+      (-(List.length fns), LibExecution.Effects.name e))
     |> List.map (fun (e, (platforms, fns)) ->
       let where = String.concat ", " platforms
       let shown =
         if List.length fns <= 6 then
           String.concat ", " fns
         else
-          String.concat ", " (List.truncate 6 fns) + $", +{List.length fns - 6} more"
+          String.concat ", " (List.truncate 6 fns)
+          + $", +{List.length fns - 6} more"
       let door = if List.length fns = 1 then "door " else "doors"
       $"{LibExecution.Effects.name e, -14} {List.length fns, 4} {door}  ({where})
                         {shown}")
 
   let gatedTwice =
     doors
-    |> List.filter (fun (_, _, f) -> Set.contains f LibExecution.PermissionCheck.firstPartyOnly)
+    |> List.filter (fun (_, _, f) ->
+      Set.contains f LibExecution.PermissionCheck.firstPartyOnly)
     |> List.map (fun (_, _, f) -> f)
     |> List.distinct
     |> List.sort
@@ -317,7 +322,12 @@ let doorsTo (set : PlatformSet) (effectName : string) : List<string> =
         | other -> string other
       let ps = fn.parameters |> List.map (fun p -> typ p.typ) |> String.concat ", "
       let trust =
-        if Set.contains fn.name.name LibExecution.PermissionCheck.firstPartyOnly then "  first-party only" else ""
+        if
+          Set.contains fn.name.name LibExecution.PermissionCheck.firstPartyOnly
+        then
+          "  first-party only"
+        else
+          ""
       $"{p.name, -12} {fn.name.name, -32} ({ps}){trust}")
     |> List.ofSeq)
   |> List.sort
@@ -356,7 +366,24 @@ let activatingFrom
   // Affordable only because `Store` reaches exactly `package-read`. A floor that had to include
   // `file-write` or `native` to resolve a name would not be a floor worth having, so `Store`
   // growing a second effect is a reason to revisit this list.
-  let activeNames = Set.ofList (alwaysOn @ wanted)
+  let chosen = Set.ofList (alwaysOn @ wanted)
+
+  // A platform whose requirements are not all on is off too, however it was chosen. `make` would
+  // raise on it, and raising here bricks every command: the write side refuses to record such a
+  // choice (`pmPlatformsDeactivate` names what still needs the platform), but an installed
+  // platform's `requires` line can name something that was switched off before it was installed,
+  // and the read side has to survive whatever the file says. Iterated to a fixpoint, because a
+  // platform dropping can take with it another that required it.
+  let byName = available |> List.map (fun p -> p.name, p) |> Map.ofList
+  let rec settle (names : Set<string>) : Set<string> =
+    let kept =
+      names
+      |> Set.filter (fun n ->
+        match Map.tryFind n byName with
+        | Some p -> p.requires |> List.forall (fun r -> Set.contains r names)
+        | None -> true)
+    if kept = names then names else settle kept
+  let activeNames = settle chosen
 
   let isActive (p : Platform) = Set.contains p.name activeNames
 
@@ -377,4 +404,3 @@ let activatingFrom
       inactiveBuiltins[name] <- p
 
   PlatformSet.make active fnRenames, inactiveBuiltins
-
