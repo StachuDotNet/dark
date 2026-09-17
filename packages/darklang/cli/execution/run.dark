@@ -244,8 +244,12 @@ let runScript
     // does not have, and the useful next move is to switch it on rather than to read a command and
     // type it yourself. `promptsLeft` bounds this the way it bounds the permission prompt, so a
     // script needing three platforms asks about the first and then stops nagging.
+    // Under the same conditions as the permission prompt above. A sandboxed run must not be able
+    // to widen the instance's activation durably by asking, and a warn-only run asked not to be
+    // interrupted.
     match Platforms.inactiveIn e with
-    | Some((platform, effects)) when promptsLeft > 0 ->
+    | Some((platform, effects)) when
+      promptsLeft > 0 && Stdlib.Bool.not sandbox && Stdlib.Bool.not warnPermissions ->
       if Platforms.offerActivation platform effects then
         runScript
           state
