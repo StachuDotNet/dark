@@ -21,7 +21,8 @@ let composedWith
   (linked : Platform.PlatformSet)
   : Ply.Ply<Platform.PlatformSet * List<string * string>> =
   uply {
-    let! (external_, skipped) = LibDB.InstalledPlatforms.platforms pm (LibDB.InstalledPlatforms.currentRid ())
+    let! (external_, skipped) =
+      LibDB.InstalledPlatforms.platforms pm (LibDB.InstalledPlatforms.currentRid ())
     if List.isEmpty external_ then
       return (linked, skipped)
     else
@@ -33,13 +34,22 @@ let composedWith
       // install that was fine when it was made.
       let mutable accepted = linked.platforms
       let mutable problems = skipped
+      // Same rule for a `requires` line naming a platform this build does not have. `make` would
+      // raise, and it is right to for a linked set; an install is somebody else's manifest.
       for candidate in external_ do
-        match Platform.PlatformSet.claimsTaken accepted candidate with
-        | [] -> accepted <- accepted @ [ candidate ]
-        | taken ->
+        match
+          Platform.PlatformSet.claimsTaken accepted candidate,
+          Platform.PlatformSet.requirementsUnmet accepted candidate
+        with
+        | [], [] -> accepted <- accepted @ [ candidate ]
+        | taken, unmet ->
           let rendered =
-            taken
-            |> List.map (fun (key, owner) -> $"{key} is already provided by {owner}")
+            (taken
+             |> List.map (fun (key, owner) ->
+               $"{key} is already provided by {owner}"))
+            @ (unmet
+               |> List.map (fun r ->
+                 $"it requires {r}, which this build does not have"))
             |> String.concat "; "
           problems <- problems @ [ (candidate.name, rendered) ]
       return (Platform.PlatformSet.make accepted Sets.fnRenames, problems)

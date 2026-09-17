@@ -83,9 +83,13 @@ let remove (name : string) : unit = modify (Map.remove name)
 /// so the arrow cannot point back.
 type Provider = string -> int -> Option<string>
 
+/// Whether a platform of this name is in the set this instance runs. Same reason as `Provider`.
+type Known = string -> bool
+
 let install
   (pm : PT.PackageManager)
   (provider : Provider)
+  (known : Known)
   (manifestText : string)
   : Ply.Ply<Result<string * Platform.External.Manifest, Platform.External.Rejection>> =
   uply {
@@ -93,8 +97,7 @@ let install
     let hash = Blob.sha256Hex bytes
 
     match Platform.Written.parse manifestText with
-    | Error problems ->
-      return Error { manifest = "(unparsed)"; problems = problems }
+    | Error problems -> return Error { manifest = "(unparsed)"; problems = problems }
     | Ok written ->
       match! PlatformInstall.resolve pm written with
       | Error rejection -> return Error rejection
@@ -104,11 +107,15 @@ let install
         // builtin somebody trusts quietly becomes somebody else's code, and skipping means an
         // install that looked like it worked does nothing.
         match
-          manifest.fns
-          |> List.choose (fun fn ->
-            provider fn.name fn.version
-            |> Option.map (fun owner ->
-              $"'{fn.name}' is already provided by {owner}, and two platforms cannot claim one name"))
+          (manifest.fns
+           |> List.choose (fun fn ->
+             provider fn.name fn.version
+             |> Option.map (fun owner ->
+               $"'{fn.name}' is already provided by {owner}, and two platforms cannot claim one name")))
+          @ (manifest.requires
+             |> List.filter (fun r -> not (known r))
+             |> List.map (fun r ->
+               $"it requires {r}, which this build does not have"))
         with
         | _ :: _ as clashes ->
           return
@@ -117,15 +124,15 @@ let install
                 problems = clashes }
         | [] ->
 
-        match PlatformArtifacts.materialize hash bytes with
-        | Error e ->
-          return
-            Error
-              { manifest = Platform.External.Manifest.coordinate manifest
-                problems = [ $"could not cache the manifest: {e}" ] }
-        | Ok _ ->
-          add manifest.name hash
-          return Ok(hash, manifest)
+          match PlatformArtifacts.materialize hash bytes with
+          | Error e ->
+            return
+              Error
+                { manifest = Platform.External.Manifest.coordinate manifest
+                  problems = [ $"could not cache the manifest: {e}" ] }
+          | Ok _ ->
+            add manifest.name hash
+            return Ok(hash, manifest)
   }
 
 /// Rebuild the installed platforms, for composing into a set.
@@ -167,8 +174,7 @@ let platforms
                   // Every effect the manifest declares anywhere, which is what the sandbox is
                   // built from. A platform is confined by the union of what its builtins claim,
                   // because any of them may be the first one called.
-                  let declared =
-                    manifest.fns |> List.map _.effects |> Set.unionMany
+                  let declared = manifest.fns |> List.map _.effects |> Set.unionMany
 
                   let handle =
                     PlatformSpawn.handleFor
@@ -177,10 +183,13 @@ let platforms
                       declared
                       manifest.types
                   match
-                    Platform.External.Manifest.toPlatform (PlatformSpawn.invoke handle) manifest
+                    Platform.External.Manifest.toPlatform
+                      (PlatformSpawn.invoke handle)
+                      manifest
                   with
                   | Error rejection ->
-                    skipped <- skipped @ [ (name, String.concat "; " rejection.problems) ]
+                    skipped <-
+                      skipped @ [ (name, String.concat "; " rejection.problems) ]
                   | Ok platform -> built <- built @ [ platform ]
 
     return (built, skipped)

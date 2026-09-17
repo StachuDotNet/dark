@@ -299,6 +299,17 @@ module PlatformSet =
   /// build mistake and should stop the process; an INSTALLED one arrives after the build, from
   /// somebody else's manifest, and raising on it means an install nobody can undo, because the
   /// command that would undo it is the one that no longer starts.
+  /// Platforms a candidate requires that are not among these. Non-raising for the same reason
+  /// `claimsTaken` is: `make` raises on a missing requirement, which is right for a linked set and
+  /// wrong for an installed platform whose `requires` line names something this build does not
+  /// have, since the command that would uninstall it is the one that no longer starts.
+  let requirementsUnmet
+    (existing : List<Platform>)
+    (candidate : Platform)
+    : List<string> =
+    let have = existing |> List.map _.name |> Set.ofList
+    candidate.requires |> List.filter (fun r -> not (Set.contains r have))
+
   let claimsTaken
     (existing : List<Platform>)
     (candidate : Platform)
@@ -514,7 +525,11 @@ module External =
             // host boundary checks that. There is no body here: the platform performs its own I/O
             // in its own process, so the boundary is never reached and the declaration would go
             // unchecked. Ask for the whole effect instead, which is the only honest question.
-            PermissionCheck.requireDescribedPlatformEffects state vm fn.effects fn.name
+            PermissionCheck.requireDescribedPlatformEffects
+              state
+              vm
+              fn.effects
+              fn.name
             invoke state fn.name (List.ofArray args)) })
     |> Builtin.make []
 
@@ -634,11 +649,24 @@ module External =
             |> List.filter (fun (_, count) -> count > 1)
             |> List.map (fun (rid, _) -> $"more than one artifact for '{rid}'") ]
 
+      // The runtime's own rules, not a looser copy of them. `FQFnName.builtin` asserts the name
+      // pattern and `Builtin.combine` refuses a parameterless builtin, and both raise, and both run
+      // at the next CLI start rather than here. A manifest that passes this check and then trips
+      // one of those bricks every command, including the one that would uninstall it.
       let perFn =
         m.fns
         |> List.collect (fun fn ->
-          [ if not (nameShape.IsMatch fn.name) then
-              $"builtin name '{fn.name}' is not a plain identifier"
+          [ if
+              not (
+                System.Text.RegularExpressions.Regex.IsMatch(
+                  fn.name,
+                  RuntimeTypes.builtinNamePattern
+                )
+              )
+            then
+              $"builtin name '{fn.name}' must start with a lower-case letter and be at least two characters"
+            if List.isEmpty fn.parameters then
+              $"builtin '{fn.name}' takes no parameters; a builtin takes at least one, and `param unit Unit` is how to say none"
             if fn.version < 0 then $"builtin '{fn.name}' has a negative version"
             for (paramName, typ) in fn.parameters do
               if not (travels typ) then
@@ -739,7 +767,9 @@ module External =
         skipSpace ()
         let start = pos
         while pos < text.Length
-              && (System.Char.IsLetterOrDigit text[pos] || text[pos] = '.' || text[pos] = '_') do
+              && (System.Char.IsLetterOrDigit text[pos]
+                  || text[pos] = '.'
+                  || text[pos] = '_') do
           pos <- pos + 1
         text.Substring(start, pos - start)
 
@@ -764,8 +794,10 @@ module External =
               | "Tuple", _ -> Error "Tuple takes at least two type arguments"
               | _, _ -> Ok(NCustom(name, args))
           | _ ->
-            if Map.containsKey name scalars then Ok(NBuiltin name)
-            else Ok(NCustom(name, []))
+            if Map.containsKey name scalars then
+              Ok(NBuiltin name)
+            else
+              Ok(NCustom(name, []))
 
       and args (acc : List<NamedType>) : Result<List<NamedType>, string> =
         match typ () with
@@ -786,7 +818,8 @@ module External =
       | Ok parsed ->
         skipSpace ()
         if pos < text.Length then
-          Error $"unexpected '{text.Substring pos}' after a complete type in '{text}'"
+          Error
+            $"unexpected '{text.Substring pos}' after a complete type in '{text}'"
         else
           Ok parsed
 
@@ -868,16 +901,14 @@ module Written =
     }
 
   type Manifest =
-    {
-      owner : string
+    { owner : string
       name : string
       version : int
       description : string
       requires : List<string>
       requiresStore : bool
       artifacts : List<string * string>
-      fns : List<Fn>
-    }
+      fns : List<Fn> }
 
   let private header = "DARK-PLATFORM-MANIFEST 1"
 
@@ -893,8 +924,7 @@ module Written =
         yield $"owner {m.owner}"
         yield $"name {m.name}"
         yield $"version {m.version}"
-        if m.description <> "" then
-          yield $"description {m.description}"
+        if m.description <> "" then yield $"description {m.description}"
         for r in m.requires do
           yield $"requires {r}"
         yield "store " + (if m.requiresStore then "yes" else "no")
@@ -908,8 +938,7 @@ module Written =
           yield $"returns {External.NamedType.render fn.returnType}"
           for e in fn.effects do
             yield $"effect {e}"
-          if fn.description <> "" then
-            yield $"doc {fn.description}" ]
+          if fn.description <> "" then yield $"doc {fn.description}" ]
     String.concat "\n" lines + "\n"
 
   /// Parse, collecting every problem rather than stopping at the first.
@@ -951,8 +980,7 @@ module Written =
     | [] -> Error [ "the manifest is empty" ]
     | (headerLine, first) :: rest ->
       if first <> header then
-        Error
-          [ $"line {headerLine + 1}: expected '{header}', found '{first}'" ]
+        Error [ $"line {headerLine + 1}: expected '{header}', found '{first}'" ]
       else
         for (lineNo, line) in rest do
           let key, rest = split line
@@ -978,12 +1006,15 @@ module Written =
           | "version" ->
             match System.Int32.TryParse rest with
             | true, v -> version <- v
-            | false, _ -> problems.Add $"line {lineNo + 1}: version '{rest}' is not a number"
+            | false, _ ->
+              problems.Add $"line {lineNo + 1}: version '{rest}' is not a number"
           | "store" ->
             match rest with
             | "yes" -> requiresStore <- true
             | "no" -> requiresStore <- false
-            | other -> problems.Add $"line {lineNo + 1}: store must be yes or no, not '{other}'"
+            | other ->
+              problems.Add
+                $"line {lineNo + 1}: store must be yes or no, not '{other}'"
           | "fn" ->
             let fnName, fnVersion = split rest
             match System.Int32.TryParse fnVersion with
@@ -1009,7 +1040,8 @@ module Written =
             match namedType lineNo rest with
             | Some t -> onCurrentFn (fun fn -> { fn with returnType = t })
             | None -> ()
-          | "effect" -> onCurrentFn (fun fn -> { fn with effects = fn.effects @ [ rest ] })
+          | "effect" ->
+            onCurrentFn (fun fn -> { fn with effects = fn.effects @ [ rest ] })
           | "doc" -> onCurrentFn (fun fn -> { fn with description = rest })
           | other -> problems.Add $"line {lineNo + 1}: unknown key '{other}'"
 
@@ -1075,8 +1107,10 @@ module Written =
             parameters =
               fn.parameters
               |> List.map (fun (paramName, t) ->
-                (paramName, resolveType $"builtin '{fn.name}' parameter '{paramName}'" t))
-            returnType = resolveType $"builtin '{fn.name}' return type" fn.returnType
+                (paramName,
+                 resolveType $"builtin '{fn.name}' parameter '{paramName}'" t))
+            returnType =
+              resolveType $"builtin '{fn.name}' return type" fn.returnType
             effects = effects
             description = fn.description }
         resolved)

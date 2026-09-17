@@ -109,9 +109,10 @@ let private hostOnly
   (description : string)
   (impl : ExecutionState -> Dval[] -> Ply<Dval>)
   : BuiltInFn =
-  let read = policyFn name parameters returnType description (fun state args ->
-    if not state.canManagePolicies then policyAdminError ()
-    impl state args)
+  let read =
+    policyFn name parameters returnType description (fun state args ->
+      if not state.canManagePolicies then policyAdminError ()
+      impl state args)
   // A host-only builtin is one that CHANGES host policy, so it declares the write as well as the
   // read. `canManagePolicies` is still what refuses guest code outright; the effect is what a
   // policy can reason about, and the two answer different questions.
@@ -241,11 +242,22 @@ let fns : List<BuiltInFn> =
                 p.builtins.fns.ContainsKey(FQFnName.builtin name version))
               |> Option.map _.name
 
+            // A `requires` line has to name something this session has. Refused here, where a
+            // person is standing, for the same reason a name clash is: the compose path skips it
+            // rather than raising, but an install that quietly does nothing is not an install.
+            let known (name : string) : bool =
+              state.platforms |> List.exists (fun p -> p.name = name)
+
             match!
-              InstalledPlatforms.install LibDB.PackageManager.pt provider manifest
+              InstalledPlatforms.install
+                LibDB.PackageManager.pt
+                provider
+                known
+                manifest
             with
             | Ok(_hash, installed) ->
-              return Dval.resultOk KTString (KTList VT.string) (DString installed.name)
+              return
+                Dval.resultOk KTString (KTList VT.string) (DString installed.name)
             | Error rejection ->
               // Every problem, not the first. A person fixing a manifest wants the list.
               return
@@ -326,7 +338,9 @@ let fns : List<BuiltInFn> =
         match args with
         | [| DString name |] ->
           uply {
-            match! InstalledPlatforms.declaredEffectsOf LibDB.PackageManager.pt name with
+            match!
+              InstalledPlatforms.declaredEffectsOf LibDB.PackageManager.pt name
+            with
             | None -> return Dval.optionNone KTString
             | Some effects ->
               // The executable is irrelevant to the answer, so this does not need it on disk: the
@@ -362,9 +376,11 @@ let fns : List<BuiltInFn> =
               |> List.map (fun p ->
                 let taken =
                   LibExecution.Platform.PlatformSet.claimsTaken state.platforms p
-                  |> List.map (fun (key, owner) -> $"{key} is already provided by {owner}")
+                  |> List.map (fun (key, owner) ->
+                    $"{key} is already provided by {owner}")
                   |> String.concat "; "
-                (p.name, if taken = "" then "it is not in this session's set" else taken))
+                (p.name,
+                 if taken = "" then "it is not in this session's set" else taken))
 
             return
               (broken @ clashing)

@@ -697,7 +697,8 @@ let operatorDispatchedBuiltinsArePure =
 
     let offenders =
       set.builtins.fns
-      |> Seq.filter (fun (KeyValue(k, _)) -> PT.InfixFnName.isOperatorDispatched k.name)
+      |> Seq.filter (fun (KeyValue(k, _)) ->
+        PT.InfixFnName.isOperatorDispatched k.name)
       |> Seq.filter (fun (KeyValue(_, fn)) -> not (Set.isEmpty fn.callEffects))
       |> Seq.map (fun (KeyValue(k, fn)) ->
         let es =
@@ -735,7 +736,8 @@ let operatorDispatchedBuiltinsArePure =
 let private serial : Effects.Effect =
   match Effects.custom "acme/serial" with
   | Some effect -> effect
-  | None -> Exception.raiseInternal "acme/serial should be a valid custom effect name" []
+  | None ->
+    Exception.raiseInternal "acme/serial should be a valid custom effect name" []
 
 let private foreignPlatform (effect : Effects.Effect) : Platform =
   { name = "AcmeSerial"
@@ -818,9 +820,7 @@ let aForeignEffectIsGranted =
     // Allow-everything-else is the interesting case: the vendor's capability must not be reachable
     // through any of the effects we DID ship, or advertising it separately would be theatre.
     let everythingElse =
-      Permission.Policy.create
-        (Effects.all |> List.map Permission.Rule.Effect)
-        []
+      Permission.Policy.create (Effects.all |> List.map Permission.Rule.Effect) []
     Expect.isFalse
       (Permission.Policy.allows request everythingElse)
       "every well-known effect granted still does not reach a custom one"
@@ -929,7 +929,10 @@ let private describedFns (effects : Set<Effects.Effect>) : List<External.Fn> =
       effects = effects
       description = "described, not written" } ]
 
-let private describedPlatform (effects : Set<Effects.Effect>) (answer : string) : Platform =
+let private describedPlatform
+  (effects : Set<Effects.Effect>)
+  (answer : string)
+  : Platform =
   { name = "AcmeSerial"
     version = 0
     description = "A platform this repo does not contain."
@@ -971,8 +974,7 @@ let private runDescribed
         { dbs = Map.empty }
       |> Exe.setInstancePolicy policy
     let name = RT.FQFnName.FQFnName.Builtin(RT.FQFnName.builtin "acmeReadTag" 0)
-    return!
-      Exe.executeFunction state name [] (NEList.singleton RT.DUnit)
+    return! Exe.executeFunction state name [] (NEList.singleton RT.DUnit)
   }
 
 let aDescribedPlatformCannotSkipAScopedEffect =
@@ -1006,9 +1008,7 @@ let aDescribedPlatformCannotSkipAScopedEffect =
     let! underWhole =
       runDescribed
         scoped
-        (Permission.Policy.create
-          [ Permission.Rule.Effect Effects.Effect.Http ]
-          [])
+        (Permission.Policy.create [ Permission.Rule.Effect Effects.Effect.Http ] [])
     match underWhole with
     | Ok(RT.DString "TAG-42") -> ()
     | other -> failtest $"`allow http` should have been enough: {other}"
@@ -1051,7 +1051,9 @@ let aDescribedPlatformComposes =
     // Pinning the artifact is the content hash's job, separately.
     Expect.equal
       (Platform.fingerprint described)
-      (Platform.fingerprint (describedPlatform (Set.singleton describedEffect) "TAG-99"))
+      (Platform.fingerprint (
+        describedPlatform (Set.singleton describedEffect) "TAG-99"
+      ))
       "the answer is not in the fingerprint; the artifact hash is what pins that"
   }
 
@@ -1060,9 +1062,9 @@ let aDescribedBuiltinRuns =
     // The two halves that matter. It executes at all, and the ambient gate checks the effect it
     // CLAIMED rather than anything about its body, which is the only thing a runtime can check
     // about code it did not compile.
-    let granted = Permission.Policy.create [ Permission.Rule.Effect describedEffect ] []
-    let! allowed =
-      runDescribed (Set.singleton describedEffect) granted
+    let granted =
+      Permission.Policy.create [ Permission.Rule.Effect describedEffect ] []
+    let! allowed = runDescribed (Set.singleton describedEffect) granted
     match allowed with
     | Ok(RT.DString "TAG-42") -> ()
     | Ok other -> failtest $"described builtin answered wrongly: {other}"
@@ -1075,8 +1077,7 @@ let aDescribedBuiltinIsDeniedWithoutTheGrant =
     // already ship, declaring it separately would be theatre.
     let everythingElse =
       Permission.Policy.create (Effects.all |> List.map Permission.Rule.Effect) []
-    let! denied =
-      runDescribed (Set.singleton describedEffect) everythingElse
+    let! denied = runDescribed (Set.singleton describedEffect) everythingElse
     match denied with
     | Error _ -> ()
     | Ok other ->
@@ -1090,10 +1091,14 @@ let aDescribedBuiltinIsDeniedWithoutTheGrant =
 /// parse helper runs under its own state carrying the stock catalog. This one asks the question
 /// that matters: does a platform composed into the HOST's set become visible to name resolution?
 let aDescribedBuiltinResolvesByName =
-  testTask "a described platform's builtin resolves at parse time when the host has it" {
+  testTask
+    "a described platform's builtin resolves at parse time when the host has it" {
     let pm = TestUtils.TestUtils.pmPT
     let described = describedPlatform (Set.singleton describedEffect) "TAG-42"
-    let set = PlatformSet.make ((Platforms.Sets.everythingFor pm).platforms @ [ described ]) []
+    let set =
+      PlatformSet.make
+        ((Platforms.Sets.everythingFor pm).platforms @ [ described ])
+        []
     let pmRT = PT2RT.PackageManager.toRT set.builtins.values pm
     let state =
       Exe.createState
@@ -1103,12 +1108,13 @@ let aDescribedBuiltinResolvesByName =
         RT.consoleReporter
         RT.consoleNotifier
         { dbs = Map.empty }
-      |> Exe.setInstancePolicy
-        (Permission.Policy.create [ Permission.Rule.All ] [])
+      |> Exe.setInstancePolicy (Permission.Policy.create [ Permission.Rule.All ] [])
 
     // Parse under THIS state, not the shared helper's.
     let parser =
-      RT.FQFnName.fqPackage (LibExecution.PackageRefs.Fn.LanguageTools.Parser.parsePTExpr ())
+      RT.FQFnName.fqPackage (
+        LibExecution.PackageRefs.Fn.LanguageTools.Parser.parsePTExpr ()
+      )
     let! parsed =
       Exe.executeFunction
         state
@@ -1154,7 +1160,11 @@ let private rejectionOf (m : External.Manifest) : List<string> =
 
 let aGoodManifestBecomesAPlatform =
   test "a well-formed manifest becomes a platform that composes" {
-    match External.Manifest.toPlatform (fun _ _ _ -> Ply(RT.DString "TAG-42")) goodManifest with
+    match
+      External.Manifest.toPlatform
+        (fun _ _ _ -> Ply(RT.DString "TAG-42"))
+        goodManifest
+    with
     | Error r -> failtest $"refused a good manifest: {r.problems}"
     | Ok platform ->
       let core = Platforms.Sets.sealedCompute ()
@@ -1173,10 +1183,7 @@ let aManifestNamesEveryProblemAtOnce =
     // Plural on purpose. One problem per attempt is a bad afternoon for whoever is writing the
     // manifest, and the checks are independent so there is no reason to stop at the first.
     let bad =
-      { goodManifest with
-          owner = "acme corp"
-          name = "Acme Serial"
-          version = -1 }
+      { goodManifest with owner = "acme corp"; name = "Acme Serial"; version = -1 }
     let problems = rejectionOf bad
     Expect.hasLength problems 3 "three independent problems, three messages"
     Expect.isTrue
@@ -1256,7 +1263,10 @@ let namedTypesRoundTrip =
         "List<Stdlib.Option<Dict<String, List<UInt8>>>>"
         "Acme.Serial.Config" ]
     for case in cases do
-      Expect.equal (External.NamedType.render (parseType case)) case $"round trip of {case}"
+      Expect.equal
+        (External.NamedType.render (parseType case))
+        case
+        $"round trip of {case}"
   }
 
 let namedTypeParseRefusesNonsense =
@@ -1264,7 +1274,8 @@ let namedTypeParseRefusesNonsense =
     let refuses (s : string) =
       match External.NamedType.parse s with
       | Ok t ->
-        failtest $"parsed '{s}' as {External.NamedType.render t} when it should have refused"
+        failtest
+          $"parsed '{s}' as {External.NamedType.render t} when it should have refused"
       | Error _ -> ()
     refuses "List<"
     refuses "List<Int64"
@@ -1276,7 +1287,8 @@ let namedTypeParseRefusesNonsense =
   }
 
 let namedTypeResolvesAgainstTheConsumersStore =
-  test "a named type resolves package types through the consumer, and says so when it cannot" {
+  test
+    "a named type resolves package types through the consumer, and says so when it cannot" {
     // The whole reason a manifest names types instead of carrying hashes. `lookup` stands in for
     // the consumer's store: the SAME manifest resolves differently on two instances, and that is
     // correct rather than alarming.
@@ -1284,7 +1296,9 @@ let namedTypeResolvesAgainstTheConsumersStore =
     let lookup name =
       if name = "Stdlib.Result" then Some(RT.FQTypeName.fqPackage hash) else None
 
-    match External.NamedType.resolve lookup (parseType "Stdlib.Result<String, String>") with
+    match
+      External.NamedType.resolve lookup (parseType "Stdlib.Result<String, String>")
+    with
     | Error e -> failtest $"should have resolved: {e}"
     | Ok(RT.TCustomType(nr, [ RT.TString; RT.TString ])) ->
       match nr.resolved with
@@ -1296,14 +1310,19 @@ let namedTypeResolvesAgainstTheConsumersStore =
     match External.NamedType.resolve lookup (parseType "Acme.Unknown") with
     | Ok _ -> failtest "resolved a type this instance does not have"
     | Error e ->
-      Expect.stringContains e "Acme.Unknown" "the unresolvable name is in the message"
+      Expect.stringContains
+        e
+        "Acme.Unknown"
+        "the unresolvable name is in the message"
 
     // And nesting resolves all the way down rather than only at the top.
     match External.NamedType.resolve lookup (parseType "List<Acme.Unknown>") with
     | Ok _ -> failtest "resolved a missing type nested inside a list"
     | Error _ -> ()
 
-    match External.NamedType.resolve lookup (parseType "List<Dict<String, Int64>>") with
+    match
+      External.NamedType.resolve lookup (parseType "List<Dict<String, Int64>>")
+    with
     | Ok(RT.TList(RT.TDict(RT.TString, RT.TInt64))) -> ()
     | Ok other -> failtest $"built the wrong type: {other}"
     | Error e -> failtest $"should have resolved: {e}"
@@ -1360,9 +1379,15 @@ let aTextManifestParsesAndRoundTrips =
       | [ readTag; writeTag ] ->
         Expect.hasLength readTag.parameters 1 "readTag takes one"
         Expect.equal readTag.effects [ "acme/serial" ] "and declares its capability"
-        Expect.equal readTag.description "Read the tag at a port." "doc line attaches"
+        Expect.equal
+          readTag.description
+          "Read the tag at a port."
+          "doc line attaches"
         Expect.hasLength writeTag.parameters 2 "writeTag takes two"
-        Expect.equal writeTag.effects [ "acme/serial"; "clock" ] "two effects, in order"
+        Expect.equal
+          writeTag.effects
+          [ "acme/serial"; "clock" ]
+          "two effects, in order"
       | other -> failtest $"unexpected fns: {other}"
 
       // Render and reparse rather than comparing text: the format is a contract about MEANING, and
@@ -1420,7 +1445,9 @@ let aWrittenManifestResolvesToAPlatform =
       | Error r -> failtest $"resolve: {r.problems}"
       | Ok manifest ->
         match
-          External.Manifest.toPlatform (fun _ _ _ -> Ply(RT.DString "TAG-42")) manifest
+          External.Manifest.toPlatform
+            (fun _ _ _ -> Ply(RT.DString "TAG-42"))
+            manifest
         with
         | Error r -> failtest $"toPlatform: {r.problems}"
         | Ok platform ->
@@ -1479,7 +1506,9 @@ let manifestLocationsAreFullyQualified =
     | None -> failtest "should have split a deeper name"
 
     // A bare name is refused rather than guessed at.
-    Expect.isNone (LibDB.PlatformInstall.location "Result") "a bare name has no owner"
+    Expect.isNone
+      (LibDB.PlatformInstall.location "Result")
+      "a bare name has no owner"
   }
 
 let aManifestResolvesAgainstTheRealStore =
@@ -1506,7 +1535,8 @@ effect acme/serial
     let! (resolved : Result<External.Manifest, External.Rejection>) =
       LibDB.PlatformInstall.resolve TestUtils.TestUtils.pmPT written |> Ply.toTask
     match resolved with
-    | Error r -> failtest $"should have resolved against the real store: {r.problems}"
+    | Error r ->
+      failtest $"should have resolved against the real store: {r.problems}"
     | Ok manifest ->
       match manifest.fns with
       | [ fn ] ->
@@ -1553,6 +1583,29 @@ effect acme/serial
 let private withArtifacts (artifacts : List<string * string>) =
   { goodManifest with artifacts = artifacts }
 
+let aManifestIsHeldToTheRuntimesOwnRules =
+  test "a manifest is refused for what the runtime would refuse at the next start" {
+    // The hole this pins: `problems` accepted names the runtime asserts against, and builtins with
+    // no parameters, which `Builtin.combine` refuses. Both raise inside the compose at CLI start,
+    // so the install succeeded and every command afterwards died, including `platforms uninstall`.
+    let withFn (fn : External.Fn) = { goodManifest with fns = [ fn ] }
+    let good =
+      match List.head goodManifest.fns with
+      | Some good -> good
+      | None -> failtest "the fixture manifest declares no builtins"
+
+    Expect.isEmpty (External.Manifest.problems (withFn good)) "the fixture is fine"
+    Expect.isNonEmpty
+      (External.Manifest.problems (withFn { good with name = "Fetch" }))
+      "a builtin name starts lower case, as `FQFnName.builtin` asserts"
+    Expect.isNonEmpty
+      (External.Manifest.problems (withFn { good with name = "f" }))
+      "and has at least two characters"
+    Expect.isNonEmpty
+      (External.Manifest.problems (withFn { good with parameters = [] }))
+      "a parameterless builtin is refused here, not by `combine` at start"
+  }
+
 let aManifestAddressesItsExecutablesByHash =
   test "a manifest names one executable per target, by hash" {
     let real = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -1591,8 +1644,9 @@ let aManifestRefusesABadArtifactLine =
 
     // Two executables for one target would mean the manifest does not say which runs.
     Expect.isNonEmpty
-      (External.Manifest.problems
-        (withArtifacts [ ("linux-x64", real); ("linux-x64", real) ]))
+      (External.Manifest.problems (
+        withArtifacts [ ("linux-x64", real); ("linux-x64", real) ]
+      ))
       "one target, one executable"
   }
 
@@ -1643,11 +1697,13 @@ let anArtifactThatLiesIsRefusedBeforeTheWrite =
 
       match LibDB.PlatformArtifacts.materialize hash other with
       | Ok _ -> failtest "wrote bytes that do not match their hash"
-      | Error e -> Expect.stringContains e hash "the expected hash is in the message"
+      | Error e ->
+        Expect.stringContains e hash "the expected hash is in the message"
 
       // Checked before the write, so nothing lands under a name that would later be trusted.
       match LibDB.PlatformArtifacts.path hash with
-      | Ok file -> Expect.isFalse (System.IO.File.Exists file) "and nothing was written"
+      | Ok file ->
+        Expect.isFalse (System.IO.File.Exists file) "and nothing was written"
       | Error e -> failtest e)
   }
 
@@ -1661,7 +1717,10 @@ let aTamperedArtifactFailsVerification =
       match LibDB.PlatformArtifacts.materialize hash bytes with
       | Error e -> failtest e
       | Ok file ->
-        System.IO.File.WriteAllBytes(file, System.Text.Encoding.UTF8.GetBytes "not that")
+        System.IO.File.WriteAllBytes(
+          file,
+          System.Text.Encoding.UTF8.GetBytes "not that"
+        )
         match LibDB.PlatformArtifacts.verified hash with
         | Ok present -> Expect.isFalse present "a swapped file does not verify"
         | Error e -> failtest e)
@@ -1672,7 +1731,9 @@ let anArtifactHashCannotBeAPath =
     // The hash reaches here from a manifest, which came from outside, so it is checked rather than
     // trusted. Otherwise a manifest could name '../../../etc/cron.d/whatever'.
     withArtifactCache (fun () ->
-      Expect.isError (LibDB.PlatformArtifacts.path "../../etc/passwd") "no traversal"
+      Expect.isError
+        (LibDB.PlatformArtifacts.path "../../etc/passwd")
+        "no traversal"
       Expect.isError (LibDB.PlatformArtifacts.path "deadbeef") "too short"
       Expect.isError
         (LibDB.PlatformArtifacts.path (String.replicate 64 "A"))
@@ -1681,6 +1742,9 @@ let anArtifactHashCannotBeAPath =
 
 /// An instance that provides nothing, so an install is judged on the manifest alone.
 let private nothingProvidesIt : LibDB.InstalledPlatforms.Provider = fun _ _ -> None
+
+/// The fixture manifests require only `Core`, which every build has.
+let private everythingIsKnown (_ : string) : bool = true
 
 // ── a manifest stored as a package value ──────────────────────────────────────
 
@@ -1693,14 +1757,18 @@ let private pmWithManifest (body : PT.Expr) : PT.PackageManager =
   { TestValues.pm with
       findValue =
         fun loc ->
-          if loc = manifestLocation then Ply(Some hash) else TestValues.pm.findValue loc
+          if loc = manifestLocation then
+            Ply(Some hash)
+          else
+            TestValues.pm.findValue loc
       getValue =
         fun h ->
           if h = hash then
             Ply(
-              Some
-                ({ hash = h; description = "a platform manifest"; body = body }
-                 : PT.PackageValue.PackageValue)
+              Some(
+                { hash = h; description = "a platform manifest"; body = body }
+                : PT.PackageValue.PackageValue
+              )
             )
           else
             TestValues.pm.getValue h }
@@ -1726,7 +1794,9 @@ returns String
 effect acme/serial
 """
     let! (result : Result<External.Manifest, External.Rejection>) =
-      LibDB.PlatformInstall.manifestFrom (pmWithManifest (stringLiteral text)) manifestLocation
+      LibDB.PlatformInstall.manifestFrom
+        (pmWithManifest (stringLiteral text))
+        manifestLocation
       |> Ply.toTask
     match result with
     | Error r -> failtest $"should have read the manifest: {r.problems}"
@@ -1743,9 +1813,11 @@ let aManifestMustBeALiteral =
     // Running package code to find out what a platform CLAIMS is the wrong order. The manifest is
     // what you read before deciding to trust it, so it has to be a literal rather than an
     // expression that produces one.
-    let computed = PT.EApply(0UL, stringLiteral "not", [], NEList.singleton (stringLiteral "ok"))
+    let computed =
+      PT.EApply(0UL, stringLiteral "not", [], NEList.singleton (stringLiteral "ok"))
     let! (result : Result<External.Manifest, External.Rejection>) =
-      LibDB.PlatformInstall.manifestFrom (pmWithManifest computed) manifestLocation |> Ply.toTask
+      LibDB.PlatformInstall.manifestFrom (pmWithManifest computed) manifestLocation
+      |> Ply.toTask
     match result with
     | Ok _ -> failtest "accepted a manifest that was not a literal"
     | Error r ->
@@ -1799,7 +1871,10 @@ let anArtifactIsFetchedOnceAndReusedAfter =
       // verifies instead of testing for existence.
       match LibDB.PlatformArtifacts.path hash with
       | Ok file ->
-        System.IO.File.WriteAllBytes(file, System.Text.Encoding.UTF8.GetBytes "swapped")
+        System.IO.File.WriteAllBytes(
+          file,
+          System.Text.Encoding.UTF8.GetBytes "swapped"
+        )
       | Error e -> failtest e
       let! third = LibDB.PlatformArtifacts.ensure source hash |> Ply.toTask
       Expect.isOk third "a swapped artifact is replaced"
@@ -1819,8 +1894,10 @@ let anUnavailableArtifactSaysWhatItMeans =
     System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
     let restore = LibExecution.HostSecurity.policyDirectoryForTesting dir
     try
-      let hash = LibExecution.Blob.sha256Hex (System.Text.Encoding.UTF8.GetBytes "absent")
-      let! result = LibDB.PlatformArtifacts.ensure (fun _ -> Ply None) hash |> Ply.toTask
+      let hash =
+        LibExecution.Blob.sha256Hex (System.Text.Encoding.UTF8.GetBytes "absent")
+      let! result =
+        LibDB.PlatformArtifacts.ensure (fun _ -> Ply None) hash |> Ply.toTask
       match result with
       | Ok _ -> failtest "produced a file for bytes nobody has"
       | Error e ->
@@ -1845,7 +1922,8 @@ let aLyingSourceIsRefused =
     System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
     let restore = LibExecution.HostSecurity.policyDirectoryForTesting dir
     try
-      let wanted = LibExecution.Blob.sha256Hex (System.Text.Encoding.UTF8.GetBytes "wanted")
+      let wanted =
+        LibExecution.Blob.sha256Hex (System.Text.Encoding.UTF8.GetBytes "wanted")
       let source : LibDB.PlatformArtifacts.Source =
         fun _ -> Ply(Some(System.Text.Encoding.UTF8.GetBytes "something else"))
       let! result = LibDB.PlatformArtifacts.ensure source wanted |> Ply.toTask
@@ -1952,7 +2030,11 @@ let private spawnedPlatform (handle : LibDB.PlatformSpawn.Handle) : Platform =
     requiresStore = false }
 
 /// Call one builtin of the spawned platform, under a policy that grants its capability.
-let private callSpawned (handle : LibDB.PlatformSpawn.Handle) (name : string) (arg : RT.Dval) =
+let private callSpawned
+  (handle : LibDB.PlatformSpawn.Handle)
+  (name : string)
+  (arg : RT.Dval)
+  =
   task {
     let core = Platforms.Sets.sealedCompute ()
     let set = PlatformSet.make (core.platforms @ [ spawnedPlatform handle ]) []
@@ -1968,8 +2050,9 @@ let private callSpawned (handle : LibDB.PlatformSpawn.Handle) (name : string) (a
         RT.consoleReporter
         RT.consoleNotifier
         { dbs = Map.empty }
-      |> Exe.setInstancePolicy
-        (Permission.Policy.create [ Permission.Rule.Effect describedEffect ] [])
+      |> Exe.setInstancePolicy (
+        Permission.Policy.create [ Permission.Rule.Effect describedEffect ] []
+      )
     let fnName = RT.FQFnName.FQFnName.Builtin(RT.FQFnName.builtin name 0)
     return! Exe.executeFunction state fnName [] (NEList.singleton arg)
   }
@@ -2008,16 +2091,21 @@ let theSandboxFollowsTheDeclaration =
     // anything gets no confinement and is told so, rather than a namespace that would read as
     // more than it is.
     let confined = LibDB.PlatformSandbox.plan (Set.singleton describedEffect) "/x"
-    let asked =
-      LibDB.PlatformSandbox.plan (Set.singleton Effects.Effect.Http) "/x"
+    let asked = LibDB.PlatformSandbox.plan (Set.singleton Effects.Effect.Http) "/x"
     let unscopeable =
       LibDB.PlatformSandbox.plan (Set.singleton Effects.Effect.Native) "/x"
 
     // Only meaningful where a namespace can actually be entered; elsewhere all three say why not,
     // which is the correct answer on that machine and not a failure.
     if confined.confinement.StartsWith "no network" then
-      Expect.notEqual confined.executable "/x" "a confined platform is started through a wrapper"
-      Expect.equal asked.executable "/x" "one that asked for the network is started directly"
+      Expect.notEqual
+        confined.executable
+        "/x"
+        "a confined platform is started through a wrapper"
+      Expect.equal
+        asked.executable
+        "/x"
+        "one that asked for the network is started directly"
       Expect.stringContains
         asked.confinement
         "asked for the network"
@@ -2050,12 +2138,15 @@ let theShippedFetchManifestStillResolves =
       let! (resolved : Result<External.Manifest, External.Rejection>) =
         LibDB.PlatformInstall.resolve TestUtils.TestUtils.pmPT written |> Ply.toTask
       match resolved with
-      | Error r -> failtest $"the shipped manifest does not resolve here: {r.problems}"
+      | Error r ->
+        failtest $"the shipped manifest does not resolve here: {r.problems}"
       | Ok manifest ->
         Expect.equal manifest.name "Fetch" "the platform it describes"
         // The handshake table, which is the thing that lets the plugin build a `Result` at all. An
         // empty one would mean the plugin gets no hashes and can only answer with primitives.
-        Expect.isNonEmpty manifest.types "it resolved type names, and kept what they resolved to"
+        Expect.isNonEmpty
+          manifest.types
+          "it resolved type names, and kept what they resolved to"
         let declared = manifest.fns |> List.map _.effects |> Set.unionMany
         Expect.equal
           declared
@@ -2095,6 +2186,26 @@ let theFirstPartyListMatchesTheSource =
       "every builtin that checks caller trust is listed, and nothing else is"
   }
 
+let aPlatformRequiringWhatTheBuildLacksIsSkippedNotFatal =
+  test
+    "a platform requiring something this build does not have is skipped, not fatal" {
+    // Same shape as the name-clash case: `make` raises on a missing requirement, which is right for
+    // a linked set and wrong for an installed platform, whose `requires` line can name anything.
+    let core = Platforms.Sets.sealedCompute ()
+    let stranger =
+      { describedPlatform (Set.singleton describedEffect) "TAG" with
+          requires = [ "Core"; "Terminl" ] }
+    Expect.equal
+      (PlatformSet.requirementsUnmet core.platforms stranger)
+      [ "Terminl" ]
+      "names what is missing, so the listing can say why the platform is not running"
+    Expect.isEmpty
+      (PlatformSet.requirementsUnmet
+        core.platforms
+        { stranger with requires = [ "Core" ] })
+      "and a satisfied requirement is not reported"
+  }
+
 let aCollidingPlatformIsSkippedNotFatal =
   test "a platform claiming a name something else provides is skipped, not fatal" {
     // The bug this pins: an external platform whose builtin collided with a linked one raised at
@@ -2109,10 +2220,7 @@ let aCollidingPlatformIsSkippedNotFatal =
     | None -> failtest "the compute floor ships no platforms"
     | Some claimed ->
       let stolen =
-        { claimed with
-            name = "Impostor"
-            version = 0
-            requires = [ "Core" ] }
+        { claimed with name = "Impostor"; version = 0; requires = [ "Core" ] }
       match PlatformSet.claimsTaken core.platforms stolen with
       | [] -> failtest "claiming every name of an existing platform should collide"
       | taken ->
@@ -2126,7 +2234,8 @@ let aCollidingPlatformIsSkippedNotFatal =
   }
 
 let aPlatformCannotPaintTheTerminal =
-  test "what a platform writes to stderr is attributed and cannot control the terminal" {
+  test
+    "what a platform writes to stderr is attributed and cannot control the terminal" {
     // A platform declares what its BUILTINS may do. It is also a process, and a process has a
     // stderr whatever its manifest says, so one declaring no `stdout` could still write to the
     // terminal. Unattributed, that is a spoofing surface: escape sequences can clear the screen,
@@ -2134,7 +2243,10 @@ let aPlatformCannotPaintTheTerminal =
     let sanitize = LibDB.PlatformSpawn.sanitizeDiagnostic
 
     Expect.equal (sanitize "plain text") "plain text" "ordinary output is untouched"
-    Expect.equal (sanitize "a\tb") "a\tb" "tabs survive, since diagnostics are often columns"
+    Expect.equal
+      (sanitize "a\tb")
+      "a\tb"
+      "tabs survive, since diagnostics are often columns"
 
     // Whole sequences, not just the escape byte. Dropping the byte alone leaves `[31m` behind as
     // literal text, which is safe and reads like a bug in this code.
@@ -2175,7 +2287,10 @@ let aFrameLengthIsNotTrusted =
       match negative with
       | Ok value -> failtest $"a negative frame length was accepted: {value}"
       | Error(rte, _) ->
-        Expect.stringContains (string rte) "not a size" "refused for not being a length"
+        Expect.stringContains
+          (string rte)
+          "not a size"
+          "refused for not being a length"
     finally
       LibDB.PlatformSpawn.stop handle
   }
@@ -2205,7 +2320,10 @@ let aSilentPlatformDoesNotWedgeTheCaller =
       | Ok value -> failtest $"a silent platform answered: {value}"
       | Error(rte, _) ->
         let rendered = string rte
-        Expect.stringContains rendered "did not answer" "the error says what happened"
+        Expect.stringContains
+          rendered
+          "did not answer"
+          "the error says what happened"
         Expect.stringContains rendered "EchoPlatform" "and which platform did it"
       // Generously bounded: the assertion is that it RETURNED, not that it was prompt.
       Expect.isLessThan
@@ -2244,7 +2362,10 @@ let aSpawnedPlatformIsConfinedToWhatItDeclared =
         | Ok(RT.DString errno) ->
           // ENETUNREACH, specifically. A timeout or a DNS failure would pass a weaker assertion
           // while proving nothing, since a machine with no network at all gives those too.
-          Expect.equal errno "101" "the connection failed because there is no network to use"
+          Expect.equal
+            errno
+            "101"
+            "the connection failed because there is no network to use"
         | other -> failtest $"unexpected: {other}"
     finally
       LibDB.PlatformSpawn.stop handle
@@ -2269,7 +2390,10 @@ let aSpawnedPlatformBuildsAnEnum =
       let! answered = callSpawned handle "echoResult" (RT.DString "typed")
       match answered with
       | Ok(RT.DEnum(source, _, _, "Ok", [ RT.DString "TYPED" ])) ->
-        Expect.equal source (LibExecution.Dval.resultType ()) "built with the hash it was handed"
+        Expect.equal
+          source
+          (LibExecution.Dval.resultType ())
+          "built with the hash it was handed"
       | other -> failtest $"unexpected: {other}"
     finally
       LibDB.PlatformSpawn.stop handle
@@ -2293,7 +2417,8 @@ let aLyingPlatformIsCaughtByItsSignature =
     try
       let! answered = callSpawned handle "echoWrongType" RT.DUnit
       match answered with
-      | Ok value -> failtest $"a platform's lie about its return type was believed: {value}"
+      | Ok value ->
+        failtest $"a platform's lie about its return type was believed: {value}"
       | Error(rte, _) ->
         let rendered = string rte
         Expect.stringContains rendered "echoWrongType" "the error names the builtin"
@@ -2323,7 +2448,11 @@ let aPlatformCannotForgeAHandle =
       "inside a list"
     Expect.isError
       (refuse (
-        RT.DTuple(RT.DString "a", RT.DList(RT.ValueType.Unknown, [ RT.DDB "users" ]), [])
+        RT.DTuple(
+          RT.DString "a",
+          RT.DList(RT.ValueType.Unknown, [ RT.DDB "users" ]),
+          []
+        )
       ))
       "inside a list inside a tuple"
 
@@ -2350,7 +2479,8 @@ let aSpawnedPlatformCarriesBytes =
         echoTypes
     try
       let sent = System.Text.Encoding.UTF8.GetBytes "bytes over a pipe"
-      let! answered = callSpawned handle "echoBytes" (LibExecution.Blob.newEphemeral sent)
+      let! answered =
+        callSpawned handle "echoBytes" (LibExecution.Blob.newEphemeral sent)
       match answered with
       | Ok(RT.DBlob(RT.Ephemeral got)) ->
         Expect.equal
@@ -2474,7 +2604,8 @@ effect acme/serial
   (text, hash, bytes)
 
 let installingAnExternalPlatformMakesItReconstructable =
-  testTask "installing records a manifest hash, and the platform rebuilds from it alone" {
+  testTask
+    "installing records a manifest hash, and the platform rebuilds from it alone" {
     do!
       withPolicyDir (fun () ->
         task {
@@ -2485,11 +2616,11 @@ let installingAnExternalPlatformMakesItReconstructable =
           | Error e -> failtest e
           | Ok _ -> ()
 
-          let! (installed :
-                 Result<string * External.Manifest, External.Rejection>) =
+          let! (installed : Result<string * External.Manifest, External.Rejection>) =
             LibDB.InstalledPlatforms.install
               TestUtils.TestUtils.pmPT
               nothingProvidesIt
+              everythingIsKnown
               text
             |> Ply.toTask
           match installed with
@@ -2504,7 +2635,8 @@ let installingAnExternalPlatformMakesItReconstructable =
           // Rebuilt from the record alone: name plus hash is enough, because the manifest is in
           // the cache under that hash and the artifact hashes are inside the manifest.
           let! (built, skipped) =
-            LibDB.InstalledPlatforms.platforms TestUtils.TestUtils.pmPT "test-rid" |> Ply.toTask
+            LibDB.InstalledPlatforms.platforms TestUtils.TestUtils.pmPT "test-rid"
+            |> Ply.toTask
           Expect.isEmpty skipped "nothing skipped"
           match built with
           | [ platform ] ->
@@ -2532,17 +2664,23 @@ let anInstallForAnotherMachineIsSkippedNotFatal =
             LibDB.InstalledPlatforms.install
               TestUtils.TestUtils.pmPT
               nothingProvidesIt
+              everythingIsKnown
               text
             |> Ply.toTask
 
           let! (built, skipped) =
-            LibDB.InstalledPlatforms.platforms TestUtils.TestUtils.pmPT "some-other-rid"
+            LibDB.InstalledPlatforms.platforms
+              TestUtils.TestUtils.pmPT
+              "some-other-rid"
             |> Ply.toTask
           Expect.isEmpty built "nothing built for a target it does not ship"
           match skipped with
           | [ (name, why) ] ->
             Expect.equal name "EchoPlatform" "named"
-            Expect.stringContains why "some-other-rid" "with the target in the reason"
+            Expect.stringContains
+              why
+              "some-other-rid"
+              "with the target in the reason"
           | other -> failtest $"expected one skip, got {other}"
         })
   }
@@ -2556,7 +2694,8 @@ let aMissingArtifactIsSkippedNotFatal =
           // interrupted install or a hand-edited file would leave behind.
           LibDB.InstalledPlatforms.add "Ghost" (String.replicate 64 "a")
           let! (built, skipped) =
-            LibDB.InstalledPlatforms.platforms TestUtils.TestUtils.pmPT "test-rid" |> Ply.toTask
+            LibDB.InstalledPlatforms.platforms TestUtils.TestUtils.pmPT "test-rid"
+            |> Ply.toTask
           Expect.isEmpty built "nothing built"
           match skipped with
           | [ (name, why) ] ->
@@ -2621,6 +2760,7 @@ let tests =
       aManifestNamingAMissingTypeSaysSo
       aManifestAddressesItsExecutablesByHash
       aManifestRefusesABadArtifactLine
+      aManifestIsHeldToTheRuntimesOwnRules
       testSequenced anArtifactIsCachedUnderItsOwnHash
       testSequenced anArtifactThatLiesIsRefusedBeforeTheWrite
       testSequenced aTamperedArtifactFailsVerification
@@ -2632,6 +2772,7 @@ let tests =
       theSandboxFollowsTheDeclaration
       theFirstPartyListMatchesTheSource
       aCollidingPlatformIsSkippedNotFatal
+      aPlatformRequiringWhatTheBuildLacksIsSkippedNotFatal
       aPlatformCannotPaintTheTerminal
       aFrameLengthIsNotTrusted
       aSilentPlatformDoesNotWedgeTheCaller
