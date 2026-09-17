@@ -1743,8 +1743,9 @@ let anArtifactHashCannotBeAPath =
 /// An instance that provides nothing, so an install is judged on the manifest alone.
 let private nothingProvidesIt : LibDB.InstalledPlatforms.Provider = fun _ _ -> None
 
-/// The fixture manifests require only `Core`, which every build has.
-let private everythingIsKnown (_ : string) : bool = true
+/// The fixture manifests require only `Core`, which every build has, and nothing else is composed
+/// in, so a fixture's own name is not one the session already has.
+let private onlyCoreIsKnown (name : string) : bool = name = "Core"
 
 // ── a manifest stored as a package value ──────────────────────────────────────
 
@@ -2665,7 +2666,7 @@ let installingAnExternalPlatformMakesItReconstructable =
             LibDB.InstalledPlatforms.install
               TestUtils.TestUtils.pmPT
               nothingProvidesIt
-              everythingIsKnown
+              onlyCoreIsKnown
               text
             |> Ply.toTask
           match installed with
@@ -2694,6 +2695,73 @@ let installingAnExternalPlatformMakesItReconstructable =
         })
   }
 
+let anUpgradeReplacesItselfAndALinkedNameIsRefused =
+  testTask
+    "reinstalling a platform is an upgrade, and a linked platform's name is refused" {
+    // Two findings from the self-review, one check. Reinstalling a newer manifest of a platform
+    // already in the session was refused as a clash with itself: the provider search did not know
+    // the candidate was the same platform. And a manifest named `Core` installed fine, after which
+    // activation and uninstall, which go by name, reached the linked one.
+    do!
+      withPolicyDir (fun () ->
+        task {
+          let (text, artifactHash, artifactBytes) = echoManifestText ()
+          match LibDB.PlatformArtifacts.materialize artifactHash artifactBytes with
+          | Error e -> failtest e
+          | Ok _ -> ()
+
+          // The session has EchoPlatform composed in and providing echoCounter.
+          let echoProvidesIt (name : string) (_ : int) : Option<string> =
+            if name = "echoCounter" || name = "echoShout" then
+              Some "EchoPlatform"
+            else
+              None
+          let sessionHas (name : string) : bool =
+            name = "Core" || name = "EchoPlatform"
+
+          // First install, with nothing composed: fine.
+          let! (first : Result<string * External.Manifest, External.Rejection>) =
+            LibDB.InstalledPlatforms.install
+              TestUtils.TestUtils.pmPT
+              nothingProvidesIt
+              onlyCoreIsKnown
+              text
+            |> Ply.toTask
+          Expect.isOk first "the first install"
+
+          // Version 1 of the same platform, while version 0 is composed in and provides the
+          // names: an upgrade, not a clash.
+          let! (upgrade : Result<string * External.Manifest, External.Rejection>) =
+            LibDB.InstalledPlatforms.install
+              TestUtils.TestUtils.pmPT
+              echoProvidesIt
+              sessionHas
+              (text.Replace("version 0", "version 1"))
+            |> Ply.toTask
+          match upgrade with
+          | Ok(_, m) ->
+            Expect.equal m.version 1 "the newer manifest replaced the older"
+          | Error r ->
+            failtest $"an upgrade was refused as a clash with itself: {r.problems}"
+
+          // A manifest wearing a linked platform's name, with its own builtin names: refused,
+          // because everything downstream goes by name.
+          let! (impostor : Result<string * External.Manifest, External.Rejection>) =
+            LibDB.InstalledPlatforms.install
+              TestUtils.TestUtils.pmPT
+              nothingProvidesIt
+              sessionHas
+              (text.Replace("name EchoPlatform", "name Core"))
+            |> Ply.toTask
+          match impostor with
+          | Ok _ -> failtest "a manifest took a linked platform's name"
+          | Error r ->
+            Expect.isTrue
+              (r.problems |> List.exists (fun p -> p.Contains "links"))
+              $"says the name is a linked platform's: {r.problems}"
+        })
+  }
+
 let anInstallForAnotherMachineIsSkippedNotFatal =
   testTask "a platform that does not build for this machine is skipped with a reason" {
     // One broken or foreign install should not stop an instance starting, and should be visible
@@ -2709,7 +2777,7 @@ let anInstallForAnotherMachineIsSkippedNotFatal =
             LibDB.InstalledPlatforms.install
               TestUtils.TestUtils.pmPT
               nothingProvidesIt
-              everythingIsKnown
+              onlyCoreIsKnown
               text
             |> Ply.toTask
 
@@ -2831,6 +2899,7 @@ let tests =
       aCrashedPlatformIsAnErrorNotAHang
       testSequenced theShippedFetchManifestStillResolves
       testSequenced installingAnExternalPlatformMakesItReconstructable
+      testSequenced anUpgradeReplacesItselfAndALinkedNameIsRefused
       testSequenced anInstallForAnotherMachineIsSkippedNotFatal
       testSequenced aMissingArtifactIsSkippedNotFatal
       testSequenced anArtifactIsFetchedOnceAndReusedAfter

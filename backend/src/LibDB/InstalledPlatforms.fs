@@ -106,12 +106,26 @@ let install
         // start. A name that two platforms provide has no good resolution: shadowing means a
         // builtin somebody trusts quietly becomes somebody else's code, and skipping means an
         // install that looked like it worked does nothing.
+        // Installing a manifest whose name is already installed is an UPGRADE: it replaces its
+        // own earlier version, so the names that version provides are not clashes. A manifest
+        // whose name belongs to a platform this build LINKS is something else: an installed
+        // platform cannot take a linked one's name, because activation and uninstall are by name
+        // and would reach the wrong one.
+        let installedBefore = Map.containsKey manifest.name (get ())
+        let takesALinkedName = known manifest.name && not installedBefore
+
         match
-          (manifest.fns
-           |> List.choose (fun fn ->
-             provider fn.name fn.version
-             |> Option.map (fun owner ->
-               $"'{fn.name}' is already provided by {owner}, and two platforms cannot claim one name")))
+          (if takesALinkedName then
+             [ $"'{manifest.name}' is the name of a platform this build links, and an installed platform cannot take it" ]
+           else
+             [])
+          @ (manifest.fns
+             |> List.choose (fun fn ->
+               provider fn.name fn.version
+               |> Option.filter (fun owner ->
+                 not (installedBefore && owner = manifest.name))
+               |> Option.map (fun owner ->
+                 $"'{fn.name}' is already provided by {owner}, and two platforms cannot claim one name")))
           @ (manifest.requires
              |> List.filter (fun r -> not (known r))
              |> List.map (fun r ->
