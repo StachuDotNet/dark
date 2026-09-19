@@ -3,19 +3,29 @@ module LibSerialization.Binary.BaseFormat
 
 open System
 
-/// v1 is the format the op-log substrate ships with; nothing older ever existed in
-/// the wild (pre-v1 stores were rebuilt from `.dark` source each build). Bump on every
-/// wire-layout change, keeping a readV1 beside the new writer: from here, stores
-/// cannot be rebuilt from text.
-[<Literal>]
-let CurrentVersion = 1u
+/// The format this build WRITES. v1 is the format the op-log substrate ships with; nothing older
+/// ever existed in the wild (pre-v1 stores were rebuilt from `.dark` source each build). Bump on
+/// every wire-layout change, keeping a readV1 beside the new writer: from here, stores cannot be
+/// rebuilt from text.
+///
+/// `DARK_FORMAT_VERSION` overrides it so the store migrator can be exercised while only one format
+/// exists: a synthetic bump with an identical layout, which makes the migration a pure blob
+/// rewrite. Test-only; `LibDB.StoreUpgrade` is what it is for. A plain `let` for that reason.
+let currentVersion : uint32 =
+  match System.Environment.GetEnvironmentVariable "DARK_FORMAT_VERSION" with
+  | null
+  | "" -> 1u
+  | s ->
+    match System.UInt32.TryParse s with
+    | true, n when n >= 1u -> n
+    | _ -> 1u
 
 /// Binary file header structure (8 bytes)
 type BinaryHeader =
   {
     // The blob's format version. Passed to version-dispatched readers (makeDeserializerV) so a new
     // binary can decode an OLD layout by branching on it: the keystone of any future format
-    // migration. Bump `CurrentVersion` on the next wire-layout change and add the matching readVN.
+    // migration. Bump `currentVersion` on the next wire-layout change and add the matching readVN.
     Version : uint32 // 4 bytes - format version
     DataLength : uint32 } // 4 bytes - payload size
 
@@ -43,8 +53,9 @@ module Varint =
 
 module Validation =
   let validateVersion (version : uint32) =
-    // Reject formats from other versions rather than guessing how to parse them.
-    if version <> CurrentVersion then
+    // Older is fine (every historical reader stays in the binary, and `makeDeserializerV` branches
+    // on the version); newer cannot be read by trying harder, so it is refused.
+    if version = 0u || version > currentVersion then
       raise (BinaryFormatException(UnsupportedVersion version))
 
   let validateDataLength (expected : uint32) (actual : uint32) =

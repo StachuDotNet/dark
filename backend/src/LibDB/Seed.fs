@@ -35,6 +35,9 @@ module Permission = LibExecution.Permissions
 /// context for whatever the command was asked to do, not an event worth repeating before every answer.
 let mutable private warnedAboutUnreadableOps = false
 
+/// Said once, for the same reason.
+let mutable private warnedAboutFormatSkew = false
+
 
 // ---------------------
 // Export
@@ -755,6 +758,12 @@ let growIfNeeded
   : Task<bool> =
   task {
     use _span = Telemetry.span "seed.growIfNeeded" []
+
+    // Every process that opens the store passes here; `Releases.runPending` is only reached with
+    // an embedded seed to unpack.
+    if not warnedAboutFormatSkew then
+      warnedAboutFormatSkew <- true
+      Releases.noteFormatSkew ()
 
     let! appliedCount =
       Telemetry.timeTask "seed.applyOps" [] (fun () -> applyUnappliedOps ())

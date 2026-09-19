@@ -999,9 +999,6 @@ let interestingDvals () : List<string * RT.Dval * RT.TypeReference> =
     ("float2", DFloat -7.2, TFloat)
     ("float3", DFloat 15.0, TFloat)
     ("float4", DFloat -15.0, TFloat)
-    // Not representable in twelve digits; the queryable roundtrip would have lost them under "G12".
-    ("float_no_short_decimal", DFloat(0.1 + 0.2), TFloat)
-    ("float_third", DFloat(1.0 / 3.0), TFloat)
     ("int5", DInt64 5L, TInt64)
     ("int_8_bits", DInt8 127y, TInt8)
     ("int_16_bits", DInt16 32767s, TInt16)
@@ -1178,7 +1175,14 @@ let interestingDvals () : List<string * RT.Dval * RT.TypeReference> =
        ),
        []
      ),
-     TTuple(TInt64, TypeReference.result TInt64 TString, [])) ]
+     TTuple(TInt64, TypeReference.result TInt64 TString, []))
+
+    // The binary-serialization corpus (Serialization.Binary.Tests) is positional over this list,
+    // so new values are appended, never inserted. Insert one above and every stored blob after it
+    // is compared against the wrong value.
+    // Not representable in twelve digits; the queryable roundtrip would have lost them under "G12".
+    ("float_no_short_decimal", DFloat(0.1 + 0.2), TFloat)
+    ("float_third", DFloat(1.0 / 3.0), TFloat) ]
 
 let sampleDvals () : List<string * (Dval * TypeReference)> =
   List.concat
