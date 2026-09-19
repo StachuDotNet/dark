@@ -32,6 +32,9 @@ let tables : List<string> =
     "package_functions"
     "package_ops"
     "package_dependencies"
+
+    "package_builtin_deps"
+
     "deprecations"
 
     // The LWW register for doc comments: what each `UpdateDoc` said and when. A claim about the

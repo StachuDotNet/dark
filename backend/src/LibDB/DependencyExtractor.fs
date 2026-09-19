@@ -43,9 +43,32 @@ type private Work =
   | MatchCase of PT.MatchCase
   | PipeExpr of PT.PipeExpr
 
-let private extract (roots : List<Work>) : List<Dependency> =
+/// A builtin this item's body calls. Not a `Dependency`: a builtin is a (name, version) in
+/// whatever kernel is running, with no hash to depend on. Collected by the same walk.
+type BuiltinDependency = { name : string; version : int }
+
+let private extract
+  (roots : List<Work>)
+  : List<Dependency> * List<BuiltinDependency> =
   let work = System.Collections.Generic.Stack<Work>()
   let mutable dependencies : List<Dependency> = []
+  let mutable builtins : List<BuiltinDependency> = []
+
+  // A `Builtin.x` the parser could not resolve is exactly a call to a builtin this kernel does
+  // not have, which is the one case the builtin check exists for, so it is recorded from the
+  // written name rather than dropped with the failed resolution.
+  let addUnresolvedBuiltin (originalName : List<string>) : unit =
+    match originalName with
+    | [ "Builtin"; written ] ->
+      let (name, version) =
+        match written.LastIndexOf "_v" with
+        | i when i > 0 ->
+          match System.Int32.TryParse(written.Substring(i + 2)) with
+          | true, v -> (written.Substring(0, i), v)
+          | _ -> (written, 0)
+        | _ -> (written, 0)
+      builtins <- { name = name; version = version } :: builtins
+    | _ -> ()
 
   let pushInOrder (items : List<Work>) : unit =
     items |> List.rev |> List.iter work.Push
@@ -236,6 +259,15 @@ let private extract (roots : List<Work>) : List<Dependency> =
       | PT.EFnName(_, nr) ->
         addNameResolution nr PT.ItemKind.Fn PackageItem.fnPackageHash
 
+        // `fnPackageHash` is `None` for a builtin; this is the only place the call is visible.
+        match nr.resolved with
+        | Ok resolved ->
+          match resolved.name with
+          | PT.FQFnName.Builtin b ->
+            builtins <- { name = b.name; version = b.version } :: builtins
+          | PT.FQFnName.Package _ -> ()
+        | Error _ -> addUnresolvedBuiltin nr.originalName
+
       | PT.ELambda(_, _, body) -> work.Push(Expr body)
 
       | PT.EInfix(_, _, lhs, rhs) ->
@@ -259,17 +291,21 @@ let private extract (roots : List<Work>) : List<Dependency> =
         pushTypesInOrder typeArgs
 
       | PT.EValue(_, nr) ->
+        // An unresolved `Builtin.x` lowers to an EValue, not an EFnName.
+        (match nr.resolved with
+         | Error _ -> addUnresolvedBuiltin nr.originalName
+         | Ok _ -> ())
         addNameResolution nr PT.ItemKind.Value PackageItem.valuePackageHash
 
       | PT.EStatement(_, first, next) ->
         work.Push(Expr next)
         work.Push(Expr first)
 
-  List.rev dependencies
+  (List.rev dependencies, List.rev builtins |> List.distinct)
 
 
 /// Extract all references from an expression without recursive stack use.
-let extractFromExpr (expr : PT.Expr) : List<Dependency> = extract [ Expr expr ]
+let extractFromExpr (expr : PT.Expr) : List<Dependency> = fst (extract [ Expr expr ])
 
 
 /// Extract all references from a function definition
@@ -282,6 +318,7 @@ let extractFromFn (fn : PT.PackageFn.PackageFn) : List<Dependency> =
         |> List.map (fun parameter -> TypeRef parameter.typ))
     @ [ TypeRef fn.returnType ]
   )
+  |> fst
   |> List.distinct
 
 
@@ -294,12 +331,13 @@ let extractFromFnSignature (fn : PT.PackageFn.PackageFn) : List<Dependency> =
      |> List.map (fun parameter -> TypeRef parameter.typ))
     @ [ TypeRef fn.returnType ]
   )
+  |> fst
   |> List.distinct
 
 
 /// Extract all references from a value definition
 let extractFromValue (value : PT.PackageValue.PackageValue) : List<Dependency> =
-  extract [ Expr value.body ] |> List.distinct
+  extract [ Expr value.body ] |> fst |> List.distinct
 
 
 /// Extract all references from a type definition
@@ -315,4 +353,14 @@ let extractFromType (typ : PT.PackageType.PackageType) : List<Dependency> =
       |> List.collect (fun case ->
         case.fields |> List.map (fun field -> TypeRef field.typ))
 
-  extract roots |> List.distinct
+  extract roots |> fst |> List.distinct
+
+
+let builtinsInFn (fn : PT.PackageFn.PackageFn) : List<BuiltinDependency> =
+  snd (extract [ Expr fn.body ])
+
+
+let builtinsInValue
+  (value : PT.PackageValue.PackageValue)
+  : List<BuiltinDependency> =
+  snd (extract [ Expr value.body ])

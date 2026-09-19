@@ -252,6 +252,21 @@ cost overstates by more than 2x.
 
 
 
+## Package bootstrapping (2026-09): published 9.74MB -> 10.40MB, debug 9.29MB -> 9.91MB
+
+- The added ~0.65MB is kernel refs resolving by name against the store instead of by pinned
+  hash. Each of the 206 refs now asks the store for its binding and checks the signature or
+  declaration shape against the pin before trusting it. That answer is cached against the store
+  generation, so it is paid once per ref per process, not per call; the residual is the cache
+  itself plus the Option allocations on the first resolution of each ref.
+- The first version was 46% over, from uncached lookups on the hit path. Two-layer caching and
+  keeping `record` off the hit path brought it to the ~6.5% here. A deliberate stop: the point of
+  by-name resolution is that a dark branch can lend the kernel a type without a re-pin, and the
+  decision was that dev experience wins over the last few percent of allocation on this path.
+- Measured on a freshly reloaded store in the same container, both modes, one run each with
+  `scripts/perf/gate --update`. Not a multi-run minimum; re-baseline that way if the number matters
+  again.
+
 ## 2026-08-27: both budgets re-baselined off multi-run minimums
 
 Moved here out of `scripts/perf/budget.json`, where it had grown into a paragraph inside a config file.

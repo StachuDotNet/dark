@@ -58,9 +58,9 @@ module HandleCommand =
       // work.
       let! _ = LibDB.Inserts.commitAllAsBaseline "package reload (baseline)"
 
-      // Generate hash file BEFORE evaluating values, so that PackageRefs
-      // lookups resolve correctly during value evaluation.
-      do! LibDB.PackageRefsGenerator.generate ()
+      // In memory only, so PackageRefs lookups resolve while values evaluate. The file on disk
+      // moves with the pin (`scripts/packages/pin`, `refs generate`), not on every reload.
+      do! LibDB.PackageRefsGenerator.refreshInMemory ()
       LibExecution.PackageRefs.reloadHashes ()
 
       // Evaluate all values now that all definitions are in the DB
@@ -118,6 +118,165 @@ module HandleCommand =
         return Ok()
       with ex ->
         return Error $"Export failed: {ex.Message}"
+    }
+
+  /// Stand on the branch this rundir is on, as the CLI does. Only the commands that ask about
+  /// the current branch call this; the fill path refills MAIN from disk and must not.
+  let selectStoredBranch () : Ply<unit> =
+    uply {
+      match! LibDB.BranchSelection.select None None with
+      | Ok selection ->
+        LibDB.PackageManager.selectBranch (
+          selection.branchId
+          |> Option.defaultValue LibExecution.ProgramTypes.BranchId.Main
+        )
+      | Error _ -> ()
+    }
+
+  /// The git branch this tree is on, read from `.git/HEAD` (walking up from the rundir, which
+  /// is not always directly inside the repo). Detached HEAD, or no repo, is `None`.
+  let private gitBranchName () : Option<string> =
+    try
+      let rec findGitHead (dir : System.IO.DirectoryInfo) : string option =
+        if isNull (box dir) then
+          None
+        else
+          let candidate = System.IO.Path.Combine(dir.FullName, ".git", "HEAD")
+          if System.IO.File.Exists candidate then
+            Some candidate
+          else
+            findGitHead dir.Parent
+
+      findGitHead (System.IO.DirectoryInfo LibConfig.Config.runDir)
+      |> Option.bind (fun head ->
+        let text = (System.IO.File.ReadAllText head).Trim()
+        let prefix = "ref: refs/heads/"
+        if text.StartsWith prefix then Some(text.Substring prefix.Length) else None)
+    with _ ->
+      None
+
+
+  /// Does this kernel agree with the package set in front of it? Both directions: every ref the
+  /// kernel declares resolves to content the store holds, and every builtin the package set calls
+  /// exists in this kernel. Asked all at once at build time, because the ref closures are lazy and
+  /// would otherwise fail one at a time from whatever command reached them first.
+  let checkRefs () : Ply<Result<unit, string>> =
+    uply {
+      do! selectStoredBranch ()
+
+      // Resolving to a hash is not the same as that hash naming content: a pin can name content
+      // the store no longer has, and that renders blank rather than erroring.
+      let! knownTypes =
+        Sql.query "SELECT hash FROM package_types"
+        |> Sql.executeAsync (fun read -> read.string "hash")
+
+      let! knownFns =
+        Sql.query "SELECT hash FROM package_functions"
+        |> Sql.executeAsync (fun read -> read.string "hash")
+
+      let known = Set.union (Set.ofList knownTypes) (Set.ofList knownFns)
+
+      let allRefs = LibExecution.PackageRefs.allRefs ()
+
+      let unresolved =
+        allRefs
+        |> List.filter (fun (kind, modules, name) ->
+          match LibExecution.PackageRefs.tryResolve kind modules name with
+          | None -> true
+          | Some hash -> not (Set.contains hash known))
+
+      let kernelBuiltins =
+        let b = Builtins.all ()
+        Set.union
+          (b.fns.Values
+           |> Seq.map (fun f -> (f.name.name, f.name.version))
+           |> Set.ofSeq)
+          (b.values.Values |> Seq.map (fun v -> (v.name.name, 0)) |> Set.ofSeq)
+
+      let! calledBuiltins =
+        Sql.query
+          "SELECT DISTINCT builtin_name, builtin_version FROM package_builtin_deps"
+        |> Sql.executeAsync (fun read ->
+          (read.string "builtin_name", read.int "builtin_version"))
+
+      let missingBuiltins =
+        calledBuiltins |> List.filter (fun b -> not (Set.contains b kernelBuiltins))
+
+      // An empty projection is not a pass: it means the builtin half asked nothing.
+      if List.isEmpty calledBuiltins then
+        return
+          Error(
+            "this store records no builtin calls at all, so the builtin half of this check asked "
+            + "nothing. `package_builtin_deps` is a projection: re-fold the log to fill it "
+            + "(`scripts/build/reload-packages`, or any migration that drops projections)."
+          )
+      elif List.isEmpty unresolved && List.isEmpty missingBuiltins then
+        print (
+          $"All {List.length allRefs} kernel refs resolve, and all {List.length calledBuiltins} "
+          + "builtins this package set calls exist in this kernel."
+        )
+        return Ok()
+      elif List.isEmpty unresolved then
+        let lines =
+          missingBuiltins
+          |> List.sort
+          |> List.map (fun (n, v) -> $"  Builtin.{n} (v{v})")
+          |> String.concat "\n"
+
+        return
+          Error(
+            $"this package set calls {List.length missingBuiltins} builtin(s) this kernel does "
+            + $"not have:\n{lines}\n\nA builtin was removed or renamed out from under package "
+            + "code that calls it. Land the package change that stops calling it, move the pin "
+            + "forward, and only then remove the builtin."
+          )
+      else
+        let lines =
+          unresolved
+          |> List.sort
+          |> List.map (fun (kind, modules, name) ->
+            $"""  {kind} Darklang.{String.concat "." modules}.{name}""")
+          |> String.concat "\n"
+
+        // A dark branch named like the git branch is almost certainly where the items are.
+        let! hint =
+          uply {
+            match gitBranchName () with
+            | None -> return ""
+            | Some git ->
+              let! darkBranch = LibDB.Branches.liveIdForName git
+
+              match darkBranch with
+              | Some _ when LibDB.PackageManager.currentBranchId () = BranchId.Main ->
+                return
+                  $"\n\ngit is on `{git}` and there is a dark branch called `{git}`, "
+                  + $"but you are on dark main. Try `dark switch {git}`."
+              | _ -> return ""
+          }
+
+        return
+          Error(
+            $"{List.length unresolved} kernel ref(s) do not resolve against this package set:\n"
+            + lines
+            + $"\n\nThis kernel and this package set do not agree. Usually that means the "
+            + "F# in your tree names package code your store does not have: import the branch "
+            + "bundle that goes with it, or move to the branch that has it."
+            + hint
+          )
+    }
+
+  /// Write `package-ref-hashes.txt` from this rundir's store. The fill path does this in memory
+  /// as a side effect of reloading `packages/`; a store that arrived as a seed has nothing to
+  /// reload, and this is the step on its own.
+  let generateRefs () : Ply<Result<unit, string>> =
+    uply {
+      try
+        do! selectStoredBranch ()
+        do! LibDB.PackageRefsGenerator.generate ()
+        LibExecution.PackageRefs.reloadHashes ()
+        return Ok()
+      with ex ->
+        return Error $"Generating package refs failed: {ex.Message}"
     }
 
   let listMigrations () : Ply<Result<unit, string>> =
@@ -185,6 +344,16 @@ let main (args : string[]) : int =
         $"Exporting seed to {outputPath}"
         (HandleCommand.exportSeed outputPath)
 
+    | [ "refs"; "check" ] ->
+      handleCommand
+        "checking the kernel's refs against this package set"
+        (HandleCommand.checkRefs ())
+
+    | [ "refs"; "generate" ] ->
+      handleCommand
+        "writing package-ref-hashes.txt from this store"
+        (HandleCommand.generateRefs ())
+
     | [ "pm-sweep-blobs" ] ->
       handleCommand
         "sweeping orphan package_blobs rows"
@@ -207,6 +376,8 @@ let main (args : string[]) : int =
       print "  migrations run"
       print "  migrations list"
       print "  export-seed <output-path>"
+      print "  refs generate"
+      print "  refs check"
       print "  pm-sweep-blobs"
       print "  bench"
       print "  bench-render"

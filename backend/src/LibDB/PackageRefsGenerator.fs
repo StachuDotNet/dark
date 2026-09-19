@@ -46,9 +46,11 @@ let private readExistingFile () : Map<string, string> =
     Map.empty
 
 
-/// Query the DB for all current Darklang-owned locations and write
-/// `package-ref-hashes.txt` in the source tree.
-let generate () : Ply<unit> =
+/// Compute the kernel's ref hashes from the store, set them in memory, and when <param
+/// writeToDisk> write `package-ref-hashes.txt`. Two cadences: memory on every reload, before
+/// values evaluate; the file only when the pin moves, so two package-touching branches do not
+/// conflict in a generated file, and a pin bump is one reviewable diff of every identity that moved.
+let generateWith (writeToDisk : bool) : Ply<unit> =
   uply {
     // Collect all referenced items from PackageRefs _lookup maps
     let typeRefKeys =
@@ -156,7 +158,7 @@ let generate () : Ply<unit> =
     // Write the source-tree file (skip if the directory doesn't exist,
     // e.g. on installed CLIs where the source tree isn't available)
     let dir = System.IO.Path.GetDirectoryName(sourceTreePath)
-    if System.IO.Directory.Exists(dir) then
+    if writeToDisk && System.IO.Directory.Exists(dir) then
       System.IO.File.WriteAllLines(sourceTreePath, lines |> Array.ofList)
       let totalWritten = List.length lines
       print $"  Wrote {totalWritten} package ref hashes to {sourceTreePath}"
@@ -171,3 +173,12 @@ let generate () : Ply<unit> =
       for key in missing do
         print $"    - {key}"
   }
+
+
+/// `generateWith`, writing the file. What `refs generate` and `scripts/packages/pin` call.
+let generate () : Ply<unit> = generateWith true
+
+
+/// `generateWith`, in memory only. What a package RELOAD calls: the hashes have to be current
+/// before values are evaluated, and the file is the pin's to move.
+let refreshInMemory () : Ply<unit> = generateWith false

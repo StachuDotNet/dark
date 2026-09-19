@@ -1,6 +1,8 @@
 module LibDB.PackageManager
 
 open Prelude
+open Fumble
+open LibDB.Sqlite
 open LibExecution.ProgramTypes
 
 module RT = LibExecution.RuntimeTypes
@@ -638,6 +640,188 @@ let mutable private branchOverlayOps : List<PT.PackageOp> = []
 /// The active branch's ID (for authoring routing), or None = author to main.
 let mutable private currentBranchIdOpt : Option<PT.BranchId> = None
 
+/// By-name resolution of the kernel's refs, handed down to `PackageRefs` because `LibExecution`
+/// cannot see a store. Fns resolve against main's committed projection only: they are the entry
+/// points the kernel calls into Dark through, and resolving one through a branch overlay would run
+/// a branch's parser the moment you stood on it. Types resolve through the overlay first: a type
+/// declaration is inert, and a type a branch has just authored is the whole reason F# on a git
+/// branch can reference package code from a dark branch. Any store failure resolves to `None`, so
+/// the pinned hash is used and a boot before migrations still works.
+
+/// Whether two versions of a fn are interchangeable to an F# caller: the parameter types in
+/// order, the return type, and the type-parameter count. Names, descriptions and body are the
+/// author's business.
+let private sameSignature
+  (expected : PT.PackageFn.PackageFn)
+  (candidate : PT.PackageFn.PackageFn)
+  : bool =
+  let paramTypes (fn : PT.PackageFn.PackageFn) =
+    fn.parameters |> NEList.toList |> List.map (fun p -> p.typ)
+
+  paramTypes expected = paramTypes candidate
+  && expected.returnType = candidate.returnType
+  && List.length expected.typeParams = List.length candidate.typeParams
+
+
+/// Whether two type declarations have the same shape: the kind, the fields or cases in order with
+/// their types, and the type-parameter count. Descriptions are stripped, so a doc edit does not
+/// cost the store its binding.
+let private sameDeclaration
+  (expected : PT.PackageType.PackageType)
+  (candidate : PT.PackageType.PackageType)
+  : bool =
+  let stripDefinition (d : PT.TypeDeclaration.Definition) =
+    match d with
+    | PT.TypeDeclaration.Alias t -> PT.TypeDeclaration.Alias t
+    | PT.TypeDeclaration.Record fields ->
+      fields
+      |> NEList.map (fun f -> { f with description = "" })
+      |> PT.TypeDeclaration.Record
+    | PT.TypeDeclaration.Enum cases ->
+      cases
+      |> NEList.map (fun c ->
+        { c with
+            description = ""
+            fields = c.fields |> List.map (fun f -> { f with description = "" }) })
+      |> PT.TypeDeclaration.Enum
+
+  stripDefinition expected.declaration.definition = stripDefinition
+                                                      candidate.declaration.definition
+  && List.length expected.declaration.typeParams = List.length
+                                                     candidate.declaration.typeParams
+
+
+/// What the current branch's overlay binds `Darklang.<modules>.<name>` to as a TYPE. `locations`
+/// is main's projection with no branch column, so this folds the in-memory overlay directly,
+/// latest binding per location winning as in `createInMemoryOver`. A name the branch rebinds to
+/// a non-type or unbinds resolves to `None`: the branch has taken it away from the kernel.
+let private overlayTypeBinding
+  (modules : string list)
+  (name : string)
+  : string option =
+  let wanted : PT.PackageLocation =
+    { owner = "Darklang"; modules = modules; name = name }
+
+  branchOverlayOps
+  |> List.fold
+    (fun acc op ->
+      match op with
+      | PT.PackageOp.SetName(loc, PT.PackageType(Hash h), _) when loc = wanted ->
+        Some h
+      | PT.PackageOp.Decision(_,
+                              loc,
+                              _,
+                              PT.DecisionKind.Override(PT.PackageType(Hash h))) when
+        loc = wanted
+        ->
+        Some h
+      | PT.PackageOp.SetName(loc, _, _) when loc = wanted -> None
+      | PT.PackageOp.Unbind(loc, _) when loc = wanted -> None
+      | _ -> acc)
+    None
+
+
+/// What `Darklang.<modules>.<name>` of this kind binds to on main. Cached through
+/// `Caching.withCache`, which the fold clears, so it expires exactly when a rebinding could change
+/// the answer. Not a nicety: these sit under Option and Result construction, and an uncached query
+/// per call measured 46% more allocation on the reference workload. `withCache` does not cache
+/// `None`, which is right, since a name may bind later.
+let private kernelHashByName =
+  Caching.withCache
+    (fun ((itemType : string), (modulesStr : string), (name : string)) ->
+      uply {
+        return!
+          Sql.query
+            $"""SELECT item_hash
+              FROM locations
+              WHERE owner = 'Darklang' AND modules = @modules AND name = @name
+                AND item_type = '{itemType}' AND unlisted_at IS NULL AND source != 'unbind'
+              LIMIT 1"""
+          |> Sql.parameters
+            [ "modules", Sql.string modulesStr; "name", Sql.string name ]
+          |> Sql.executeRowOptionAsync (fun read -> read.string "item_hash")
+      })
+
+
+/// The net. The store's binding is used when it matches the pin, or when there is no pin (a
+/// branch-authored item this build has never seen), or when the pinned content is missing from
+/// the store (nothing to compare against, and refusing leaves nothing at all). A binding whose
+/// shape differs from the pin, or that names content the store does not hold, is refused with a
+/// warning and the pinned version used, so a wrong edit degrades rather than bricks the CLI.
+let private resolveWithNet
+  (what : string)
+  (candidate : string option)
+  (pinned : string option)
+  (get : string -> 'item option)
+  (same : 'item -> 'item -> bool)
+  : string option =
+  match candidate, pinned with
+  | None, _ -> None
+  | Some c, None -> Some c
+  | Some c, Some p when p = c -> Some c
+  | Some c, Some p ->
+    match get p, get c with
+    | Some expected, Some actual when same expected actual -> Some c
+    | Some _, Some _ ->
+      LibExecution.PackageRefs.sayOnce (
+        $"warning: the store binds {what} to a version whose shape is not the one this build "
+        + "expects, so the built-in version is being used instead."
+      )
+      None
+    | _, None ->
+      LibExecution.PackageRefs.sayOnce (
+        $"warning: {what} is bound to content this store does not have, so the built-in version "
+        + "is being used instead."
+      )
+      None
+    | None, _ -> Some c
+
+
+let private resolveKernelFnByName
+  (modules : string list)
+  (name : string)
+  : string option =
+  try
+    let modulesStr = String.concat "." modules
+
+    resolveWithNet
+      $"Darklang.{modulesStr}.{name}"
+      (kernelHashByName ("fn", modulesStr, name) |> Ply.toTask).Result
+      (LibExecution.PackageRefs.pinnedHash "fn" modules name)
+      (fun h -> (PMPT.Fn.get (PT.Hash h) |> Ply.toTask).Result)
+      sameSignature
+  with _ ->
+    None
+
+
+let private resolveKernelTypeByName
+  (modules : string list)
+  (name : string)
+  : string option =
+  try
+    let modulesStr = String.concat "." modules
+
+    let candidate =
+      match overlayTypeBinding modules name with
+      | Some h -> Some h
+      | None -> (kernelHashByName ("type", modulesStr, name) |> Ply.toTask).Result
+
+    resolveWithNet
+      $"the type Darklang.{modulesStr}.{name}"
+      candidate
+      (LibExecution.PackageRefs.pinnedHash "type" modules name)
+      (fun h -> (PMPT.Type.get (PT.Hash h) |> Ply.toTask).Result)
+      sameDeclaration
+  with _ ->
+    None
+
+LibExecution.PackageRefs.resolveFnByName <- resolveKernelFnByName
+LibExecution.PackageRefs.resolveTypeByName <- resolveKernelTypeByName
+
+// The ref closures memoize what the store said; the fold is when that can stop being true.
+Caching.register LibExecution.PackageRefs.invalidateStoreResolution
+
+
 /// Delta ops for branches OTHER than the active one, loaded on demand. Bounded by how many
 /// branches a process actually asks about, which for a CLI is one or two.
 let private otherBranchOps =
@@ -801,3 +985,7 @@ let selectBranch (branchId : PT.BranchId) : unit =
   else
     branchOverlayOps <- (Branches.loadDeltaOps branchId).Result
     currentBranchIdOpt <- Some branchId
+
+  // Every cache here answers a question about a name, and a name resolves per branch. A process
+  // that outlives a switch (LSP, REPL, daemon) would otherwise answer for the branch it started on.
+  Caching.invalidateAll ()
