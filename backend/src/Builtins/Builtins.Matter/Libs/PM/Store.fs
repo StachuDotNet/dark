@@ -103,14 +103,8 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
     // Move the store to the op-log format this build writes, and put back the copy that made.
-    //
-    // First-party only, for the same reason as backup/restore: this rewrites every op blob in the
-    // log and drops every projection. A guest holding package-write must not reach it through a
-    // wrapper.
-    //
-    // A no-op in practice until the first real format bump -- `from` and `to` are equal, and it
-    // says so rather than doing anything. The mechanism exists now so the bump is not also the
-    // first time the migration runs.
+    // First-party only, as backup/restore are: it rewrites every op blob and drops every
+    // projection. Says "nothing to do" until the first real format bump.
     { name = fn "pmStoreUpgrade" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
@@ -150,8 +144,7 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
-      // `Native` alongside the writes: this opens SQLite directly to run the rewrite in one
-      // transaction, which a path rule alone cannot confine.
+      // `Native`: this opens SQLite directly for the one-transaction rewrite.
       callEffects = set [ Effect.PackageRead; Effect.PackageWrite; Effect.Native ]
       deprecated = NotDeprecated }
 

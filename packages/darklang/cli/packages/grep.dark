@@ -1,24 +1,12 @@
 module Darklang.Cli.Packages.Grep
 
-// `dark grep <text>` -- search the SOURCE of what is live on your branch.
+// `dark grep <text>`: search the SOURCE of what is live on your branch. `dark search` looks at
+// names; this looks at bodies, and after the flip there is no `packages/` tree to grep instead.
 //
-// `dark search` looks at names. This looks at bodies, which is the one you want when you remember
-// what code DID and not what it was called. After the flip there is no `packages/` tree to reach
-// for instead, so this is the replacement for it.
-//
-// What it searches is RENDERED source, printed from the stored AST, so `///` docs are in and `//`
-// asides are not -- the parser does not keep them. Worth knowing before concluding a string is
-// absent.
-//
-// The source is not stored anywhere. The store holds ops; text is produced by the pretty-printer,
-// about 9ms an item across roughly six and a half thousand of them, so grepping by rendering
-// everything on demand would take a minute. It is cached instead, keyed by CONTENT HASH, which
-// never needs invalidating because content is immutable: an item is rendered once per hash, ever.
-//
-// The cache lives BESIDE the store rather than in it, the way `credentials.db` does. It is derived,
-// it is per-install, and it has no business travelling in a seed or a sync -- `Seed.export` strips
-// by a denylist, so a table added to the store would ride out in every seed until someone
-// remembered to name it.
+// It searches RENDERED source, printed from the stored AST, so `///` docs are in and `//` asides
+// are not. Rendering is about 9ms an item over six and a half thousand, so it is cached beside
+// the store (as `credentials.db` is, so it never rides out in a seed), keyed by content hash,
+// which never needs invalidating.
 
 /// Where the rendered-source cache lives: beside the store, never inside it.
 let cachePath () : String =
@@ -38,11 +26,9 @@ let ensureCache () : Unit =
     ()
 
 
-/// Every live name on this branch, as (hash, owner, modules, name, itemType).
-///
-/// Through the SCM silo, NOT a direct read of `locations`: that table is main's projection, so a
-/// branch's own work is not in it and a grep run from a branch would search main and say nothing
-/// was wrong. `allLiveBindings` lays the chain overlay over main, which is the branch-aware answer.
+/// Every live name on this branch, as (hash, owner, modules, name, itemType). Through
+/// `allLiveBindings`, not `locations`, which is main's projection and would search main from a
+/// branch without saying so.
 let liveItems (branchId: Uuid) (scope: String) : List<(String * String * String * String * String)> =
   SCM.PackageOps.allLiveBindings branchId
   |> Stdlib.List.filterMap (fun b ->
@@ -59,11 +45,7 @@ let liveItems (branchId: Uuid) (scope: String) : List<(String * String * String 
       Stdlib.Option.Option.None)
 
 
-/// Everything this install has already rendered, as hash -> source.
-///
-/// One query, not one per item. A grep over the whole store asks about six and a half thousand
-/// hashes, and asking SQLite six and a half thousand times costs more than the rendering the
-/// cache exists to avoid.
+/// Everything this install has already rendered, as hash -> source, in one query.
 let cachedAll () : Dict<String, String> =
   match Stdlib.Sqlite.query (cachePath ()) "SELECT item_hash, source FROM source_cache_v0" with
   | Error _ -> Stdlib.Dict.empty
@@ -158,17 +140,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     let warm = cachedAll ()
     let total = Stdlib.List.length items
 
-    // Said once, before the wait rather than after it: the first grep on an install renders
-    // everything, and a minute of silence reads as a hang.
     let anyCached =
       match items with
       | (h, _, _, _, _) :: _ -> (Stdlib.Dict.get warm h) != Stdlib.Option.Option.None
       | [] -> true
 
-    // An unscoped grep against a cold cache renders everything, which is minutes. Refused rather
-    // than done silently: a command that hangs for five minutes without saying why is one people
-    // stop trusting, and this one is also run by the registry sweep, where it cost nine minutes
-    // of the suite before it asked first.
+    // An unscoped grep on a cold cache renders everything, which is minutes; refused rather than
+    // done silently. The registry sweep runs this too.
     if (scope == "") && (Stdlib.Bool.not anyCached) && (Stdlib.Bool.not acceptedTheWait) then
       Cli.printErr
         $"searching everything means rendering {Stdlib.Int.toString total} items, which takes minutes on this install."
@@ -182,9 +160,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Cli.printHint
         $"  rendering {Stdlib.Int.toString total} items. This is paid once; later greps read the cache."
 
-    // Rendered per item, keeping the failures rather than dropping them: an item whose source
-    // cannot be produced is NOT an item without matches, and a search tool that cannot tell you
-    // the difference is one you cannot trust a negative answer from.
+    // Failures are kept: an item that cannot be rendered is not an item without matches.
     let outcomes =
       items
       |> Stdlib.List.map (fun (hash, owner, modules, name, itemType) ->

@@ -7,16 +7,10 @@
 #   scripts/fetch-seed --url <url> --commit <c> that server's main as of <c>
 #   scripts/fetch-seed                          DARK_SEED_URL, or the built-in default
 #
-# With no --commit, the commit comes from `package-set.txt`; `commit unset` there means no pin,
-# and the fetch takes the server's head. A pinned fetch also CHECKS the seed's format against the
-# pin, because a layout this build has never seen cannot be read by trying harder.
-#
-# A seed is ops, not projections, so the first open folds it (~seconds) and every store built
-# from the same seed agrees on every id.
-#
-# It REFUSES to replace a store that already exists unless you pass --force. The previous
-# version copied over `data.db` unconditionally, which silently discarded anything authored
-# locally or pulled from a peer; that is a bad thing for a command called "fetch" to do.
+# With no --commit, the commit comes from `package-set.txt` (`commit unset` means the server's
+# head). A pinned fetch checks the seed's format against the pin. A seed is ops, not projections,
+# so the first open folds it. It refuses to replace an existing store without --force, since that
+# would discard anything authored locally or pulled from a peer.
 
 set -euo pipefail
 
@@ -24,8 +18,7 @@ RUNDIR="${DARK_CONFIG_RUNDIR:-rundir}"
 DEST_SEED="${RUNDIR}/seed.db"
 DEST_DB="${RUNDIR}/${DARK_CONFIG_DB_NAME:-data.db}"
 
-# The bucket the old hardcoded URL pointed at. Kept as the fallback so the no-argument form
-# still does something, but a real deployment passes --url or sets DARK_SEED_URL.
+# The fallback for the no-argument form; a real deployment passes --url or sets DARK_SEED_URL.
 DEFAULT_URL="${DARK_SEED_URL:-https://pub-d5f652ca1b90456f85840a19eafcb700.r2.dev/darklang-seeds/seeds/seed.db}"
 
 FROM=""
@@ -49,7 +42,7 @@ while [[ $# -gt 0 ]]; do
     --url)    URL="${2:?--url needs a url}"; shift 2 ;;
     --commit) COMMIT="${2:?--commit needs a commit}"; shift 2 ;;
     --force)  FORCE=true; shift ;;
-    -h|--help) sed -n '3,14p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help) sed -n '3,13p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "fetch-seed: unknown argument $1" >&2; exit 2 ;;
   esac
 done
@@ -69,11 +62,7 @@ if [[ -n "$FROM" ]]; then
   echo "Copying seed from $FROM"
   cp "$FROM" "$DEST_SEED"
 else
-  # `/seed/<commit>.db` is the route a server serves a pinned cut from; without a commit, its
-  # current main. A bare url with no path is treated as already naming the seed, which is what
-  # the R2 fallback is.
-  # An explicit --commit beats the pin; the pin beats the server's head. So a build in a pinned
-  # tree fetches the pinned set without anyone having to remember to ask for it.
+  # An explicit --commit beats the pin; the pin beats the server's head.
   if [[ -z "$COMMIT" && -n "$PINNED_COMMIT" ]]; then
     COMMIT="$PINNED_COMMIT"
     echo "Using the pin from ${PINFILE}: ${COMMIT}"
@@ -87,14 +76,8 @@ else
     SEED_URL="$DEFAULT_URL"
   fi
 
-  # A seed cut at a COMMIT never changes, so it is worth keeping once per machine rather than once
-  # per clone. Without this, every clone and every re-clone needs the network -- which is a real
-  # robustness regression against today, where `git clone && scripts/dev/start` works from the repo
-  # alone. With it, a machine needs the network once per pin, and a second clone, a re-clone, or
-  # working on a plane is a file copy.
-  #
-  # Only for a pinned fetch. `latest` is not immutable and must not be cached under a name that
-  # claims it is.
+  # A seed cut at a commit never changes, so it is cached once per machine: a second clone, a
+  # re-clone or a plane is a file copy. `latest` is not immutable and is never cached.
   CACHE_DIR="${DARK_SEED_CACHE:-$HOME/.darklang/seeds}"
   CACHED=""
   if [[ -n "$COMMIT" ]]; then
@@ -118,10 +101,7 @@ else
       exit 1
     fi
 
-    # Best-effort, always. The seed is already fetched and installed by this point, so a cache
-    # that cannot be written costs the NEXT fetch a download and nothing else. Failing here
-    # instead would turn an unwritable home directory into a failed build, which is what happened
-    # the first time this shipped.
+    # Best-effort: an unwritable cache costs the next fetch a download, not this build.
     if [[ -n "$CACHED" ]]; then
       if mkdir -p "$CACHE_DIR" 2>/dev/null && cp "$DEST_SEED" "$CACHED" 2>/dev/null; then
         echo "Cached for this machine at ${CACHED}"
@@ -135,8 +115,7 @@ fi
 SEED_SIZE=$(du -h "$DEST_SEED" | cut -f1)
 echo "Seed at ${DEST_SEED} (${SEED_SIZE})"
 
-# Refuse a seed in a layout the pin did not expect, BEFORE installing it. A store is the only copy
-# of the ops in it, so the failure has to happen while the old one is still there.
+# Before installing: a store is the only copy of its ops, so refuse while the old one is there.
 if [[ -n "$PINNED_FORMAT" ]] && command -v sqlite3 > /dev/null 2>&1; then
   GOT_FORMAT=$(sqlite3 "$DEST_SEED" "SELECT value FROM store_meta WHERE key = 'format';" 2>/dev/null || echo "")
   if [[ -n "$GOT_FORMAT" && "$GOT_FORMAT" != "$PINNED_FORMAT" ]]; then

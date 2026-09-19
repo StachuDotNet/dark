@@ -6,12 +6,10 @@
 /// it as a file. It reuses the SCM.Wire codec, so the server's own store IS an op log like any
 /// instance's.
 ///
-/// It also FOLDS what is pushed to it, into main, like any other instance. That is what makes
-/// `/m`, `/p` and the seed routes show hosted packages rather than only what this binary shipped
-/// with. It is also a deferred decision, not a settled one: names bind last-writer-wins over the
-/// whole store, `Darklang.Matter.router` among them, so anyone who can push here can change what
-/// this server resolves. The write secret is the only thing standing in front of that. See
-/// `LibDB.Inserts` for what the old `effective = 0` defended and why it went.
+/// It FOLDS what is pushed to it, into main, like any other instance, so `/m`, `/p` and the seed
+/// routes show hosted packages. Names bind last-writer-wins, `Darklang.Matter.router` among them,
+/// so anyone who can push can change what this server resolves; the write secret and the
+/// reserved-namespace rule in `LibDB.Inserts` are what stand in front of that.
 ///
 /// `handlers`, near the bottom, is the route table.
 module Darklang.Matter

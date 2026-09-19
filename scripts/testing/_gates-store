@@ -266,14 +266,9 @@ gate_reload_is_reproducible() {
 }
 
 # --- store-upgrade: a format bump, carried in place ---------------------------------------------
-# There is only ONE op-log format so far, so the migrator has nothing real to migrate between.
-# `DARK_FORMAT_VERSION` is the synthetic bump: the binary writes the version named and reads every
-# version up to it, so the layout is identical and a migration across it is exactly the
-# format-only case -- a blob rewrite with no identity moving. Which is the case worth having
-# mechanised and tested BEFORE the first real bump, rather than discovering during one.
-#
-# Gate, not an F#/.dark test: the format version is read at process start, so "the same store seen
-# by a build that writes a different version" needs a different PROCESS, twice.
+# Only one op-log format exists, so `DARK_FORMAT_VERSION` is the synthetic bump: same layout,
+# different version, a pure blob rewrite. A gate because the version is read at process start,
+# so "the same store seen by a build that writes a different version" needs another process.
 gate_store_upgrade() {
   set -uo pipefail
 
@@ -308,10 +303,8 @@ gate_store_upgrade() {
   want "and says so rather than rewriting" "already format 1" "$(v1 store upgrade -y)"
 
   echo "== an id that does not re-derive stops it dead"
-  # The line between the two migrations, forged. A store whose ids were minted by a different
-  # HASHING needs the whole log re-minted, not its blobs rewritten, and the only way to tell is to
-  # recompute each op's id and compare. So: an op filed under an id its own content does not
-  # produce. The upgrade must refuse and touch nothing, because half-doing this is unrecoverable.
+  # An op filed under an id its content does not produce means the hashing moved, which needs
+  # the whole log re-minted, not blobs rewritten. The upgrade must refuse and touch nothing.
   sqlite3 "$ROOT/data.db" "INSERT INTO package_ops (id, op_blob, applied, effective, commit_hash, origin_ts)
     SELECT '00000000-0000-4000-8000-00000000ffff', op_blob, applied, effective, commit_hash, origin_ts
     FROM package_ops LIMIT 1;"
@@ -341,10 +334,7 @@ gate_store_upgrade() {
   want "a second upgrade is a no-op" "already format 2" "$(v2 store upgrade -y)"
 
   echo "== a build that reads an older format than the store"
-  # The one thing that must not happen quietly. It opens (so a rollback is reachable) and says
-  # which way out there is.
-  # It dies on the first package lookup -- resolving the name of the command you typed is one --
-  # so what it must do is SAY so, and name a file a person can move without a working binary.
+  # It dies on the first package lookup, so it must say so and name a file to move.
   want "it says the store is ahead of it" "format 2 and this build reads 1" "$(v1 store)"
   want "and names the file to move back" "pre-v2 -- move it back over" "$(v1 store)"
   want "and does not downgrade the stamp behind your back" "^2$" "$(fmt)"

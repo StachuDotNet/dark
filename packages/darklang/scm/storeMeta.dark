@@ -1,24 +1,15 @@
 module Darklang.SCM.StoreMeta
 
-// The `store_meta` silo: what a store says about ITSELF, as opposed to about the code in it.
+// The `store_meta` silo: what a store says about itself. Written by the seed cut
+// (`LibDB.Seed.exportAt`) and stamped at open by `LibDB.Releases`. Read-only from Dark.
 //
-// Written by the seed cut (`LibDB.Seed.exportAt`, the only thing that knows what it just made) and
-// topped up at open by `LibDB.Releases`, so every store carries one whether it came from a seed or
-// grew here. Four keys today:
-//
-//   format   the op-blob layout version. A reader that understands a different one must refuse.
-//   cut_at   the commit this store was cut at, so a seed says what it is a cut of.
-//   kernel   the build that cut it, for tracing a bad seed back to a binary.
-//   at       when.
-//
-// Read-only from Dark: the values are facts about a file, and nothing in package code is in a
-// position to know better than the thing that wrote them.
+//   format   the op-blob layout version; a reader that understands a different one refuses
+//   cut_at   the commit this store was cut at
+//   kernel   the build that cut it
+//   at       when
 
 
-/// The value of <param key>, or "" when this store carries no such key.
-///
-/// "" rather than an Option: a store older than the stamp has none of these, which every caller
-/// treats the same way as "not recorded" -- the same choice `Stdlib.LocalStore.configGet` makes.
+/// The value of <param key>, or "" when the store carries none, as `LocalStore.configGet` does.
 let get (key: String) : String =
   match
     Stdlib.Sqlite.queryOneP

@@ -43,11 +43,8 @@ type private Work =
   | MatchCase of PT.MatchCase
   | PipeExpr of PT.PipeExpr
 
-/// A BUILTIN this item's body calls. Not a `Dependency`: a builtin is not content-addressed, it is
-/// a (name, version) in whatever kernel you are running, so there is no hash to depend ON.
-///
-/// Collected by the same walk, because walking the AST twice to ask two questions about the same
-/// nodes is how the two answers drift apart.
+/// A builtin this item's body calls. Not a `Dependency`: a builtin is a (name, version) in
+/// whatever kernel is running, with no hash to depend on. Collected by the same walk.
 type BuiltinDependency = { name : string; version : int }
 
 let private extract
@@ -246,9 +243,7 @@ let private extract
       | PT.EFnName(_, nr) ->
         addNameResolution nr PT.ItemKind.Fn PackageItem.fnPackageHash
 
-        // `fnPackageHash` answers `None` for a builtin, so the package walk drops it. This is the
-        // only place the call is visible, and it is what a store needs to be able to say which
-        // kernel it requires.
+        // `fnPackageHash` is `None` for a builtin; this is the only place the call is visible.
         match nr.resolved with
         | Ok resolved ->
           match resolved.name with
@@ -341,14 +336,10 @@ let extractFromType (typ : PT.PackageType.PackageType) : List<Dependency> =
   extract roots |> fst |> List.distinct
 
 
-/// The BUILTINS a function's body calls. Values and types cannot call one -- a type declaration has
-/// no body, and a value's is evaluated through the same walk, so this is the fn entry point only
-/// until that stops being true.
 let builtinsInFn (fn : PT.PackageFn.PackageFn) : List<BuiltinDependency> =
   snd (extract [ Expr fn.body ])
 
 
-/// The BUILTINS a value's body calls. A `val` body is an expression like any other.
 let builtinsInValue
   (value : PT.PackageValue.PackageValue)
   : List<BuiltinDependency> =

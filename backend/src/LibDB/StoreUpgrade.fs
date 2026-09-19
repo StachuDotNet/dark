@@ -1,23 +1,15 @@
-/// Moving a STORE from one op-log format to the next.
+/// Moving a STORE from one op-log format to the next, in place: after the flip there is no
+/// `packages/` to rebuild one from. Two cases, told apart per op rather than assumed:
 ///
-/// After the flip there is no `packages/` to rebuild a store from, so a format change has to carry
-/// the store forward in place. That divides into two cases with very different costs, and telling
-/// them apart is the first thing this module does:
+///   FORMAT-ONLY   the binary layout changed (`LibSerialization/Binary/*`). Op ids derive from the
+///                 DECODED op (`Hashing.computeOpRowId`), so no identity moves: decode with the old
+///                 reader, re-encode with the new writer, re-fold. This module.
 ///
-///   FORMAT-ONLY   the BINARY layout changed (`LibSerialization/Binary/*`). Op ids are derived from
-///                 the DECODED op by `Hashing.computeOpRowId`, not from its bytes, so nothing's
-///                 identity moves. The migration is a blob rewrite: decode with the old reader,
-///                 re-encode with the new writer, leave every id alone, re-fold the projections.
-///                 That is what this module does.
+///   IDENTITY      the hashing changed (`LibSerialization/Hashing/*`). Every id moves. Not built;
+///                 the note at the bottom says what it needs.
 ///
-///   IDENTITY      the HASHING changed (`LibSerialization/Hashing/*`). Every op id, item hash and
-///                 commit hash moves, every reference inside an op has to be remapped, and the
-///                 commit chain has to be rebuilt parent-first. Not built; see the note at the
-///                 bottom of this file for what it needs.
-///
-/// The distinction is not a judgement call, and this refuses rather than guessing: it recomputes
-/// each op's id from the decoded op and compares it with the id the store has. If they disagree,
-/// the store's ids were minted by a different hashing and the blob rewrite would be a lie.
+/// An op whose re-derived id differs from the stored one means the hashing moved, and this refuses
+/// rather than rewriting blobs under ids that would then be lies.
 module LibDB.StoreUpgrade
 
 open System.Threading.Tasks
@@ -53,23 +45,16 @@ let private storedFormat () : uint32 =
   Releases.storedFormat () |> Option.defaultValue 1u
 
 
-/// Where the pre-migration copy goes: beside the store, named for the version being moved TO.
-///
-/// Named for the target and not the source so it reads as "the store from before v2", which is
-/// what someone rolling back is looking for.
+/// The pre-migration copy, beside the store, named for the version moved TO: "the store from
+/// before v2" is what someone rolling back looks for.
 let backupPathFor (target : uint32) : string =
   $"{Sqlite.currentDbPath}.pre-v{target}"
 
 
-/// Move this store to the format this build writes.
-///
-/// The order is the whole safety argument. The backup lands FIRST, through SQLite's own backup API,
-/// so the rollback target exists before anything is touched. The rewrite is then one transaction:
-/// a store half-converted is a store where some ops are v1 and some v2 with nothing recording
-/// which, and there is no reader that can sort that out afterwards.
-///
-/// Projections are dropped rather than converted. They are a cache over the log, and re-folding is
-/// cheap next to getting it wrong.
+/// Move this store to the format this build writes. The backup lands first, through SQLite's
+/// backup API, so the rollback target exists before anything is touched; the rewrite is then one
+/// transaction, since a half-converted store has no reader. Projections are re-folded, not
+/// converted.
 let upgrade () : Task<Result<Report, string>> =
   task {
     let from = storedFormat ()
@@ -105,9 +90,6 @@ let upgrade () : Task<Result<Report, string>> =
           match BS.PT.PackageOp.tryDeserialize id blob with
           | None -> unreadable <- unreadable + 1
           | Some op ->
-            // The line between the two cases, checked per op rather than assumed. An id derived from
-            // the decoded op must still be the id the store filed it under; if it is not, the hashing
-            // moved and this is not the migration that store needs.
             if Hashing.computeOpRowId op <> id then
               if identityMoved = None then identityMoved <- Some id
             else
@@ -123,22 +105,16 @@ let upgrade () : Task<Result<Report, string>> =
             untouched and a copy is at {backup}."
         | None ->
 
-          // `executeTransactionSync`, not hand-written BEGIN/COMMIT around separate calls: connections
-          // are POOLED, so a `BEGIN` and the statements after it are not guaranteed to be on the
-          // same one, and the transaction would silently cover nothing.
-          //
-          // The stamp goes in the SAME transaction as the bytes it describes. Outside it, a crash
-          // between the two leaves a store whose blobs and whose claim about them disagree, which
-          // is worse than either failure alone.
+          // One `executeTransactionSync`: connections are pooled, so a hand-written BEGIN and the
+          // statements after it need not share one. The format stamp goes in the same transaction
+          // as the bytes it describes.
           let statements =
             [ ("CREATE TABLE IF NOT EXISTS store_meta \
                   (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
                [ [] ])
               ("INSERT OR REPLACE INTO store_meta (key, value) VALUES ('format', @v)",
                [ [ "v", Sql.string (string target) ] ]) ]
-            // Only when there is something to rewrite. An empty log is a real state (a store whose
-            // ops have all been cut away) and a statement with no parameter sets is not worth
-            // asking the driver to reason about.
+            // An empty log is a real state; skip the statement rather than run it with no rows.
             @ (if rewrites.Count = 0 then
                  []
                else
@@ -173,11 +149,9 @@ let upgrade () : Task<Result<Report, string>> =
   }
 
 
-/// Put back the copy `upgrade` made on its way to <param target>.
-///
-/// Contents, not the file, through the same backup API: connections already open keep working and
-/// see the restored data. Anything already read into memory is still the NEW store, so the caller
-/// has to say to restart -- the same caveat `LocalStore.restoreFrom` carries.
+/// Put back the copy `upgrade` made on its way to <param target>. Contents, not the file, so open
+/// connections see the restored data; what is already in memory is still the new store, so the
+/// caller says to restart, as `LocalStore.restoreFrom` does.
 let rollback (target : uint32) : Task<Result<string, string>> =
   task {
     let backup = backupPathFor target
@@ -194,34 +168,13 @@ let rollback (target : uint32) : Task<Result<string, string>> =
   }
 
 
-// ---------------------
-// The identity-changing case, and what it needs
-// ---------------------
-//
-// NOT BUILT. Written down because the shape is settled and the cost is not, and because the next
-// person to need it should not have to rediscover why it is bigger than it looks.
-//
-// It is reached by a change under `LibSerialization/Hashing/`, which moves every derived id at
-// once: op ids (`Hashing.computeOpRowId`), item hashes (the content address an `AddFn` carries),
-// and commit hashes (derived over message, author, stamp, PARENT and the sorted ids of the ops the
-// commit names). So:
-//
-//   1. walk the log in order, decoding each op with the old reader
-//   2. rewrite every hash REFERENCE inside it through the remap built so far -- a `SetName` points
-//      at an item hash, a `Decision` at the versions it pins
-//   3. re-encode, re-derive the id, record `old -> new`
-//   4. rebuild `commits` PARENT FIRST, since a commit's id depends on its parent's; every commit
-//      downstream of the first change moves even if its own contents did not
-//   5. rewrite every table that stores an id or a hash as a foreign key: `op_owners`, `op_branches`,
-//      `sync_pushed`, `seed_ops`, `commits.parent`, `package_ops.commit_hash`
-//   6. drop the projections and re-fold
-//
-// Two things make it worth the care rather than the speed:
-//
-// - it is DETERMINISTIC by construction, and that is the property that matters. Ids are content
-//   hashes, so two machines re-minting the same log independently arrive at the same ids, and a
-//   push after the migration dedups to nothing. Test it by re-minting two copies and diffing every
-//   id, which is what 8.F.f asks for.
-// - it fails QUIETLY if any of step 5 is missed. A dangling `op_branches` row does not error; a
-//   branch just silently loses part of its own frontier. `SCM.StoreHealth` already reports exactly
-//   that class, so it is the check to run after, not a new one to write.
+// The identity-changing case is NOT built. It is reached by a change under `LibSerialization/
+// Hashing/`, which moves every derived id at once, and the shape is settled even if the cost is
+// not: (1) walk the log in order, decoding with the old reader; (2) rewrite every hash reference
+// inside each op through the remap so far; (3) re-encode, re-derive the id, record old -> new;
+// (4) rebuild `commits` parent first, since a commit's id depends on its parent's; (5) rewrite
+// every table holding an id or hash as a foreign key: `op_owners`, `op_branches`, `sync_pushed`,
+// `seed_ops`, `commits.parent`, `package_ops.commit_hash`; (6) drop projections and re-fold.
+// Deterministic by construction, since ids are content hashes, so two machines re-minting the same
+// log agree; test by re-minting two copies and diffing every id. A missed table in step 5 fails
+// quietly, and `SCM.StoreHealth` is the check to run after.

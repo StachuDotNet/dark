@@ -351,29 +351,16 @@ errors, so a cache silently never fills.
 command with a bogus argument. An expensive command therefore taxes the whole suite; `grep` cost
 nine minutes until it learned to refuse an unscoped search.
 
-**Dark syntax traps.** No `let private`. No `rec` keyword. The list separator is `,`. A comment
-inside a list literal breaks the parser. Parenthesise a piped qualified call:
-`(Mod.f x) |> ...`.
+**`package-ref-hashes.txt` is tracked, and it is a projection of the store.** Committing it is
+what makes a kernel entry point changing identity visible in review. Between pin bumps the
+committed copy is simply correct: kernel refs resolve from the store by name and the file is
+the fallback. It moves when the pin moves (`scripts/packages/pin`), and a hardened ref moving
+(one the kernel constructs by name everywhere, `PackageOp` say) stops the reload until you
+re-run with `DARK_REPIN_HARDENED=1`, which is right: something changed underneath the tree.
 
-**Measure the artifact people actually run.** Debug, `publish -c Release`, R2R and AOT differ by
-about 25x on startup. Three separate wrong conclusions in one week came from measuring the wrong
-one.
-
-**PackageRefs stale hash.** `backend/src/LibExecution/package-ref-hashes.txt` isn't in git.
-Empty is tolerated; non-empty with a missing key crashes at startup with "PackageRefs: X
-hash not found". After adding a ref:
-`> backend/src/LibExecution/package-ref-hashes.txt && ./scripts/build/reload-packages`
-
-It IS tracked, and it is a projection of the store, which is the awkward combination it has to
-be: committing it is what makes a kernel entry point changing identity visible in review, and
-`assert-clean-worktree` is what enforces it. So a PR that moves one of the 206 hashes has to
-carry the regenerated file.
-
-**Resolving a conflict in it: regenerate, never hand-merge.** Two branches that both touch
-packages will conflict here, and the lines are content hashes, so picking sides is meaningless.
-`git checkout --theirs` it, then `./scripts/build/reload-packages` (or, on a store that came
-from a seed and has no `packages/` to reload, `scripts/run-local-exec refs generate`) and commit
-what that produces.
+**Resolving a conflict in it: regenerate, never hand-merge.** The lines are content hashes, so
+picking sides is meaningless. `git checkout --theirs` it, then `scripts/run-local-exec refs
+generate` and commit what that produces.
 
 **Name resolution in test files.** `backend/testfiles/` is parsed with owner "Tests", so
 `Darklang.*` names need full qualification or the `Stdlib.` shortcut. `Stdlib.Json.ParseError.toString`

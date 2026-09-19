@@ -8,14 +8,9 @@ open System
 /// every wire-layout change, keeping a readV1 beside the new writer: from here, stores cannot be
 /// rebuilt from text.
 ///
-/// `DARK_FORMAT_VERSION` overrides it, and exists for one reason: there is only one format so far,
-/// so the store migrator has nothing to migrate between and no way to be exercised. With it set,
-/// this build writes the version named and reads every version up to it -- a SYNTHETIC bump whose
-/// layout happens to be identical, which makes a migration across it a pure blob rewrite. That is
-/// the format-only case, and having it mechanised and tested before the first real bump is the
-/// point. Never set in production; `LibDB.StoreUpgrade` is what uses it.
-///
-/// A plain `let` rather than a `[<Literal>]` for that reason. Nothing pattern-matches on it.
+/// `DARK_FORMAT_VERSION` overrides it so the store migrator can be exercised while only one format
+/// exists: a synthetic bump with an identical layout, which makes the migration a pure blob
+/// rewrite. Test-only; `LibDB.StoreUpgrade` is what it is for. A plain `let` for that reason.
 let currentVersion : uint32 =
   match System.Environment.GetEnvironmentVariable "DARK_FORMAT_VERSION" with
   | null
@@ -58,16 +53,8 @@ module Varint =
 
 module Validation =
   let validateVersion (version : uint32) =
-    // OLDER is fine, NEWER is not, and the asymmetry is the whole point of a versioned header.
-    //
-    // A blob from an older format can be read: every historical reader stays in the binary, and
-    // `makeDeserializerV` hands the version to the reader so it can branch. That is how a store
-    // moves forward without being rebuilt from text, which after the flip is the only way it can
-    // move at all.
-    //
-    // A blob from a NEWER format cannot be read by trying harder -- the layout is one this binary
-    // has never seen -- so it is refused rather than guessed at. `LibDB.Releases` refuses the whole
-    // STORE for the same reason, before anything gets as far as a blob.
+    // Older is fine (every historical reader stays in the binary, and `makeDeserializerV` branches
+    // on the version); newer cannot be read by trying harder, so it is refused.
     if version = 0u || version > currentVersion then
       raise (BinaryFormatException(UnsupportedVersion version))
 

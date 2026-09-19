@@ -33,8 +33,6 @@ let tables : List<string> =
     "package_ops"
     "package_dependencies"
 
-    // Which builtins each item calls. Derived from the bodies in the log by the same walk that
-    // fills `package_dependencies`, so a purged log has called nothing.
     "package_builtin_deps"
 
     "deprecations"

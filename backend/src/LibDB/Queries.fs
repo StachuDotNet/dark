@@ -398,11 +398,9 @@ let getDraftOps () : Task<List<PT.PackageOp>> =
         """
         SELECT id, op_blob
         FROM package_ops
-        -- NOT a hosted op: `op_owners` records who pushed each op TO this store, so a row there is
-        -- somebody else's work this store is only holding. It is folded like any other op now
-        -- (a server has to be able to see and serve what it hosts), which is exactly why it has
-        -- to be excluded HERE: `effective` used to carry that distinction, and a discard that
-        -- counted a peer's push as this store's draft would delete their data.
+        -- Not a hosted op: `op_owners` records who pushed each op to this store. Those are folded
+        -- like any other op, so a discard that counted them as this store's draft would delete a
+        -- peer's data.
         WHERE effective = 1
           AND commit_hash IS NULL
           AND id NOT IN (SELECT op_id FROM op_branches)

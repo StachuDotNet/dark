@@ -10,15 +10,12 @@
 # The server comes from `--url` or `DARK_SEED_URL`; see `package-set.txt` for why it is not in
 # the repo.
 #
-# Every pin is CHECKED before it is written, through `/seed/meta?commit=`: the server resolves the
-# commit and answers what a cut at it would carry. Two counts rather than twelve megabytes, so
-# checking a pin is cheap enough to do every time. A commit that does not resolve is refused here
-# rather than at the next CI run.
+# A pin is checked through `/seed/meta?commit=` before it is written, so a commit that does not
+# resolve is refused here rather than at the next CI run.
 
 set -euo pipefail
 
-# `DARK_PACKAGE_SET` points this at another copy, which is how the gates exercise a pin without
-# writing to the tree's own.
+# `DARK_PACKAGE_SET`: the gates pin a copy, not the tree's own.
 PINFILE="${DARK_PACKAGE_SET:-package-set.txt}"
 
 [[ -f "$PINFILE" ]] || { echo "pin: no $PINFILE (run from the repo root?)" >&2; exit 2; }
@@ -30,7 +27,7 @@ while [[ $# -gt 0 ]]; do
     --url)   URL="${2:?--url needs a url}"; shift 2 ;;
     --show)  sed -n 's/^\(commit\|format\)  */\1 /p' "$PINFILE"; exit 0 ;;
     --unset) WANT="unset"; shift ;;
-    -h|--help) sed -n '3,17p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help) sed -n '3,13p' "$0" | sed 's/^# \?//'; exit 0 ;;
     -*)      echo "pin: unknown argument $1" >&2; exit 2 ;;
     *)       WANT="$1"; shift ;;
   esac
@@ -80,19 +77,12 @@ OPS=$(field ops)
 
 [[ -n "$COMMIT" ]] || { echo "pin: $URL named no commit: $(cat "$body")" >&2; exit 1; }
 
-# The format is pinned alongside the commit, not just reported: a seed in a layout this kernel
-# cannot read is a fetch that must fail before it folds anything, and the only way to know that
-# before fetching is to have written down what was expected.
+# The format is pinned too, so a seed in a layout this kernel cannot read fails before it folds.
 set_field commit "$COMMIT"
 set_field format "$FORMAT"
 
-# The ref hashes move WITH the pin and only with it. That is what keeps them stable between
-# bumps, so ordinary package work never touches the file and two branches that both touch
-# packages never conflict in it. The diff this produces is the point: one reviewable list of
-# every kernel identity that moved.
-#
-# Best-effort. The pin is already written, and a store that cannot regenerate (no source tree,
-# say) should not lose it.
+# The ref hashes move with the pin and only with it: one reviewable diff of every kernel identity
+# that moved, and no conflicts between bumps. Best-effort; the pin is already written.
 if scripts/run-local-exec refs generate > /dev/null 2>&1; then
   echo "Regenerated package-ref-hashes.txt for the new pin."
 else

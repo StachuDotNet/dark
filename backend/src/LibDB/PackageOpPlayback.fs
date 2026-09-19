@@ -33,15 +33,9 @@ open LibDB.PreparedBatch
 // Dependency table maintenance.
 // ------------------------------------------------------------------
 
-/// Record which BUILTINS an item's body calls.
-///
-/// Separate from `updateDependencies` because a builtin edge is a different shape: not
-/// content-addressed, so there is no hash to depend on and no location. This is the half of the
-/// kernel/package-set interface that used to be invisible from the store, and the thing that lets
-/// a fetched package set say which kernel it needs.
-///
-/// ADDS, never replaces, for the same reason as the package edges: content is immutable, so what a
-/// hash calls never changes.
+/// Record which builtins an item's body calls: the half of the kernel/package-set interface that
+/// lets a fetched package set say which kernel it needs. A builtin edge has no hash and no
+/// location, hence its own table. Adds, never replaces: content is immutable.
 let updateBuiltinDependencies
   (ctx : Ctx)
   (itemHash : string)

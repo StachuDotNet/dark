@@ -1,10 +1,5 @@
 /// This instance's own local state: where its store is, and the key-value settings beside it.
-///
-/// One module because these are the two primitives every layer needs and neither belongs to any of
-/// them. `scm/` runs SQL against the store; the CLI's `config`, `backups` and `scripts` do too; the
-/// relay and the package browser do. Without a shared home each of them carries its own
-/// `let localDb () : String = Builtin.localDbPath ()`, which is the one-wrapper rule defeated by
-/// copy-paste rather than a case where wrapping does not work.
+/// One module because every layer (`scm/`, the CLI, the relay, the browser) needs both.
 module Darklang.Stdlib.LocalStore
 
 
@@ -46,17 +41,10 @@ let restoreFrom (path: String) : Stdlib.Result.Result<Unit, String> =
   Builtin.localDbRestoreFrom path
 
 
-/// Cut a SEED of this store to <param path>: the op log and its commits, with every per-instance
-/// table stripped, so a fresh install that folds it agrees on every id.
-///
-/// <param upToCommit> narrows it to that commit and its ancestors, which is what makes a pinned
-/// fetch reproducible: the same commit yields the same OPS however far the store has moved since,
-/// and ids come from op content, so every store built from it agrees. `None` takes everything
-/// committed.
-///
-/// The file carries a `store_meta` stamp saying which commit it was cut at, which format its op
-/// blobs are in, and which build cut it. So a seed says what it is without anyone having to
-/// remember where it came from.
+/// Cut a SEED of this store to <param path>: the op log and its commits with every per-instance
+/// table stripped, stamped (`store_meta`) with the commit it was cut at, its format and the build.
+/// <param upToCommit> narrows it to that commit's ancestry, so a pinned fetch is reproducible;
+/// `None` takes everything committed.
 let seedTo
   (path: String)
   (upToCommit: Stdlib.Option.Option<String>)

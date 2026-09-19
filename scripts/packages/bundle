@@ -7,17 +7,10 @@
 #   scripts/packages/bundle show      what is in the file
 #   scripts/packages/bundle show --source   ...and what it actually changes
 #
-# Why a file in the repo. An F# change can reference package code, and then the two have to
-# travel, merge and be abandoned together. Git already does that for the F#; this lets it do the
-# same for the package half, so one PR carries both and reviewing or dropping it is one act.
-#
-# EXPORT is explicit, like `git add`: producing it writes into your tree and that should be
-# something you asked for. Forgetting is caught rather than silent -- `refs check` fails the build
-# for anyone whose F# names package code they do not have.
-#
-# IMPORT is automatic (`scripts/build/prepare-package-set` runs it), because checking out the git
-# branch IS asking for that branch's package code. Importing is idempotent: ops are
-# content-addressed, so re-importing what you already have changes nothing.
+# An F# change can reference package code, and then the two have to travel, merge and be
+# abandoned together; the file lets git do for the package half what it already does for the F#.
+# Export is explicit, like `git add`; forgetting it fails `refs check` for whoever checks the
+# branch out. Import is automatic (`scripts/build/prepare-package-set`) and idempotent.
 
 set -euo pipefail
 
@@ -27,15 +20,13 @@ PINFILE="${DARK_PACKAGE_SET:-package-set.txt}"
 BUNDLE="${DARK_PACKAGE_BUNDLE:-package-branch.json}"
 CLI="${CLI:-./scripts/run-cli}"
 
-usage() { sed -n '3,19p' "$0" | sed 's/^# \?//'; }
+usage() { sed -n '3,13p' "$0" | sed 's/^# \?//'; }
 
 case "${1:-}" in
   export)
     branch=$("$CLI" branch 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | tail -1)
     if [[ "$branch" == *"on main"* || -z "$branch" ]]; then
-      # Nothing to carry. Remove a stale bundle rather than leave one describing work that is
-      # now on main: a bundle outliving its branch is how somebody imports a branch that was
-      # merged weeks ago.
+      # A bundle outliving its branch is how somebody imports work merged weeks ago.
       if [[ -f "$BUNDLE" ]]; then
         rm -f "$BUNDLE"
         echo "On dark main; removed $BUNDLE."
@@ -50,14 +41,11 @@ case "${1:-}" in
     echo "Wrote $BUNDLE from dark branch \"$name\" ($(wc -c < "$BUNDLE") bytes)."
     echo "Commit it alongside the F# that needs it."
 
-    # A bundle carries the BRANCH's ops. If your main has moved past the pin -- because you
-    # pulled -- your branch may rest on commits nobody else has, and the bundle will not be
-    # enough for them: they hold the pinned set plus this file and nothing else. CI says so
-    # too, as a failed `refs check`, but by then it is somebody else's red build.
+    # If your main has moved past the pin, the branch may rest on commits nobody else has and
+    # the bundle will not be enough for them. CI says so too, but as somebody else's red build.
     pin=$(awk '$1 == "commit" { print $2 }' "$PINFILE")
     if [[ -n "$pin" && "$pin" != "unset" ]]; then
-      # `--branch main` explicitly: `dark log` shows a BRANCH's ops when you are standing on
-      # one, and we are, so the bare form answers with an op kind rather than a commit hash.
+      # `--branch main`: on a branch, bare `dark log` shows the branch's ops, not commits.
       head=$("$CLI" --branch main log 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' \
              | awk 'NR>3 { print $1; exit }')
       if [[ -n "$head" && "${pin:0:${#head}}" != "$head" ]]; then
@@ -87,9 +75,7 @@ print('ops:   ', len(b.get('ops', [])))
 print('commits:', len(b.get('commits', [])))
 "
     if [[ "${2:-}" == "--source" ]]; then
-      # Rendered by importing into a DISPOSABLE store, never yours. Reviewing a stranger's
-      # branch should not mean taking their ops into the store you work in, and a PR reviewer
-      # is exactly the person with the least reason to trust the bundle in front of them.
+      # Into a disposable store, never yours: reviewing should not mean importing.
       scratch=$(mktemp -d)
       # shellcheck disable=SC2064  # expand now: $scratch must not be re-evaluated at trap time
       trap "rm -rf '$scratch'" EXIT

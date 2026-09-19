@@ -1,14 +1,8 @@
 module Darklang.Cli.Store
 
-// `dark store` -- what this store IS, and moving it between op-log formats.
-//
-// Distinct from `dark backups`, which is about copies of a store, and from `dark status`, which is
-// about the code in one. This is about the FILE: which format its ops are written in, which commit
-// it was cut at, which build cut it.
-//
-// After the flip there is no `packages/` to rebuild a store from, so a format change has to carry
-// the store forward in place. `upgrade` is that, and it is a no-op until the first real bump -- it
-// exists now so that the bump is not also the first time the migration runs.
+// `dark store`: what this store is (its format, the commit it was cut at, the build that cut it)
+// and moving it between op-log formats. `dark backups` is about copies of a store and `dark
+// status` about the code in one. `upgrade` says "nothing to do" until the first real format bump.
 
 let help (_state: AppState) : String =
   [ "What this store is, and moving it between op-log formats."
@@ -42,9 +36,8 @@ let showInfo (state: AppState) : AppState =
       let key = Stdlib.String.padEndToWidth k 8
       Stdlib.printLine $"{key}  {v}")
 
-    // Naming the verb here, because this is where someone looks after an upgrade went wrong and
-    // `dark backups` does not list the copy an upgrade takes. The verb knows its own filename; it
-    // says so plainly if there is no copy to put back.
+    // This is where someone looks after an upgrade went wrong; `dark backups` does not list the
+    // copy an upgrade takes.
     let format = SCM.StoreMeta.get "format"
 
     if (format != "") && (format != "1") then
@@ -61,8 +54,7 @@ let showInfo (state: AppState) : AppState =
 let executeUpgrade (state: AppState) (args: List<String>) : AppState =
   let (autoConfirm, _rest) = Packages.Remove.parseArgs args
 
-  // A whole-log rewrite, so it asks. `confirmExplicit` rather than `confirm`: a stray Return must
-  // not start one, and an unattended run says `-y`.
+  // A whole-log rewrite, so a stray Return must not start one.
   if
     Stdlib.Bool.not (
       Cli.Prompt.confirmExplicit

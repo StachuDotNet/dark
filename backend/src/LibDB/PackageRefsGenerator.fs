@@ -46,20 +46,10 @@ let private readExistingFile () : Map<string, string> =
     Map.empty
 
 
-/// Query the DB for all current Darklang-owned locations and write
-/// `package-ref-hashes.txt` in the source tree.
-/// Compute the kernel's ref hashes from the store, set them in memory, and -- when
-/// <param writeToDisk> -- write `package-ref-hashes.txt`.
-///
-/// The two are separate because they have different cadences. The hashes must be in MEMORY
-/// before values are evaluated, on every reload, or `PackageRefs` lookups resolve to nothing
-/// during it. The FILE moves only when the pin does.
-///
-/// Writing it on every reload is what made every pair of package-touching branches conflict in a
-/// 206-line generated file. It stopped being necessary when type refs started resolving from the
-/// store by name: the file is a fallback now, not a contract, so between pin bumps the committed
-/// copy is simply correct. A pin bump then produces one reviewable diff naming every identity
-/// that moved, which is the signal the file was tracked for.
+/// Compute the kernel's ref hashes from the store, set them in memory, and when <param
+/// writeToDisk> write `package-ref-hashes.txt`. Two cadences: memory on every reload, before
+/// values evaluate; the file only when the pin moves, so two package-touching branches do not
+/// conflict in a generated file, and a pin bump is one reviewable diff of every identity that moved.
 let generateWith (writeToDisk : bool) : Ply<unit> =
   uply {
     // Collect all referenced items from PackageRefs _lookup maps
@@ -103,10 +93,8 @@ let generateWith (writeToDisk : bool) : Ply<unit> =
         let hash = read.string "item_hash"
         (buildKey itemType modules name, hash))
 
-    // The branch's bindings go OVER main's. `locations` is main's projection, so without this a
-    // hash file generated while standing on a branch describes main and silently omits the very
-    // items the branch exists to add -- which is exactly the case where the file matters, because
-    // it is what lets somebody else build the F# that references them.
+    // The branch's bindings over main's: `locations` is main's projection, and a file generated
+    // on a branch has to name the items the branch adds.
     let dbMap =
       PackageManager.overlayDarklangBindings ()
       |> List.fold

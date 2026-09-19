@@ -58,10 +58,8 @@ module HandleCommand =
       // work.
       let! _ = LibDB.Inserts.commitAllAsBaseline "package reload (baseline)"
 
-      // Hashes in MEMORY before evaluating values, so that PackageRefs lookups resolve during
-      // it. Not written to disk: the file moves when the PIN moves, not on every reload, which
-      // is what stops two package-touching branches conflicting in it. `scripts/packages/pin`
-      // and `refs generate` write it.
+      // In memory only, so PackageRefs lookups resolve while values evaluate. The file on disk
+      // moves with the pin (`scripts/packages/pin`, `refs generate`), not on every reload.
       do! LibDB.PackageRefsGenerator.refreshInMemory ()
       LibExecution.PackageRefs.reloadHashes ()
 
@@ -125,11 +123,8 @@ module HandleCommand =
         return Error $"Export failed: {ex.Message}"
     }
 
-  /// Stand on the branch this rundir is on, the way the CLI does before it runs anything.
-  ///
-  /// Not global to LocalExec: the fill path deliberately refills MAIN from disk, and doing that
-  /// while standing on a branch would be wrong. Only the commands that ask a question ABOUT the
-  /// current branch select it.
+  /// Stand on the branch this rundir is on, as the CLI does. Only the commands that ask about
+  /// the current branch call this; the fill path refills MAIN from disk and must not.
   let selectStoredBranch () : Ply<unit> =
     uply {
       match! LibDB.BranchSelection.select None None with
@@ -141,16 +136,10 @@ module HandleCommand =
       | Error _ -> ()
     }
 
-  /// The git branch this tree is checked out on, if it is a git tree at all.
-  ///
-  /// Read out of `.git/HEAD` rather than by shelling out: this runs inside the build, and a
-  /// process spawn for one line of text is not worth it. A detached HEAD answers `None`, which is
-  /// right -- there is no branch NAME to line up with.
+  /// The git branch this tree is on, read from `.git/HEAD` (walking up from the rundir, which
+  /// is not always directly inside the repo). Detached HEAD, or no repo, is `None`.
   let private gitBranchName () : Option<string> =
     try
-      // Walk UP looking for `.git`, rather than assuming the rundir sits directly inside the
-      // repo. It does for the dev rundir and does not for a test's, and the difference is silent:
-      // you get no branch name and no error.
       let rec findGitHead (dir : System.IO.DirectoryInfo) : string option =
         if isNull (box dir) then
           None
@@ -161,43 +150,25 @@ module HandleCommand =
           else
             findGitHead dir.Parent
 
-      let head =
-        match findGitHead (System.IO.DirectoryInfo LibConfig.Config.runDir) with
-        | Some h -> h
-        | None -> ""
-
-      if head <> "" && System.IO.File.Exists head then
+      findGitHead (System.IO.DirectoryInfo LibConfig.Config.runDir)
+      |> Option.bind (fun head ->
         let text = (System.IO.File.ReadAllText head).Trim()
         let prefix = "ref: refs/heads/"
-
-        if text.StartsWith prefix then Some(text.Substring prefix.Length) else None
-      else
-        None
+        if text.StartsWith prefix then Some(text.Substring prefix.Length) else None)
     with _ ->
       None
 
 
-  /// Does this kernel agree with the package set in front of it?
-  ///
-  /// Direction one of the two-way interface: every name the kernel references has to resolve, in
-  /// the store as seen from the current branch or in the pin. Direction two -- every builtin the
-  /// package set calls existing in this kernel -- needs the store to record builtin edges, which
-  /// it does not yet.
-  ///
-  /// Asked all at once, and at BUILD time, because the ref closures are lazy: an unresolvable ref
-  /// is otherwise found whenever some code path happens to reach it, which can be a different day
-  /// and an unrelated command. The case this exists for is checking out somebody's git branch
-  /// without their package work: the F# in your tree names things your store has never heard of,
-  /// and you should be told that then, in one list, rather than one at a time by whatever runs
-  /// first.
+  /// Does this kernel agree with the package set in front of it? Both directions: every ref the
+  /// kernel declares resolves to content the store holds, and every builtin the package set calls
+  /// exists in this kernel. Asked all at once at build time, because the ref closures are lazy and
+  /// would otherwise fail one at a time from whatever command reached them first.
   let checkRefs () : Ply<Result<unit, string>> =
     uply {
       do! selectStoredBranch ()
 
-      // Every hash this store actually HOLDS content for. A ref resolving to a hash is not the
-      // same as that hash naming anything: a pin can name content the store no longer has, and
-      // that is precisely the failure this check exists to catch -- it does not error at runtime,
-      // it renders blank. Asked once as a set rather than per ref.
+      // Resolving to a hash is not the same as that hash naming content: a pin can name content
+      // the store no longer has, and that renders blank rather than erroring.
       let! knownTypes =
         Sql.query "SELECT hash FROM package_types"
         |> Sql.executeAsync (fun read -> read.string "hash")
@@ -208,17 +179,15 @@ module HandleCommand =
 
       let known = Set.union (Set.ofList knownTypes) (Set.ofList knownFns)
 
+      let allRefs = LibExecution.PackageRefs.allRefs ()
+
       let unresolved =
-        LibExecution.PackageRefs.allRefs ()
+        allRefs
         |> List.filter (fun (kind, modules, name) ->
           match LibExecution.PackageRefs.tryResolve kind modules name with
           | None -> true
           | Some hash -> not (Set.contains hash known))
 
-      // Direction two: every builtin the package set calls has to exist in THIS kernel. Recorded
-      // by the fold in `package_builtin_deps`, which is what makes a store able to say which
-      // kernel it needs -- the check that used to answer this grepped `.dark` text off disk and
-      // stops being possible the day packages come from a seed.
       let kernelBuiltins =
         let b = Builtins.all ()
         Set.union
@@ -236,10 +205,7 @@ module HandleCommand =
       let missingBuiltins =
         calledBuiltins |> List.filter (fun b -> not (Set.contains b kernelBuiltins))
 
-      // An EMPTY table is not a pass. `package_builtin_deps` is a projection, so a store that got
-      // the table from a release step without re-folding has no rows, and the builtin half of the
-      // check would report success having asked nothing. Saying so is the difference between this
-      // check and one that quietly stops covering what it was written for.
+      // An empty projection is not a pass: it means the builtin half asked nothing.
       if List.isEmpty calledBuiltins then
         return
           Error(
@@ -248,10 +214,9 @@ module HandleCommand =
             + "(`scripts/build/reload-packages`, or any migration that drops projections)."
           )
       elif List.isEmpty unresolved && List.isEmpty missingBuiltins then
-        let n = List.length (LibExecution.PackageRefs.allRefs ())
         print (
-          $"All {n} kernel refs resolve, and all {List.length calledBuiltins} builtins this "
-          + "package set calls exist in this kernel."
+          $"All {List.length allRefs} kernel refs resolve, and all {List.length calledBuiltins} "
+          + "builtins this package set calls exist in this kernel."
         )
         return Ok()
       elif List.isEmpty unresolved then
@@ -271,19 +236,14 @@ module HandleCommand =
       else
         let lines =
           unresolved
-          |> List.sortBy (fun (kind, m, n) -> (kind, m, n))
+          |> List.sort
           |> List.map (fun (kind, modules, name) ->
             $"""  {kind} Darklang.{String.concat "." modules}.{name}""")
-          |> String.concat
-            "
-"
+          |> String.concat "\n"
 
+        // A dark branch named like the git branch is almost certainly where the items are.
         let! hint =
           uply {
-            // If git is on a branch and a dark branch of the same name exists, that is almost
-            // certainly where the missing items are -- so say the command rather than the
-            // category. The coupling made visible at the one moment it matters, instead of a
-            // rule somebody has to have read.
             match gitBranchName () with
             | None -> return ""
             | Some git ->
@@ -308,12 +268,9 @@ module HandleCommand =
           )
     }
 
-  /// Write `package-ref-hashes.txt` from whatever store this rundir has.
-  ///
-  /// The kernel's entry points are pinned BY HASH, so a binary needs that file before it can resolve
-  /// anything. The fill path writes it as a side effect of reloading `packages/`; this is the same
-  /// step on its own, for a store that arrived as a SEED and has no `packages/` to reload. That is
-  /// the only thing standing between a fetch-at-pin build and a working binary.
+  /// Write `package-ref-hashes.txt` from this rundir's store. The fill path does this in memory
+  /// as a side effect of reloading `packages/`; a store that arrived as a seed has nothing to
+  /// reload, and this is the step on its own.
   let generateRefs () : Ply<Result<unit, string>> =
     uply {
       try
@@ -390,10 +347,7 @@ let main (args : string[]) : int =
         $"Exporting seed to {outputPath}"
         (HandleCommand.exportSeed outputPath None)
 
-    // Cut at a commit, so what a pin fetches is fixed by the commit rather than by when it asked:
-    // the same commit yields the same OPS however far the store has moved since, and ids are derived
-    // from op content, so two stores built from it agree. Not byte-identical -- the stamp records
-    // which build cut it and when -- and nothing needs it to be.
+    // Cut at a commit, so what a pin fetches is fixed by the commit, not by when it asked.
     | [ "export-seed"; outputPath; commit ] ->
       handleCommand
         $"Exporting seed at {commit} to {outputPath}"

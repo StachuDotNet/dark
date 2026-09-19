@@ -137,102 +137,56 @@ let setHashes (hashes : Map<string, string>) : unit =
   hashGeneration <- hashGeneration + 1
 
 
-/// Say something once, however many refs trip over it. Public because the resolver that needs it
-/// lives in `LibDB`, on the other side of the dependency.
+/// Say something once, however many refs trip over it. Public for the resolver in `LibDB`.
 let sayOnce (msg : string) : unit = warn msg
 
-/// The hash this BUILD pins for a fn ref, which is what "the signature this build expects" means:
-/// the pinned version is in the store too, because content is never deleted, so a candidate can be
-/// compared against it without pinning anything further.
-let pinnedFnHash (modules : string list) (name : string) : string option =
-  let fqn = $"""fn/{String.concat "." modules}.{name}"""
-  getHashes () |> Map.tryFind fqn
+/// The hash this BUILD pins for a ref: the version it was compiled against, which is in the
+/// store too since content is never deleted, so a candidate rebinding can be compared against it.
+let pinnedHash (kind : string) (modules : string list) (name : string) : string option =
+  getHashes () |> Map.tryFind $"""{kind}/{String.concat "." modules}.{name}"""
 
-/// The hash this BUILD pins for a TYPE ref. Same role as `pinnedFnHash`: the declaration this
-/// build was compiled against, to compare a candidate rebinding with.
-let pinnedTypeHash (modules : string list) (name : string) : string option =
-  let fqn = $"""type/{String.concat "." modules}.{name}"""
-  getHashes () |> Map.tryFind fqn
-
-/// How a ref resolves against the live store, when it does.
-///
-/// Installed by whoever owns the store, because `LibDB` depends on `LibExecution` and not the
-/// other way round: `PackageRefs` cannot read `locations` itself. `None` until installed, and
-/// `None` for a name the store does not bind.
-///
-/// Both kinds go through the store now, and the net is the same shape for each: compare the
-/// candidate against the PINNED version -- signatures for a fn, the declaration for a type -- and
-/// fall back to the pin, loudly, on a mismatch.
-///
-/// Types took longer to get here because of a claim that turned out to be half right. A `DRecord`
-/// the kernel builds does carry its type's hash, so a store whose version of that type has a
-/// different SHAPE would hand Dark a value it cannot typecheck. That is what the declaration
-/// check is for. What the claim missed is which direction the coupling runs: F# never reads the
-/// type name it receives -- all 44 `fromDT` conversions wildcard it -- so the hash is write-only,
-/// used to tag values rather than to recognise them. Which makes it a lookup by name that happens
-/// to be cached in a file, not a contract that has to be.
-///
-/// What this buys, and it is the point: a type a branch has just authored has NO pin to compare
-/// against, so it resolves from the store directly. That is what lets F# on a git branch reference
-/// package code authored on a dark branch.
+/// How a ref resolves against the live store. Installed by `LibDB.PackageManager`, since `LibDB`
+/// depends on this module and not the reverse. `None` until installed, and `None` for a name the
+/// store does not bind or binds to something whose shape does not match the pin; the pin is used
+/// then. Two hooks because the shape check differs: a fn by signature, a type by declaration.
 let mutable resolveFnByName : (string list -> string -> string option) =
   fun _ _ -> None
 
-/// See `resolveFnByName`. Separate hook because the check differs: a type is compared by its
-/// DECLARATION, not by a signature.
 let mutable resolveTypeByName : (string list -> string -> string option) =
   fun _ _ -> None
 
-/// Bumped whenever the store could have rebound a name, by whoever owns the store.
-///
-/// The ref closures below cache the store's answer against this, which turns a resolved ref into
-/// one int compare and no allocation. That is not a micro-optimisation: these sit under Option and
-/// Result construction, and asking the store per call measured at 46% more allocation on the
-/// reference workload. Caching inside the closure rather than inside the store lookup is what
-/// removes the last of it -- a cache one layer down still pays a key allocation per call.
+let private resolveByName (kind : string) (modules : string list) (name : string) =
+  match kind with
+  | "fn" -> resolveFnByName modules name
+  | "type" -> resolveTypeByName modules name
+  | _ -> None
+
+/// Bumped by `LibDB.Caching` on every fold, the only moment a name's binding can move. The ref
+/// closures cache the store's answer against it, so a resolved ref is one int compare and no
+/// allocation; asking the store per call measured 46% more allocation on the reference workload.
 let mutable private storeGeneration = 0
 
-/// Drop every ref's memo of what the store said. `LibDB.Caching` calls this on every fold, which
-/// is the only moment a name's binding can move.
 let invalidateStoreResolution () : unit = storeGeneration <- storeGeneration + 1
 
-/// ON by default: the store is the source, and these seventeen are the places that matters most.
-/// Edit the pretty-printer and the binary you already have starts using it.
-///
-/// Safe to default because the resolver checks the candidate's SIGNATURE against the pinned
-/// version and refuses a mismatch, loudly, falling back to the pin -- so a wrong edit degrades
-/// rather than bricks the CLI. `DARK_REFS_BY_NAME=0` turns it off anyway, which is the escape
-/// hatch for a store broken in some way the signature check does not catch.
+/// On by default: edit the pretty-printer and the binary you already have starts using it. Safe
+/// because the resolver refuses a shape mismatch and falls back to the pin. `DARK_REFS_BY_NAME=0`
+/// is the escape hatch for a store broken in a way the shape check does not catch.
 let private byNameEnabled : Lazy<bool> =
   lazy (System.Environment.GetEnvironmentVariable "DARK_REFS_BY_NAME" <> "0")
 
-let private currentStoreGeneration () : int = storeGeneration
-
-/// Can this ref be resolved right now, from the store or the pin, WITHOUT raising?
-///
-/// The ref closures are lazy, so an unresolvable ref is found whenever some code path happens to
-/// reach it -- which can be much later than the build, in a command unrelated to whatever made it
-/// unresolvable. This is the same lookup with the raise removed, so a caller can ask about every
-/// ref at once and answer the real question: does this kernel agree with this package set?
+/// The ref lookup without the raise, so `refs check` can ask about every ref at build time rather
+/// than finding an unresolvable one whenever some unrelated command happens to reach it.
 let tryResolve
   (kind : string)
   (modules : string list)
   (name : string)
   : Option<string> =
-  let fromStore =
-    if byNameEnabled.Force() then
-      match kind with
-      | "fn" -> resolveFnByName modules name
-      | "type" -> resolveTypeByName modules name
-      | _ -> None
-    else
-      None
+  let fromStore = if byNameEnabled.Force() then resolveByName kind modules name else None
 
   match fromStore with
   | Some hash -> Some hash
   | None ->
-    let fqn = $"""{kind}/{String.concat "." modules}.{name}"""
-    match getHashes () |> Map.tryFind fqn with
+    match pinnedHash kind modules name with
     | Some hash when hash <> "" -> Some hash
     | _ -> None
 
@@ -252,31 +206,21 @@ let private makeRef
   : unit -> string =
   let mutable cachedGen = -1
   let mutable cached = ""
-  // The store's answer, against `storeGeneration` rather than the hash file's: a rebinding moves
-  // the store without touching the file. `ValueNone` means "asked, and the store had nothing",
-  // which is worth remembering too -- most refs on a store that does not bind them would otherwise
-  // pay a lookup per call.
+  // The store's answer, cached against `storeGeneration` rather than the hash file's generation:
+  // a rebinding moves the store without touching the file. `ValueNone` is remembered too.
   let mutable storeGen = -1
   let mutable storeCached = ValueNone
 
   fun () ->
-    // `record` is deliberately NOT on the hit path. It is a `Map.add` into the calling module's
-    // `_lookup`, so calling it per resolution allocates a map node per Option construction: 0.8 MB
-    // on the reference workload, measured, which is all of what this path costs. The generator
-    // only needs to have seen each hash once.
+    // `record` stays off the hit path: it is a `Map.add` per call, 0.8 MB on the reference
+    // workload, and the generator only needs to have seen each hash once.
     let fromStore =
       if byNameEnabled.Force() then
-        let gen = currentStoreGeneration ()
-        if gen = storeGen then
+        if storeGeneration = storeGen then
           storeCached
         else
-          let answer =
-            match kind with
-            | "fn" -> resolveFnByName modules name
-            | "type" -> resolveTypeByName modules name
-            | _ -> None
-            |> ValueOption.ofOption
-          storeGen <- gen
+          let answer = resolveByName kind modules name |> ValueOption.ofOption
+          storeGen <- storeGeneration
           storeCached <- answer
           match answer with
           | ValueSome hash -> record hash
@@ -288,7 +232,6 @@ let private makeRef
     match fromStore with
     | ValueSome hash -> hash
     | ValueNone ->
-
       let gen = currentGeneration ()
       if gen = cachedGen then
         cached
@@ -305,11 +248,8 @@ let private makeRef
           if Map.isEmpty h then
             "" // Hash file not yet populated (CI before reload-packages)
           else
-            // Neither the store nor the pin has it, and for a type there is nothing to degrade
-            // to -- a value has to be tagged with something. So this raises, and the message has
-            // to carry the whole situation, because the person reading it is usually mid-way
-            // through exactly the workflow this arc exists to support: F# that names package code
-            // which has not arrived yet.
+            // Nothing to degrade to: a value has to be tagged with something. The reader is
+            // usually mid-way through F# naming package code that has not arrived yet.
             let dotted = $"""Darklang.{String.concat "." modules}.{name}"""
 
             let message =
@@ -325,7 +265,6 @@ let private makeRef
             Exception.raiseInternal
               message
               [ "fqn", fqn; "kind", kind; "name", dotted ]
-
 
 module Type =
   /// All type refs registered by `p`. Used by PackageRefsGenerator.

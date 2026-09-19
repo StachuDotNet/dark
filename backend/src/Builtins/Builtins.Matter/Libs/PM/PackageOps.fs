@@ -500,15 +500,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // SERVER store: bulk-insert ops + record ownership in one transaction, THEN fold.
-    //
-    // It folded nothing until 2026-09-12, on the grounds that a server serves blobs rather than
-    // projections. That also meant it could not see what it hosted: `/m` showed "Nothing here"
-    // for packages every client had, a seed could not be cut from the hosted set, and pushing new
-    // code to a server could never change what it ran. All three are wanted, so it folds.
-    // Asked BEFORE storing, so a refusal can be a refusal rather than a server error. The same
-    // rule is enforced inside `storeOpsWithOwner` as the backstop -- this exists so the answer can
-    // carry a status code and a list of names, not so the rule lives in two places.
+    // Asked before storing, so a refusal is a 403 with the names rather than a server error.
+    // `storeOpsWithOwner` enforces the same rule as the backstop.
     { name = fn "scmReservedBindings" 0
       typeParams = []
       parameters =
@@ -554,8 +547,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           uply {
             try
               let! n = LibDB.Inserts.storeOpsWithOwner owner (opRecords records)
-              // Fold what just arrived, so the projection a seed and `/m` read is current. Cheap:
-              // ~116us an op, and a push is tens of ops.
+              // Fold what arrived, so a seed and `/m` see it. About 116us an op.
               let! _ = LibDB.Seed.applyUnappliedOps ()
               return resultOk (Dval.int (bigint n))
             with ex ->

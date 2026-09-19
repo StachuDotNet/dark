@@ -245,10 +245,7 @@ let steps : List<Step> =
               print
                 $"  release: added `removed` to {List.length rows} stored conflict(s)" }
 
-    // What BUILTINS each item calls. New table, so `CREATE TABLE IF NOT EXISTS` in the schema
-    // would reach an existing store only because the bootstrap replays it, which it does not
-    // promise to. Named here so the store records having got it. Empty until the next fold
-    // rebuilds it, which is correct: it is derived.
+    // Which builtins each item calls. Derived, so empty until the next fold fills it.
     { name = "20260912_000001_package_builtin_deps"
       run =
         fun () ->
@@ -268,10 +265,8 @@ let steps : List<Step> =
     ]
 
 
-/// The format the store says it was written in, if it says.
-///
-/// Absent means a store older than the stamp, which is every store built before seeds carried one.
-/// That is not an error: it predates the field, and its ops are format 1 by construction.
+/// The format the store says it was written in. Absent means a store older than the stamp,
+/// whose ops are format 1 by construction.
 let storedFormat () : Option<uint32> =
   if not (tableExists "store_meta") then
     None
@@ -286,20 +281,11 @@ let storedFormat () : Option<uint32> =
       | false, _ -> None)
 
 
-/// Say so when a store was written by a NEWER build's format, and stamp one that carries no format
-/// yet.
-///
-/// The asymmetry is the point. A store BEHIND this build is the migrator's job (it can read an old
-/// layout, because every historical reader stays in the binary). A store AHEAD of it cannot be read
-/// by trying harder: the layout is one this binary has never seen.
-///
-/// SAID, not raised, and the wording matters more than usual, because there is no working command
-/// left to recover WITH. The projections hold blobs in the newer layout too, so this build dies on
-/// its first package lookup -- which includes resolving the name of the command you typed. So the
-/// note names the FILE to move, not a verb to run: a `mv` needs no working binary.
-///
-/// `dark store rollback` covers the other case, and the likelier one: you upgraded, you are still
-/// on the build that did it, and you want it undone.
+/// Say so when the store's format is AHEAD of this build's. A store behind is the migrator's job;
+/// one ahead cannot be read by trying harder. Said rather than raised, and it names a file to
+/// move rather than a command to run, because this build dies on its first package lookup, which
+/// includes resolving the command you typed. `dark store rollback` is for the same build undoing
+/// its own upgrade.
 let noteFormatSkew () : unit =
   match storedFormat () with
   | Some n when n > LibSerialization.Binary.BaseFormat.currentVersion ->
@@ -312,18 +298,14 @@ let noteFormatSkew () : unit =
   | _ -> ()
 
 
-/// `noteFormatSkew`, plus the stamp for a store that carries none.
-///
-/// Stamping is a WRITE, so it belongs here in the migration path rather than on every open: a store
-/// that has run this once carries the stamp from then on.
+/// `noteFormatSkew`, plus the stamp for a store that carries none. A write, so it lives on the
+/// migration path rather than on every open.
 let private checkFormat () : unit =
   noteFormatSkew ()
 
   match storedFormat () with
   | Some n when n > LibSerialization.Binary.BaseFormat.currentVersion -> ()
   | _ ->
-    // Stamp it, so from here every store says what it is. `INSERT OR REPLACE` rather than a
-    // conditional: the value is the same whether the row was missing or already right.
     Sql.query
       "CREATE TABLE IF NOT EXISTS store_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
     |> Sql.executeStatementSync

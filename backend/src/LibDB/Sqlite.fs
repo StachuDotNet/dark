@@ -13,14 +13,9 @@ open Prelude
 let private connStringFor (path : string) : string =
   $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
 
-/// A connection to a one-shot FILE beside the store: a backup being written, a seed being cut, a
-/// file being restored from.
-///
-/// Unpooled, which is the whole difference. A pooled connection outlives its `Close`, so a process
-/// that touches the same path twice -- a server cutting a seed at one commit, then at another, into
-/// a file it deleted in between -- is handed a handle to the file that is no longer there and fails
-/// with "attempt to write a readonly database" or a disk I/O error. The live store wants pooling;
-/// a file opened once does not.
+/// A connection to a one-shot file beside the store (a backup, a seed being cut, a restore
+/// source). Unpooled: a pooled connection outlives its `Close`, so a process touching the same
+/// path twice, with a delete in between, is handed a handle to the file that is gone.
 let private fileConnStringFor (path : string) : string =
   $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=False"
 
