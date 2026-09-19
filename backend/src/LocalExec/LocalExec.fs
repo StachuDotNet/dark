@@ -33,10 +33,8 @@ module HandleCommand =
       // CLEANUP consider checking for duplicates (helps prevent a class of issues)
 
       // What the store holds BEFORE the purge, so the reload can say what it destroyed. A reload
-      // replaces the log with what `packages/` produces, so anything else in it -- ops authored
-      // here, ops pulled from a relay -- does not survive. That is the intended behaviour of a dev
-      // reload and it used to happen in silence, which is how a morning's work disappears and gets
-      // blamed on whatever was edited last.
+      // replaces MAIN with what `packages/` produces, so main ops authored here or pulled from a
+      // relay do not survive; a branch's ops do (`Purge.keptForBranches`).
       let countOps () =
         Sql.query "SELECT COUNT(*) as count FROM package_ops"
         |> Sql.executeRowAsync (fun read -> read.int64 "count")
@@ -57,6 +55,9 @@ module HandleCommand =
       // every `dark status` would open on the whole package tree as uncommitted
       // work.
       let! _ = LibDB.Inserts.commitAllAsBaseline "package reload (baseline)"
+
+      // Branch ops survived the purge; their folded propagation decisions did not.
+      do! LibDB.Branches.refoldBranchDecides ()
 
       // In memory only, so PackageRefs lookups resolve while values evaluate. The file on disk
       // moves with the pin (`scripts/packages/pin`, `refs generate`), not on every reload.
@@ -92,8 +93,9 @@ module HandleCommand =
         if opsBefore > opsAfter then
           print
             $"WARNING: {opsBefore - opsAfter} op(s) did not survive this reload. A reload replaces \
-              the log with what `packages/` produces; ops authored here or pulled from a relay are \
-              not in it. `dark push` or `dark sync export <file>` before reloading keeps them."
+              main with what `packages/` produces; main ops authored here or pulled from a relay \
+              are not in it (a branch's are kept). `dark push` or `dark sync export <file>` before \
+              reloading keeps them."
 
         return Ok()
     }
@@ -174,7 +176,11 @@ module HandleCommand =
         Sql.query "SELECT hash FROM package_functions"
         |> Sql.executeAsync (fun read -> read.string "hash")
 
-      let known = Set.union (Set.ofList knownTypes) (Set.ofList knownFns)
+      let known =
+        Set.unionMany
+          [ Set.ofList knownTypes
+            Set.ofList knownFns
+            LibDB.PackageManager.overlayItemHashes () ]
 
       let allRefs = LibExecution.PackageRefs.allRefs ()
 

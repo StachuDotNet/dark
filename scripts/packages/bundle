@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+
+# The package work on your dark branch, as a file that travels with your git branch.
+#
+#   scripts/packages/bundle export    write your dark branch to package-branch.json
+#   scripts/packages/bundle import    recreate that branch from the file
+#   scripts/packages/bundle show      what is in the file
+#   scripts/packages/bundle show --source   ...and what it actually changes
+#
+# An F# change can reference package code, and then the two have to travel, merge and be
+# abandoned together; the file lets git do for the package half what it already does for the F#.
+# Export is explicit, like `git add`; forgetting it fails `refs check` for whoever checks the
+# branch out. Import is automatic (`scripts/build/prepare-package-set`) and idempotent.
+
+set -euo pipefail
+
+PINFILE="${DARK_PACKAGE_SET:-package-set.txt}"
+[[ -f "$PINFILE" ]] || { echo "bundle: no $PINFILE (run from the repo root?)" >&2; exit 2; }
+
+BUNDLE="${DARK_PACKAGE_BUNDLE:-package-branch.json}"
+CLI="${CLI:-./scripts/run-cli}"
+
+usage() { sed -n '4,14p' "$0" | sed 's/^# \?//'; }
+
+case "${1:-}" in
+  export)
+    branch=$("$CLI" branch 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | tail -1)
+    if [[ "$branch" == *"on main"* || -z "$branch" ]]; then
+      # A bundle outliving its branch is how somebody imports work merged weeks ago.
+      if [[ -f "$BUNDLE" ]]; then
+        rm -f "$BUNDLE"
+        echo "On dark main; removed $BUNDLE."
+      else
+        echo "On dark main; nothing to bundle."
+      fi
+      exit 0
+    fi
+
+    name=$(sed -E 's/^on branch "([^"]+)".*/\1/' <<<"$branch")
+    "$CLI" branch export "$name" "$BUNDLE" > /dev/null
+    echo "Wrote $BUNDLE from dark branch \"$name\" ($(wc -c < "$BUNDLE") bytes)."
+    echo "Commit it alongside the F# that needs it."
+
+    # If your main has moved past the pin, the branch may rest on commits nobody else has and
+    # the bundle will not be enough for them. CI says so too, but as somebody else's red build.
+    pin=$(awk '$1 == "commit" { print $2 }' "$PINFILE")
+    if [[ -n "$pin" && "$pin" != "unset" ]]; then
+      # `--branch main`: on a branch, bare `dark log` shows the branch's ops, not commits.
+      head=$("$CLI" --branch main log 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' \
+             | awk 'NR>3 { print $1; exit }')
+      if [[ -n "$head" && "${pin:0:${#head}}" != "$head" ]]; then
+        echo
+        echo "Note: your main is at ${head}, but ${PINFILE} pins ${pin:0:8}."
+        echo "If this branch rests on commits the pin does not have, this bundle will not be"
+        echo "enough for anyone else. Bump the pin, or wait for it to catch up."
+      fi
+    fi
+    ;;
+
+  import)
+    if [[ ! -f "$BUNDLE" ]]; then
+      echo "No $BUNDLE; nothing to import."
+      exit 0
+    fi
+    "$CLI" branch import "$BUNDLE"
+    ;;
+
+  show)
+    [[ -f "$BUNDLE" ]] || { echo "No $BUNDLE." >&2; exit 1; }
+    python3 -c "
+import json
+b=json.load(open('$BUNDLE'))
+print('branch:', b.get('name'), '(' + str(b.get('branchId','?'))[:8] + ')')
+print('ops:   ', len(b.get('ops', [])))
+print('commits:', len(b.get('commits', [])))
+"
+    if [[ "${2:-}" == "--source" ]]; then
+      # Into a disposable store, never yours: reviewing should not mean importing.
+      scratch=$(mktemp -d)
+      # shellcheck disable=SC2064  # expand now: $scratch must not be re-evaluated at trap time
+      trap "rm -rf '$scratch'" EXIT
+      scripts/testing/_copy-store "$scratch/data.db" > /dev/null
+      name=$(python3 -c "
+import json
+print(json.load(open('$BUNDLE')).get('name',''))
+")
+      echo
+      env DARK_CONFIG_RUNDIR="$scratch" HOME="$scratch" \
+        ./backend/Build/out/Cli/Debug/net10.0/Cli branch import "$BUNDLE" > /dev/null 2>&1
+      env DARK_CONFIG_RUNDIR="$scratch" HOME="$scratch" \
+        ./backend/Build/out/Cli/Debug/net10.0/Cli branch diff "$name" --source 2>&1 \
+        | sed 's/\x1b\[[0-9;]*m//g'
+    fi
+    ;;
+
+  -h|--help|"") usage ;;
+  *) echo "bundle: unknown argument $1" >&2; usage >&2; exit 2 ;;
+esac

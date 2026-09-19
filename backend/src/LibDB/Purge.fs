@@ -56,8 +56,8 @@ let tables : List<string> =
     // wholesale adopt on the next pull, which is what a store with no base does anyway.
     "sync_bases"
 
-    // The branch OVERLAY goes with the ops: emptying the log while keeping these leaves
-    // every tag pointing at nothing, so a purge ends a branch's uncommitted work.
+    // In the list because they name ops, but see `keptForBranches`: a branch's own ops are the
+    // one part of the log a reload does not replace, so these are pruned to them, not emptied.
     "op_branches"
     "branch_name_bases"
 
@@ -71,6 +71,14 @@ let tables : List<string> =
     "seed_ops" ]
 
 
+/// A reload rebuilds MAIN from `packages/`. A branch's uncommitted work is not in `packages/`
+/// and is not main's, so it survives: its ops stay in the log (inert, tagged, exactly as they
+/// were), and its overlay rows with them. Branch content lives in those ops, folded in memory
+/// per branch, so nothing else has to be kept for the branch to keep working. An op the branch
+/// holds that the reloaded text also produces is promoted to main by the fill's insert, which
+/// untags it, so the two cannot disagree about it.
+let private keptForBranches : Set<string> = Set.ofList [ "op_branches"; "branch_name_bases" ]
+
 let purge () : Task<unit> =
   task {
     let tableExists (tableName : string) : bool =
@@ -79,11 +87,21 @@ let purge () : Task<unit> =
       |> Sql.parameters [ "tableName", Sql.string tableName ]
       |> Sql.executeExistsSync
 
+    let branchOps = "(SELECT op_id FROM op_branches)"
+
     // Existence-filtered: this runs against stores whose migrations haven't caught up.
     let statements =
       tables
       |> List.filter tableExists
-      |> List.map (fun table -> ($"DELETE FROM {table}", [ [] ]))
+      |> List.choose (fun table ->
+        if Set.contains table keptForBranches then
+          None
+        elif table = "package_ops" && tableExists "op_branches" then
+          Some($"DELETE FROM package_ops WHERE id NOT IN {branchOps}", [ [] ])
+        elif table = "op_owners" && tableExists "op_branches" then
+          Some($"DELETE FROM op_owners WHERE op_id NOT IN {branchOps}", [ [] ])
+        else
+          Some($"DELETE FROM {table}", [ [] ]))
 
     if not (List.isEmpty statements) then
       statements |> Sql.executeTransactionSync |> ignore<List<int>>

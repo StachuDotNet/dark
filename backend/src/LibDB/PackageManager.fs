@@ -721,6 +721,49 @@ let private overlayTypeBinding
     None
 
 
+/// Every Darklang-owned binding the current branch's overlay adds or changes, as
+/// (modules, name, itemType, hash). For `PackageRefsGenerator`, which otherwise reads only
+/// `locations` and so could not write a hash file naming a type the branch authored.
+let overlayDarklangBindings () : List<string * string * string * string> =
+  let bindings =
+    System.Collections.Generic.Dictionary<PT.PackageLocation, string * string>()
+
+  for op in branchOverlayOps do
+    let apply loc target =
+      match target with
+      | PT.PackageType(Hash h) -> bindings[loc] <- ("type", h)
+      | PT.PackageValue(Hash h) -> bindings[loc] <- ("value", h)
+      | PT.PackageFn(Hash h) -> bindings[loc] <- ("fn", h)
+
+    match op with
+    | PT.PackageOp.SetName(loc, target, _) -> apply loc target
+    | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override target) ->
+      apply loc target
+    | PT.PackageOp.Unbind(loc, _) -> bindings.Remove loc |> ignore<bool>
+    | _ -> ()
+
+  bindings
+  |> Seq.filter (fun kv -> kv.Key.owner = "Darklang")
+  |> Seq.map (fun kv ->
+    let (itemType, hash) = kv.Value
+    (String.concat "." kv.Key.modules, kv.Key.name, itemType, hash))
+  |> List.ofSeq
+
+
+/// The content the current branch's overlay carries, by hash. After a reload the projections
+/// hold main's content only; a branch's is in its ops, and this is where a check that asks
+/// "does the store hold this hash" has to look for it.
+let overlayItemHashes () : Set<string> =
+  branchOverlayOps
+  |> List.choose (fun op ->
+    match op with
+    | PT.PackageOp.AddType t -> Some(let (Hash h) = t.hash in h)
+    | PT.PackageOp.AddValue v -> Some(let (Hash h) = v.hash in h)
+    | PT.PackageOp.AddFn f -> Some(let (Hash h) = f.hash in h)
+    | _ -> None)
+  |> Set.ofList
+
+
 /// What `Darklang.<modules>.<name>` of this kind binds to on main. Cached through
 /// `Caching.withCache`, which the fold clears, so it expires exactly when a rebinding could change
 /// the answer. Not a nicety: these sit under Option and Result construction, and an uncached query

@@ -93,7 +93,14 @@ let generateWith (writeToDisk : bool) : Ply<unit> =
         let hash = read.string "item_hash"
         (buildKey itemType modules name, hash))
 
-    let dbMap = dbRows |> Map.ofList
+    // The branch's bindings over main's: `locations` is main's projection, and a file generated
+    // on a branch has to name the items the branch adds.
+    let dbMap =
+      PackageManager.overlayDarklangBindings ()
+      |> List.fold
+        (fun acc (modules, name, itemType, hash) ->
+          Map.add (buildKey itemType modules name) hash acc)
+        (dbRows |> Map.ofList)
 
     // Preserves entries not found in the DB (e.g. RT types that share hashes with PT types and aren't in
     // locations), and, via `existingKeys` above, refs this process never registered.
