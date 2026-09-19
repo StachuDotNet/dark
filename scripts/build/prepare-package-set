@@ -13,7 +13,8 @@
 
 set -euo pipefail
 
-[[ -f package-set.txt ]] || { echo "prepare-package-set: run from the repo root" >&2; exit 2; }
+PINFILE="${DARK_PACKAGE_SET:-package-set.txt}"
+[[ -f "$PINFILE" ]] || { echo "prepare-package-set: no $PINFILE (run from the repo root?)" >&2; exit 2; }
 
 URL_ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -32,7 +33,7 @@ import_bundle() {
   fi
 }
 
-PIN=$(awk '$1 == "commit" { print $2 }' package-set.txt)
+PIN=$(awk '$1 == "commit" { print $2 }' "$PINFILE")
 
 # Asked wherever the package set is established; CI never runs `scripts/dev/build`.
 check_agreement() {
@@ -40,7 +41,7 @@ check_agreement() {
 }
 
 if [[ -z "$PIN" || "$PIN" == "unset" ]]; then
-  echo "No pin in package-set.txt; building the package set from packages/."
+  echo "No pin in $PINFILE; building the package set from packages/."
   scripts/build/reload-packages
   import_bundle
   check_agreement
