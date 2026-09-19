@@ -13,6 +13,12 @@ open Prelude
 let private connStringFor (path : string) : string =
   $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=true"
 
+/// A connection to a one-shot file beside the store (a backup, a seed being cut, a restore
+/// source). Unpooled: a pooled connection outlives its `Close`, so a process touching the same
+/// path twice, with a delete in between, is handed a handle to the file that is gone.
+let private fileConnStringFor (path : string) : string =
+  $"Data Source={path};Mode=ReadWriteCreate;Cache=Private;Pooling=False"
+
 let private defaultConnString = connStringFor LibConfig.Config.dbPath
 
 /// The store this process is actually reading and writing, which is `LibConfig.Config.dbPath` except
@@ -55,7 +61,7 @@ module Backup =
 
   /// Snapshot the live store into `target`, creating it.
   let toFile (target : string) : Result<unit, string> =
-    copy connString (connStringFor target)
+    copy connString (fileConnStringFor target)
 
   /// Replace the live store's contents with `source`'s.
   ///
@@ -67,7 +73,7 @@ module Backup =
     if not (System.IO.File.Exists source) then
       Error $"no file at {source}"
     else
-      copy (connStringFor source) connString
+      copy (fileConnStringFor source) connString
 
 
 module Sql =

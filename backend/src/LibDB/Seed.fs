@@ -40,26 +40,25 @@ let mutable private warnedAboutUnreadableOps = false
 // Export
 // ---------------------
 
-/// Export a seed database to the given output path: copy the full source DB, then strip everything
-/// that belongs to the machine that built it rather than to the package set (see the DELETEs below).
-let export (outputPath : string) : Task<unit> =
+/// A seed: a snapshot of the store with everything that belongs to the machine that built it
+/// stripped (the DELETEs below). `Some commit` keeps only the ops that commit or an ancestor names,
+/// so two people fetching the same commit get the same ops however far the source has moved,
+/// which is what makes a pin reproducible.
+let exportAt (outputPath : string) (upToCommit : string option) : Task<unit> =
   task {
-    let sourcePath = LibConfig.Config.dbPath
-
     if System.IO.File.Exists outputPath then System.IO.File.Delete outputPath
 
-    // Checkpoint WAL before copying to ensure all data is in the main file
-    let sourceConnStr = $"Data Source={sourcePath};Mode=ReadOnly;Cache=Private"
-    use sourceConn = new SqliteConnection(sourceConnStr)
-    sourceConn.Open()
-    use checkpointCmd = sourceConn.CreateCommand()
-    checkpointCmd.CommandText <- "PRAGMA wal_checkpoint(TRUNCATE);"
-    checkpointCmd.ExecuteNonQuery() |> ignore<int>
-    sourceConn.Close()
+    // The online-backup API, never a file copy: the store is live (a server cuts a seed while
+    // serving) and `data.db` alone is not the store while writes sit in the WAL.
+    match Backup.toFile outputPath with
+    | Error e ->
+      Exception.raiseInternal $"could not snapshot the store to cut a seed: {e}" []
+    | Ok() -> ()
 
-    System.IO.File.Copy(sourcePath, outputPath)
-
-    let connStr = $"Data Source={outputPath};Mode=ReadWriteCreate;Cache=Private"
+    // Unpooled: a pooled connection outlives its `Close`, and a second cut into a path the first
+    // deleted is handed a handle to the old file. See `Sqlite.fileConnStringFor`.
+    let connStr =
+      $"Data Source={outputPath};Mode=ReadWriteCreate;Cache=Private;Pooling=False"
 
     use conn = new SqliteConnection(connStr)
     conn.Open()
@@ -137,12 +136,90 @@ let export (outputPath : string) : Task<unit> =
       """
     cleanCmd.ExecuteNonQuery() |> ignore<int>
 
+    // Cut at a commit: keep only the ops and commits in its ancestry, after the clean above.
+    match upToCommit with
+    | None -> ()
+    | Some commit ->
+      use cutCmd = conn.CreateCommand()
+      cutCmd.CommandText <-
+        """
+        CREATE TEMP TABLE seed_ancestry AS
+        WITH RECURSIVE ancestry(h) AS (
+          SELECT hash FROM commits WHERE hash = $commit
+          UNION
+          SELECT c.parent FROM commits c JOIN ancestry a ON c.hash = a.h WHERE c.parent <> ''
+        )
+        SELECT h FROM ancestry;
+
+        DELETE FROM package_ops
+        WHERE commit_hash IS NULL OR commit_hash NOT IN (SELECT h FROM seed_ancestry);
+
+        DELETE FROM commits WHERE hash NOT IN (SELECT h FROM seed_ancestry);
+
+        DROP TABLE seed_ancestry;
+        """
+      cutCmd.Parameters.AddWithValue("$commit", commit) |> ignore<SqliteParameter>
+      cutCmd.ExecuteNonQuery() |> ignore<int>
+
+    // Read back after the cut, so `cut_at` is the tip of what the file holds.
+    let cutAt =
+      use tipCmd = conn.CreateCommand()
+      tipCmd.CommandText <-
+        "SELECT hash FROM commits ORDER BY created_at DESC, rowid DESC LIMIT 1"
+      match tipCmd.ExecuteScalar() with
+      | null -> ""
+      | tip -> string tip
+
+    // The stamp: which cut, which build, when, and the op-blob format the migrator keys on.
+    use stampCmd = conn.CreateCommand()
+    stampCmd.CommandText <-
+      """
+      CREATE TABLE IF NOT EXISTS store_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+      DELETE FROM store_meta;
+      INSERT INTO store_meta (key, value) VALUES
+        ('format', $format),
+        ('cut_at', $cutAt),
+        ('kernel', $kernel),
+        ('at', $at);
+      """
+    stampCmd.Parameters.AddWithValue(
+      "$format",
+      string LibSerialization.Binary.BaseFormat.currentVersion
+    )
+    |> ignore<SqliteParameter>
+    stampCmd.Parameters.AddWithValue("$cutAt", cutAt) |> ignore<SqliteParameter>
+    stampCmd.Parameters.AddWithValue("$kernel", LibConfig.Config.buildHash)
+    |> ignore<SqliteParameter>
+    stampCmd.Parameters.AddWithValue(
+      "$at",
+      System.DateTime.UtcNow.ToString(
+        "o",
+        System.Globalization.CultureInfo.InvariantCulture
+      )
+    )
+    |> ignore<SqliteParameter>
+    stampCmd.ExecuteNonQuery() |> ignore<int>
+
     use vacuumCmd = conn.CreateCommand()
     vacuumCmd.CommandText <- "VACUUM;"
     vacuumCmd.ExecuteNonQuery() |> ignore<int>
 
+    // Out of WAL, so the one file is the whole seed wherever it is shipped. `LibDB.Sqlite` puts a
+    // store back into WAL at open.
+    use settleCmd = conn.CreateCommand()
+    settleCmd.CommandText <-
+      "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;"
+    settleCmd.ExecuteNonQuery() |> ignore<int>
+
     conn.Close()
   }
+
+
+/// A seed of main as it stands now.
+let export (outputPath : string) : Task<unit> = exportAt outputPath None
 
 
 // ---------------------
@@ -498,6 +575,25 @@ module ValueEvaluationError =
     | None -> e.message
     | Some(PT.Hash h) -> $"Value {h} ({e.location}): {e.message}"
 
+/// The values this store may EVALUATE. Folding an op is inert; evaluating a `val` runs its body.
+/// A value whose only bindings arrived by push (`op_owners`) is folded, browsable and servable,
+/// and never executed here: whoever fetches it evaluates it under their own policy. A value with
+/// any local binding is evaluated, since content is shared and a peer may push what you wrote.
+/// `op_owners` is empty on a client, so there this selects what it always did.
+let private evaluableValues =
+  """
+  pv.rt_dval IS NULL
+  AND NOT (
+    EXISTS (SELECT 1 FROM locations hl
+             WHERE hl.item_hash = pv.hash
+               AND hl.op_id IN (SELECT op_id FROM op_owners))
+    AND NOT EXISTS (SELECT 1 FROM locations ll
+                     WHERE ll.item_hash = pv.hash
+                       AND ll.op_id NOT IN (SELECT op_id FROM op_owners))
+  )
+  """
+
+
 /// Evaluate all package values that have NULL rt_dval, under `authority`.
 /// Multi-pass: values may depend on other values, so we retry until convergence.
 let evaluateAllValues
@@ -537,11 +633,11 @@ let evaluateAllValues
 
       let! unevaluatedValues =
         Sql.query
-          """
+          $"""
           SELECT pv.hash, pv.pt_def, l.owner, l.modules, l.name
           FROM package_values pv
           LEFT JOIN locations l ON l.item_hash = pv.hash AND l.unlisted_at IS NULL
-          WHERE pv.rt_dval IS NULL
+          WHERE {evaluableValues}
           """
         |> Sql.executeAsync (fun read ->
           let hash = Hash(read.string "hash")
@@ -659,6 +755,7 @@ let growIfNeeded
   : Task<bool> =
   task {
     use _span = Telemetry.span "seed.growIfNeeded" []
+
     let! appliedCount =
       Telemetry.timeTask "seed.applyOps" [] (fun () -> applyUnappliedOps ())
     // The fold above reads effective=1 only, so branch-scoped Decisions (a branch's propagation
@@ -672,8 +769,9 @@ let growIfNeeded
     // NULL forever, and a NULL `rt_dval` reads as "value not found". Evaluate whenever any value is
     // unevaluated so the store self-heals on startup.
     let! hasUnevaluatedValues =
+      // The predicate `evaluateAllValues` uses, or a server would re-enter this on every start.
       Sql.query
-        "SELECT EXISTS(SELECT 1 FROM package_values WHERE rt_dval IS NULL) AS has_null"
+        $"SELECT EXISTS(SELECT 1 FROM package_values pv WHERE {evaluableValues}) AS has_null"
       |> Sql.executeRowAsync (fun read -> read.int64 "has_null")
       |> Task.map (fun n -> n > 0L)
     if appliedCount > 0L then

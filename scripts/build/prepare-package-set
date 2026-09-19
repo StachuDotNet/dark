@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+
+# Get this build's package set into the store, from whichever source `package-set.txt` names.
+#
+#   commit unset   reload `packages/` from disk, which is what has always happened
+#   commit <hash>  fetch the seed at that commit from the package server, and generate the
+#                  kernel's ref hashes from it
+#
+# One script, so a build cannot embed one package set and test another. The pinned path needs
+# `DARK_SEED_URL` (or `--url`) and does not fall back to reloading: a build that silently used the
+# tree instead of the pin is the failure the pin exists to prevent.
+
+set -euo pipefail
+
+PINFILE="${DARK_PACKAGE_SET:-package-set.txt}"
+[[ -f "$PINFILE" ]] || { echo "prepare-package-set: no $PINFILE (run from the repo root?)" >&2; exit 2; }
+
+URL_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --url) URL_ARGS=(--url "${2:?--url needs a url}"); shift 2 ;;
+    -h|--help) sed -n '4,13p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    *) echo "prepare-package-set: unknown argument $1" >&2; exit 2 ;;
+  esac
+done
+
+# The branch bundle, if this git branch carries one: the F# in the tree may name items only it
+# has. Idempotent, since ops are content-addressed.
+import_bundle() {
+  if [[ -f "${DARK_PACKAGE_BUNDLE:-package-branch.json}" ]]; then
+    scripts/packages/bundle import
+  fi
+}
+
+PIN=$(awk '$1 == "commit" { print $2 }' "$PINFILE")
+
+# Asked wherever the package set is established; CI never runs `scripts/dev/build`.
+check_agreement() {
+  scripts/run-local-exec refs check
+}
+
+if [[ -z "$PIN" || "$PIN" == "unset" ]]; then
+  echo "No pin in $PINFILE; building the package set from packages/."
+  scripts/build/reload-packages
+  import_bundle
+  check_agreement
+  exit 0
+fi
+
+echo "Pinned to ${PIN}; fetching the seed rather than reloading packages/."
+scripts/fetch-seed "${URL_ARGS[@]}" --force
+
+# The ref-hash file is a projection of the seed, not in it.
+scripts/run-local-exec refs generate
+
+import_bundle
+check_agreement

@@ -1,0 +1,33 @@
+module Darklang.SCM.StoreMeta
+
+// The `store_meta` silo: what a store says about itself. Written by the seed cut
+// (`LibDB.Seed.exportAt`) and stamped at open by `LibDB.Releases`. Read-only from Dark.
+//
+//   format   the op-blob layout version; a reader that understands a different one refuses
+//   cut_at   the commit this store was cut at
+//   kernel   the build that cut it
+//   at       when
+
+
+/// The value of <param key>, or "" when the store carries none, as `LocalStore.configGet` does.
+let get (key: String) : String =
+  match
+    Stdlib.Sqlite.queryOneP
+      (localDb ())
+      "SELECT value FROM store_meta WHERE key = @p0"
+      [ key ]
+  with
+  | Some row -> Stdlib.Sqlite.textField row "value" |> Stdlib.Option.withDefault ""
+  | None -> ""
+
+
+/// Everything this store says about itself, for `dark status` and the seed endpoints.
+let all () : List<(String * String)> =
+  Stdlib.Sqlite.rowsOrEmptyP
+    (localDb ())
+    "SELECT key, value FROM store_meta ORDER BY key"
+    []
+  |> Stdlib.List.filterMap (fun row ->
+    match (Stdlib.Sqlite.textField row "key", Stdlib.Sqlite.textField row "value") with
+    | (Some k, Some v) -> Stdlib.Option.Option.Some((k, v))
+    | _ -> Stdlib.Option.Option.None)

@@ -201,9 +201,16 @@ let localMaxRowid () : Int64 =
   |> Stdlib.Option.withDefault 0L
 
 
-/// RELAY side of a push: store the pushed ops AND record who pushed them, so the owner can pull their
-/// stuff back from any machine. Bulk (ops + ownership in one transaction) and store-only -- NO fold, since
-/// a relay serves op blobs, not projections. Returns the count of newly-stored ops.
+/// The reserved names these ops would newly bind into this server's main. Empty means the push
+/// is fine. Asked before storing so the refusal can be a 403; the store path is the backstop.
+let reservedBindingsIn (ops: List<SyncOp>) : List<String> =
+  Builtin.scmReservedBindings (
+    ops |> Stdlib.List.map (fun op -> (op.id, op.blobHex, op.ts))
+  )
+
+
+/// SERVER side of a push: store the pushed ops, record who pushed them so the owner can pull their
+/// stuff back from any machine, and fold them into main. Returns the count of newly-stored ops.
 let storeWithOwner
   (owner: String)
   (ops: List<SyncOp>)
@@ -213,8 +220,7 @@ let storeWithOwner
 
   match Builtin.scmStoreOps owner records with
   | Ok n ->
-    // The author's commits, kept beside the hosted ops so a pull hands them on. Stored, never folded,
-    // like the ops themselves: a hosted op is inert here whatever commit it names.
+    // The author's commits, kept beside the hosted ops so a pull hands them on.
     PackageOps.adoptCommits commits (ops |> Stdlib.List.map (fun op -> (op.id, op.commit)))
     Stdlib.Result.Result.Ok n
   | Error e -> Stdlib.Result.Result.Error e

@@ -285,28 +285,8 @@ let rec insertAndApplyOpsWith
 /// op the store already runs counts 0. Insert with applied=false, fold, then mark applied=true, so a
 /// mid-fold failure leaves the ops identifiable and retryable. Commit-free: no commit_hash, so every
 /// op is live.
-/// The `owner` field is the first part of a package name, such as
-/// `Darklang.Stdlib.List.map`. Names beginning with `Darklang` are treated as
-/// bundled first-party code, so only trusted seeding may create those bindings;
-/// guest and sync writes reject them.
-let reservedOwners : Set<string> = Set.ofList [ "Darklang" ]
-
-/// The first operation that binds OR unbinds a name under a protected owner.
-/// `None` means no protected location is touched. (The old model also had to
-/// chase renames unlisting other bindings of a shared hash; that heuristic is
-/// gone -- a `SetName` changes exactly its own location, and retiring a name is
-/// an explicit `Unbind` -- so the location arms here are the whole surface.)
-let reservedOwnerViolation (ops : List<PT.PackageOp>) : Option<string> =
-  let ownersBound (op : PT.PackageOp) : List<string> =
-    match op with
-    | PT.PackageOp.SetName(loc, _, _) -> [ loc.owner ]
-    | PT.PackageOp.Unbind(loc, _) -> [ loc.owner ]
-    | _ -> []
-  ops
-  |> List.collect ownersBound
-  |> List.tryFind (fun owner -> Set.contains owner reservedOwners)
-  |> Option.map (fun owner ->
-    $"cannot bind a package name under the reserved owner \"{owner}\"; it is reserved for the bundled standard library")
+// Local writes have no reserved owners: your store is yours, `Darklang.*` included. The one place
+// a namespace is protected is a server's main, in `reservedOnServerMain` below.
 
 /// Detect a parser placeholder instead of a real content hash. Placeholders
 /// are empty or contain the package location; real hashes contain only hex
@@ -354,16 +334,14 @@ let insertAndApplyOpsAsWip (ops : List<PT.PackageOp>) : Task<int64> =
 /// `effective = 1` is the same clause `Queries.getWipOps` carries and for the same reason: ops a client
 /// pushed to this store are inert, untagged and uncommitted, so without it a discard here deletes data
 /// this store is only holding for someone else.
-/// Safely insert package operations submitted by RUNNING Dark code -- a guest
-/// `run`, or ops that arrived over sync. Rejects protected `Darklang` bindings
-/// and unstabilized hashes before insertion; trusted seeding does not come
-/// through here.
+/// Insert package operations submitted by RUNNING Dark code -- a guest `run`, or ops that arrived
+/// over sync. Trusted seeding does not come through here. The placeholder-hash check is
+/// correctness, not permission: a parser with no store emits a location where a hash belongs.
 let insertUntrustedOps (ops : List<PT.PackageOp>) : Task<Result<int64, string>> =
   task {
-    match reservedOwnerViolation ops, placeholderHashViolation ops with
-    | Some reason, _
-    | None, Some reason -> return Error reason
-    | None, None ->
+    match placeholderHashViolation ops with
+    | Some reason -> return Error reason
+    | None ->
       let! count = insertAndApplyOpsAsWip ops
       return Ok count
   }
@@ -373,11 +351,13 @@ let draftDeletes : List<string> =
      AND op_id IN (SELECT id FROM package_ops
                    WHERE effective = 1
                      AND commit_hash IS NULL
-                     AND id NOT IN (SELECT op_id FROM op_branches))"
+                     AND id NOT IN (SELECT op_id FROM op_branches)
+                     AND id NOT IN (SELECT op_id FROM op_owners))"
     "DELETE FROM package_ops
      WHERE effective = 1
        AND commit_hash IS NULL
-       AND id NOT IN (SELECT op_id FROM op_branches)" ]
+       AND id NOT IN (SELECT op_id FROM op_branches)
+       AND id NOT IN (SELECT op_id FROM op_owners)" ]
 
 /// Every main op and what it wrote, EXCEPT the ids in `keep`: the ops this build cannot decode, which
 /// the caller has read by id. Deleting those would delete a peer's committed op for good because this
@@ -402,8 +382,8 @@ let wholeMainDeletes (keep : Set<System.Guid>) : List<string> =
     //
     // Main only. A branch's rows are keyed by its own id, and no main rewrite may touch them.
     $"DELETE FROM propagation_policy WHERE branch_id = '{PT.BranchId.Main}'"
-    // `effective = 1`: excludes client-pushed inert ops; see `draftDeletes`.
-    $"DELETE FROM package_ops WHERE effective = 1 AND id NOT IN (SELECT op_id FROM op_branches){keepUnreadable}" ]
+    // Hosted ops excluded via `op_owners`; see `draftDeletes` for why.
+    $"DELETE FROM package_ops WHERE effective = 1 AND id NOT IN (SELECT op_id FROM op_branches) AND id NOT IN (SELECT op_id FROM op_owners){keepUnreadable}" ]
 
 /// Main's op ids this build cannot decode. What `wholeMainDeletes` keeps.
 let unreadableMainOpIds () : Task<Set<System.Guid>> =
@@ -567,35 +547,116 @@ let importOpsBulk
   }
 
 
-/// RELAY store path: bulk-insert the pushed ops AND record ownership (op_id, owner) in ONE
-/// transaction. Unlike importOpsBulk this does NOT fold: a relay serves op blobs, not projections.
-/// The op_owners rows let it serve "your stuff" back by identity. Malformed records are skipped,
-/// and owner="" stores ops without recording ownership. Returns the count of newly-stored ops.
+/// The owners a SERVER will not let a push bind into its main.
+///
+/// Main is what the pin names, what every fetch gets, and what the server resolves its own router
+/// through, so a push binding `Darklang.*` there changes what the server serves, for everyone,
+/// unreviewed. Your own namespace is yours to publish to with a plain `dark push`. A branch push
+/// is unaffected: a branch is isolated and review is what moves it to main. This stops accidents,
+/// not attacks: the pushed owner is an unsigned string.
+let reservedOnServerMain : Set<string> = Set.ofList [ "Darklang" ]
+
+
+/// The reserved names these (id, blob) records would newly bind into this store's main. Ops the
+/// store already has are skipped: they are content-addressed no-ops whatever they bind, and
+/// `dark push` sends the whole log, `Darklang.*` baseline included, so checking the raw batch
+/// would refuse everyone's first push.
+let private newReservedBindings
+  (records : List<System.Guid * byte[]>)
+  : Task<List<string>> =
+  task {
+    if List.isEmpty records then
+      return []
+    else
+      // Built by hand, as the merge path does: the reflection serializer is disabled under AOT.
+      let idsJson =
+        "["
+        + (records |> List.map (fun (id, _) -> "\"" + string id + "\"") |> String.concat ",")
+        + "]"
+
+      let! existing =
+        Sql.query
+          "SELECT id FROM package_ops WHERE id IN (SELECT value FROM json_each(@ids))"
+        |> Sql.parameters [ "ids", Sql.string idsJson ]
+        |> Sql.executeAsync (fun read -> read.string "id")
+
+      let known = existing |> List.map (fun s -> s.ToLowerInvariant()) |> Set.ofList
+
+      return
+        records
+        |> List.filter (fun (id, _) ->
+          not (Set.contains ((string id).ToLowerInvariant()) known))
+        |> List.choose (fun (id, blob) -> BS.PT.PackageOp.tryDeserialize id blob)
+        |> List.choose (fun op ->
+          match op with
+          | PT.PackageOp.SetName(loc, _, _)
+          | PT.PackageOp.Decision(_, loc, _, PT.DecisionKind.Override _) when
+            Set.contains loc.owner reservedOnServerMain
+            ->
+            Some(String.concat "." (loc.owner :: loc.modules @ [ loc.name ]))
+          | _ -> None)
+        |> List.distinct
+  }
+
+
+/// Parse what a push sends. A malformed record is logged and skipped rather than failing the
+/// batch, so one bad row from a client cannot hold the rest of its push hostage.
+let private validRecords
+  (records : List<string * string * string>)
+  : List<System.Guid * byte[] * string> =
+  records
+  |> List.choose (fun (id, blobHex, ts) ->
+    try
+      Some(System.Guid.Parse id, System.Convert.FromHexString blobHex, ts)
+    with ex ->
+      System.Console.Error.WriteLine(
+        $"storeOpsWithOwner: skipping malformed record id={id}: {ex.Message}"
+      )
+      None)
+
+
+/// The pre-check a server runs before accepting a push, so it can answer 403 rather than 500.
+let reservedBindingsIn
+  (records : List<string * string * string>)
+  : Task<List<string>> =
+  validRecords records |> List.map (fun (id, blob, _) -> id, blob) |> newReservedBindings
+
+
+/// SERVER store path: insert the pushed ops and record ownership (op_id, owner) in one
+/// transaction, refusing the whole batch if any op would newly bind a reserved name into main.
+/// Half a push landing is worse than none: the half that lands is live at once and the pusher
+/// cannot tell which half. The ops are `effective = 1`, folded by the caller like any arriving
+/// op, so the server can serve a seed of what it hosts. owner="" stores ops without ownership.
+/// Returns the count of newly stored ops.
 let storeOpsWithOwner
   (owner : string)
   (records : List<string * string * string>)
   : Task<int64> =
   task {
-    if List.isEmpty records then
+    let valid = validRecords records
+
+    if List.isEmpty valid then
       return 0L
     else
-      let valid =
-        records
-        |> List.choose (fun (id, blobHex, originTs) ->
-          try
-            Some(
-              System.Guid.Parse id,
-              System.Convert.FromHexString blobHex,
-              originTs
-            )
-          with ex ->
-            System.Console.Error.WriteLine(
-              $"storeOpsWithOwner: skipping malformed record id={id}: {ex.Message}"
-            )
-            None)
+      let! reserved =
+        newReservedBindings (valid |> List.map (fun (id, blob, _) -> id, blob))
 
-      if List.isEmpty valid then
-        return 0L
+      if not (List.isEmpty reserved) then
+        let shown = reserved |> List.truncate 5 |> String.concat ", "
+
+        let andMore =
+          if List.length reserved > 5 then
+            $" (and {List.length reserved - 5} more)"
+          else
+            ""
+
+        return
+          Exception.raiseInternal
+            ($"this server does not accept pushes that bind {shown}{andMore} into its main. "
+             + "That namespace is reviewed: push a branch instead (`dark branch push`), and it "
+             + "lands on main when the change is merged. Your own namespace takes a plain "
+             + "`dark push`.")
+            []
       else
         let opRows =
           valid
@@ -604,15 +665,9 @@ let storeOpsWithOwner
               "op_blob", Sql.bytes blob
               "origin_ts", Sql.string ts ])
 
-        // `effective = 0`: in the log, NEVER folded into this store's own main. Queued-for-folding
-        // is not enough, since `growIfNeeded` folds everything `applied = 0 AND effective = 1` on
-        // the next startup. A client pushes its whole log, package tree included, and names bind
-        // last-writer-wins over the whole store -- `Darklang.Matter.router` among them -- so anyone
-        // who could write to a relay could change what that relay itself runs. Hosted ops are DATA:
-        // the relay serves the blobs back verbatim and its own code stays what its binary seeded.
         let insertOps =
           "INSERT OR IGNORE INTO package_ops (id, op_blob, applied, effective, origin_ts)
-           VALUES (@id, @op_blob, 0, 0, @origin_ts)"
+           VALUES (@id, @op_blob, 0, 1, @origin_ts)"
 
         let statements =
           if owner = "" then
@@ -628,8 +683,8 @@ let storeOpsWithOwner
 
             [ (insertOps, opRows); (insertOwners, ownerRows) ]
 
-        // One transaction; the ops-insert counts come first (statement order), so truncate to the
-        // op rows to report NEW ops rather than owner rows.
+        // The ops-insert counts come first (statement order), so truncate to the op rows to
+        // report NEW ops rather than owner rows.
         let affected = Sql.executeTransactionSync statements
         return affected |> List.truncate (List.length opRows) |> List.sumBy int64
   }

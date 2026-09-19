@@ -500,8 +500,31 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // RELAY store: bulk-insert ops + record ownership (owner) in one transaction, NO fold
-    // (a relay serves blobs, not projections). The perf path for a relay recording pushes.
+    // Asked before storing, so a refusal is a 403 with the names rather than a server error.
+    // `storeOpsWithOwner` enforces the same rule as the backstop.
+    { name = fn "scmReservedBindings" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "records"
+            (TList(TTuple(TString, TString, [ TString ])))
+            "(id, blobHex, originTs) triples" ]
+      returnType = TList TString
+      description =
+        "The reserved names these ops would bind into this store's main, and that it will not accept. Empty means the push is fine."
+      fn =
+        (function
+        | _, _, _, [| DList(_, records) |] ->
+          uply {
+            let! names = LibDB.Inserts.reservedBindingsIn (opRecords records)
+            return Dval.list KTString (names |> List.map Dval.string)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.PackageRead ]
+      deprecated = NotDeprecated }
+
     { name = fn "scmStoreOps" 0
       typeParams = []
       parameters =
@@ -524,6 +547,8 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           uply {
             try
               let! n = LibDB.Inserts.storeOpsWithOwner owner (opRecords records)
+              // Fold what arrived, so a seed and `/m` see it. About 116us an op.
+              let! _ = LibDB.Seed.applyUnappliedOps ()
               return resultOk (Dval.int (bigint n))
             with ex ->
               return resultError (Dval.string ex.Message)

@@ -111,10 +111,13 @@ module HandleCommand =
         return Error $"Migration failed: {ex.Message}"
     }
 
-  let exportSeed (outputPath : string) : Ply<Result<unit, string>> =
+  let exportSeed
+    (outputPath : string)
+    (upToCommit : string option)
+    : Ply<Result<unit, string>> =
     uply {
       try
-        do! LibDB.Seed.export outputPath
+        do! LibDB.Seed.exportAt outputPath upToCommit
         let size = System.IO.FileInfo(outputPath).Length / 1024L / 1024L
         print $"Seed exported to {outputPath} ({size} MB)"
         return Ok()
@@ -348,7 +351,13 @@ let main (args : string[]) : int =
     | [ "export-seed"; outputPath ] ->
       handleCommand
         $"Exporting seed to {outputPath}"
-        (HandleCommand.exportSeed outputPath)
+        (HandleCommand.exportSeed outputPath None)
+
+    // Cut at a commit, so what a pin fetches is fixed by the commit, not by when it asked.
+    | [ "export-seed"; outputPath; commit ] ->
+      handleCommand
+        $"Exporting seed at {commit} to {outputPath}"
+        (HandleCommand.exportSeed outputPath (Some commit))
 
     | [ "refs"; "check" ] ->
       handleCommand
@@ -381,7 +390,7 @@ let main (args : string[]) : int =
       print "  reload-packages"
       print "  migrations run"
       print "  migrations list"
-      print "  export-seed <output-path>"
+      print "  export-seed <output-path> [commit]"
       print "  refs generate"
       print "  refs check"
       print "  pm-sweep-blobs"
