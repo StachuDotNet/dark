@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
 
 # The package work on your dark branch, as a file that travels with your git branch.
 #
@@ -20,7 +21,7 @@ PINFILE="${DARK_PACKAGE_SET:-package-set.txt}"
 BUNDLE="${DARK_PACKAGE_BUNDLE:-package-branch.json}"
 CLI="${CLI:-./scripts/run-cli}"
 
-usage() { sed -n '3,13p' "$0" | sed 's/^# \?//'; }
+usage() { sed -n '4,14p' "$0" | sed 's/^# \?//'; }
 
 case "${1:-}" in
   export)

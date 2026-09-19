@@ -750,6 +750,20 @@ let overlayDarklangBindings () : List<string * string * string * string> =
   |> List.ofSeq
 
 
+/// The content the current branch's overlay carries, by hash. After a reload the projections
+/// hold main's content only; a branch's is in its ops, and this is where a check that asks
+/// "does the store hold this hash" has to look for it.
+let overlayItemHashes () : Set<string> =
+  branchOverlayOps
+  |> List.choose (fun op ->
+    match op with
+    | PT.PackageOp.AddType t -> Some(let (Hash h) = t.hash in h)
+    | PT.PackageOp.AddValue v -> Some(let (Hash h) = v.hash in h)
+    | PT.PackageOp.AddFn f -> Some(let (Hash h) = f.hash in h)
+    | _ -> None)
+  |> Set.ofList
+
+
 /// What `Darklang.<modules>.<name>` of this kind binds to on main. Cached through
 /// `Caching.withCache`, which the fold clears, so it expires exactly when a rebinding could change
 /// the answer. Not a nicety: these sit under Option and Result construction, and an uncached query

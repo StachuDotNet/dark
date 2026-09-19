@@ -75,9 +75,9 @@ work at all.
 
     #   ...add `let foo = p [] "Foo"` in PackageRefs.fs and use it...
 
-    scripts/dev/build                        # compiles; regenerates refs; runs `refs check`
+    scripts/dev/build                        # compiles; imports the bundle if any; `refs check`
     scripts/packages/bundle export           # ~1KB of JSON: package-branch.json
-    git commit -a                            # F# + package-ref-hashes.txt + the bundle
+    git commit -a                            # the F# and the bundle
 
 The bundle is how your package work reaches anyone else. Export is explicit, like `git add`.
 
@@ -85,12 +85,16 @@ The bundle is how your package work reaches anyone else. Export is explicit, lik
 and building is fine -- a ref is a lazy closure -- but the first code path that reaches an
 unresolvable one raises.
 
+**The package reload keeps your branch.** Before the flip an `.fs` change reloads `packages/`,
+which rebuilds main from text. Your dark branch's ops are not main's and survive it; only main
+ops you authored or pulled are replaced, and the reload says how many.
+
 ### What your coworker does
 
 Nothing special. They check out the branch and build.
 
     git checkout add-foo
-    scripts/dev/build     # prepare-package-set imports the bundle automatically
+    scripts/dev/build     # imports the bundle, then checks the refs
 
 Importing is automatic because checking out the git branch IS asking for that branch's package
 code, and it is idempotent -- ops are content addressed, so a second import says "up to date".

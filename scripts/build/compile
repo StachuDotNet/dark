@@ -231,6 +231,14 @@ def reload_all_packages():
   return run_backend(start, f"scripts/build/reload-packages {configuration}")
 
 
+def import_bundle():
+  """The dark branch this git branch carries, into the store. Checking the git branch out IS
+  asking for its package code, and the F# in the tree may name items only the bundle has.
+  Idempotent: ops are content-addressed."""
+  start = time.time()
+  return run_backend(start, "scripts/packages/bundle import")
+
+
 class Outcome:
   """What execute() actually did, for build-state.json.
 
@@ -313,9 +321,11 @@ def execute(should, outcome):
   # After anything that could have moved either side of the kernel/package-set interface.
   # Decided here rather than in the plan because execute() sets some of these itself, so the
   # plan's answer is not the final one. Cheap: one pass over ~200 refs against caches the
-  # store already holds.
+  # store already holds. The bundle goes in first, since it is what the refs may name.
   if should.check_refs or should.reload_all_packages or should.backend_quick_build \
      or should.backend_full_build:
+    if should.import_bundle:
+      step("import_bundle", import_bundle)
     step("check_refs", check_refs)
 
   # Gated here rather than inside backend_test(), so a build that skipped the tests

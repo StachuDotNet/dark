@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
 
 # Get this build's package set into the store, from whichever source `package-set.txt` names.
 #
@@ -18,7 +19,7 @@ URL_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --url) URL_ARGS=(--url "${2:?--url needs a url}"); shift 2 ;;
-    -h|--help) sed -n '3,12p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help) sed -n '4,13p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "prepare-package-set: unknown argument $1" >&2; exit 2 ;;
   esac
 done
