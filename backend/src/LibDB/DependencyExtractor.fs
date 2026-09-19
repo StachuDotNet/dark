@@ -54,6 +54,22 @@ let private extract
   let mutable dependencies : List<Dependency> = []
   let mutable builtins : List<BuiltinDependency> = []
 
+  // A `Builtin.x` the parser could not resolve is exactly a call to a builtin this kernel does
+  // not have, which is the one case the builtin check exists for, so it is recorded from the
+  // written name rather than dropped with the failed resolution.
+  let addUnresolvedBuiltin (originalName : List<string>) : unit =
+    match originalName with
+    | [ "Builtin"; written ] ->
+      let (name, version) =
+        match written.LastIndexOf "_v" with
+        | i when i > 0 ->
+          match System.Int32.TryParse(written.Substring(i + 2)) with
+          | true, v -> (written.Substring(0, i), v)
+          | _ -> (written, 0)
+        | _ -> (written, 0)
+      builtins <- { name = name; version = version } :: builtins
+    | _ -> ()
+
   let pushInOrder (items : List<Work>) : unit =
     items |> List.rev |> List.iter work.Push
 
@@ -250,7 +266,7 @@ let private extract
           | PT.FQFnName.Builtin b ->
             builtins <- { name = b.name; version = b.version } :: builtins
           | PT.FQFnName.Package _ -> ()
-        | Error _ -> ()
+        | Error _ -> addUnresolvedBuiltin nr.originalName
 
       | PT.ELambda(_, _, body) -> work.Push(Expr body)
 
@@ -275,6 +291,10 @@ let private extract
         pushTypesInOrder typeArgs
 
       | PT.EValue(_, nr) ->
+        // An unresolved `Builtin.x` lowers to an EValue, not an EFnName.
+        (match nr.resolved with
+         | Error _ -> addUnresolvedBuiltin nr.originalName
+         | Ok _ -> ())
         addNameResolution nr PT.ItemKind.Value PackageItem.valuePackageHash
 
       | PT.EStatement(_, first, next) ->
