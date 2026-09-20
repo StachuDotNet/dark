@@ -218,13 +218,29 @@ module Blob =
           """
         |> Sql.executeAsync (fun r -> (r.string "hash", r.bytes "rt_dval"))
 
+      // A platform manifest is a package value holding text, and its `artifact` lines name
+      // executables in `package_blobs` by hash. Nothing else references those bytes: no value's
+      // tree holds a blob handle to them, because a manifest names them symbolically so it can be
+      // read before anything is trusted. So the sweep has to read manifests as manifests, or
+      // every executable pushed with `dark platforms publish` is an orphan and the next install
+      // 404s on the relay.
+      let artifactsNamedBy (body : Dval) : Set<string> =
+        match body with
+        | DString text when text.StartsWith "DARK-PLATFORM-MANIFEST" ->
+          match LibExecution.Platform.Written.parse text with
+          | Ok written -> written.artifacts |> List.map snd |> Set.ofList
+          | Error _ -> Set.empty
+        | _ -> Set.empty
+
       let referenced : Set<string> =
         valueRows
         |> List.fold
           (fun acc (valueHash, rtDvalBytes) ->
             try
               let pv = BS.RT.PackageValue.deserialize (Hash valueHash) rtDvalBytes
-              Set.union acc (collectBlobHashes pv.body)
+              acc
+              |> Set.union (collectBlobHashes pv.body)
+              |> Set.union (artifactsNamedBy pv.body)
             with _ ->
               // Corrupt / stale row — don't let one bad row block the
               // sweep; skip and carry on.

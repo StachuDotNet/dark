@@ -558,6 +558,52 @@ let sweepDeletesOrphansButKeepsReferenced =
 // promote both sides first.
 
 
+let sweepKeepsAPlatformExecutableItsManifestNames =
+  testTask "sweep: an executable a stored platform manifest names is not an orphan" {
+    // A published platform's executable sits in package_blobs and no value's tree holds a blob
+    // handle to it: the manifest names it symbolically, by hash in text, so it can be read before
+    // anything is trusted. The sweep used to count only blob handles, so a sweep on the relay
+    // deleted every executable ever pushed and the next install 404ed.
+    let salt = System.Guid.NewGuid().ToByteArray()
+    let exeBytes = Array.concat [ [| 0x33uy |]; salt ]
+    let exeHash = Blob.sha256Hex exeBytes
+    let fakeHash = RT.Hash(Blob.sha256Hex (Array.concat [ [| 0x44uy |]; salt ]))
+    let (RT.Hash fakeHashStr) = fakeHash
+
+    try
+      do! PMBlob.insert exeHash exeBytes |> Ply.toTask
+
+      let manifest =
+        "DARK-PLATFORM-MANIFEST 1\nowner acme\nname Swept\nversion 0\n"
+        + "description names an executable by hash\nrequires Core\nstore no\n"
+        + $"artifact linux-x64 {exeHash}\n\n"
+        + "fn sweptPing 0\nparam unit Unit\nreturns Unit\neffect acme/swept\n"
+      let body = RT.DString manifest
+      let pv : RT.PackageValue.PackageValue = { hash = fakeHash; body = body }
+      let rtDvalBytes = BS.RT.PackageValue.serialize fakeHash pv
+      let valueTypeBytes = BS.RT.ValueType.serialize (RT.Dval.toValueType body)
+      do!
+        execSqlP
+          """
+          INSERT OR REPLACE INTO package_values (hash, pt_def, rt_dval, value_type)
+          VALUES (@hash, @pt_def, @rt_dval, @value_type)
+          """
+          [ "hash", Sql.string fakeHashStr
+            "pt_def", Sql.bytes [||]
+            "rt_dval", Sql.bytes rtDvalBytes
+            "value_type", Sql.bytes valueTypeBytes ]
+
+      let! _ = PMBlob.sweepOrphans () |> Ply.toTask
+      let! still = PMBlob.get exeHash |> Ply.toTask
+      Expect.isSome still "the executable the manifest names survives a sweep"
+    finally
+      let cleanup : Task<unit> =
+        Sql.query "DELETE FROM package_values WHERE hash = @hash"
+        |> Sql.parameters [ "hash", Sql.string fakeHashStr ]
+        |> Sql.executeStatementAsync
+      cleanup.Wait()
+  }
+
 let equalsEphemeralEphemeralSameUuid =
   test "blob equality: two refs to the same ephemeral UUID are equal" {
     let dv = Blob.newEphemeral [| 0x01uy; 0x02uy |]
@@ -890,6 +936,7 @@ let tests =
       persistableAcceptsApplicableAndDDB
       persistableRejectsNestedBadShapes
       sweepDeletesOrphansButKeepsReferenced
+      sweepKeepsAPlatformExecutableItsManifestNames
       equalsEphemeralEphemeralSameUuid
       equalsEphemeralEphemeralSameBytesIsFalse
       equalsEphemeralPersistentSameBytesIsFalse
