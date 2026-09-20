@@ -122,6 +122,43 @@ let private workbenchViewsRender =
 /// Clipping one long string from the right loses the hints at the END -- `?` (the keymap) and
 /// `esc/q` (quit), the two a person needs most when lost. The row drops whole hints cheapest-first
 /// instead: secondary globals, then the view's own actions, and `?`/`esc/q` never.
+let private aFailedInstallIsNotAnInstall =
+  cliTest
+    "an install whose executable cannot be read is undone, not left half-done"
+    (fun state ->
+      task {
+        // The record was written before the executable was looked at, so a failure here used to
+        // exit 1 with the platform still installed and listed as "not running". Now it is undone.
+        let manifest =
+          System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            $"dark-halfinstall-{System.Guid.NewGuid()}.manifest"
+          )
+        System.IO.File.WriteAllText(
+          manifest,
+          "DARK-PLATFORM-MANIFEST 1\nowner acme\nname HalfInstalled\nversion 0\n"
+          + "description never quite arrives\nrequires Core\nstore no\n"
+          + "artifact linux-x64 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n\n"
+          + "fn halfPing 0\nparam unit Unit\nreturns Unit\neffect acme/half\n"
+        )
+        try
+          let! out =
+            runCli
+              state
+              [ "platforms"; "install"; manifest; "/nonexistent/executable" ]
+          Expect.stringContains
+            out
+            "Could not read the executable"
+            "the failure is reported"
+          Expect.stringContains out "was not installed" "and says it was undone"
+          let! listing = runCli state [ "platforms" ]
+          Expect.isFalse
+            (listing.Contains "HalfInstalled")
+            "and it is not in the listing"
+        finally
+          System.IO.File.Delete manifest
+      })
+
 let private hintRowKeepsTheWayOut =
   cliTest
     "the hint row drops secondary keys before it drops help and quit"
@@ -876,6 +913,7 @@ let tests : List<Test> =
     viewHeadsWithTheNameYouAskedFor
     headerKeepsTheBranchWhenNarrow
     hintRowKeepsTheWayOut
+    aFailedInstallIsNotAnInstall
     workbenchHandlesTerminalSizes
     noWorkbenchRowOverflowsItsFrame
     workbenchContextRowSaysWhereYouAre

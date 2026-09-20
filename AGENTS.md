@@ -288,10 +288,8 @@ statement of whether it needs a store on disk. Declared at the bottom of an asse
 `Platforms/Sets.fs` is the catalog, and the only place the full list lives. They range from `Core`,
 which is most of the builtins and reaches no effects, down to platforms with a single function.
 
-Which ones a SESSION gets is a separate question from which ones the binary links (`dark
-platforms`, `Platforms/Sets.fs` under `activatingFrom`), and keep activation and permission apart
-when you touch either. Permission answers "may this code touch that", at the effect; activation
-answers "is that even here", at builtin lookup.
+Which ones a SESSION gets is a separate question from which ones the binary links: see
+`docs/platforms.md`, and keep activation and permission apart when you touch either.
 
 **A platform is a value, not an assembly, and the two do not have to line up.** Four assemblies ship
 several platforms each, over subsets of their own `Libs`, sharing every line of implementation:
@@ -309,6 +307,9 @@ the fingerprint and forces a re-review.
 
     LibExecution/Platform.fs   the types, `PlatformSet.make`, the manifest fingerprint
     Platforms/Sets.fs          the catalog and the named sets an executable runs
+    SealedHost/                an executable that links `Core` and nothing else. `scripts/run-sealed`.
+                               Its confinement is a LINK-TIME fact: there is no `fileRead` in the
+                               binary to deny. A test pins its four project references.
 
 Read-only reports, for deciding what to narrow next:
 
@@ -387,6 +388,9 @@ edit rather than a green light:
   to be the only thing making capability analysis sound; since `analysisVersion` 4 the analyzer sees
   operators, so this is now the second line rather than the only one. Kept because it states an
   intent (an operator should not act) and because it is what made the hole visible.
+- `sealedHostLinksOnlyCore` reads `SealedHost.fsproj` and pins its reference list. It reads the
+  PROJECT FILE rather than the compiled closure on purpose: the failure worth catching is somebody
+  adding a line because they wanted one function out of it.
 
 **Three ways to ask "does anything reference this builtin", with different blind spots.** Pick by
 what you are actually asking:

@@ -101,8 +101,8 @@ let buildState () : Task<RT.ExecutionState> =
           canUsePrivateNetworkHttp = true
           isBundledPackageFn = fun (RT.Hash h) -> bundled.Contains h
           // What the CLI records, so the platform verbs see the same set the builtins came
-          // from: `platforms deactivate` checks what still requires the platform, and
-          // `dark platforms` lists what is here, against this and nothing else.
+          // from. Without it `platforms install` cannot tell a requires line names something
+          // real, and nothing clashes with anything, which hid a real check for a while.
           platforms = (Platforms.Sets.cli ()).platforms }
   }
 
