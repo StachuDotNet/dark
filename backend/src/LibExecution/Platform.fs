@@ -299,6 +299,41 @@ module PlatformSet =
   /// build mistake and should stop the process; an INSTALLED one arrives after the build, from
   /// somebody else's manifest, and raising on it means an install nobody can undo, because the
   /// command that would undo it is the one that no longer starts.
+  /// Platforms a candidate requires that are not among these. Non-raising for the same reason
+  /// `claimsTaken` is: `make` raises on a missing requirement, which is right for a linked set and
+  /// wrong for an installed platform whose `requires` line names something this build does not
+  /// have, since the command that would uninstall it is the one that no longer starts.
+  let requirementsUnmet
+    (existing : List<Platform>)
+    (candidate : Platform)
+    : List<string> =
+    let have = existing |> List.map _.name |> Set.ofList
+    candidate.requires |> List.filter (fun r -> not (Set.contains r have))
+
+  let claimsTaken
+    (existing : List<Platform>)
+    (candidate : Platform)
+    : List<string * string> =
+    let owners = System.Collections.Generic.Dictionary<string, string>()
+    for p in existing do
+      for k in p.builtins.fns.Keys do
+        owners[$"fn {k.name}@{k.version}"] <- p.name
+      for k in p.builtins.values.Keys do
+        owners[$"val {k.name}@{k.version}"] <- p.name
+
+    let taken (key : string) =
+      match owners.TryGetValue key with
+      | true, owner -> Some(key, owner)
+      | false, _ -> None
+
+    (candidate.builtins.fns.Keys
+     |> Seq.choose (fun k -> taken $"fn {k.name}@{k.version}")
+     |> List.ofSeq)
+    @ (candidate.builtins.values.Keys
+       |> Seq.choose (fun k -> taken $"val {k.name}@{k.version}")
+       |> List.ofSeq)
+
+
   /// Platform names a member requires that the set does not contain.
   let private missingRequirements
     (platforms : List<Platform>)
@@ -415,3 +450,684 @@ module PlatformSet =
     : List<Effects.Effect> =
     let reachable = effectSurface set
     named |> Set.toList |> List.filter (fun e -> not (Set.contains e reachable))
+
+
+/// A platform whose builtins are DESCRIBED rather than written.
+///
+/// Every platform in this repo is a list of `BuiltInFn` records written by hand in F#, which is
+/// fine while we are the only people shipping them. A platform that arrives as an artifact cannot
+/// be that: nothing in this binary knows its function names or its signatures until it says so.
+///
+/// So it says so as data, and this turns that data into the same `Builtins` a hand-written platform
+/// produces. Everything above stays identical, which is the point: `PlatformSet.make` composes it,
+/// the fingerprint covers it, the interpreter dispatches to it, and the permission gate checks its
+/// declared effects, all without knowing where it came from.
+module External =
+
+  /// One builtin, described the way a manifest would describe it.
+  ///
+  /// Parameter NAMES are for error messages; the TYPES are what a call site compiles against, and
+  /// are why the description has to reach the runtime before the platform is ever run.
+  type Fn =
+    {
+      name : string
+      version : int
+      parameters : List<string * TypeReference>
+      returnType : TypeReference
+      /// Everything a call may do, including `Effects.Effect.Custom` ones this binary has never
+      /// heard of. The ambient gate checks these before the body runs, so an undeclared effect is
+      /// not a loophole, it is a lie the platform told at install time.
+      effects : Set<Effects.Effect>
+      description : string
+    }
+
+  /// What actually performs the call: the builtin's NAME, and its already-evaluated arguments.
+  ///
+  /// By name rather than by position in the manifest, which is what this was first. Position is
+  /// the cheaper wire and it is a trap: a manifest listing its builtins in a different order from
+  /// the plugin silently binds every call to the wrong function, and the failure is a type error
+  /// somewhere else or, worse, a plausible answer. The manifest and the plugin already agree on
+  /// names, so names are what should cross.
+  ///
+  /// The cost is a short string per call, which measured as nothing next to the pipe round trip.
+  ///
+  /// Takes the `ExecutionState` because BYTES have to cross: a blob argument may be a reference
+  /// into the store, and the far side has no store to resolve it against, so the transport reads
+  /// it here.
+  type Invoke = ExecutionState -> string -> List<Dval> -> Ply<Dval>
+
+  /// Describe-to-`Builtins`.
+  ///
+  /// `previewable` is `Impure` for all of them, unconditionally. A described builtin cannot be
+  /// shown to be pure: purity is a claim about a body we cannot see, and guessing generously here
+  /// would let an analysis preview something with side effects.
+  ///
+  /// `sqlSpec` is `NotQueryable` for the same reason.
+  let builtins (invoke : Invoke) (fns : List<Fn>) : Builtins =
+    fns
+    |> List.map (fun (fn : Fn) ->
+      { name = FQFnName.builtin fn.name fn.version
+        typeParams = []
+        parameters =
+          fn.parameters
+          |> List.map (fun (name, typ) -> BuiltInParam.make name typ "")
+        returnType = fn.returnType
+        description = fn.description
+        previewable = Impure
+        deprecated = NotDeprecated
+        sqlSpec = NotQueryable
+        callEffects = fn.effects
+        fn =
+          (function
+          | state, vm, _, args ->
+            // The gate the interpreter cannot run for us. Its ambient check skips SCOPED effects,
+            // because a linked builtin's body builds an `Operation` naming the resource and the
+            // host boundary checks that. There is no body here: the platform performs its own I/O
+            // in its own process, so the boundary is never reached and the declaration would go
+            // unchecked. Ask for the whole effect instead, which is the only honest question.
+            PermissionCheck.requireDescribedPlatformEffects
+              state
+              vm
+              fn.effects
+              fn.name
+            invoke state fn.name (List.ofArray args)) })
+    |> Builtin.make []
+
+
+  /// A whole platform, described. What arrives beside an artifact.
+  ///
+  /// Deliberately close to `Platform` itself, minus the one thing that cannot travel: the builtin
+  /// implementations. Everything else a `PlatformSet` needs to compose, fingerprint and review is
+  /// here, which is what lets the runtime decide whether to accept a platform before it has run a
+  /// line of its code.
+  type Manifest =
+    {
+      owner : string
+      name : string
+      version : int
+      description : string
+      requires : List<string>
+      requiresStore : bool
+      fns : List<Fn>
+
+      /// The executable to run, per runtime identifier (`linux-x64`, `osx-arm64`), each addressed
+      /// by the SHA-256 of its bytes.
+      ///
+      /// Hashes rather than paths or URLs, because that is what makes the delivery channel
+      /// uninteresting: the bytes live in the content-addressed blob store like everything else,
+      /// arrive however packages arrive, and are checked against the name they came under. You
+      /// approve a hash rather than a host.
+      artifacts : List<string * string>
+
+      /// What this instance's store made of the type names the manifest used, in the order the
+      /// manifest first named them.
+      ///
+      /// The resolution is already done by the time a `Manifest` exists, and this keeps it rather
+      /// than discarding it, because the PLUGIN needs it. A `DRecord` or a `DEnum` on the wire
+      /// carries the type's content hash, and a plugin cannot know a hash: that is the same reason
+      /// a manifest names types symbolically in the first place. So the host tells it, once, when
+      /// the process starts. Without this a platform can only return primitives, which rules out
+      /// anything returning a `Result`.
+      types : List<string * FQTypeName.FQTypeName>
+    }
+
+  /// Why a manifest was refused. Plural, because a person fixing one wants every problem at once
+  /// rather than one per attempt.
+  type Rejection = { manifest : string; problems : List<string> }
+
+  module Manifest =
+    /// `owner/name`, the coordinate a consumer pins.
+    let coordinate (m : Manifest) : string = $"{m.owner}/{m.name}@{m.version}"
+
+    /// Can a value of this type cross a pipe?
+    ///
+    /// Recursive on purpose. A bare `TFn` parameter is the obvious case, but `List<Int -> Int>`
+    /// and a dict of them cannot travel either, and finding that out when somebody finally passes
+    /// a lambda is much worse than finding it out at install.
+    ///
+    /// `TDB` and `TStream` are refused for the same reason in different words: both are handles
+    /// into state this runtime owns, and their meaning does not survive leaving the process.
+    let rec private travels (typ : TypeReference) : bool =
+      match typ with
+      | TFn _ -> false
+      | TDB _ -> false
+      | TStream _ -> false
+      | TList inner -> travels inner
+      | TDict(key, value) -> travels key && travels value
+      | TTuple(a, b, rest) -> travels a && travels b && List.forall travels rest
+      | TCustomType(_, typeArgs) -> List.forall travels typeArgs
+      | _ -> true
+
+    let private nameShape =
+      System.Text.RegularExpressions.Regex(
+        @"^[a-zA-Z][a-zA-Z0-9_]*$",
+        System.Text.RegularExpressions.RegexOptions.Compiled
+      )
+
+    /// Every problem with a manifest, or an empty list.
+    ///
+    /// Checks the SHAPE, not the truth. That the platform can do what it claims is not knowable
+    /// from here and never will be; what is knowable is that the claim is well formed, that the
+    /// signatures can cross, and that the effects it names are effects.
+    let problems (m : Manifest) : List<string> =
+      let platformNames =
+        [ if not (nameShape.IsMatch m.name) then
+            $"platform name '{m.name}' is not a plain identifier"
+          if not (nameShape.IsMatch m.owner) then
+            $"owner '{m.owner}' is not a plain identifier"
+          if m.version < 0 then $"version {m.version} is negative" ]
+
+      let duplicates =
+        m.fns
+        |> List.countBy (fun fn -> (fn.name, fn.version))
+        |> List.filter (fun (_, count) -> count > 1)
+        |> List.map (fun ((name, version), _) ->
+          $"builtin '{name}@{version}' is declared more than once")
+
+      let ridShape =
+        System.Text.RegularExpressions.Regex(
+          @"^[a-z0-9]+(-[a-z0-9]+)+$",
+          System.Text.RegularExpressions.RegexOptions.Compiled
+        )
+
+      let hashShape =
+        System.Text.RegularExpressions.Regex(
+          @"^[0-9a-f]{64}$",
+          System.Text.RegularExpressions.RegexOptions.Compiled
+        )
+
+      let artifacts =
+        [ for (rid, hash) in m.artifacts do
+            if not (ridShape.IsMatch rid) then
+              $"'{rid}' is not a runtime identifier, which looks like 'linux-x64'"
+            if not (hashShape.IsMatch hash) then
+              $"the artifact for '{rid}' is not addressed by a SHA-256"
+          // One executable per target. Two would mean the manifest does not say which runs.
+          yield!
+            m.artifacts
+            |> List.countBy fst
+            |> List.filter (fun (_, count) -> count > 1)
+            |> List.map (fun (rid, _) -> $"more than one artifact for '{rid}'") ]
+
+      // The runtime's own rules, not a looser copy of them. `FQFnName.builtin` asserts the name
+      // pattern and `Builtin.combine` refuses a parameterless builtin, and both raise, and both run
+      // at the next CLI start rather than here. A manifest that passes this check and then trips
+      // one of those bricks every command, including the one that would uninstall it.
+      let perFn =
+        m.fns
+        |> List.collect (fun fn ->
+          [ if
+              not (
+                System.Text.RegularExpressions.Regex.IsMatch(
+                  fn.name,
+                  RuntimeTypes.builtinNamePattern
+                )
+              )
+            then
+              $"builtin name '{fn.name}' must start with a lower-case letter and be at least two characters"
+            if List.isEmpty fn.parameters then
+              $"builtin '{fn.name}' takes no parameters; a builtin takes at least one, and `param unit Unit` is how to say none"
+            if fn.version < 0 then $"builtin '{fn.name}' has a negative version"
+            for (paramName, typ) in fn.parameters do
+              if not (travels typ) then
+                $"builtin '{fn.name}' takes '{paramName}' of a type that cannot cross a process boundary"
+            if not (travels fn.returnType) then
+              $"builtin '{fn.name}' returns a type that cannot cross a process boundary" ])
+
+      platformNames @ artifacts @ duplicates @ perFn
+
+    /// The executable for a target, if this platform ships one.
+    ///
+    /// `None` is an ordinary answer rather than a problem: a platform may simply not build for
+    /// your machine, and that is worth saying at install rather than discovering at spawn.
+    let artifactFor (rid : string) (m : Manifest) : Option<string> =
+      m.artifacts |> List.tryFind (fun (r, _) -> r = rid) |> Option.map snd
+
+    /// Turn a manifest into a platform, or say why not.
+    ///
+    /// This is the whole reason a manifest is data. A call site compiles against a signature, so
+    /// the runtime has to know the signature; it cannot ask a process it has not started, and it
+    /// should not start one it has not checked.
+    ///
+    /// `dynamicEffects` is empty and there is no field for it. Those are effects a builtin requests
+    /// from inside its own body, which means from inside code this runtime is running. A platform
+    /// on the other side of a pipe has no such path: everything it can do is in `fns`.
+    let toPlatform (invoke : Invoke) (m : Manifest) : Result<Platform, Rejection> =
+      match problems m with
+      | [] ->
+        Ok
+          { name = m.name
+            version = m.version
+            description = m.description
+            builtins = builtins invoke m.fns
+            requires = m.requires
+            dynamicEffects = Set.empty
+            requiresStore = m.requiresStore }
+      | problems -> Error { manifest = coordinate m; problems = problems }
+
+
+  /// A type as a manifest writes it: by NAME, never by hash.
+  ///
+  /// `TypeReference` cannot be what a manifest carries. Its `TCustomType` holds an `FQTypeName`,
+  /// and an `FQTypeName` is a content hash, so `Result<String, String>` would travel as the hash of
+  /// `Stdlib.Result` in the store that wrote it. A platform author cannot know that hash, it moves
+  /// whenever the type does, and a manifest carrying one is pinned to one corpus.
+  ///
+  /// So a manifest says `Stdlib.Result<String, String>` and the CONSUMER resolves it. A name that
+  /// does not resolve is a manifest problem, and a useful one: this platform wants a type you do
+  /// not have.
+  type NamedType =
+    | NBuiltin of string
+    | NList of NamedType
+    | NDict of NamedType * NamedType
+    | NTuple of List<NamedType>
+    | NCustom of name : string * args : List<NamedType>
+
+  module NamedType =
+    /// The types a manifest may name without qualification. Deliberately not every
+    /// `TypeReference`: what is missing is what cannot cross a pipe, which is the same rule 73
+    /// applies to a whole signature, stated here as a grammar rather than as a check.
+    let private scalars : Map<string, TypeReference> =
+      Map
+        [ "Unit", TUnit
+          "Bool", TBool
+          "Int8", TInt8
+          "UInt8", TUInt8
+          "Int16", TInt16
+          "UInt16", TUInt16
+          "Int32", TInt32
+          "UInt32", TUInt32
+          "Int64", TInt64
+          "UInt64", TUInt64
+          "Int128", TInt128
+          "UInt128", TUInt128
+          "Int", TInt
+          "Float", TFloat
+          "Char", TChar
+          "String", TString
+          "Uuid", TUuid
+          "DateTime", TDateTime
+          "Blob", TBlob ]
+
+    /// Parse `Stdlib.Result<String, List<Int64>>` and friends.
+    ///
+    /// Hand-written rather than reusing `LibParser`, because that one is Dark and needs a store to
+    /// run, and this has to work while deciding whether to accept a manifest at all. The grammar is
+    /// small enough that the cost is a few dozen lines and the benefit is no dependency.
+    let parse (input : string) : Result<NamedType, string> =
+      let mutable pos = 0
+      let text = input.Trim()
+
+      let peek () = if pos < text.Length then Some text[pos] else None
+      let skipSpace () =
+        while pos < text.Length && text[pos] = ' ' do
+          pos <- pos + 1
+
+      let ident () =
+        skipSpace ()
+        let start = pos
+        while pos < text.Length
+              && (System.Char.IsLetterOrDigit text[pos]
+                  || text[pos] = '.'
+                  || text[pos] = '_') do
+          pos <- pos + 1
+        text.Substring(start, pos - start)
+
+      let rec typ () : Result<NamedType, string> =
+        let name = ident ()
+        if name = "" then
+          Error $"expected a type name at offset {pos} of '{text}'"
+        else
+          skipSpace ()
+          match peek () with
+          | Some '<' ->
+            pos <- pos + 1
+            match args [] with
+            | Error e -> Error e
+            | Ok args ->
+              match name, args with
+              | "List", [ inner ] -> Ok(NList inner)
+              | "List", _ -> Error "List takes exactly one type argument"
+              | "Dict", [ k; v ] -> Ok(NDict(k, v))
+              | "Dict", _ -> Error "Dict takes exactly two type arguments"
+              | "Tuple", (_ :: _ :: _) -> Ok(NTuple args)
+              | "Tuple", _ -> Error "Tuple takes at least two type arguments"
+              | _, _ -> Ok(NCustom(name, args))
+          | _ ->
+            if Map.containsKey name scalars then
+              Ok(NBuiltin name)
+            else
+              Ok(NCustom(name, []))
+
+      and args (acc : List<NamedType>) : Result<List<NamedType>, string> =
+        match typ () with
+        | Error e -> Error e
+        | Ok one ->
+          skipSpace ()
+          match peek () with
+          | Some ',' ->
+            pos <- pos + 1
+            args (acc @ [ one ])
+          | Some '>' ->
+            pos <- pos + 1
+            Ok(acc @ [ one ])
+          | _ -> Error $"expected ',' or '>' at offset {pos} of '{text}'"
+
+      match typ () with
+      | Error e -> Error e
+      | Ok parsed ->
+        skipSpace ()
+        if pos < text.Length then
+          Error
+            $"unexpected '{text.Substring pos}' after a complete type in '{text}'"
+        else
+          Ok parsed
+
+    /// Render back, so a round trip is checkable and `dark platforms` can show what was declared.
+    let rec render (t : NamedType) : string =
+      match t with
+      | NBuiltin name -> name
+      | NList inner -> $"List<{render inner}>"
+      | NDict(k, v) -> $"Dict<{render k}, {render v}>"
+      | NTuple items ->
+        let rendered = items |> List.map render |> String.concat ", "
+        $"Tuple<{rendered}>"
+      | NCustom(name, []) -> name
+      | NCustom(name, args) ->
+        let rendered = args |> List.map render |> String.concat ", "
+        $"{name}<{rendered}>"
+
+    /// Resolve names to a `TypeReference` against the consumer's store.
+    ///
+    /// `lookup` answers what a package type name resolves to here, and `None` is a real answer: the
+    /// platform wants a type this instance does not have, which is worth saying plainly rather than
+    /// failing later at a call site.
+    let rec resolve
+      (lookup : string -> Option<FQTypeName.FQTypeName>)
+      (t : NamedType)
+      : Result<TypeReference, string> =
+      let resolveAll ts =
+        ts
+        |> List.fold
+          (fun acc item ->
+            match acc, resolve lookup item with
+            | Error e, _ -> Error e
+            | _, Error e -> Error e
+            | Ok sofar, Ok r -> Ok(sofar @ [ r ]))
+          (Ok [])
+
+      match t with
+      | NBuiltin name ->
+        match Map.tryFind name scalars with
+        | Some typ -> Ok typ
+        | None -> Error $"'{name}' is not a builtin type"
+      | NList inner -> resolve lookup inner |> Result.map TList
+      | NDict(k, v) ->
+        match resolve lookup k, resolve lookup v with
+        | Ok k, Ok v -> Ok(TDict(k, v))
+        | Error e, _ -> Error e
+        | _, Error e -> Error e
+      | NTuple items ->
+        match resolveAll items with
+        | Error e -> Error e
+        | Ok(a :: b :: rest) -> Ok(TTuple(a, b, rest))
+        | Ok _ -> Error "a tuple needs at least two elements"
+      | NCustom(name, args) ->
+        match lookup name with
+        | None -> Error $"no type named '{name}' in this instance"
+        | Some fq ->
+          resolveAll args
+          |> Result.map (fun args -> TCustomType(NameResolution.ok fq, args))
+
+
+
+/// A manifest as WRITTEN, before anything is resolved.
+///
+/// Same split the parser already makes between `WrittenTypes` and `ProgramTypes`, and for the
+/// same reason: what a person typed and what it means here are two things, and resolution can
+/// fail. A `Written.Manifest` names types and effects; a `Manifest` holds the resolved ones.
+module Written =
+  type Fn =
+    {
+      name : string
+      version : int
+      parameters : List<string * External.NamedType>
+      returnType : External.NamedType
+      /// Effect NAMES, well-known or `owner/name`. Resolved through `Effects.fromName`, so a
+      /// platform declaring a capability this runtime never shipped is ordinary rather than
+      /// special.
+      effects : List<string>
+      description : string
+    }
+
+  type Manifest =
+    { owner : string
+      name : string
+      version : int
+      description : string
+      requires : List<string>
+      requiresStore : bool
+      artifacts : List<string * string>
+      fns : List<Fn> }
+
+  let private header = "DARK-PLATFORM-MANIFEST 1"
+
+  /// Line-oriented, like the activation file, and for the same reason: a plugin author writes
+  /// this by hand or emits it from C with `fprintf`. A format needing a library to produce is a
+  /// format that makes the first platform in a new language a project rather than an afternoon.
+  ///
+  /// `key rest-of-line`, blank lines and `#` comments ignored. A `fn` line opens a function and
+  /// the `param`, `returns`, `effect` and `doc` lines after it belong to that one.
+  let render (m : Manifest) : string =
+    let lines =
+      [ yield header
+        yield $"owner {m.owner}"
+        yield $"name {m.name}"
+        yield $"version {m.version}"
+        if m.description <> "" then yield $"description {m.description}"
+        for r in m.requires do
+          yield $"requires {r}"
+        yield "store " + (if m.requiresStore then "yes" else "no")
+        for (rid, hash) in m.artifacts do
+          yield $"artifact {rid} {hash}"
+        for fn in m.fns do
+          yield ""
+          yield $"fn {fn.name} {fn.version}"
+          for (paramName, typ) in fn.parameters do
+            yield $"param {paramName} {External.NamedType.render typ}"
+          yield $"returns {External.NamedType.render fn.returnType}"
+          for e in fn.effects do
+            yield $"effect {e}"
+          if fn.description <> "" then yield $"doc {fn.description}" ]
+    String.concat "\n" lines + "\n"
+
+  /// Parse, collecting every problem rather than stopping at the first.
+  ///
+  /// Unknown keys are an error rather than ignored. A manifest is a contract, and silently
+  /// dropping a line somebody wrote is how a platform ends up doing less than it says.
+  let parse (text : string) : Result<Manifest, List<string>> =
+    let problems = ResizeArray<string>()
+
+    let lines =
+      text.Split('\n')
+      |> Array.toList
+      |> List.map (fun line -> line.Trim())
+      |> List.indexed
+      |> List.filter (fun (_, line) -> line <> "" && not (line.StartsWith "#"))
+
+    let mutable owner = ""
+    let mutable name = ""
+    let mutable version = 0
+    let mutable description = ""
+    let requires = ResizeArray<string>()
+    let artifacts = ResizeArray<string * string>()
+    let mutable requiresStore = false
+    let fns = ResizeArray<Fn>()
+
+    let split (line : string) =
+      match line.IndexOf ' ' with
+      | -1 -> line, ""
+      | i -> line.Substring(0, i), line.Substring(i + 1).Trim()
+
+    let namedType (lineNo : int) (raw : string) : Option<External.NamedType> =
+      match External.NamedType.parse raw with
+      | Ok t -> Some t
+      | Error e ->
+        problems.Add $"line {lineNo + 1}: {e}"
+        None
+
+    match lines with
+    | [] -> Error [ "the manifest is empty" ]
+    | (headerLine, first) :: rest ->
+      if first <> header then
+        Error [ $"line {headerLine + 1}: expected '{header}', found '{first}'" ]
+      else
+        for (lineNo, line) in rest do
+          let key, rest = split line
+          // A `fn` line opens a function; everything below attaches to the last one opened, so
+          // a `param` before any `fn` is a manifest that got its order wrong.
+          let onCurrentFn (f : Fn -> Fn) =
+            if fns.Count = 0 then
+              problems.Add $"line {lineNo + 1}: '{key}' before any 'fn' line"
+            else
+              fns[fns.Count - 1] <- f fns[fns.Count - 1]
+
+          match key with
+          | "owner" -> owner <- rest
+          | "name" -> name <- rest
+          | "description" -> description <- rest
+          | "requires" -> requires.Add rest
+          | "artifact" ->
+            match split rest with
+            | rid, hash when rid <> "" && hash <> "" -> artifacts.Add(rid, hash)
+            | _ ->
+              problems.Add
+                $"line {lineNo + 1}: 'artifact' wants a runtime identifier and a hash"
+          | "version" ->
+            match System.Int32.TryParse rest with
+            | true, v -> version <- v
+            | false, _ ->
+              problems.Add $"line {lineNo + 1}: version '{rest}' is not a number"
+          | "store" ->
+            match rest with
+            | "yes" -> requiresStore <- true
+            | "no" -> requiresStore <- false
+            | other ->
+              problems.Add
+                $"line {lineNo + 1}: store must be yes or no, not '{other}'"
+          | "fn" ->
+            let fnName, fnVersion = split rest
+            match System.Int32.TryParse fnVersion with
+            | true, v ->
+              fns.Add
+                { name = fnName
+                  version = v
+                  parameters = []
+                  returnType = External.NBuiltin "Unit"
+                  effects = []
+                  description = "" }
+            | false, _ ->
+              problems.Add
+                $"line {lineNo + 1}: 'fn' wants a name and a version, found '{rest}'"
+          | "param" ->
+            let paramName, typeText = split rest
+            match namedType lineNo typeText with
+            | Some t ->
+              onCurrentFn (fun fn ->
+                { fn with parameters = fn.parameters @ [ (paramName, t) ] })
+            | None -> ()
+          | "returns" ->
+            match namedType lineNo rest with
+            | Some t -> onCurrentFn (fun fn -> { fn with returnType = t })
+            | None -> ()
+          | "effect" ->
+            onCurrentFn (fun fn -> { fn with effects = fn.effects @ [ rest ] })
+          | "doc" -> onCurrentFn (fun fn -> { fn with description = rest })
+          | other -> problems.Add $"line {lineNo + 1}: unknown key '{other}'"
+
+        if problems.Count > 0 then
+          Error(List.ofSeq problems)
+        else
+          Ok
+            { owner = owner
+              name = name
+              version = version
+              description = description
+              requires = List.ofSeq requires
+              requiresStore = requiresStore
+              artifacts = List.ofSeq artifacts
+              fns = List.ofSeq fns }
+
+  /// Resolve a written manifest against this instance: type names to hashes, effect names to
+  /// effects. Then `Manifest.problems` has the last word on whether it is acceptable.
+  let resolve
+    (lookup : string -> Option<FQTypeName.FQTypeName>)
+    (written : Manifest)
+    : Result<External.Manifest, External.Rejection> =
+    let problems = ResizeArray<string>()
+
+    // What each name resolved to, remembered as the walk goes rather than recomputed: this is the
+    // table the plugin is handed at startup so it can build records and enums of its own.
+    let resolvedTypes = ResizeArray<string * FQTypeName.FQTypeName>()
+
+    let seen (name : string) (hash : FQTypeName.FQTypeName) =
+      if not (resolvedTypes |> Seq.exists (fun (n, _) -> n = name)) then
+        resolvedTypes.Add((name, hash))
+
+    let lookup (name : string) =
+      match lookup name with
+      | Some hash ->
+        seen name hash
+        Some hash
+      | None -> None
+
+    let resolveType (context : string) (t : External.NamedType) : TypeReference =
+      match External.NamedType.resolve lookup t with
+      | Ok typ -> typ
+      | Error e ->
+        problems.Add $"{context}: {e}"
+        TUnit
+
+    let fns =
+      written.fns
+      |> List.map (fun fn ->
+        let effects =
+          fn.effects
+          |> List.choose (fun name ->
+            match Effects.fromName name with
+            | Some effect -> Some effect
+            | None ->
+              problems.Add $"builtin '{fn.name}': '{name}' is not an effect"
+              None)
+          |> Set.ofList
+
+        let resolved : External.Fn =
+          { name = fn.name
+            version = fn.version
+            parameters =
+              fn.parameters
+              |> List.map (fun (paramName, t) ->
+                (paramName,
+                 resolveType $"builtin '{fn.name}' parameter '{paramName}'" t))
+            returnType =
+              resolveType $"builtin '{fn.name}' return type" fn.returnType
+            effects = effects
+            description = fn.description }
+        resolved)
+
+    let manifest : External.Manifest =
+      { owner = written.owner
+        name = written.name
+        version = written.version
+        description = written.description
+        requires = written.requires
+        requiresStore = written.requiresStore
+        artifacts = written.artifacts
+        fns = fns
+        types = List.ofSeq resolvedTypes }
+
+    let all = List.ofSeq problems @ External.Manifest.problems manifest
+    if List.isEmpty all then
+      Ok manifest
+    else
+      Error { manifest = External.Manifest.coordinate manifest; problems = all }
