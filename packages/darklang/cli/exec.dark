@@ -63,6 +63,30 @@ let printShow (prefix: String) : Unit =
     | Some((id, at)) ->
       Stdlib.printLine $"  forked from {Stdlib.Uuid.toString id}, keeping its log before position {Stdlib.Int64.toString at}"
     | None -> ()
+    printLog (Stdlib.Uuid.toString e.traceId)
+
+
+/// The effect log, one line per logged call: its position (what `fork --at` takes), the process
+/// it ran in, and the call. Capped; the whole trace is `dark traces view`.
+let printLog (traceId: String) : Unit =
+  match Tracing.Store.view traceId with
+  | None -> Stdlib.printLine "  log:      gone (the trace was deleted; this run cannot be resumed)"
+  | Some trace ->
+    let logged = trace.functionCalls |> Stdlib.List.filter (fun c -> c.ord >= 0L)
+    let count = Stdlib.List.length logged
+    Stdlib.printLine $"  log:      {Stdlib.Int.toString count} calls with effects"
+    Stdlib.List.take logged 40
+    |> Stdlib.List.iter (fun c ->
+      let process =
+        match c.processId with
+        | Some id -> idPrefix id
+        | None -> "-"
+      let seq = Stdlib.String.padStartToWidth (Stdlib.Int64.toString c.seq) 5
+      Stdlib.printLine $"    {seq}  {process}  {c.fnName}")
+    if count > 40 then
+      Stdlib.printLine $"    ... {Stdlib.Int.toString (count - 40)} more"
+    else
+      ()
 
 
 /// Run the execution's input again, replaying its log. `eval` and `run <file>` go through the
@@ -125,7 +149,7 @@ let export (prefix: String) (path: Stdlib.Option.Option<String>) : Unit =
         Stdlib.printLine $"  on the other machine: dark exec import {file}, then exec resume {idPrefix e.id}"
       | Error err -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not write {file}: {err.message}")
 
-/// `exec import <file>`: a bundle from `export`, stored here suspended.
+/// `exec import <file>`: a bundle from `export`, stored here with its status, ids kept.
 let import (path: String) : Unit =
   match Stdlib.Cli.File.readText path with
   | Error err -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not read {path}: {err.message}")
@@ -173,10 +197,11 @@ let help (_state: AppState) : String =
     ""
     "The runs this instance has kept: every `eval` and `run` (tracing is on by default at the"
     "`effects` level), with the log of what each did to the world; the oldest go past"
-    "`trace.keep` runs or `trace.maxMb` of log."
+    "`trace.keep` traces (a served request is one too) or `trace.maxMb` of log."
     "A run stopped with Ctrl-C is suspended; `resume` runs it again, answering every"
     "call the log has instead of performing it, and goes live where the log ends."
-    "`fork` makes a new run that shares the log up to a position and diverges after."
+    "`fork` makes a new run that shares the log up to a position (`show` lists them) and"
+    "diverges after."
     "`export` writes a run as one file and `import` takes it in on another machine, so a run"
     "suspended here can be resumed there (the other side needs the same package code)."
     "What is running right now is `ps`." ]

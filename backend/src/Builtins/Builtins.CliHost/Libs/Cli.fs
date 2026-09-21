@@ -595,7 +595,7 @@ let execute
         LibExecution.Interpreter.ReplayPolicy.recordedAt <-
           (match
             System.DateTime.TryParse(
-              e.created,
+              resume.recordedAt,
               null,
               System.Globalization.DateTimeStyles.RoundtripKind
             )
@@ -608,7 +608,14 @@ let execute
         let tracer = Tracing.createCliTracer traceID traceDesc inputName inputValue
         if tracer.enabled then
           let id = System.Guid.NewGuid()
-          LibDB.Executions.create id traceDesc inputName inputValue traceID None
+          LibDB.Executions.create
+            id
+            traceDesc
+            inputName
+            inputValue
+            traceID
+            LibDB.Executions.Running
+            None
           tracer, Some id
         else
           tracer, None

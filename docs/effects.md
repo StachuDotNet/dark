@@ -229,9 +229,9 @@ since the one word covers every method and a policy grants a URL, not a
 method; the HTTP client's GET and HEAD builtin (`httpClientRead`, behind
 `HttpClient.get`/`head`) is named a read on its own (`Effects.readsOnly`),
 and the rest of the methods keep their order. `clock` and `random` are not
-either: reading them never waits,
-so there is nothing to overlap, and `sleep`, the one clock call that does
-wait, is a wait the program means to take.
+either: reading them never waits, so there is nothing to overlap, and
+`sleep`, the one clock call that does wait, is a wait the program means to
+take.
 
 Blob dereferencing is deliberately effect-free value materialization. An
 ephemeral blob carries its bytes; a persistent blob loads the same immutable

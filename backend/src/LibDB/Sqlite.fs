@@ -76,7 +76,7 @@ module Backup =
 /// connection, in this process or in another one. Fumble opens a pooled connection per query, and which
 /// pooled connection a query lands on is not ours to pick, so two reads of the pragma through it would
 /// not be comparable. This module holds one connection of its own for the life of the process and asks it
-/// nothing but this. It is re-opened when a test repoints the store.
+/// nothing but this. A store at another path gets a connection of its own.
 ///
 /// The number means nothing on its own: only "same as last time" or "moved" is information, and only
 /// within one process. A host loop keeps the last value and polls (`Stdlib.Live.poll`).

@@ -53,7 +53,8 @@ type Execution =
     input : RT.Dval
     traceId : AT.TraceID.T
     status : Status
-    /// The execution this was forked from, and the `seq` it branched at.
+    /// The execution this was forked from, and the `seq` it branched at: the parent's log
+    /// below that position is the child's too.
     parent : Option<System.Guid * int64>
     created : string
     updated : string
@@ -75,14 +76,45 @@ let private readRow (read : RowReader) : Execution =
     traceId = AT.TraceID.fromUUID (System.Guid.Parse(read.string "trace_id"))
     status = Status.parse (read.string "status")
     parent =
-      match read.uuidOrNone "parent_id", read.int64OrNone "parent_ord" with
-      | Some p, Some ord -> Some(p, ord)
+      match read.uuidOrNone "parent_id", read.int64OrNone "parent_seq" with
+      | Some p, Some seq -> Some(p, seq)
       | _ -> None
     created = read.string "created"
     updated = read.string "updated" }
 
 let private columns =
-  "id, handler_desc, input_name, input_value, trace_id, status, parent_id, parent_ord, created, updated"
+  "id, handler_desc, input_name, input_value, trace_id, status, parent_id, parent_seq, created, updated"
+
+let private insertSql =
+  "INSERT INTO executions
+    (id, handler_desc, input_name, input_value, trace_id, status, parent_id, parent_seq, created, updated)
+   VALUES
+    (@id, @desc, @inputName, @input, @traceId, @status, @parentId, @parentSeq, @created, @updated)"
+
+let private insertParams
+  (id : System.Guid)
+  (handlerDesc : string)
+  (inputName : string)
+  (input : byte[])
+  (traceId : string)
+  (status : Status)
+  (parent : Option<System.Guid * int64>)
+  (created : string)
+  (updated : string)
+  =
+  [ "id", Sql.uuid id
+    "desc", Sql.string handlerDesc
+    "inputName", Sql.string inputName
+    "input", Sql.bytes input
+    "traceId", Sql.string traceId
+    "status", Sql.string (Status.name status)
+    "parentId", (parent |> Option.map fst |> Sql.uuidOrNone)
+    "parentSeq",
+    (match parent with
+     | Some(_, seq) -> Sql.int64 seq
+     | None -> Sql.dbnull)
+    "created", Sql.string created
+    "updated", Sql.string updated ]
 
 /// Record a run that has started.
 let create
@@ -91,28 +123,24 @@ let create
   (inputName : string)
   (input : RT.Dval)
   (traceId : AT.TraceID.T)
+  (status : Status)
   (parent : Option<System.Guid * int64>)
   : unit =
   let stamp = now ()
-  Sql.query
-    "INSERT INTO executions
-      (id, handler_desc, input_name, input_value, trace_id, status, parent_id, parent_ord, created, updated)
-     VALUES
-      (@id, @desc, @inputName, @input, @traceId, @status, @parentId, @parentOrd, @created, @updated)"
-  |> Sql.parameters
-    [ "id", Sql.uuid id
-      "desc", Sql.string handlerDesc
-      "inputName", Sql.string inputName
-      "input", Sql.bytes (BinarySer.RT.Dval.serialize "executions.input_value" input)
-      "traceId", Sql.string (string traceId)
-      "status", Sql.string (Status.name Running)
-      "parentId", (parent |> Option.map fst |> Sql.uuidOrNone)
-      "parentOrd",
-      (match parent with
-       | Some(_, ord) -> Sql.int64 ord
-       | None -> Sql.dbnull)
-      "created", Sql.string stamp
-      "updated", Sql.string stamp ]
+  let bytes = BinarySer.RT.Dval.serialize "executions.input_value" input
+  Sql.query insertSql
+  |> Sql.parameters (
+    insertParams
+      id
+      handlerDesc
+      inputName
+      bytes
+      (string traceId)
+      status
+      parent
+      stamp
+      stamp
+  )
   |> Sql.executeStatementSync
 
 let setStatus (id : System.Guid) (status : Status) : unit =
@@ -135,6 +163,34 @@ let list (limit : int) : Task<List<Execution>> =
     $"SELECT {columns} FROM executions ORDER BY created DESC, rowid DESC LIMIT @limit"
   |> Sql.parameters [ "limit", Sql.int limit ]
   |> Sql.executeAsync readRow
+
+/// When the log an execution replays was recorded: its own start, or for a fork, the start of
+/// the run at the root of its lineage, since a fork's log is a copy of that run's.
+let recordedAt (e : Execution) : Task<string> =
+  task {
+    let mutable current = e
+    let mutable more = true
+    while more do
+      match current.parent with
+      | Some(pid, _) ->
+        match! get pid with
+        | Some p -> current <- p
+        | None -> more <- false
+      | None -> more <- false
+    return current.created
+  }
+
+/// Whether the trace a run replays is still in the store: retention and `traces delete` take
+/// the execution row with the trace, so this is only false for a row that outlived one by
+/// another path.
+let private traceExists (traceId : AT.TraceID.T) : Task<bool> =
+  task {
+    let! row =
+      Sql.query "SELECT 1 AS x FROM traces WHERE id = @t"
+      |> Sql.parameters [ "t", Sql.string (string traceId) ]
+      |> Sql.executeRowOptionAsync (fun _ -> ())
+    return row.IsSome
+  }
 
 /// The effectful calls a trace recorded, as `(process, ordinal, result)`, in completion order.
 /// What a replay tracer answers from.
@@ -176,7 +232,15 @@ let fork
       let childTrace = AT.TraceID.create ()
       let parentTrace = string parent.traceId
       let childTraceStr = string childTrace
-      let cutoff = at |> Option.defaultValue System.Int64.MaxValue
+      // The whole log is "past its last row", stored as a position so `show` can say it.
+      let! cutoff =
+        match at with
+        | Some seq -> Task.FromResult seq
+        | None ->
+          Sql.query
+            "SELECT COALESCE(MAX(seq), -1) + 1 AS n FROM trace_fn_calls WHERE trace_id = @t"
+          |> Sql.parameters [ "t", Sql.string parentTrace ]
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
       Sql.executeTransactionSync
         [ "INSERT INTO traces (id, root_tlid, handler_desc, timestamp, input_name, input_value, account_id)
            SELECT @child, root_tlid, handler_desc, @stamp, input_name, input_value, account_id
@@ -200,8 +264,8 @@ let fork
         parent.inputName
         parent.input
         childTrace
+        Suspended
         (Some(id, cutoff))
-      setStatus childId Suspended
       return Ok childId
   }
 
@@ -213,6 +277,8 @@ let fork
 // machine and `dark exec import` on another give `resume` the same log to replay. The code the
 // log names (fn hashes) has to be on the other side too; a resume there resolves it from its own
 // store, so a bundle carries no code. Versioned by the first line, for the day the rows change.
+// The status travels too: a finished run imports as finished; only one caught mid-run
+// (`running`, the exporting side's foreground) becomes `suspended`, which is what it is here.
 
 module Bundle =
   let private header = "dark-execution-bundle v1"
@@ -302,30 +368,39 @@ module Bundle =
           return Ok(String.concat "\n" lines + "\n")
     }
 
-  /// Store the bundle's rows here, with its ids kept, as a suspended execution `resume` can take
-  /// up. An execution already here with that id is left alone and its id returned.
+  /// Store the bundle's rows here, with its ids kept, as an execution `resume` can take up. An
+  /// execution already here with that id is left alone and its id returned.
   let import (text : string) : Task<Result<System.Guid, string>> =
     task {
       let lines = text.Split('\n') |> Array.filter (fun l -> l <> "")
-      if lines.Length < 3 || lines[0] <> header then
+      let exec = if lines.Length > 1 then lines[1].Split('\t') else [||]
+      let trace = if lines.Length > 2 then lines[2].Split('\t') else [||]
+      let wellFormed =
+        lines.Length >= 3
+        && lines[0] = header
+        && exec.Length = 10
+        && exec[0] = "execution"
+        && trace.Length = 6
+        && trace[0] = "trace"
+      if not wellFormed then
         return Error "not a dark execution bundle"
       else
-        let exec = lines[1].Split('\t')
-        let trace = lines[2].Split('\t')
-        if exec[0] <> "execution" || trace[0] <> "trace" then
-          return Error "not a dark execution bundle"
-        else
+        try
           let id = System.Guid.Parse exec[1]
           match! get id with
           | Some _ -> return Ok id
           | None ->
             let traceId = exec[5]
-            let parentId, parentOrd =
+            let status =
+              match Status.parse exec[6] with
+              | Running -> Suspended
+              | s -> s
+            let parent =
               match exec[7] with
-              | "" -> Sql.dbnull, Sql.dbnull
+              | "" -> None
               | p ->
                 let parts = p.Split ':'
-                Sql.uuid (System.Guid.Parse parts[0]), Sql.int64 (int64 parts[1])
+                Some(System.Guid.Parse parts[0], int64 parts[1])
             let callRows =
               lines
               |> Array.skip 3
@@ -362,21 +437,21 @@ module Bundle =
                  VALUES (@trace_id, @call_id, @parent_call_id, @kind, @fn_hash, @lambda_expr_id, @args,
                          @result, @duration_ms, @process_id, @seq, @ord)",
                 callRows
-                "INSERT INTO executions
-                  (id, handler_desc, input_name, input_value, trace_id, status, parent_id, parent_ord, created, updated)
-                 VALUES (@id, @desc, @inputName, @input, @traceId, @status, @parentId, @parentOrd, @created, @updated)",
-                [ [ "id", Sql.uuid id
-                    "desc", Sql.string (unesc exec[2])
-                    "inputName", Sql.string (unesc exec[3])
-                    "input", Sql.bytes (unb64 exec[4])
-                    "traceId", Sql.string traceId
-                    "status", Sql.string (Status.name Suspended)
-                    "parentId", parentId
-                    "parentOrd", parentOrd
-                    "created", Sql.string exec[8]
-                    "updated", Sql.string (now ()) ] ] ]
+                insertSql,
+                [ insertParams
+                    id
+                    (unesc exec[2])
+                    (unesc exec[3])
+                    (unb64 exec[4])
+                    traceId
+                    status
+                    parent
+                    exec[8]
+                    (now ()) ] ]
             |> ignore<List<int>>
             return Ok id
+        with ex ->
+          return Error $"not a dark execution bundle: {ex.Message}"
     }
 
 
@@ -417,8 +492,10 @@ module Foreground =
       match lock sync (fun () -> current) with
       | None -> return None
       | Some t ->
-        do! t.flush ()
+        // Marked before the store, so retention sees a suspended run's trace as one it must
+        // keep even on the pass the store itself triggers.
         setStatus t.id Suspended
+        do! t.flush ()
         lock sync (fun () -> current <- None)
         return Some t.id
     }
@@ -429,20 +506,33 @@ module Foreground =
 /// takes it in place of a fresh tracer (`Builtins.CliHost.Libs.Cli.execute`). One shot: taken by
 /// the next run, whichever it is, so the CLI arms and runs back to back.
 module Replay =
-  type T = { execution : Execution; log : List<System.Guid * int64 * RT.Dval> }
+  type T =
+    {
+      execution : Execution
+      log : List<System.Guid * int64 * RT.Dval>
+      /// When the log was recorded (`recordedAt`), for the stale-file warning.
+      recordedAt : string
+    }
 
   let mutable private armed : Option<T> = None
   let private sync = obj ()
 
-  /// Arm a resume of `id`. False when no execution has the id.
+  /// Arm a resume of `id`. False when no execution has the id, or its trace is gone (nothing to
+  /// replay, and running the input afresh is not a resume).
   let arm (id : System.Guid) : Task<bool> =
     task {
       match! get id with
       | None -> return false
       | Some execution ->
-        let! log = log execution.traceId
-        lock sync (fun () -> armed <- Some { execution = execution; log = log })
-        return true
+        match! traceExists execution.traceId with
+        | false -> return false
+        | true ->
+          let! log = log execution.traceId
+          let! recorded = recordedAt execution
+          lock sync (fun () ->
+            armed <-
+              Some { execution = execution; log = log; recordedAt = recorded })
+          return true
     }
 
   /// The armed resume, if any, disarming it.

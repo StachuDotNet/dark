@@ -31,9 +31,9 @@ let private requireBundledCaller
     |> raiseUntargetedRTE
 
 
-/// The watch behind `Stdlib.Host.await` (see `hostWatchGet` below). One per process: one host
-/// loop runs per process today; a second loop in the same process would share its view of "what
-/// have I reported", which is what per-process state under the scheduler's cores step fixes.
+/// The watch behind `Stdlib.Host.await` (see `hostWatchGet` below). One slot per OS process,
+/// because one host loop runs per process. A second loop in the same process would share it
+/// and see the first's "already reported" state; make it per-process state if that day comes.
 module HostWatch =
   let mutable watch : Option<Dval> = None
 

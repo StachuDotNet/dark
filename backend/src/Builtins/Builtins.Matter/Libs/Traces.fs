@@ -59,10 +59,10 @@ let private loadFnCalls (traceId : string) : Ply<Dval> =
     let! events =
       Sql.query
         "SELECT call_id, parent_call_id, kind, fn_hash, lambda_expr_id,
-                args, result, duration_ms, process_id, seq
+                args, result, duration_ms, process_id, seq, ord
          FROM trace_fn_calls
          WHERE trace_id = @traceId
-         ORDER BY rowid"
+         ORDER BY seq, rowid"
       |> Sql.parameters [ "traceId", Sql.string traceId ]
       |> Sql.executeAsync (fun read ->
         {| callId = read.string "call_id"
@@ -74,7 +74,8 @@ let private loadFnCalls (traceId : string) : Ply<Dval> =
            resultBytes = read.bytes "result"
            durationMs = read.int64 "duration_ms"
            processId = read.string "process_id"
-           seq = read.int64 "seq" |})
+           seq = read.int64 "seq"
+           ord = read.int64 "ord" |})
 
     // Skip rows whose args / result fail to deserialize rather than
     // substitute a placeholder Dval — the downstream renderer expects
@@ -117,7 +118,8 @@ let private loadFnCalls (traceId : string) : Ply<Dval> =
                  | true, g when g <> System.Guid.Empty ->
                    Dval.optionSome KTUuid (DUuid g)
                  | _ -> Dval.optionNone KTUuid)
-                "seq", DInt64 ev.seq ]
+                "seq", DInt64 ev.seq
+                "ord", DInt64 ev.ord ]
           Some(DRecord(typeName, typeName, [], fields))
         with ex ->
           print $"[tracing] dropping corrupt fn_call row: {ex.Message}"
@@ -628,36 +630,18 @@ let fns () : List<BuiltInFn> =
             "ISO 8601 timestamp (e.g. 2026-05-02T01:00:00Z); traces with timestamp < cutoff are deleted." ]
       returnType = TInt
       description =
-        "Delete traces older than the given cutoff (and their fn_calls). Returns count deleted. Caller is responsible for computing the cutoff (e.g. `DateTime.now() |> subtractSeconds 3600` for 'last hour')."
+        "Delete traces older than the given cutoff, with their calls and the executions they were the log of. Returns count deleted. Caller is responsible for computing the cutoff (e.g. `DateTime.now() |> subtractSeconds 3600` for 'last hour')."
       fn =
         (function
         | _, _, _, [| DString cutoffISO |] ->
           uply {
-            // Timestamp column is ISO 8601 ("2026-05-02T02:03:53Z") which
-            // sorts lexicographically — string compare works as date compare.
-            let countToDelete =
-              Sql.query "SELECT COUNT(*) AS c FROM traces WHERE timestamp < @cutoff"
+            // The timestamp column is ISO 8601, which sorts as text the way it sorts as time.
+            let! ids =
+              Sql.query "SELECT id FROM traces WHERE timestamp < @cutoff"
               |> Sql.parameters [ "cutoff", Sql.string cutoffISO ]
-              |> Sql.executeRowAsync (fun read -> read.int64 "c")
-            let! count = countToDelete
-
-            // Both DELETEs run in one transaction so an interrupt can't
-            // leave fn_calls orphan rows pointing at a deleted trace.
-            // There's no FK cascade by design (schema kept additive for
-            // migration ease), so cleanup is purely procedural.
-            if count > 0L then
-              let p = [ [ "cutoff", Sql.string cutoffISO ] ]
-              let _ =
-                Sql.executeTransactionSync
-                  [ ("DELETE FROM trace_fn_calls
-                      WHERE trace_id IN (
-                        SELECT id FROM traces WHERE timestamp < @cutoff
-                      )",
-                     p)
-                    ("DELETE FROM traces WHERE timestamp < @cutoff", p) ]
-              ()
-
-            return Dval.int (bigint count)
+              |> Sql.executeAsync (fun read -> read.string "id")
+            LibDB.Tracing.TraceRetention.deleteTraces ids
+            return Dval.int (bigint (List.length ids))
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
@@ -670,7 +654,8 @@ let fns () : List<BuiltInFn> =
       typeParams = []
       parameters = [ Param.make "unit" TUnit "Ignored" ]
       returnType = TInt
-      description = "Delete all traces, returns count deleted"
+      description =
+        "Delete all traces and executions, returns the count of traces deleted"
       fn =
         (function
         | _, _, _, [| DUnit |] ->
@@ -678,12 +663,11 @@ let fns () : List<BuiltInFn> =
             let! count =
               Sql.query "SELECT COUNT(*) as c FROM traces"
               |> Sql.executeRowAsync (fun read -> read.int64 "c")
-            // Both DELETEs in one transaction (same shape as
-            // tracesClearBefore — no FK cascade in the schema).
-            let _ =
-              Sql.executeTransactionSync
-                [ ("DELETE FROM trace_fn_calls", [ [] ])
-                  ("DELETE FROM traces", [ [] ]) ]
+            Sql.executeTransactionSync
+              [ ("DELETE FROM trace_fn_calls", [ [] ])
+                ("DELETE FROM executions", [ [] ])
+                ("DELETE FROM traces", [ [] ]) ]
+            |> ignore<List<int>>
             return Dval.int (bigint count)
           }
         | _ -> incorrectArgs ())
@@ -698,7 +682,7 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "traceID" TString "Full trace ID to delete" ]
       returnType = TInt
       description =
-        "Delete one trace (and its fn_calls). Returns 1 if a row was deleted, 0 otherwise. Caller is responsible for resolving prefixes via tracesResolveID first."
+        "Delete one trace, its calls and the execution it was the log of. Returns 1 if a row was deleted, 0 otherwise. Caller is responsible for resolving prefixes via tracesResolveID first."
       fn =
         (function
         | _, _, _, [| DString traceID |] ->
@@ -710,14 +694,7 @@ let fns () : List<BuiltInFn> =
             match existed with
             | None -> return Dval.int 0I
             | Some _ ->
-              do!
-                Sql.query "DELETE FROM trace_fn_calls WHERE trace_id = @traceId"
-                |> Sql.parameters [ "traceId", Sql.string traceID ]
-                |> Sql.executeStatementAsync
-              do!
-                Sql.query "DELETE FROM traces WHERE id = @traceId"
-                |> Sql.parameters [ "traceId", Sql.string traceID ]
-                |> Sql.executeStatementAsync
+              LibDB.Tracing.TraceRetention.deleteTraces [ traceID ]
               return Dval.int 1I
           }
         | _ -> incorrectArgs ())
@@ -732,52 +709,13 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "keepN" TInt "Number of most-recent traces to keep" ]
       returnType = TInt
       description =
-        "Delete all but the N most-recent traces (and their fn_calls). Returns the count deleted. Useful for bounded retention."
+        "Delete all but the N most recent traces, keeping any a suspended execution still needs; the same pass retention runs after every store. Returns the count deleted."
       fn =
         (function
         | _, vm, _, [| DInt keepNArg |] ->
           let keepN = intToInt64 vm keepNArg
-          uply {
-            // Subquery picks the rowids to keep; outer DELETE removes the rest.
-            // Wipe child rows first to avoid dangling fn_calls — there's no
-            // FK cascade in the schema (kept additive for migration ease).
-            let countToDelete =
-              Sql.query
-                "SELECT COUNT(*) AS c FROM traces
-                 WHERE rowid NOT IN (
-                   SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
-                 )"
-              |> Sql.parameters [ "keepN", Sql.int64 keepN ]
-              |> Sql.executeRowAsync (fun read -> read.int64 "c")
-            let! count = countToDelete
-
-            // Both DELETEs run in one transaction. The "keep N most-
-            // recent rowids" subquery is repeated in each statement; the
-            // transaction's snapshot keeps the three evaluations
-            // (count + two DELETEs) consistent — without it, a
-            // concurrent insert between the count and the first DELETE
-            // (or between the two DELETEs) would let them see different
-            // "kept" sets and orphan child rows.
-            if count > 0L then
-              let p = [ [ "keepN", Sql.int64 keepN ] ]
-              let _ =
-                Sql.executeTransactionSync
-                  [ ("DELETE FROM trace_fn_calls WHERE trace_id IN (
-                       SELECT id FROM traces
-                       WHERE rowid NOT IN (
-                         SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
-                       )
-                     )",
-                     p)
-                    ("DELETE FROM traces
-                      WHERE rowid NOT IN (
-                        SELECT rowid FROM traces ORDER BY rowid DESC LIMIT @keepN
-                      )",
-                     p) ]
-              ()
-
-            return Dval.int (bigint count)
-          }
+          Dval.int (bigint (LibDB.Tracing.TraceRetention.prune (Some keepN) None))
+          |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

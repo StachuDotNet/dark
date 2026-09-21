@@ -156,8 +156,9 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "bundle" TString "" ]
       returnType = TypeReference.result TUuid TString
       description =
-        "Store a bundle from `export` here as a suspended execution, ids kept, so `resume` can "
-        + "take it up. An execution already here with that id is left as it is."
+        "Store a bundle from `export` here, ids and status kept (a run caught mid-flight arrives "
+        + "suspended), so `resume` can take it up. An execution already here with that id is left "
+        + "as it is."
       fn =
         (function
         | _, _, _, [| DString text |] ->

@@ -83,10 +83,9 @@ module TraceResults =
   let empty () : T = { tlids = HashSet.empty () }
 
 
-/// Whether to record traces at all. Orthogonal to TraceSamplingRule:
-/// sampling decides *whether to trace this run*; detail just toggles
-/// the whole storage path. Override at startup with the
-/// `DARK_CONFIG_TRACE_DETAIL` env var (`off` to disable).
+/// How much a run records: `off`, `effects` (the resumable log, the default) or `on` (every
+/// call). Set at startup by `DARK_CONFIG_TRACE_DETAIL`. Orthogonal to TraceSamplingRule, which
+/// decides whether to trace this run at all.
 module TraceDetail =
   type T =
     | Off
@@ -96,12 +95,10 @@ module TraceDetail =
     /// Every call, frame and lambda: the tree `traces view` renders.
     | On
 
-  // Retention (`TraceRetention`, run from `TraceStorage.store`) is what allows a default other
-  // than off: without it a long-running `serve` filled the disk unbounded. Traces are stripped
-  // from the exported seed either way.
-  // Default `effects` since retention exists (`TraceRetention`): the effect-only log is thin
-  // (nothing pure, no frames) and is what makes every run resumable and forkable without
-  // turning anything on. `off` and `on` are still the env's to say.
+  // Default `effects`: the effect-only log is thin (nothing pure, no frames) and makes every
+  // run resumable and forkable. `TraceRetention` keeps the tables bounded, which is what allows
+  // a default other than off. Traces are stripped from the exported seed. `off` and `on` are the
+  // env's to say.
   let private readEnv () : T =
     match System.Environment.GetEnvironmentVariable "DARK_CONFIG_TRACE_DETAIL" with
     | "on" -> On
@@ -533,107 +530,111 @@ let rec private executionTracingFor
       forProcess = executionTracingFor state level }
 
 
-/// Store trace data to SQLite.
-///
-/// TODO: retention / GC. Every CLI eval / run / `serve` request writes
-/// a full trace into `traces` + `trace_fn_calls`, and nothing prunes
-/// them. Plan when the time comes:
-///   - sampling
-///   - per-row size cap on `dval_json` writes (one massive payload
-///     could fill the disk on its own; truncate + tag the row)
-///   - background sweeper that drops trace rows older than N days,
-///     or trims to the most recent K traces per handler
-/// `Builtins.Matter/Libs/Traces.fs` already has a `clear-before`
-/// command path; the missing piece is the policy + a default cadence.
-/// What keeps the trace tables bounded now that tracing is on by default: after a store, the
-/// oldest traces past the caps go, except one a suspended execution still needs (its log is what
-/// `resume` replays). `trace.keep` is how many traces to keep (200 unset), `trace.maxMb` how many
-/// megabytes of args and results (256 unset); 0 disables a cap. Both are store config keys, read
-/// once. A pass runs at most every ten seconds, since a `serve` stores a trace per request.
+/// Keeps the trace tables bounded: after a store, the oldest traces past the caps go, except
+/// one a suspended execution still needs (its log is what `resume` replays). `trace.keep` is
+/// how many traces to keep (200 unset; a served request is one), `trace.maxMb` how many
+/// megabytes of args and results (256 unset); 0 disables a cap. Both are store config keys the
+/// host reads at startup (`configure`). A pass runs at most every ten seconds, since a `serve`
+/// stores a trace per request. The manual `traces prune|delete|clear` go through here too, so
+/// an execution row never outlives its trace.
 module TraceRetention =
   open LibDB.Sqlite
 
   let mutable keep : int64 = 200L
   let mutable maxBytes : int64 = 256L * 1024L * 1024L
-  let mutable private loaded = false
   let mutable private lastPass = System.DateTime.MinValue
 
-  let private load () : unit =
-    if not loaded then
-      loaded <- true
-      try
-        let settings = (LibDB.Config.getMany [ "trace.keep"; "trace.maxMb" ]).Result
-        let read (key : string) (scale : int64) : Option<int64> =
-          match Map.tryFind key settings with
-          | Some v ->
-            match System.Int64.TryParse v with
-            | true, n when n >= 0L -> Some(n * scale)
-            | _ -> None
-          | None -> None
-        read "trace.keep" 1L |> Option.iter (fun n -> keep <- n)
-        read "trace.maxMb" (1024L * 1024L) |> Option.iter (fun n -> maxBytes <- n)
-      with _ ->
-        ()
+  /// The caps, from the store's `trace.keep` and `trace.maxMb` as the host read them (a
+  /// missing or unparseable value keeps the default).
+  let configure (keepTraces : Option<string>) (maxMb : Option<string>) : unit =
+    let parse (v : string) : Option<int64> =
+      match System.Int64.TryParse v with
+      | true, n when n >= 0L -> Some n
+      | _ -> None
+    keepTraces |> Option.bind parse |> Option.iter (fun n -> keep <- n)
+    maxMb
+    |> Option.bind parse
+    |> Option.iter (fun n -> maxBytes <- n * 1024L * 1024L)
 
   /// Test seam.
   let setForTesting (keepTraces : int64) (bytes : int64) : unit =
-    loaded <- true
     keep <- keepTraces
     maxBytes <- bytes
     lastPass <- System.DateTime.MinValue
 
-  /// Drop the oldest traces past the caps. Returns how many traces went.
+  /// Delete these traces: their calls, their rows, and the executions they were the log of.
+  let deleteTraces (ids : List<string>) : unit =
+    match ids with
+    | [] -> ()
+    | _ ->
+      let ps = ids |> List.map (fun id -> [ "id", Sql.string id ])
+      Sql.executeTransactionSync
+        [ "DELETE FROM trace_fn_calls WHERE trace_id = @id", ps
+          "DELETE FROM executions WHERE trace_id = @id", ps
+          "DELETE FROM traces WHERE id = @id", ps ]
+      |> ignore<List<int>>
+
+  /// Drop the oldest traces past `keepTraces` and `bytes` (`None`: no cap on that axis), never
+  /// one a suspended execution needs, and never the newest over the byte cap alone. Returns how
+  /// many went.
+  let prune (keepTraces : Option<int64>) (bytes : Option<int64>) : int =
+    // Newest first, with each trace's byte weight and whether a suspended run needs it.
+    let rows =
+      Sql.query
+        "SELECT t.id AS id,
+                COALESCE((SELECT SUM(LENGTH(c.args) + LENGTH(c.result))
+                          FROM trace_fn_calls c WHERE c.trace_id = t.id), 0) AS bytes,
+                EXISTS(SELECT 1 FROM executions e
+                       WHERE e.trace_id = t.id AND e.status = 'suspended') AS needed
+         FROM traces t ORDER BY t.timestamp DESC, t.rowid DESC"
+      |> Sql.executeAsync (fun read ->
+        read.string "id", read.int64 "bytes", read.int "needed" = 1)
+      |> fun t -> t.Result
+    // Walk newest to oldest, keeping until a cap is hit; everything older goes. The newest
+    // stays even over the byte cap alone, so a run's own trace survives its own store.
+    let mutable seenCount = 0L
+    let mutable seenBytes = 0L
+    let doomed =
+      rows
+      |> List.filter (fun (_, bytes', needed) ->
+        seenCount <- seenCount + 1L
+        seenBytes <- seenBytes + bytes'
+        let overCount =
+          match keepTraces with
+          | Some n -> seenCount > n
+          | None -> false
+        let overBytes =
+          match bytes with
+          | Some n -> seenBytes > n && seenCount > 1L
+          | None -> false
+        (overCount || overBytes) && not needed)
+    deleteTraces (doomed |> List.map (fun (id, _, _) -> id))
+    List.length doomed
+
+  /// The pass after a store: at most every ten seconds, and the byte scan only once there are
+  /// enough traces for the byte cap to matter (a count is one index read).
   let run () : int =
-    load ()
     if keep = 0L && maxBytes = 0L then
       0
     else
       let now = System.DateTime.UtcNow
-      // A count is one index read; the byte weights are a scan, so they are only taken when
-      // there are enough traces for the byte cap to matter at all.
-      let count =
-        Sql.query "SELECT COUNT(*) AS n FROM traces"
-        |> Sql.executeRowAsync (fun read -> read.int64 "n")
-        |> fun t -> t.Result
-      let overCount = keep > 0L && count > keep
-      if (now - lastPass).TotalSeconds < 10.0 || (not overCount && count < 50L) then
+      if (now - lastPass).TotalSeconds < 10.0 then
         0
       else
-        lastPass <- now
-        // Newest first, with each trace's byte weight and whether a suspended run needs it.
-        let rows =
-          Sql.query
-            "SELECT t.id AS id,
-                    COALESCE((SELECT SUM(LENGTH(c.args) + LENGTH(c.result))
-                              FROM trace_fn_calls c WHERE c.trace_id = t.id), 0) AS bytes,
-                    EXISTS(SELECT 1 FROM executions e
-                           WHERE e.trace_id = t.id AND e.status = 'suspended') AS needed
-             FROM traces t ORDER BY t.timestamp DESC"
-          |> Sql.executeAsync (fun read ->
-            read.string "id", read.int64 "bytes", read.int "needed" = 1)
+        let count =
+          Sql.query "SELECT COUNT(*) AS n FROM traces"
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
           |> fun t -> t.Result
-        // Walk newest to oldest, keeping until a cap is hit; everything older goes.
-        let mutable seenCount = 0L
-        let mutable seenBytes = 0L
-        let doomed =
-          rows
-          |> List.filter (fun (_, bytes, needed) ->
-            seenCount <- seenCount + 1L
-            seenBytes <- seenBytes + bytes
-            let overCount = keep > 0L && seenCount > keep
-            let overBytes = maxBytes > 0L && seenBytes > maxBytes
-            (overCount || overBytes) && not needed)
-        match doomed with
-        | [] -> 0
-        | _ ->
-          let ids = doomed |> List.map (fun (id, _, _) -> [ "id", Sql.string id ])
-          Sql.executeTransactionSync
-            [ "DELETE FROM trace_fn_calls WHERE trace_id = @id", ids
-              "DELETE FROM traces WHERE id = @id", ids ]
-          |> ignore<List<int>>
-          List.length doomed
+        let overCount = keep > 0L && count > keep
+        if not overCount && count < 50L then
+          0
+        else
+          lastPass <- now
+          let cap (n : int64) = if n = 0L then None else Some n
+          prune (cap keep) (cap maxBytes)
 
 
+/// Store trace data to SQLite.
 module TraceStorage =
   open LibDB.Sqlite
 

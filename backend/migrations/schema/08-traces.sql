@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_trace_fn_calls_fn_hash  ON trace_fn_calls(fn_hash
 
 -- A run as a durable thing: what was run (the same input the trace stores, so it can be run again),
 -- the trace that is its log of effectful calls, where it stands, and, for a fork, which execution
--- and which ordinal it branched from. `dark exec list/show/resume/fork`; `docs/processes.md`.
+-- and where in its log it branched. `dark exec list/show/resume/fork`; `docs/processes.md`.
 -- Status: running | done | failed | suspended.
 CREATE TABLE IF NOT EXISTS executions (
   id TEXT PRIMARY KEY,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS executions (
   trace_id TEXT NOT NULL,
   status TEXT NOT NULL,
   parent_id TEXT,                              -- the execution this one was forked from, if any
-  parent_ord INTEGER,                          -- ... and the ordinal it branched at: the log before it is shared
+  parent_seq INTEGER,                          -- ... and the `seq` it branched at: the rows below it are shared
   created TEXT NOT NULL,
   updated TEXT NOT NULL
 );

@@ -503,6 +503,19 @@ let runtimeErrorToString
     return! executeFunction state fnName [] args
   }
 
+/// `runtimeErrorToString` as a string: the rendering, or the raw error when the printer
+/// itself fails.
+let runtimeErrorMessage
+  (state : RT.ExecutionState)
+  (rte : RT.RuntimeError.Error)
+  : Task<string> =
+  task {
+    match! runtimeErrorToString state rte with
+    | Ok(RT.DString s) -> return s
+    | Ok other -> return string other
+    | Error _ -> return string rte
+  }
+
 /// Fallback for when a pretty printer call fails: the error it raised, then the raw value.
 let private prettyPrintFallback
   (label : string)

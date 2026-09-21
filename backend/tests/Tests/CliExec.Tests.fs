@@ -198,8 +198,8 @@ let private exportImportResume =
         let! back = Executions.get e.id
         Expect.equal
           (back |> Option.map (fun b -> b.status))
-          (Some Executions.Suspended)
-          "imported suspended"
+          (Some e.status)
+          "imported with the status it had"
         let! resumed = runCli state [ "exec"; "resume"; prefix ]
         let last = resumed.Split('\n') |> Array.last
         Expect.equal
@@ -240,8 +240,34 @@ let private retentionKeepsTheNewestAndTheSuspended =
           Expect.isTrue
             (rows |> List.exists (fun e -> e.id = first.id))
             "the suspended execution is still listed"
+          Expect.isTrue
+            (rows |> List.forall (fun e -> List.contains (string e.traceId) traces))
+            "every listed execution still has its trace: the rows went together"
         finally
           LibDB.Tracing.TraceRetention.setForTesting 200L (256L * 1024L * 1024L)
+      })
+
+
+let private byteCapSparesTheRunThatTrippedIt =
+  cliTestWithFreshTraces
+    "the byte cap drops older logs, never the newest"
+    (fun state ->
+      task {
+        // One byte: every stored log is over the cap on its own. The pass must keep the
+        // newest trace, or a run's own log would go the moment it was written. Called
+        // directly: the pass after a store only scans bytes once there are fifty traces.
+        let! _ = runCli state [ "eval"; "Stdlib.printLine \"one\"" ]
+        let! _ = runCli state [ "eval"; "Stdlib.printLine \"two\"" ]
+        let! newest = latest ()
+        let went = LibDB.Tracing.TraceRetention.prune None (Some 1L)
+        let! traces =
+          Sql.query "SELECT id FROM traces"
+          |> Sql.executeAsync (fun read -> read.string "id")
+        Expect.equal went 1 "the older one went"
+        Expect.equal
+          traces
+          [ string newest.traceId ]
+          "only the newest survives, and it does"
       })
 
 
@@ -285,4 +311,5 @@ let tests =
     replayAfterAnEdit
     exportImportResume
     retentionKeepsTheNewestAndTheSuspended
+    byteCapSparesTheRunThatTrippedIt
     replayEchoesAndRefuses ]

@@ -149,14 +149,19 @@ let private installStoreVersionSource () : unit =
   LibExecution.HostEvents.sources.storeVersion <-
     Some LibDB.Sqlite.DataVersion.current
 
-/// The store's `exec.*` settings, read in one query at startup (each `Config.get` is a round
-/// trip of about 8 KB, and the allocation gate counts startup). Empty when the store cannot
-/// answer. Two knobs, both `dark config set`: `exec.workers` and `exec.policy`; no environment
-/// variable shadows either.
+/// The store's `exec.*` and `trace.*` settings, read in one query at startup (each
+/// `Config.get` is a round trip of about 8 KB, and the allocation gate counts startup). Empty
+/// when the store cannot answer. All are `dark config set`; no environment variable shadows
+/// any of them.
 let private execSettings () : Map<string, string> =
   try
     (LibDB.Config.getMany
-      [ "exec.workers"; "exec.policy"; "exec.maxTurns"; "exec.maxBytes" ])
+      [ "exec.workers"
+        "exec.policy"
+        "exec.maxTurns"
+        "exec.maxBytes"
+        "trace.keep"
+        "trace.maxMb" ])
       .Result
   with _ ->
     Map.empty
@@ -268,6 +273,9 @@ let execute
         | None -> 0L
       LibExecution.Scheduler.maxTurns <- cap "exec.maxTurns"
       LibExecution.Scheduler.maxBytes <- cap "exec.maxBytes"
+      LibDB.Tracing.TraceRetention.configure
+        (Map.tryFind "trace.keep" settings)
+        (Map.tryFind "trace.maxMb" settings)
       installPolicy settings state
       return LibExecution.Scheduler.executeFunction state fnName [] args
   }

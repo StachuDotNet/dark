@@ -1054,10 +1054,6 @@ let private finishBuiltin
     }
 
 
-/// Everything from "we have the arguments and a checked symbol table" to "we have a checked result".
-///
-/// Shared by the synchronous path and the fallback below it, so there is one copy of the permission gate,
-/// the stats bracket, the result check and the trace.
 /// What a resume does at a logged call beyond handing the result back (`docs/processes.md`,
 /// "Executions"): an effect the log cannot stand in for stops the resume naming the step; the
 /// output of a logged print is echoed dimmed so the person sees what the old run said; a logged
@@ -1070,7 +1066,10 @@ module ReplayPolicy =
       [ "cliSpawnProcess"
         "cliProcessIO"
         "cliTerminateProcess"
-        "httpClientStream" ]
+        "httpClientStream"
+        // A spawned Dark process is a handle too: the log holds the handle, not the process.
+        "execSpawn"
+        "execSpawnDetached" ]
 
   /// When the run being resumed was recorded; set by the host that armed the resume, so a
   /// file read can be compared against it. None when nothing is resuming.
@@ -1094,7 +1093,7 @@ module ReplayPolicy =
     if Set.contains name unreproducible then
       RuntimeError.UncaughtException(
         $"cannot resume past step {ord}: `{name}` gave the old run something this one "
-        + "cannot have again (a live process or a stream); the run stays suspended",
+        + "cannot have again (a process or a stream); the run stays suspended",
         []
       )
       |> raiseRTE vm.threadID
@@ -1121,6 +1120,10 @@ module ReplayPolicy =
       | None -> ()
 
 
+/// Everything from "we have the arguments and a checked symbol table" to "we have a checked result".
+///
+/// Shared by the synchronous path and the fallback below it, so there is one copy of the permission gate,
+/// the stats bracket, the result check and the trace.
 let private invokeBuiltin
   (exeState : ExecutionState)
   (vm : VMState)
@@ -1245,7 +1248,7 @@ let private invokeBuiltin
           // (`landBuiltin`), and what records the chain's result waits for it on the VM. A
           // read can not do this: its wait would have been handed back as a promise, with the
           // request inside it and nothing to see it.
-          if Effects.allReads fn.callEffects then
+          if Effects.readsOnly fn.name.name fn.callEffects then
             Exception.raiseInternal
               "requestApply after the first await of a read"
               [ "builtin", fn.name.name ]

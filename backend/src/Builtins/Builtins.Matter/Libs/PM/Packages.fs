@@ -447,25 +447,11 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
         (function
         | exeState, vm, _, [| DApplicable applicable; arg |] ->
           uply {
-            let root =
-              match applicable with
-              | AppNamedFn { name = FQFnName.Package hash } -> [ hash ]
-              | _ -> []
             let asRoot =
-              match root with
-              | [] -> exeState
-              | _ ->
-                let guest =
-                  LibDB.PolicyStore.guestState
-                    exeState.accountID
-                    LibExecution.Permissions.Policy.allowAll
-                    []
-                    root
-                    exeState
-                { guest with
-                    access =
-                      guest.access
-                      |> LibExecution.Permissions.Access.constrainBy vm.activeAccess }
+              LibDB.PolicyStore.rootState
+                exeState
+                vm.activeAccess
+                (LibDB.PolicyStore.rootOf applicable)
             match!
               Execution.executeApplicable
                 asRoot
@@ -483,12 +469,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   [ dv ]
                 )
             | Error(rte, _) ->
-              let! rendered = Execution.runtimeErrorToString asRoot rte
-              let message =
-                match rendered with
-                | Ok(DString s) -> s
-                | Ok other -> string other
-                | Error _ -> string rte
+              let! message = Execution.runtimeErrorMessage asRoot rte
               return
                 DEnum(
                   Dval.resultType (),

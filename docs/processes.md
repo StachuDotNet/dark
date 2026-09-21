@@ -459,9 +459,9 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   `(process, ordinal)` the log has is answered from it, and not performed: a
   replayed `printLine` is echoed dimmed, so the person resuming sees where
   the run had got to without the world seeing it twice. A logged call the
-  log cannot stand in for (a spawned process, an open HTTP stream: a live
-  handle the old process owned) stops the resume at that step, naming it,
-  and the run stays suspended. A logged file read whose file has changed
+  log cannot stand in for (an `Exec.spawn`, an OS subprocess, an open HTTP
+  stream: a live handle the old process owned) stops the resume at that
+  step, naming it, and the run stays suspended. A logged file read whose file has changed
   since the run was recorded warns and continues on what it read then. The
   first ordinal a process asks for that the log lacks ends that process's
   replay for good, so nothing later in the log can be handed to it after a
@@ -469,10 +469,8 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   trace ends up as the replayed prefix plus what ran after. The recorded
   process ids are the recorded run's; a resumed run's processes are matched
   to them in the order they first appear in the log, which is the order a
-  script's expressions start in. Processes started with `Exec.spawn` may not
-  match up; a resume with those is best effort. A run nobody scheduled (a
-  plain `execute`, as in the test harness) records and replays under one
-  process id.
+  script's expressions start in. A run nobody scheduled (a plain `execute`,
+  as in the test harness) records and replays under one process id.
 - `fork`: a new execution with the same input, a new trace holding the
   parent's rows with `seq` below the position (the whole log with no
   `--at`), suspended; resume it and it diverges where the log ends. Cutting

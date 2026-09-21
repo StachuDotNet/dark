@@ -123,7 +123,7 @@ let isRead (effect : Effect) : bool =
   | Effect.Native -> false
 
 /// Non-empty, and nothing but reads.
-let allReads (effects : Set<Effect>) : bool =
+let private allReads (effects : Set<Effect>) : bool =
   not (Set.isEmpty effects) && Set.forall isRead effects
 
 /// Builtins whose declared effect is not a read but whose every call is one: the HTTP client's

@@ -3,7 +3,7 @@
 /// it. The editor (the LSP's inlay hints, the workbench's detail pane) puts the values beside
 /// the code. Data only: what a value looks like is Dark's to decide.
 ///
-/// Two builtins. `tracesLastInputs` finds the inputs; `liveReplay` runs the current version of
+/// Two builtins. `tracesLastInputs` finds the inputs; `liveRun` runs the current version of
 /// the function on them under a tracer that collects `TraceExpr` results. The effects the run
 /// makes are performed, not replayed: a function's last recorded call is one row in a trace, and
 /// its effect log is the whole run's, keyed by process and ordinal, which a single call taken
@@ -82,7 +82,7 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "liveReplay" 0
+    { name = fn "liveRun" 0
       typeParams = []
       parameters =
         [ Param.make "hash" TString "the version of the function to run"
@@ -109,17 +109,9 @@ let fns () : List<BuiltInFn> =
             // The function is the approval root of the run, as a view or a router handed to a
             // host is; the caller's access still bounds it.
             let asRoot =
-              let guest =
-                LibDB.PolicyStore.guestState
-                  exeState.accountID
-                  LibExecution.Permissions.Policy.allowAll
-                  []
-                  [ Hash hash ]
-                  exeState
-              { guest with
-                  access =
-                    guest.access
-                    |> LibExecution.Permissions.Access.constrainBy vm.activeAccess
+              let root =
+                LibDB.PolicyStore.rootState exeState vm.activeAccess [ Hash hash ]
+              { root with
                   tracing =
                     { Execution.noTracing with
                         skipTracing = false
@@ -148,12 +140,7 @@ let fns () : List<BuiltInFn> =
                   [ Dval.optionNone KTString ]
                 )
             | Error(rte, _) ->
-              let! rendered = Execution.runtimeErrorToString asRoot rte
-              let message =
-                match rendered with
-                | Ok(DString s) -> s
-                | Ok other -> string other
-                | Error _ -> string rte
+              let! message = Execution.runtimeErrorMessage asRoot rte
               return
                 DTuple(
                   Dval.optionNone (dvalKT ()),
@@ -164,7 +151,9 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
-      callEffects = set [ Effect.TraceRead ]
+      // The run's own calls are checked one by one under the caller's access; the builtin
+      // itself does nothing to the host, like `applicableTryApply`.
+      callEffects = Set.empty
       deprecated = NotDeprecated } ]
 
 

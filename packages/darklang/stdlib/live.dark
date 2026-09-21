@@ -786,7 +786,7 @@ module Values =
     | None -> Stdlib.Option.Option.None
     | Some hash ->
       let (result, values, problem) =
-        Builtin.liveReplay (LanguageTools.ProgramTypes.hashToString hash) inputs
+        Builtin.liveRun (LanguageTools.ProgramTypes.hashToString hash) inputs
 
       let byExpr =
         values

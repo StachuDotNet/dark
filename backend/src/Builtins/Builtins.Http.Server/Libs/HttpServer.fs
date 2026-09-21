@@ -233,32 +233,28 @@ type private Routing =
   | Fixed of Applicable
   | Live of LiveRouting
 
-/// The hash a named applicable calls, for the approval root. A lambda has none.
-let private rootOf (handler : Applicable) : List<Hash> =
-  match handler with
-  | AppNamedFn named ->
-    match named.name with
-    | FQFnName.Package hash -> [ hash ]
-    | FQFnName.Builtin _ -> []
-  | AppLambda _ -> []
+let private rootOf = LibDB.PolicyStore.rootOf
 
 /// The guest state a handler runs under: the router is the approval root, the instance policy the
-/// ceiling, and the frame that called `serve` the outer bound.
+/// ceiling, and the frame that called `serve` the outer bound. A lambda runs as the server.
 let private guestStateFor
   (exeState : ExecutionState)
   (invokerAccess : LibExecution.Permissions.Access)
   (handler : Applicable)
   : ExecutionState =
-  let guest =
-    LibDB.PolicyStore.guestState
-      exeState.accountID
-      LibExecution.Permissions.Policy.allowAll
-      []
-      (rootOf handler)
-      exeState
-  { guest with
-      access =
-        guest.access |> LibExecution.Permissions.Access.constrainBy invokerAccess }
+  match rootOf handler with
+  | [] ->
+    let guest =
+      LibDB.PolicyStore.guestState
+        exeState.accountID
+        LibExecution.Permissions.Policy.allowAll
+        []
+        []
+        exeState
+    { guest with
+        access =
+          guest.access |> LibExecution.Permissions.Access.constrainBy invokerAccess }
+  | roots -> LibDB.PolicyStore.rootState exeState invokerAccess roots
 
 /// Which handler this request runs, and under what state. `Error` carries what Dark said when no
 /// version is usable, which becomes a 503 rather than a crash.
@@ -296,12 +292,7 @@ let private resolveRouting
       | Ok other ->
         return Error $"live routing step returned an unexpected shape: {other}"
       | Error(rte, _) ->
-        let! errorStrResult = Execution.runtimeErrorToString serverState rte
-        let errorStr =
-          match errorStrResult with
-          | Ok(DString s) -> s
-          | Ok other -> string other
-          | Error _ -> string rte
+        let! errorStr = Execution.runtimeErrorMessage serverState rte
         return Error $"live routing step failed: {errorStr}"
   }
 
@@ -393,12 +384,7 @@ let private executeHandler
       match result with
       | Ok dval -> return Value dval
       | Error(rte, _callStack) ->
-        let! errorStrResult = Execution.runtimeErrorToString exeState rte
-        let errorStr =
-          match errorStrResult with
-          | Ok(DString s) -> s
-          | Ok other -> string other
-          | Error _ -> string rte
+        let! errorStr = Execution.runtimeErrorMessage exeState rte
         match p.stopReason with
         | null -> return Direct(textResponse 500 $"The handler failed: {errorStr}")
         | reason ->

@@ -4,7 +4,7 @@ module Darklang.Stdlib.Exec.Execution
 /// it stands, and, for a fork, where it branched from. Resume and fork are record/replay: the
 /// same input runs again, every effectful call the log has is answered from it instead of being
 /// performed, and the run goes live once the log runs out (`docs/processes.md`, "Executions").
-/// Recorded whenever a run traces (`DARK_CONFIG_TRACE_DETAIL=effects` or `on`).
+/// Recorded whenever a run traces, which is the default (`DARK_CONFIG_TRACE_DETAIL=off` turns it off).
 
 type Status =
   | Running
@@ -53,7 +53,8 @@ let export (id: Uuid) : Stdlib.Result.Result<String, String> =
   Builtin.executionExport id
 
 
-/// Store a bundle from `export` here as a suspended execution, ids kept, so `resume` can take it up.
+/// Store a bundle from `export` here, ids and status kept (a run caught mid-flight arrives
+/// suspended), so `resume` can take it up.
 let import (bundle: String) : Stdlib.Result.Result<Uuid, String> =
   Builtin.executionImport bundle
 

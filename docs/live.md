@@ -331,9 +331,12 @@ Where they show:
   edited away from the printed form gets fewer hints, never a wrong one. After a
   `fileSystem/write` lands ops, the server sends `workspace/inlayHint/refresh`.
 
-Recording is on by default at the `effects` level (only calls with effects; `DARK_CONFIG_TRACE_DETAIL=on` records every call), so a fresh store has values as soon as something has run. The dev rebuild purges the
-draft store and keeps the traces, so after a build a re-authored function still has its
-last call's inputs, which is exactly the case the replay is for.
+The inputs come from a run recorded with `DARK_CONFIG_TRACE_DETAIL=on` (every call, with
+its arguments). The default level, `effects`, records only the effectful calls, which is what
+`resume` needs and not what this needs; a function that has never been called under `on` has
+no values, and the gutter stays empty. The dev rebuild purges the draft store and keeps the
+traces, so after a build a re-authored function still has its last call's inputs, which is
+exactly the case the replay is for.
 
 ## The demos
 
