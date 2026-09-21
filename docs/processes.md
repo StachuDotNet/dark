@@ -281,14 +281,14 @@ How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
 - A read that failed raises at the force point, with the read's own error and
   the frames it was called from added below the stack (`vm.nestedCallStack`),
   so the report names both sites. A denial is raised at the call, before
-  anything is in flight: the ambient effect check runs before the body. The
-  corollary: a read that had to wait and whose value nothing ever looks at
-  has no force point, so its failure is never raised (`let _ = HttpClient.get
-  bad []` followed by code that never reads it succeeds). Reads that finish
-  on the calling thread raise at the call as they always have; only a real
-  wait is deferred. `Stdlib.await x` is the way to say the failure matters.
-  Forcing every leftover promise at a frame's return would make each return
-  a barrier; deciding whether the end of a run should is a follow-up.
+  anything is in flight: the ambient effect check runs before the body. A
+  read nothing ever looks at has no force point, so the end of the run is
+  its force point: a run does not end until every read it made has landed
+  (`VMState.pendingReads`, checked at the root frame's return), and the
+  first that failed fails the run there, naming the read. The rule a JS
+  unhandled rejection follows: `let _ = HttpClient.get bad []` and code that
+  never reads it is a failed run, not a silent one. Reads that finish on the
+  calling thread raise at the call; only a real wait is deferred.
 - `List.map` is promise-aware (`mappedListOrPromise` in `Builtins.Pure`'s
   `List.fs`): a lambda that returns a read in flight hands it back rather
   than being forced at the end of its run, and the map's result is one

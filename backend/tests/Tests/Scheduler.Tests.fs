@@ -679,7 +679,7 @@ Stdlib.Int64.add a b"""
   }
 
 
-let private failedReadRaisesAtDemand =
+let private failedReadRaisesAtAwait =
   testTask "a read that fails raises where it is forced, naming the read" {
     Gates.reset ()
     Trace.take () |> ignore<List<string>>
@@ -708,6 +708,44 @@ Stdlib.await a"""
            | _ -> false))
         $"the stack names the read below the force site: {stack}"
     | other -> failtest $"expected the read's failure, got {other}"
+  }
+
+
+let private unlookedReadFailsTheRunAtItsEnd =
+  testTask
+    "a read nobody looks at is waited for at the end of the run, and its failure fails the run" {
+    Gates.reset ()
+    Trace.take () |> ignore<List<string>>
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let! (p : Scheduler.Process) =
+      spawn
+        s
+        state
+        """let a = Builtin.testFailingRead 23L
+let _ = Builtin.testTrace "after the call"
+1L"""
+    let running = runOnThread s p
+    waitFor "the read in flight" (fun () -> Gates.waiting () = [ 23L ])
+    waitForTrace "the program ran past the read" [ "after the call" ]
+    // The program is over but the read is not: the run waits for it.
+    Expect.isFalse
+      running.IsCompleted
+      "the run has not ended while the read is in flight"
+    Gates.release 23L
+    let! result = running
+    match result with
+    | Error(RTE.UncaughtException(msg, _), stack) ->
+      Expect.stringContains msg "read 23 failed" "the read's own error"
+      Expect.isTrue
+        (stack
+         |> List.exists (fun ep ->
+           match ep with
+           | RT.Function(RT.FQFnName.Builtin b) -> b.name = "testFailingRead"
+           | _ -> false))
+        $"the stack names the read: {stack}"
+    | other ->
+      failtest $"expected the read's failure at the end of the run, got {other}"
   }
 
 
@@ -1411,7 +1449,8 @@ let tests =
         traceCarriesProcessAndSeq
         readsRunAtOnce
         writesKeepOrder
-        failedReadRaisesAtDemand
+        failedReadRaisesAtAwait
+        unlookedReadFailsTheRunAtItsEnd
         denialRaisesAtTheCall
         inflightBoundHolds
         spawnAwaitSelect

@@ -3054,6 +3054,11 @@ type VMState =
     /// Reads this VM's calls handed back as promises that have not landed yet, for `ps`.
     mutable inflight : int
 
+    /// Every read this VM's calls handed back as a promise, landed or not, for the end of the
+    /// run: a run does not end until its reads have, and a read nobody looked at that failed
+    /// fails the run there. Null until the first one.
+    mutable pendingReads : ResizeArray<Promise>
+
     /// A builtin body asking for a callable to be applied on its behalf, in this VM, as a frame
     /// of its own (`Interpreter.requestApply`): the callable, its first argument and any more,
     /// and what to call with the result. Read and cleared by the interpreter right after the
@@ -3169,6 +3174,7 @@ type VMState =
       frameIdCounter = 0L
       budget = -1L
       inflight = 0
+      pendingReads = null
       pendingNext = Unchecked.defaultof<_>
       pendingFinish = Unchecked.defaultof<_>
       pendingHostOp = Unchecked.defaultof<_>
@@ -3256,6 +3262,7 @@ type VMState =
     vm.frameIdCounter <- 0L
     vm.budget <- -1L
     vm.inflight <- 0
+    vm.pendingReads <- null
     vm.pendingNext <- Unchecked.defaultof<_>
     vm.pendingApplicable <- Unchecked.defaultof<_>
     vm.pendingArg <- DUnit

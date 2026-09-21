@@ -2253,7 +2253,20 @@ module Promises =
         TaskContinuationOptions.ExecuteSynchronously
       )
       |> ignore<Task>
-      ValueSome(DPromise(Promise(task, fn, frame.executionPoint)))
+      let p = Promise(task, fn, frame.executionPoint)
+      if isNull vm.pendingReads then vm.pendingReads <- ResizeArray()
+      vm.pendingReads.Add p
+      ValueSome(DPromise p)
+
+  /// The first read of the run that has not landed well: still in flight, or failed. Landed
+  /// reads are forgotten on the way, so the list only ever holds what is still owed.
+  let outstanding (vm : VMState) : voption<Promise> =
+    if isNull vm.pendingReads then
+      ValueNone
+    else
+      vm.pendingReads.RemoveAll(fun p -> p.Task.IsCompletedSuccessfully)
+      |> ignore<int>
+      if vm.pendingReads.Count = 0 then ValueNone else ValueSome vm.pendingReads[0]
 
   /// Whether this call, whose result is not ready, may be handed back as a promise: every call
   /// of the builtin is a read.
@@ -3768,6 +3781,9 @@ type private FrameStep =
   /// An operand of the instruction under the counter is a read still in flight. Wait for it, write
   /// its value into this register, and run the instruction; the counter does not move.
   | FrameAwaitForce of ffTask : Task<Dval> * ffReg : Register
+  /// The run is over but a read it never looked at is still in flight: wait for it, then end
+  /// the block again. The wait never faults; the failure is raised at the return.
+  | FrameAwaitReads of frTask : Task<Dval>
   /// A builtin's apply chain is waiting on its continuation. When it lands, `drive` it on.
   | FrameAwaitContinuation of
     fcPly : Ply<Dval> *
@@ -4289,6 +4305,13 @@ let private awaitOf
       fun () ->
         if task.IsCompletedSuccessfully then frame.registers[reg] <- task.Result
     )
+  | FrameAwaitReads task ->
+    let landed =
+      task.ContinueWith(
+        (fun (_ : Task<Dval>) -> ()),
+        TaskContinuationOptions.ExecuteSynchronously
+      )
+    StepAwait(landed, (fun () -> ()))
   | FrameRareOpcode ->
     // Writes the VM as it completes, on whatever thread completes it; the process is parked
     // meanwhile and nobody looks at the VM until `wait` is done.
@@ -4360,6 +4383,7 @@ let executeSync (exeState : ExecutionState) (vm : VMState) : StepOutcome =
         registers[reg] <- task.Result
       else
         bail <- ValueSome(awaitOf exeState vm step)
+    | FrameAwaitReads _ -> bail <- ValueSome(awaitOf exeState vm step)
     | FrameAwaitContinuation(ply, reg, pc, next, finish) ->
       match Ply.trySync ply with
       | ValueSome dv ->
@@ -4428,8 +4452,16 @@ let executeSync (exeState : ExecutionState) (vm : VMState) : StepOutcome =
                   awaitOf exeState vm (FrameAwaitForce(task, instrData.resultReg))
                 )
           | _ ->
-            returnFromFrame exeState vm currentFrame resultOfFrame
-            |> ignore<ApplyOutcome>
+            // A run does not end until every read it made has, and a read nobody looked at
+            // that failed fails the run here, naming the read (the rule a JS unhandled
+            // rejection follows). The frame stays while one is still in flight.
+            match Promises.outstanding vm with
+            | ValueSome p when not p.Task.IsCompleted ->
+              bail <- ValueSome(awaitOf exeState vm (FrameAwaitReads p.Task))
+            | ValueSome p -> raiseReadFailure vm p p.Task
+            | ValueNone ->
+              returnFromFrame exeState vm currentFrame resultOfFrame
+              |> ignore<ApplyOutcome>
 
   match bail with
   | ValueSome outcome -> outcome
