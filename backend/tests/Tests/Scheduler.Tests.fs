@@ -290,7 +290,7 @@ let private killWakesAParkedProcess =
       "kill found the process"
     let! result = running
     match result with
-    | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
+    | Error(RTE.UncaughtException("killed from ps", _), _) -> ()
     | other -> failtest $"expected the stuck process to be killed, got {other}"
   }
 
@@ -523,7 +523,7 @@ let private psSeesTheWholeGroup =
           Expect.isTrue (root.Kill stuck.id) "kill found it through the group"
           let! result = root.Await stuck
           match result with
-          | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
+          | Error(RTE.UncaughtException("killed from ps", _), _) -> ()
           | other -> failtest $"expected cancelled, got {other}"
         })
   }
@@ -1273,11 +1273,11 @@ Stdlib.Exec.await h"""
     Expect.isTrue (s.Kill parent.id) "kill found the parent"
     let! result = running
     match result with
-    | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
+    | Error(RTE.UncaughtException("killed from ps", _), _) -> ()
     | other -> failtest $"expected the parent killed, got {other}"
     let! childResult = s.Await(s.Find child.id |> Option.get)
     match childResult with
-    | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
+    | Error(RTE.UncaughtException("killed from ps", _), _) -> ()
     | other -> failtest $"expected the child killed with it, got {other}"
   }
 

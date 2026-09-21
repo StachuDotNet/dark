@@ -20,8 +20,8 @@ live by dropping its name caches, resolving its entry name again and calling wha
 hash that is now. In-flight work keeps the hashes it started with. A fn reference held
 as a value (a closure, a router handed to a server at start) keeps its hash until
 someone resolves the name again, which is why `serve` holds the router's LOCATION and
-resolves per request, and why a daemon that holds a value needs a restart until the
-scheduler's budget yield lands.
+resolves per request, and why a daemon written as one long-running fn needs a restart
+(Daemons, below).
 
 ## The signal (how a process learns)
 
@@ -130,11 +130,13 @@ moves. A newly broken version is said once on stdout (`[live] <entry>: still on 
 last good version; the newest has a type error: <why>`), and the fix too (`[live] now
 serving the new version of <entry>`), beside the `[HttpServer] ...` request lines; the
 wire keeps getting the last good one. `--no-live` pins the
-version resolved at start.
+version resolved at start. What a request answers when its handler is slow, raises or
+is stopped (504, 500, 503, and `http.requestTimeoutMs`) is in `docs/processes.md`, "An
+HTTP request is a process".
 
 Under the scheduler `serve` is a process that holds its thread on the listener, and
-each request is a process of its own (`Scheduler.SpawnApply` from the listener's
-thread, with the server's process as its parent, so `dark ps` inside a handler shows
+each request is a process of its own (`Scheduler.SpawnApply` from the thread that took
+the request, with the server's process as its parent, so `dark ps` inside a handler shows
 the request under the server). The per-request `Router.step` still polls for itself
 rather than reading the scheduler's queue: the store-change source posts to processes
 that are parked on `Host.await`, and a request process is never parked on it, so there

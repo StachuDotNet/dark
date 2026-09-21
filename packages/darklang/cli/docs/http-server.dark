@@ -6,6 +6,7 @@ let content () : String =
 ## Start
   serve MyApp.router                        # --port defaults to 8080
   serve MyApp.router --port 9090 --max-body-bytes 1048576
+  serve MyApp.router --dev                  # an open page reloads as you save
   # `http-server` is an alias for `serve`. Flags may come in any order.
 
 The argument is the fully-qualified name of a function in the package tree, not a

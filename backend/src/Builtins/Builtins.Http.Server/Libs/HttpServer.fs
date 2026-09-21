@@ -298,25 +298,10 @@ let private resolveRouting
 
 
 // ───────── per-request dispatch ─────────
-// ───────── per-request dispatch ─────────
 
 /// How long a request's handler may run before the server answers 504 and cancels it. The
 /// store's `http.requestTimeoutMs`, read once when `serve` starts; 30 s unset; 0 means no limit.
 let mutable requestTimeoutMs : int = 30_000
-
-let private readRequestTimeout () : unit =
-  try
-    match
-      (LibDB.Config.getMany [ "http.requestTimeoutMs" ]).Result
-      |> Map.tryFind "http.requestTimeoutMs"
-    with
-    | Some s ->
-      match System.Int32.TryParse s with
-      | true, n when n >= 0 -> requestTimeoutMs <- n
-      | _ -> ()
-    | None -> ()
-  with _ ->
-    ()
 
 /// What a handler's process came to: a value for `toHttpResponse`, or a response the server
 /// writes itself because there is no value (the handler failed, timed out, or was stopped).
@@ -334,12 +319,13 @@ let private textResponse
 
 /// Run the handler for one request as a PROCESS of its own, on a worker (`docs/processes.md`,
 /// "Cores"): `ps` shows it with the server as its parent and its own frames, the budget can
-/// preempt it, a read in it stays a value in flight, and nothing re-enters the interpreter on the
-/// listener's thread. The server's own process holds its thread on the listener, which is why the
-/// handler cannot run there; a worker is where it goes. `Await` is the process's completion.
+/// preempt it, a read in it stays a value in flight, and the handler does not run inline on the
+/// thread that took the request (the routing step still does; it is a poll and at most one
+/// check). The server's own process holds its thread on the listener, which is why the handler
+/// cannot run there; a worker is where it goes. `Await` is the process's completion.
 ///
 /// The state is the per-request one (its own tracer); the spawn keeps that and stamps the process
-/// id on it. The access is the guest's, narrowed by the frame that called `serve`, as before.
+/// id on it. The access is the guest's, narrowed by the frame that called `serve`.
 ///
 /// A handler that runs past `requestTimeoutMs` is cancelled (politely: what it has on the host
 /// completes, then it stops, its children with it) and the client gets a 504. A handler stopped
@@ -355,40 +341,33 @@ let private executeHandler
     let parent =
       LibExecution.Scheduler.Scheduler.CurrentProcess |> Option.map (fun p -> p.id)
     let p = scheduler.SpawnApply(exeState, handler, arg, parent, exeState.access)
-    let completion = scheduler.Await p
-    let! timedOut =
+    let! result =
       task {
-        if requestTimeoutMs <= 0 || completion.IsCompleted then
-          return false
+        if requestTimeoutMs <= 0 then
+          let! r = scheduler.Await p
+          return Some r
         else
-          use cts = new CancellationTokenSource()
-          let delay = Task.Delay(requestTimeoutMs, cts.Token)
-          let! first = Task.WhenAny(completion :> Task, delay)
-          if obj.ReferenceEquals(first, delay) then
-            return true
-          else
-            cts.Cancel()
-            return false
+          return! scheduler.AwaitWithin(p, requestTimeoutMs)
       }
-    if timedOut then
+    match result with
+    | None ->
       scheduler.Cancel p.id |> ignore<bool>
       Telemetry.event "httpserver.timeout" [ "ms", string requestTimeoutMs ]
       return
         Direct(
           textResponse
             504
-            $"The handler ran for more than {requestTimeoutMs} ms and was cancelled."
+            ($"The handler ran for more than {requestTimeoutMs} ms and was cancelled. "
+             + "If it needs longer: `dark config set http.requestTimeoutMs <ms>` (0 for no limit).")
         )
-    else
-      let! result = completion
-      match result with
-      | Ok dval -> return Value dval
-      | Error(rte, _callStack) ->
+    | Some(Ok dval) -> return Value dval
+    | Some(Error(rte, _callStack)) ->
+      match p.stopReason with
+      | null ->
         let! errorStr = Execution.runtimeErrorMessage exeState rte
-        match p.stopReason with
-        | null -> return Direct(textResponse 500 $"The handler failed: {errorStr}")
-        | reason ->
-          return Direct(textResponse 503 $"The request was stopped: {reason}.")
+        return Direct(textResponse 500 $"The handler failed: {errorStr}")
+      | reason ->
+        return Direct(textResponse 503 $"The request was stopped: {reason}.")
   }
 
 
@@ -450,7 +429,7 @@ let private serveLiveEvents
       if now <> startedOn then
         do! write "data: reload\n\n"
         // An outcome, in the log, beside the request lines: the wait itself is not a request,
-        // and logged as one it read as a slow `GET /__live`.
+        // and logged as one it would read as a slow `GET /__live`.
         print "[live] page told to reload"
         waiting <- false
       elif ticks % 30 = 0 then
@@ -479,7 +458,7 @@ let private withLiveScript
   | _ when status >= 500 ->
     let text = System.Net.WebUtility.HtmlEncode(UTF8.ofBytesWithReplacement body)
     let page =
-      $"<!doctype html><html><head><meta charset=\"utf-8\"><title>error</title></head><body><pre>{text}</pre>{liveScript}</body></html>"
+      $"<!doctype html><html><head><meta charset=\"utf-8\"><title>{status} from dark serve</title></head><body><pre>{text}</pre><p>Fix it and save: this page reloads on its own. The serve terminal has the diagnostic.</p>{liveScript}</body></html>"
     let others =
       headers
       |> List.filter (fun (k, _) ->
@@ -508,9 +487,10 @@ let private handleRequest
       match routing with
       | Live live -> live.dev
       | Fixed _ -> false
+    let isLiveStream = dev && ctx.Request.Url.AbsolutePath = "/__live"
     try
       try
-        if dev && ctx.Request.Url.AbsolutePath = "/__live" then
+        if isLiveStream then
           do! serveLiveEvents exeState invokerAccess routing ctx
         else
 
@@ -556,14 +536,11 @@ let private handleRequest
               match resolved with
               | Ok(handlerState, _) -> handlerState
               | Error _ -> exeState
+            let perRequestState = perRequestStateFor handlerState tracer
 
             let! outcome =
               match resolved with
-              | Ok(handlerState, handler) ->
-                executeHandler
-                  (perRequestStateFor handlerState tracer)
-                  handler
-                  requestDval
+              | Ok(_, handler) -> executeHandler perRequestState handler requestDval
               | Error msg ->
                 // No usable version: say so, keep listening. The diagnostic is on stdout already
                 // (Dark prints it when the verdict changes), so the wire gets a plain 503.
@@ -571,7 +548,6 @@ let private handleRequest
                 Task.FromResult(
                   Direct(textResponse 503 $"Service Unavailable: {msg}")
                 )
-            let perRequestState = perRequestStateFor handlerState tracer
             let! response =
               match outcome with
               | Value result -> Http.Response.toHttpResponse perRequestState result
@@ -621,7 +597,7 @@ let private handleRequest
         do! ctx.Response.OutputStream.WriteAsync(errorBytes, 0, errorBytes.Length)
     finally
       match started with
-      | Some started when not (dev && ctx.Request.Url.AbsolutePath = "/__live") ->
+      | Some started when not isLiveStream ->
         try
           logRequest ctx ctx.Response.StatusCode started
         with _ ->
@@ -818,7 +794,13 @@ let private serve
         (set [ Effect.Clock; Effect.Stdout ])
         "httpServerServe"
     use _serveSpan = Telemetry.span "httpserver.serve" [ "port", string port ]
-    readRequestTimeout ()
+    // The store's `http.requestTimeoutMs`, read once per `serve`.
+    match! LibDB.Config.get "http.requestTimeoutMs" with
+    | Some s ->
+      match System.Int32.TryParse s with
+      | true, n when n >= 0 -> requestTimeoutMs <- n
+      | _ -> ()
+    | None -> ()
 
     // Bind through the checked host boundary using the guest access,
     // so the instance policy applies instead of the trusted CLI's.

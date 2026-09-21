@@ -25,6 +25,7 @@ module LibExecution.Scheduler
 
 open System.Threading
 open System.Threading.Tasks
+open FSharp.Control.Tasks
 
 open Prelude
 
@@ -397,6 +398,25 @@ type Scheduler(quantum : int64) =
   /// The process's result, when it has one.
   member _.Await(p : Process) : Task<RT.ExecutionResult> = p.completion.Task
 
+  /// `Await`, giving up after `ms`: `None` then, and the process keeps running. The timer is
+  /// dropped as soon as the process wins, so a short wait inside a loop does not leave a timer
+  /// per iteration ticking.
+  member _.AwaitWithin(p : Process, ms : int) : Task<Option<RT.ExecutionResult>> =
+    let completion = p.completion.Task
+    if completion.IsCompleted then
+      Task.FromResult(Some completion.Result)
+    else
+      task {
+        use cts = new CancellationTokenSource()
+        let delay = Task.Delay(ms, cts.Token)
+        let! first = Task.WhenAny(completion :> Task, delay)
+        if obj.ReferenceEquals(first, delay) then
+          return None
+        else
+          cts.Cancel()
+          return Some completion.Result
+      }
+
   /// Post an event as a source would. What a test harness calls to press a key.
   member _.PushEvent(ev : HE.HostEvent) : unit = queue.Post ev
 
@@ -604,9 +624,9 @@ type Scheduler(quantum : int64) =
     if isNull p.stopReason then
       p.stopReason <-
         if maxTurns > 0L && p.slices >= maxTurns then
-          $"stopped: over {maxTurns} turns (exec.maxTurns)"
+          $"over {maxTurns} turns (exec.maxTurns)"
         elif maxBytes > 0L && p.allocated >= maxBytes then
-          $"stopped: over {maxBytes} bytes allocated (exec.maxBytes)"
+          $"over {maxBytes} bytes allocated (exec.maxBytes)"
         else
           null
     if not (isNull p.stopReason) then
@@ -763,7 +783,7 @@ type Scheduler(quantum : int64) =
 
   /// `ps kill`.
   member this.Kill(pid : ProcessId) : bool =
-    this.StopProcess(pid, "stopped by ps kill", true)
+    this.StopProcess(pid, "killed from ps", true)
 
   /// `Exec.cancel`, `ps cancel`.
   member this.Cancel(pid : ProcessId) : bool =

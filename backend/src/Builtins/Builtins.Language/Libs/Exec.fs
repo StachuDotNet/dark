@@ -421,20 +421,11 @@ let fns () : List<BuiltInFn> =
             else
               parkOn p
               uply {
-                // The timer is dropped as soon as the process wins, so a short await inside a
-                // loop does not leave a timer per iteration ticking.
-                use cts = new System.Threading.CancellationTokenSource()
-                let delay = System.Threading.Tasks.Task.Delay(int ms, cts.Token)
-                let! first =
-                  System.Threading.Tasks.Task.WhenAny(
-                    task :> System.Threading.Tasks.Task,
-                    delay
-                  )
-                if obj.ReferenceEquals(first, delay) then
-                  return optionOf None
-                else
-                  cts.Cancel()
-                  return some task.Result
+                match!
+                  Scheduler.Scheduler.CurrentOrShared.AwaitWithin(p, int ms)
+                with
+                | Some result -> return some result
+                | None -> return optionOf None
               }
           | None -> noSuchProcess () |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
@@ -548,7 +539,7 @@ let fns () : List<BuiltInFn> =
       returnType = TBool
       description =
         "`dark ps kill`: stop a process without waiting for what it is doing on the host; it fails "
-        + "with 'stopped by ps kill' at its next turn, which a parked one is given now. Its "
+        + "with 'killed from ps' at its next turn, which a parked one is given now. Its "
         + "undetached children go the same way. False for an id nobody has."
       fn =
         (function

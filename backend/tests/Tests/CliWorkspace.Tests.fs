@@ -1056,7 +1056,7 @@ let private devErrorPageCarriesTheListener =
             "text/html"
             "the failure is a page"
           Expect.stringContains body "/__live" "and the page carries the listener"
-          Expect.stringContains body "error" "with the error on it"
+          Expect.stringContains body "The handler failed" "with the error on it"
         finally
           cts.Cancel()
           try

@@ -469,31 +469,25 @@ let private runFixture (test : Test) : Task<unit> =
   }
 
 
-/// Regression test for the ephemeral-blob HTTP race. The request body
-/// becomes an ephemeral blob (`Http.Request.fromRequest`), which the handler reads
-/// back and the tracer promotes. Under the old shared blob store + scope
-/// stack, concurrent requests deleted each other's blobs — surfacing as
-/// "Ephemeral blob not found during trace preparation" (→ 500s) or
-/// cross-wired bodies. With bytes inline there's no shared state to race
-/// over: this fires many overlapping body-echo requests and asserts each
-/// one gets ITS OWN body back, with status 200.
-let private concurrentEphemeralBlobRequests =
-  testTask "concurrent requests don't lose or cross ephemeral blob bodies" {
+/// One server, one router, driven by raw sockets so the requests really are concurrent:
+/// `requests` are (path, body) pairs sent with `method`, all at once. Returns (status line,
+/// body) per request, in request order.
+let private runRequestsAgainst
+  (routerCode : string)
+  (method : string)
+  (requests : (string * byte[]) list)
+  : Task<(string * byte[]) array> =
+  task {
     let! exeState = executionStateFor pmPT true Map.empty
     let test =
       { handlers =
-          [ { version = Http
-              route = "/"
-              method = "POST"
-              code = "Darklang.Stdlib.Http.response request.body 200" } ]
+          [ { version = Http; route = "/"; method = method; code = routerCode } ]
         request = [||]
         expectedResponse = [||] }
     let! handler = buildRouterForTest exeState test
     let port = allocateFreePort ()
     let cts = new CancellationTokenSource()
-
     let! listener = bindListener port
-
     let listenerTask =
       HttpServer.runListener
         exeState
@@ -505,100 +499,19 @@ let private concurrentEphemeralBlobRequests =
         false // canonicalizeFromForwardedProto
         false // logRequests
         cts.Token
-
-    // Distinct, non-trivial body per request so a lost/mis-tagged blob
-    // shows up as a wrong or empty echo, not a coincidental match.
-    let bodyFor (i : int) : byte[] = UTF8.toBytes (String.replicate 64 $"req{i:D4}-")
-
-    let oneRequest (i : int) : Task<string * byte[]> =
+    let oneRequest (path : string, body : byte[]) : Task<string * byte[]> =
       task {
-        let body = bodyFor i
         let header =
           UTF8.toBytes
-            $"POST / HTTP/1.1\r\nHost: localhost:{port}\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"
+            $"{method} {path} HTTP/1.1\r\nHost: localhost:{port}\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"
         let reqBytes = Array.append header body
         use client = new TcpClient()
         do! client.ConnectAsync("127.0.0.1", port)
         use stream = client.GetStream()
         do! stream.WriteAsync(reqBytes, 0, reqBytes.Length)
         do! stream.FlushAsync()
-        // Read until the server closes (Connection: close); 10s cancel
-        // guards against a hang if a connection is ever kept alive.
-        use ms = new System.IO.MemoryStream()
-        let buf = Array.zeroCreate 8192
-        use readCts = new CancellationTokenSource(10_000)
-        let mutable reading = true
-        try
-          while reading do
-            let! n = stream.ReadAsync(buf, 0, buf.Length, readCts.Token)
-            if n = 0 then reading <- false else ms.Write(buf, 0, n)
-        with :? System.OperationCanceledException ->
-          ()
-        let parsed = Http.split (ms.ToArray())
-        return (parsed.status, parsed.body)
-      }
-
-    try
-      // `task { }` is hot, so mapping starts all requests concurrently.
-      let! results = [ 1..64 ] |> List.map oneRequest |> Task.WhenAll
-      results
-      |> Array.iteri (fun idx (status, body) ->
-        let i = idx + 1
-        Expect.stringContains
-          status
-          "200"
-          $"request {i}: status 200 (lost blob => 500)"
-        Expect.equal
-          body
-          (bodyFor i)
-          $"request {i}: body echoed intact (no cross-request blob)")
-    finally
-      cts.Cancel()
-      try
-        listenerTask.Wait 2000 |> ignore<bool>
-      with _ ->
-        ()
-  }
-
-
-/// One server, one router whose behaviour depends on the path, driven by raw sockets so the
-/// requests really are concurrent. Returns (status line, body) per request, in request order.
-let private runRequestsAgainst
-  (routerCode : string)
-  (paths : string list)
-  : Task<(string * string) array> =
-  task {
-    let! exeState = executionStateFor pmPT true Map.empty
-    let test =
-      { handlers =
-          [ { version = Http; route = "/"; method = "GET"; code = routerCode } ]
-        request = [||]
-        expectedResponse = [||] }
-    let! handler = buildRouterForTest exeState test
-    let port = allocateFreePort ()
-    let cts = new CancellationTokenSource()
-    let! listener = bindListener port
-    let listenerTask =
-      HttpServer.runListener
-        exeState
-        listener
-        (int64 port)
-        handler
-        HttpServer.defaultMaxBodyBytes
-        false
-        false
-        false
-        cts.Token
-    let oneRequest (path : string) : Task<string * string> =
-      task {
-        let reqBytes =
-          UTF8.toBytes
-            $"GET {path} HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n"
-        use client = new TcpClient()
-        do! client.ConnectAsync("127.0.0.1", port)
-        use stream = client.GetStream()
-        do! stream.WriteAsync(reqBytes, 0, reqBytes.Length)
-        do! stream.FlushAsync()
+        // Read until the server closes (Connection: close); the cancel guards against a hang
+        // if a connection is ever kept alive.
         use ms = new System.IO.MemoryStream()
         let buf = Array.zeroCreate 8192
         use readCts = new CancellationTokenSource(20_000)
@@ -610,10 +523,11 @@ let private runRequestsAgainst
         with :? System.OperationCanceledException ->
           ()
         let parsed = Http.split (ms.ToArray())
-        return (parsed.status, UTF8.ofBytesUnsafe parsed.body)
+        return (parsed.status, parsed.body)
       }
     try
-      let! results = paths |> List.map oneRequest |> Task.WhenAll
+      // `task { }` is hot, so mapping starts all requests concurrently.
+      let! results = requests |> List.map oneRequest |> Task.WhenAll
       return results
     finally
       cts.Cancel()
@@ -623,15 +537,60 @@ let private runRequestsAgainst
         ()
   }
 
+let private textOf (status : string, body : byte[]) : string * string =
+  status, UTF8.ofBytesUnsafe body
+
+/// Regression test for the ephemeral-blob HTTP race. The request body becomes an ephemeral
+/// blob (`Http.Request.fromRequest`), which the handler reads back and the tracer promotes.
+/// Bytes are inline, so there is no shared state for concurrent requests to race over: this
+/// fires many overlapping body-echo requests and asserts each one gets ITS OWN body back.
+let private concurrentEphemeralBlobRequests =
+  testTask "concurrent requests don't lose or cross ephemeral blob bodies" {
+    // Distinct, non-trivial body per request so a lost/mis-tagged blob
+    // shows up as a wrong or empty echo, not a coincidental match.
+    let bodyFor (i : int) : byte[] = UTF8.toBytes (String.replicate 64 $"req{i:D4}-")
+    let! results =
+      runRequestsAgainst
+        "Darklang.Stdlib.Http.response request.body 200"
+        "POST"
+        ([ 1..64 ] |> List.map (fun i -> "/", bodyFor i))
+    results
+    |> Array.iteri (fun idx (status, body) ->
+      let i = idx + 1
+      Expect.stringContains
+        status
+        "200"
+        $"request {i}: status 200 (lost blob => 500)"
+      Expect.equal
+        body
+        (bodyFor i)
+        $"request {i}: body echoed intact (no cross-request blob)")
+  }
+
+
 /// The path decides: `/slow` sleeps, `/boom` raises, anything else answers at once.
 let private pathRouter =
   """(match request.url with
       | url when Darklang.Stdlib.String.contains url "/slow" ->
-        let _ = Darklang.Stdlib.Cli.Posix.sleep 800.0
+        let _ = Darklang.Stdlib.Cli.Posix.sleep 400.0
         Darklang.Stdlib.Http.responseWithText "slow done" 200
       | url when Darklang.Stdlib.String.contains url "/boom" ->
         Darklang.Stdlib.Http.responseWithText (Darklang.Stdlib.Int.toString (1 / 0)) 200
       | _ -> Darklang.Stdlib.Http.responseWithText "fast" 200)"""
+
+/// `pathRouter` with the answer stamped with the millisecond it was made: `slow <ms>` or
+/// `fast <ms>`, so a test can tell which finished first.
+let private stampedRouter =
+  """(match request.url with
+      | url when Darklang.Stdlib.String.contains url "/slow" ->
+        let _ = Darklang.Stdlib.Cli.Posix.sleep 400.0
+        Darklang.Stdlib.Http.responseWithText
+          ("slow " ++ Darklang.Stdlib.Int.toString (Darklang.Stdlib.DateTime.toMilliseconds (Darklang.Stdlib.DateTime.now ())))
+          200
+      | _ ->
+        Darklang.Stdlib.Http.responseWithText
+          ("fast " ++ Darklang.Stdlib.Int.toString (Darklang.Stdlib.DateTime.toMilliseconds (Darklang.Stdlib.DateTime.now ())))
+          200)"""
 
 // Sequenced: the timeout test lowers the process-wide `requestTimeoutMs` for its own server.
 let private requestsAreProcesses =
@@ -639,27 +598,31 @@ let private requestsAreProcesses =
   <| testList
     "requests as processes"
     [ testTask "a slow handler does not hold up a fast one" {
-        let sw = System.Diagnostics.Stopwatch.StartNew()
-        let! (results : (string * string) array) =
-          runRequestsAgainst pathRouter [ "/slow"; "/fast"; "/fast"; "/fast" ]
-        sw.Stop()
+        // The router stamps each answer with the time it was made, so the order the
+        // requests finished in is on the wire, not in a wall-clock guess.
+        let! results =
+          runRequestsAgainst
+            stampedRouter
+            "GET"
+            [ "/slow", [||]; "/fast", [||]; "/fast", [||]; "/fast", [||] ]
+        let results = Array.map textOf results
         Expect.stringContains (fst results[0]) "200" "the slow request completes"
-        Expect.equal (snd results[0]) "slow done" "the slow body"
+        let stamp (body : string) : int64 = int64 (body.Split(' ')[1])
+        Expect.stringStarts (snd results[0]) "slow" "the slow body"
         for i in 1..3 do
-          Expect.equal (snd results[i]) "fast" $"fast request {i} answered"
-        // Four requests, one of them 800 ms: sequential would be over 800 ms only if the fast
-        // ones queued behind the slow one; they must not, so the whole batch is about one slow.
-        Expect.isLessThan
-          sw.ElapsedMilliseconds
-          2500L
-          "the batch took about one slow request"
+          Expect.stringStarts (snd results[i]) "fast" $"fast request {i} answered"
+          Expect.isLessThan
+            (stamp (snd results[i]))
+            (stamp (snd results[0]))
+            $"fast request {i} answered before the slow one finished"
       }
-      testTask "a handler past the request timeout gets a 504 and is cancelled" {
+      testTask "a handler past the request timeout gets a 504" {
         let before = HttpServer.requestTimeoutMs
         HttpServer.requestTimeoutMs <- 200
         try
-          let! (results : (string * string) array) =
-            runRequestsAgainst pathRouter [ "/slow"; "/fast" ]
+          let! results =
+            runRequestsAgainst pathRouter "GET" [ "/slow", [||]; "/fast", [||] ]
+          let results = Array.map textOf results
           Expect.stringContains (fst results[0]) "504" "the slow request timed out"
           Expect.stringContains
             (snd results[0])
@@ -671,8 +634,8 @@ let private requestsAreProcesses =
       }
       testTask
         "a handler that raises gets a 500 with the error, not a type complaint" {
-        let! (results : (string * string) array) =
-          runRequestsAgainst pathRouter [ "/boom" ]
+        let! results = runRequestsAgainst pathRouter "GET" [ "/boom", [||] ]
+        let results = Array.map textOf results
         Expect.stringContains (fst results[0]) "500" "a failed handler is a 500"
         Expect.stringContains
           (snd results[0])

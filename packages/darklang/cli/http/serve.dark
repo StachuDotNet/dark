@@ -1,7 +1,6 @@
 module Darklang.Cli.Http.Serve
 
-// Run an HTTP server backed by a Darklang router.
-// Usage: serve <router-path> [--port N] [--max-body-bytes N]
+// Run an HTTP server backed by a Darklang router. `usageLines` is the usage.
 
 /// Parsed flags + positional. `routerPath = ""` means "no router given".
 type Args =
@@ -11,7 +10,8 @@ type Args =
     /// Follow edits: resolve the router by name per request, on the last version that passes its
     /// checks (`Stdlib.Live`). On by default; `--no-live` pins the version resolved at start.
     live: Bool
-    /// `--dev`: an open browser page reloads when the router it came from moves.
+    /// `--dev`: an open browser page reloads when the router it came from, or anything it
+    /// calls, is saved.
     dev: Bool
     error: Stdlib.Option.Option<String> }
 
@@ -25,8 +25,8 @@ let defaultArgs (): Args =
       error = Stdlib.Option.Option.None }
 
 /// Parse a list of args left-to-right. Recognized: a single positional
-/// (the router path), `--port N`, `--max-body-bytes N`. Unknown flags or
-/// duplicate positionals → an error string in `args.error`.
+/// (the router path), `--port N`, `--max-body-bytes N`, `--no-live`, `--dev`. Unknown flags,
+/// duplicate positionals, or `--dev` with `--no-live` -> an error string in `args.error`.
 let parseArgs (rest: List<String>) (acc: Args) : Args =
   match rest with
   | [] -> acc
@@ -66,8 +66,9 @@ let usageLines () : List<String> =
     "  --no-live          Pin the router version resolved at start. By default the server"
     "                     follows edits: each request runs the newest version of the router"
     "                     that passes its checks, and a broken save keeps the previous one."
-    "  --dev              An open browser page reloads itself when the router moves"
-    "                     (an event stream at /__live; HTML responses carry the listener)."
+    "  --dev              An open browser page reloads itself when the router, or anything"
+    "                     it calls, is saved. Not for production: every HTML response"
+    "                     carries a small script."
     ""
     "Each request runs as a process of its own (`ps` shows them under the server). A handler"
     "past `http.requestTimeoutMs` (config; 30 s unset) is cancelled and answers 504; one that"
@@ -97,9 +98,13 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       state
     | None ->
       if parsed.routerPath == "" then
+        Stdlib.printLine (Stdlib.Cli.UI.Colors.error "Missing router path.")
+        printUsage ()
+        state
+      else if parsed.dev && (Stdlib.Bool.not parsed.live) then
         Stdlib.printLine
           (Stdlib.Cli.UI.Colors.error
-            "Missing router path. Usage: serve <router-path> [--port N] [--max-body-bytes N]")
+            "--dev follows edits; it cannot be combined with --no-live.")
         state
       else
         let portStr = Stdlib.Int.toString parsed.port

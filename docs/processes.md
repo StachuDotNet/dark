@@ -639,7 +639,7 @@ cancel`) lets what the process is doing on the host complete before it stops
 at its next turn, while `kill` (`ps kill`) gives a parked process that turn
 at once and abandons what it waited for, which is the escape hatch for a
 process stuck in a call that never returns. Both set a reason the process
-fails with ("cancelled", "stopped by ps kill"); a wait on events
+fails with ("cancelled", "killed from ps"); a wait on events
 (`Host.await`, `readKey`) is cut by either, since nothing is in flight
 there; a running process finishes its slice first, so a short program that
 stops itself completes. Both reach the process's undetached children, now
