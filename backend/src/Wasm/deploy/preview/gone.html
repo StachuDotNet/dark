@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Not here any more</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/preview.css">
+</head><body><main>
+<h1>Not here any more</h1>
+<p id="why"></p>
+<ul id="now"></ul>
+<p><a href="/">Everything that is deployed</a></p>
+<script>
+  // The 404 page. Say what the path probably was, then point at what exists now.
+  const p = location.pathname, m = p.match(/^\/(pulls|tags?)\/([^/]+)/);
+  document.getElementById("why").textContent =
+    !m ? "Nothing is deployed at " + p + "." :
+    m[1] === "pulls" ? "PR #" + m[2] + " has no preview: it was merged or closed and its site was removed, or it never had one." :
+    "Only the latest release is kept, and " + m[2] + " is not it any more.";
+  for (const [path, label] of [["tag", "latest release"], ["main", "main"]]) {
+    fetch("/" + path + "/build.json").then((r) => r.ok ? r.json() : null).then((b) => {
+      if (!b) return;
+      document.getElementById("now").insertAdjacentHTML("beforeend",
+        `<li><a class="card" href="/${path}/cli.html"><div class="name">${label}: ${b.branch}</div>` +
+        `<div class="what">built ${b.built} from ${String(b.sha).slice(0, 7)}</div></a></li>`);
+    }).catch(() => {});
+  }
+</script>
+</main></body></html>

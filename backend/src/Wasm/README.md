@@ -26,8 +26,61 @@ python3 backend/src/Wasm/generate-snapshot.py # the REPL's snapshot (repl.html o
 backend/src/Wasm/deploy/deploy.sh             # nginx image of the publish -> fly app dark-wasm
 ```
 
-Wipe `rundir/wasm-repl` before a publish, or stale fingerprinted files pile up. Nothing in CI
-builds or deploys this; `deploy.sh` is run by hand.
+Wipe `rundir/wasm-repl` before a publish, or stale fingerprinted files pile up. `deploy.sh` is
+the hand deploy of the stable site; CI does the per-branch previews below.
+
+## A preview per PR
+
+CI publishes this site from every commit that would be deployed and puts it on the preview
+host (`build-wasm`, `deploy-preview`; `deploy/preview/ci-deploy.sh` has the rules):
+
+    https://wasm.darklang.com/            directory of what is deployed
+    https://wasm.darklang.com/pulls/<n>/  the CLI built from PR #n
+    https://wasm.darklang.com/main/       the CLI built from main
+    https://wasm.darklang.com/tag/        the CLI as last released (only the latest is kept)
+
+A PR gets a preview when its author is on `PREVIEW_AUTHORS` (the three of us by default), and
+nothing else does: previews run a branch's JS on a public URL, so a stranger's PR should not
+get one by default. Fork builds never see the tokens anyway, which is the guard that actually
+holds. The store is a fresh migration in the runner, so no secret can be in it. The PR gets
+one comment with the link, edited on later pushes.
+
+The host keeps the latest tag, main, and open PRs, ~25 MB each; every main deploy removes
+`/pulls/<n>/` for PRs no longer open. A removed preview, an old tag URL, or a typo is a 404
+whose page points at `/tag/` and `/main/`. The tab keeps nothing: the store is in memory and a
+reload is a fresh one.
+
+The host is the fly app `dark-preview` (`deploy/preview/`: `fly.toml`, `Dockerfile`,
+`nginx.conf`, `regen-index`, `gone.html`, `preview.css`): one nginx over one volume, a
+directory per site, `_framework` kept as `.gz` only. `host.sh upload|remove|cleanup` works
+from a laptop with a logged-in flyctl, which is how to test any of this without a PR. Every
+preview shares that origin, so nothing with a cookie or a token may ever be served from it.
+
+### Saying what a branch is for
+
+By default the preview is this site, built from the branch. Three ways to point a reviewer at
+the thing, cheapest first:
+
+- A URL in the PR description: `cli.html?cmd=<argv>` runs a command and hands over the prompt
+  (`?cmd=outliner`, `?cmd=view Stdlib.Eq`), `?fn=<name>` lands on an item, `eval.html?e=<expr>`
+  is an expression box, `/?cmd=<argv>` prints the answer and nothing else.
+- A `showcase.json` in `wwwroot/`, read by the branch's index page and by the directory:
+
+      { "title": "Traits",
+        "blurb": "Eq and ToString as stdlib traits; sum and product over Zero and One.",
+        "landing": "cli.html?cmd=view Darklang.Stdlib.Eq",
+        "tries": [ { "label": "sum over a trait", "url": "eval.html?e=List.sum [1L; 2L]",
+                     "what": "resolves Zero and Add at the call" } ] }
+
+  `landing` is where the directory card goes (default `cli.html`); `tries` become cards at
+  the top of the branch's index. Delete the file before merging, or leave it if main should
+  say the same.
+- A page of your own in `wwwroot/`, and `landing` pointing at it. `site.js` gives it
+  `dark.boot`, `dark.run(argv)` and `dark.invoke`; `eval.html` is the smallest example.
+
+What a preview cannot show is what the browser cannot do: processes, an HTTP server,
+persistence across reload, push to the relay. `serve --dev`, `dark ps` and sync-heavy branches
+won't demo this way; say so in the PR rather than let a reviewer hunt for it.
 
 ## How it is put together
 

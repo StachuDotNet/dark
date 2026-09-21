@@ -679,6 +679,64 @@ jobs:
       - attach_workspace: { at: "." }
       - run: ./scripts/deployment/publish-vs-code-extension
 
+  # The browser CLI from this commit, for the preview host. The AOT publish is the cost
+  # (6-7 min on xlarge), so the job halts first unless the build would be deployed.
+  build-wasm:
+    executor: in-container
+    resource_class: xlarge
+    steps:
+      - darkcheckout
+      - run:
+          name: Would this build be deployed?
+          command: |
+            backend/src/Wasm/deploy/preview/ci-deploy.sh --decide || circleci-agent step halt
+      - setup-app
+      - run: shasum backend/paket.lock backend/global.json <(date +"%U%Y") > ../checksum
+      - restore_cache:
+          keys:
+            - v5-cli-{{ checksum "../checksum" }}
+      - run: ./scripts/build/_dotnet-wrapper tool restore
+      - run: ./scripts/build/_dotnet-wrapper paket restore
+      - run:
+          name: Build LocalExec for migrations (debug mode fine)
+          command: ./scripts/build/_dotnet-wrapper build src/LocalExec/LocalExec.fsproj
+      - run:
+          name: Run migrations to create database
+          command: scripts/run-local-exec migrations run
+      - run:
+          name: Load packages into database
+          command: scripts/build/reload-packages
+      - run:
+          name: Publish the wasm site
+          no_output_timeout: 30m
+          command: ./scripts/build/_dotnet-wrapper publish src/Wasm/Wasm.fsproj -c Release -o ../rundir/wasm-repl
+      - run:
+          name: Build the store (a fresh migration, so it never held a sync secret)
+          command: |
+            pip3 install brotli   # the image's python is a venv; --user is refused there
+            backend/src/Wasm/make-store.sh
+      - persist_to_workspace:
+          root: "."
+          paths:
+            - rundir/wasm-repl/wwwroot
+
+  # Puts the site on the preview host; ci-deploy.sh has the rules. Project env vars:
+  # PREVIEW_FLY_API_TOKEN (`fly tokens create deploy -a dark-preview`) and, for the PR
+  # comment, PREVIEW_GITHUB_TOKEN (pull request write).
+  deploy-preview:
+    executor: simple-executor
+    steps:
+      - checkout
+      - attach_workspace: { at: "." }
+      - run:
+          name: Install flyctl
+          command: |
+            curl -L https://fly.io/install.sh | sh
+            echo 'export PATH="$HOME/.fly/bin:$PATH"' >> "$BASH_ENV"
+      - run:
+          name: Deploy the preview
+          command: backend/src/Wasm/deploy/preview/ci-deploy.sh rundir/wasm-repl/wwwroot
+
 workflows:
   build-and-deploy:
     jobs:
@@ -693,6 +751,12 @@ workflows:
             - static-checks
             - build-backend
             - build-cli
+
+      # The browser CLI on the preview host. Beside the build jobs, not after them, and
+      # not a gate: a broken wasm publish is a red job, not a blocked PR about something else.
+      - build-wasm
+      - deploy-preview:
+          requires: [build-wasm]
 
       # Release jobs (only on main)
       - publish-vs-code-extension:
@@ -726,6 +790,13 @@ workflows:
             # silently does not appear at all.
             branches:
               ignore: /.*/
+
+      # The release's browser CLI, at /tag/ on the preview host (only the latest is kept).
+      - build-wasm:
+          filters: *release-filters
+      - deploy-preview:
+          filters: *release-filters
+          requires: [build-wasm]
 
       - build-cli-linux-glibc:
           filters: *release-filters
