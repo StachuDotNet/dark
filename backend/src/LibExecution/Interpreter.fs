@@ -1076,6 +1076,16 @@ module ReplayPolicy =
   /// file read can be compared against it. None when nothing is resuming.
   let mutable recordedAt : Option<System.DateTime> = None
 
+  /// The step a resume was refused at, for the host that ran it: the run's row and log are
+  /// left as they were, rather than ending as failed with the replayed prefix stored over the
+  /// log. Taken (and cleared) once by the host.
+  let mutable private refusedAt : Option<int64> = None
+
+  let takeRefusal () : Option<int64> =
+    let r = refusedAt
+    refusedAt <- None
+    r
+
   let private warned = System.Collections.Generic.HashSet<string>()
 
   /// The old run's output, told apart from the new run's: dimmed on a terminal, marked where
@@ -1097,9 +1107,10 @@ module ReplayPolicy =
     // reproducibility; the names are. A user-level FFI builtin, when one exists, goes in the set.
     let name = fn.name.name
     if Set.contains name unreproducible then
+      refusedAt <- Some ord
       RuntimeError.UncaughtException(
         $"cannot resume past step {ord}: `{name}` gave the old run something this one "
-        + "cannot have again (a process or a stream); the run stays suspended",
+        + "cannot have again (a process or a stream); the run is left as it was",
         []
       )
       |> raiseRTE vm.threadID

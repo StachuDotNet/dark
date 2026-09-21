@@ -12,22 +12,21 @@ writing anything.
 Reads run at the same time. Writes keep program order. `await x` waits for a
 value here instead of wherever it is first used.
 
-  let pages = List.map HttpClient.get urls    // ten requests, all in flight
-  print "fetching"                            // a write: happens now, in order
-  let first = await (List.head pages)         // wait for this one, here
-  File.write out first.body                   // in order
+  let pages = Stdlib.List.map urls (fun u -> Stdlib.HttpClient.get u [])  // all in flight
+  Stdlib.printLine "fetching"                                             // a write: now, in order
+  let count = Stdlib.List.length pages                                    // looks: waits for all
 
 A read is a call whose effects are all reads (a file, env, db or package
 read, an HTTP GET or HEAD). Anything else runs in order.
 
 ## When you want control
 
-  let h = Exec.spawn (fun () -> File.write log "done")   // start it in the background
-  Exec.await h                                           // wait for it
-  Exec.awaitWithin 500L h                                // ... or give up after 500 ms: None
-  Exec.select [ h1; h2 ]                                 // the first to finish
-  Exec.cancel h                                          // stop it, and its children
-  List.parallelMap items fib                             // CPU-bound work across the cores
+  let h = Stdlib.Exec.spawn (fun () -> Stdlib.Cli.File.writeText log "done")  // in the background
+  Stdlib.Exec.await h                                    // wait for it
+  Stdlib.Exec.awaitWithin 500L h                         // ... or give up after 500 ms: None
+  Stdlib.Exec.select [ h1; h2 ]                          // the first to finish
+  Stdlib.Exec.cancel h                                   // stop it, and its children
+  Stdlib.List.parallelMap items fib                      // CPU-bound work across the cores
 
 A process spawned this way dies with its parent unless `Exec.spawnDetached`.
 Spawning is the `concurrency` effect; a policy can forbid it.

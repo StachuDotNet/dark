@@ -147,7 +147,7 @@ on a held connection, so that trade is not worth its builtin yet.
 `serve --dev` adds the browser half: `GET /__live` is an event stream that holds the
 connection, compares the router's hash every half second to the one the page was served
 from, says `reload` once it moved (`[live] page told to reload` in the log; the wait
-itself is not logged as a request), and ends; every HTML response carries a six-line
+itself is not logged as a request), and ends; every HTML response carries a short
 script that listens and reloads. Not for production: one comparison per open tab per
 half second, and a script in every page.
 
@@ -222,8 +222,9 @@ you look at it.
 Tests: `tests/CliWorkspace/live` drives the loop one turn at a time as a process on a
 scheduler the test owns (`CliTestHarness.loopDriver`, `stepOn`): `pushKey` posts a key
 to its queue as the reader thread would, `pushTick` posts a store change as the poll
-would. The H2 guarantee the loop rests on (a parked process resumed after an edit
-finishes on the old hash; a fresh one gets the new) is `tests/scheduler`'s.
+would. The guarantee the loop rests on (a parked process resumed after an edit finishes
+on the hash it started with; a fresh one gets the new) is `tests/scheduler`'s
+`editDoesNotReachAParkedProcess`.
 
 The workbench's `Processes` pane (`P` from Apps) is the process table (`Stdlib.Exec.list`)
 as a tree, with the selected process's stack (`Stdlib.Exec.inspect`) beside it: live's
@@ -235,7 +236,7 @@ and modifiers, unless an `Input` has focus, which wants the chunk whole.
 
 A save that puts a name back on a version it held before lands as a decision (a second
 `SetName` would be the op that already exists); `Live.touchedBy` counts it, the CLI says
-"Put ... back on an earlier version", and the dependents follow.
+"Put ... back to an earlier version", and the dependents follow.
 
 ## Daemons
 
@@ -247,8 +248,7 @@ broken version is skipped with the reason in the log. The heartbeat example is o
 long-running fn cannot follow anything, scheduler or not: its frames call callees by
 hash, and only a name lookup (`Live`, `applicableByName`) sees a new binding, so the
 budget yield changes nothing for it. `dark apps` says `behind` when its entrypoint's
-hash moved since it started, and `dark apps restart <slug>` is the answer. (The rebase
-plan expected `behind` and `restart` to go; they stay, for this reason.)
+hash moved since it started, and `dark apps restart <slug>` is the answer.
 
 A daemon's pidfile and log go under `~/.darklang/run`; when that cannot be written (a
 `~/.darklang` some other user created first, no home), `Stdlib.Cli.Daemon.runDir` falls
@@ -272,29 +272,55 @@ is B's page two to five seconds later; the broken save leaves B on the last good
 a branch `site` with autopush (each save is a `branch push`), B has `sync.branches all`
 and serves `--branch site`; same three beats, same timings.
 
-Three things had to move for that walk, all on the host side. A daemon is launched as
-`dark apps daemon-main <slug>` rather than `dark eval '<entrypoint> "<slug>"'`: an `eval`
-is a guest and a guest has no host capabilities, so the sync daemon was refused its own
-transport; a command runs in the CLI's state, and the entrypoint is applied in that frame
-(not through `Live.apply`, which would make it a guest root again). A branch's own ops are
-inert, `applied = 0` for good and tagged onto the branch in the transaction that stores
-them, so the applied-only rule the poll uses for main hid every branch op from a branch
-watch; a tagged op is complete once visible (`landedWhere`, `idsLandedSince`). And a
-long-lived process on a branch loaded its overlay once at boot: an op that lands from
-outside (the daemon's pull) now reaches it through the same invalidation a poll does
+Three facts on the host side make that walk work. A daemon is `dark apps daemon-main
+<slug>`, a command in the CLI's own state, so it has the host's capabilities (an `eval` is
+a guest and could not use its own sync transport); the entrypoint is applied in that
+frame, not through `Live.apply`, which would make it a guest root again. A branch's own
+ops are inert (`applied = 0`) and tagged onto the branch in the transaction that stores
+them, and `landedWhere`/`idsLandedSince` count a tagged op as landed once it is visible,
+so a branch watch sees the branch's saves. An op that lands from outside (the daemon's
+pull) reaches a long-lived branch process through the same invalidation a poll does
 (`LibDB.PackageManager`, the second `Caching.register`). Tests: `tests/CliWorkspace/live`,
 "a poll on a branch reports the branch's own saves" and "serve --branch follows edits made
 on the branch".
 
 ## The agent channel
 
-An agent authors through the same `addAuthored` a person's save goes through, on a branch you watch, so nothing in the loop above is agent-specific: the store-change event fires, `affects` picks the views it touched, a broken intermediate state (the agent's normal case) keeps the last good frame, `dark diff` on the branch is the review. Two things are for the agent's side, both in `Stdlib.Live` and neither needs the agent harness.
+An agent authors through the same `addAuthored` a person's save goes through, on a
+branch you watch, so nothing in the loop above is agent-specific: the store-change event
+fires, `affects` picks the views it touched, a broken intermediate state (the agent's
+normal case) keeps the last good frame, `dark diff` on the branch is the review. Two
+things are for the agent's side, both in `Stdlib.Live` and neither needs the agent
+harness.
 
-`Live.show view` points every host loop on this instance at a view (a module with `init`, `update` and `render`, what `dark apps view <Module.Path>` takes): it writes `live.show` in the store's config (`config_v0`, never synced), which moves the store counter, so an open `dark apps view` wakes and switches on its next turn, and a bare `dark apps view` opens on it. The watch carries what `live.show` said at its last poll, so a poll that finds the counter moved and nothing landed can tell a show from a trace write and report only the show, as a change that touched nothing. A setting rather than an event on the queue, on purpose: an event reaches the loops that are running now, a setting also reaches the one you open next, and there is no session to scope it to until sessions persist.
+`Live.show view` points every host loop on this instance at a view (a module with
+`init`, `update` and `render`, what `dark apps view <Module.Path>` takes): it writes
+`live.show` in the store's config (`config_v0`, never synced), which moves the store
+counter, so an open `dark apps view` wakes and switches on its next turn, and a bare
+`dark apps view` opens on it. The watch carries what `live.show` said at its last poll,
+so a poll that finds the counter moved and nothing landed can tell a show from a trace
+write and report only the show, as a change that touched nothing. A setting rather than
+an event on the queue, on purpose: an event reaches the loops that are running now, a
+setting also reaches the one you open next, and there is no session to scope it to until
+sessions persist.
 
-`Live.observe branchId view` is the view without a terminal: `{ report; render; rte }`. Each of `init` and `render` is taken at its newest version that passes its at-rest checks (the store's history is the memory, `versionsNewestFirst`; nothing is kept between calls), `init` runs for the model, `render` for the tree, and the tree goes through `Stdlib.Cli.UI.Text.render`, the third renderer beside the terminal and HTML: plain lines, a table as its rows, `- ` before list items, `[ go ]` for a button, `! boom` for a band that is not merely informative. `report` is the newest version's at-rest report when it failed and an older version is what rendered; `rte` is the runtime error when the newest passing version raised, with the version before it as the picture when one renders. So after each edit the agent reads the same two things you would see: the frame and what is wrong with the newest code.
+`Live.observe branchId view` is the view without a terminal: `{ report; render; rte }`.
+Each of `init` and `render` is taken at its newest version that passes its at-rest
+checks (the store's history is the memory, `versionsNewestFirst`; nothing is kept
+between calls), `init` runs for the model, `render` for the tree, and the tree goes
+through `Stdlib.Cli.UI.Text.render`, the third renderer beside the terminal and HTML:
+plain lines, a table as its rows, `- ` before list items, `[ go ]` for a button, `!
+boom` for a band that is not merely informative. `report` is the newest version's
+at-rest report when it failed and an older version is what rendered; `rte` is the
+runtime error when the newest passing version raised, with the version before it as the
+picture when one renders. So after each edit the agent reads the same two things you
+would see: the frame and what is wrong with the newest code.
 
-Plugging it into an agent's tool loop, when the harness lands: give the agent two tools, `observe(view)` that calls `Live.observe` on the agent's branch and returns the three fields, and `show(view)` that calls `Live.show`; have the harness call `observe` after every save it makes (the trace of that call is a recorded execution, so `Live.Values.replay` gives the agent per-expression values on top of the frame); and leave the human's `dark apps view` running on the same store, since `show` is how the agent points it. Test: `tests/CliWorkspace/live/observe renders a view headless and show points a host at it`.
+An agent harness gets two tools, `observe(view)` and `show(view)`, and calls `observe`
+after every save; the trace of that call is a recorded execution, so `Live.Values.replay`
+adds per-expression values to the frame. Not wired: the harness is not in this branch.
+Test: `tests/CliWorkspace/live/observe renders a view headless and show points a host at
+it`.
 
 ## Live values
 
@@ -356,16 +382,18 @@ demo 1, TUI follows edits
   A repaints, band gone.
 
 demo 2, prod follows a branch
-  fly host:    dark --branch stachu/site apps enable sync
-               dark --branch stachu/site serve Site.router --port 8080
+  host:        dark --branch <b> apps enable sync
+               dark --branch <b> serve Site.router --port 8080
   local:       dark config set live.autopush on
                edit Site.page, save
-  ~5 s later:  curl https://darklang-dev.fly.dev/  -> new page
+  ~5 s later:  curl http://<host>:8080/  -> new page
   local:       save a broken Site.page
                curl -> still the last good page; the host log has the diagnostic
 ```
 
-Demo 2's local half works today: `dark serve Tests.LiveProbe.router --port 9095` in
-one terminal, `dark fn Tests.LiveProbe.page '(): String = "v2"'` in another, and the
-next `curl` has it; `dark fn Tests.LiveProbe.page '(): String = 3'` leaves the page on
-v2 and prints the diagnostic in the serve terminal.
+The local half of demo 2, by hand: `dark fn Demo.page '(): String = "v1"'`, `dark fn
+Demo.router '(req: Stdlib.Http.Request): Stdlib.Http.Response =
+Stdlib.Http.responseWithText (Demo.page ()) 200'`, `dark serve Demo.router --port 9095`;
+then `dark fn Demo.page '(): String = "v2"'` in another terminal and the next `curl` has
+it; `dark fn Demo.page '(): String = 3'` leaves the page on v2 and prints the diagnostic
+in the serve terminal. The recorded runs of both demos are in the PR.

@@ -31,13 +31,15 @@ state's concurrent caches.
   `EntryExpr`), `parent`, `started`, `status`, `slices` (how many times the
   budget was refilled), the completion F# callers await, and the park state.
 - `Status`: `Runnable | Parked of Parked | Done of Dval | Failed of rte * stack`.
-- `Parked`: what a parked process waits for, for `ps`. `OnBuiltin name`
-  (a `sleep`, an HTTP call, the script an `eval` runs), `OnPackageFn hash`,
-  `OnLambda`, `OnRareOpcode` (the interpreter waiting on the store),
-  `OnEvent specs` (a `Host.await`).
+- `Parked`: what a parked process waits for, for `ps`. `OnHost op` (a host
+  operation the loop is performing: a file read, an HTTP request, a process
+  run), `OnBuiltin name` (a `sleep`, the script an `eval` runs),
+  `OnPackageFn hash`, `OnLambda`, `OnRareOpcode` (the interpreter waiting on
+  the store), `OnEvent specs` (a `Host.await`), `OnProcess id` (an
+  `Exec.await`).
 
-`VMState` was already self-contained (its own frames, frame pool, caches), so
-wrapping it cost nothing. The one field added is `budget`.
+`VMState` is self-contained (its own frames, frame pool, caches); `budget` is
+the one field the scheduler reads and writes.
 
 ## The step
 
@@ -59,10 +61,9 @@ for and answers a `StepOutcome`; `awaitOf` turns the wait into `(wait,
 resume)` at the bail site. `executeSync` is that loop; an unscheduled run
 (`execute`: tests, the LSP, a host running a function itself) is
 `driveToEnd`, fifteen lines that await each `wait` in place and step again.
-Its budget is negative, so it never sees `StepBudget`. The task-based second
-loop (`executeInnerTask`, with `handleFrameStep` re-deciding every wait) is
-gone: a wait is decided once, where it happens, and the scheduler and the
-plain run differ only in who waits.
+Its budget is negative, so it never sees `StepBudget`. A wait is decided
+once, where it happens, and the scheduler and the plain run differ only in
+who waits.
 
 ## The budget
 
@@ -70,14 +71,9 @@ plain run differ only in who waits.
 at zero; `runFrame` reports that as `FrameBudget`. The default quantum is
 10,000 instructions (`Scheduler.defaultQuantum`), refilled before every slice.
 A negative budget means unlimited, which is what every VM nobody schedules runs
-with. (A callable a builtin applies runs as a frame of the same VM now, so it
-is preempted like anything else; the borrowed-VM case is gone.)
-
-Measured with `scripts/perf/bench ab` against the pre-change binary: within
-noise on `interp-arith`, `interp-list` and `eval-listheavy` (median paired
-difference +0.0%, -0.3%, -0.5%; IQRs 14 to 24 ms). The instrument cannot
-resolve a 1% change either way, so the per-instruction check stayed and the
-fallback (check on jumps and calls only) was not needed.
+with. (A callable a builtin applies is a frame of the same VM, so it is
+preempted like anything else.) The per-instruction check is within noise on
+`interp-arith`, `interp-list` and `eval-listheavy` (`docs/perf/history.md`).
 
 ## The one rule
 
@@ -126,6 +122,25 @@ The sources `LibExecution` cannot provide itself (the console, the store) are
 installed by the host: `Stdin.fs` installs the key source, `Cli.fs` the store
 version.
 
+## `Host.await`, the contract
+
+```
+module Darklang.Stdlib.Host
+type EventSpec = Key | StoreChanged | Timer of ms: Int64 | ExecDone of id: Uuid
+type Event = Key of KeyRead | StoreChanged of Stdlib.Live.Change | Timer | ExecDone of id: Uuid
+let await (specs: List<EventSpec>) : Event
+```
+
+Under the scheduler the calling process parks on the first spec to fire.
+Outside one (a plain `execute`) it blocks the thread, polling. A
+`StoreChanged` from the runtime carries nothing; `await` asks
+`Stdlib.Live.poll` what landed and hands the loop the `Change`, and a move
+that carried no op (a config write) is absorbed. `Builtin.hostAwait` declares
+`{Stdin; PackageRead}` statically, the union of what any spec could need.
+
+`readKey ()` is unchanged for users; under the scheduler its body is "park on
+`[Key]`, return the key".
+
 ## Cores: workers
 
 A `Scheduler` is one loop on one thread. `Scheduler.Workers` is a group: the
@@ -144,27 +159,31 @@ variable shadows it.
 - The Http server's request handlers and `Exec.spawn` are what use the
   workers; the CLI's root and each `eval` expression stay on the root. A CLI
   run that never spawns on a worker never starts the threads.
-- Measured on the shared desktop (a Threadripper 3960X), warm: four
-  CPU-bound processes on four workers finish in 0.59 to 0.65 of the
-  one-thread wall time published, 0.34 in Debug. Not the 1/4 an idle
-  machine would give a compute loop, and the scheduler is not why: four
-  plain `Interpreter.execute` calls on four threads, with or without a
-  shared state, scale the same, and so does a plain F# loop that only
-  allocates (546 ms alone, 871 ms four at once), while a loop that only
-  computes scales nearly perfectly. The interpreter allocates per value,
-  so the allocator's scaling is its ceiling; server GC and a larger gen0
-  budget did not move it. The allocation work in `docs/perf/roadmap.md` is
-  therefore also the multi-core work. The test bounds the ratio at 0.8.
-- A spawn onto a worker costs about 9 us in Debug (10,000 spawns of a
-  trivial program in 90 ms, including the placement scan and the `Wake`).
+- Four CPU-bound processes on four workers finish in about 0.6 of one
+  thread's time, not 0.25: the interpreter allocates per value and the
+  allocator's scaling is the ceiling, so the allocation work in
+  `docs/perf/roadmap.md` is also the multi-core work (the numbers:
+  `docs/perf/history.md`). The test bounds the ratio at 0.8.
+
+## Entry points
+
+- `Cli.fs` `main`: the entry function is the root process of a fresh scheduler
+  that runs on the main thread until it finishes. (`DARK_SCHEDULER=off`, in
+  `Cli.fs`, runs the function as a plain unscheduled `execute`; a bisect
+  switch for whoever is asking whether an oddity is the scheduler's, not a
+  setting.)
+- `cliParseAndExecuteScript`: each expression is a child process of the CLI's,
+  awaited in order. So a script budget-yields, a `readKey` in it parks, and
+  `ps` lists it. Daemons are launched as `eval` and ride the same path.
+- `execute` everywhere else, unchanged.
 
 ## What a process shares and what it owns
 
 The audit of `ExecutionState`, field by field, for two processes on two
 threads under one state. The short answer: the interpreter already ran on
 many threads with one state (the Http server's handlers, the parallel test
-suite), and the caches were made concurrent for that (`fix-types-cache-race`,
-August 2026), so a process copies almost nothing.
+suite), and the caches are concurrent for that, so a process copies almost
+nothing.
 
 Shared by reference, safe as is:
 
@@ -240,14 +259,12 @@ How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
   a URL, not a method; `HttpClient.get`, `head`, and `request "GET"` go
   through it). `Clock` and `Random` are not read effects either: reading
   them never waits, and `sleep`, the one clock call that does, is a wait the
-  program means to take (it was deferred in a first cut, and `let _ = sleep`
-  then slept nobody). A read that finishes synchronously (most file and db
+  program means to take. A read that finishes synchronously (most file and db
   reads in this runtime) is never a promise; only a real wait is.
 - A promise is only ever at the top level of a register, a frame's result, or
   a builtin's returned value. Every instruction that inspects, stores or
   passes a value forces it first: `Apply` forces the callee and every
-  argument (so no builtin body ever sees one, and `await` is an identity
-  function), record, enum, list, tuple, dict and string construction force
+  argument (so no builtin body ever sees one), record, enum, list, tuple, dict and string construction force
   their parts, a closure forces what it closes over, `if`, `||`, `&&`, match
   and let patterns force what they look at, and the end of a run forces its
   result. A bare `let x = ...` copies without looking, which is what keeps a
@@ -290,10 +307,9 @@ How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
   before the wait, since the frame's argument buffer is reused once the frame
   runs on.
 - Cost when nothing is in flight: one type test per operand on the
-  instructions above. The gate is unchanged. A first cut restructured
-  `finishBuiltin` around a `match` on the result and cost 200 bytes per
-  builtin call (the `uply` arm's closure was built on every call); the check
-  moved into `tryUnifySync` instead. Keep it there.
+  instructions above. The check lives in `tryUnifySync`, not in
+  `finishBuiltin`: a `match` on the result there costs 200 bytes per builtin
+  call (the `uply` arm's closure is built on every call).
 
 Measured: three reads under `List.map` are all in flight before anything
 waits, and the statement after the map runs while they are; two reads in
@@ -309,10 +325,8 @@ hands back a `Handle<'a>`; `Exec.await h` is the value it finished with, or
 its error raised again with the child's frames kept below the caller's;
 `Exec.awaitWithin ms h` is `None` after `ms` milliseconds and leaves the
 process running; `Exec.select hs` is the first to finish with its value.
-`Exec.cancel h` asks the process to stop, and everything it spawned that was
-not `spawnDetached`; a parent's end does the same to its children, so a
-program that spawned and never awaited leaves nothing running (the tree
-below, and "`dark ps`" for the hard variant). `spawn` carries the
+`Exec.cancel h` asks it to stop (cancel and kill, and what reaches children:
+the "`dark ps`" section). `spawn` carries the
 `Concurrency` effect, ambient and allowed by the default instance policy: a
 spawned process can do nothing the spawner could not. An install whose policy
 was seeded before this effect existed needs `dark permissions allow
@@ -327,10 +341,11 @@ thread on the completion as any builtin wait would.
 
 ## No host re-entry: a builtin asks, the interpreter applies
 
-A builtin that takes a callable used to apply it by running a nested VM on the
-host stack (`Execution.executeApplicable`): the lambda's frames were invisible
-to `ps`, could not be preempted by the budget, and a read in the lambda held
-the .NET stack. The list builtins now ask instead (`Interpreter.requestApply`):
+A builtin that takes a callable does not run it: it asks
+(`Interpreter.requestApply`) and the interpreter pushes the callable's frame
+on the process's own stack, so `ps` sees it, the budget preempts it, and a
+read in it does not hold the .NET stack. (`Execution.executeApplicable`, a
+nested VM on the host stack, remains for the callers in the Edges section.)
 
 - The builtin's body calls `requestApply vm applicable arg moreArgs next` and
   returns what it returns (a placeholder). The interpreter, at the call site,
@@ -353,7 +368,7 @@ the .NET stack. The list builtins now ask instead (`Interpreter.requestApply`):
   callable's result (a predicate, a key, a fold's accumulator): it waits for a
   read still in flight first, through the same wait. `List.map` and its kin
   carry the result along unlooked-at, so a read in a mapped lambda stays in
-  flight and the list comes back as one promise, as before.
+  flight and the list comes back as one promise.
 - A request is usually the body's first move, and the call site sees it.
   A body that had to wait first (a stream pulling from the network, then
   applying its transform) may still ask: its wait lands where its result
@@ -368,11 +383,11 @@ the .NET stack. The list builtins now ask instead (`Interpreter.requestApply`):
   lambda propagate through the process's own frames, so the stack names the
   lambda without `nestedCallStack`.
 
-Migrated: `List.map`, `indexedMap`, `map2shortest`, `fold`, `filter`,
-`filterMap`, `findFirst`, `any`, `sortBy` (`Builtins.Pure/Libs/List.fs`), each
-with one continuation over two mutable cells rather than a closure per
-element. `Dict`, `Option`, `Result` and `String` have no re-entry on this
-branch (they are Dark, or take no callable).
+The list builtins that take a callable: `List.map`, `indexedMap`,
+`map2shortest`, `fold`, `filter`, `filterMap`, `findFirst`, `any`, `sortBy`
+(`Builtins.Pure/Libs/List.fs`), each with one continuation over two mutable
+cells rather than a closure per element. `Dict`, `Option`, `Result` and
+`String` take no callable in F# (they are Dark).
 
 Streams (`Stream.unfold`, `map`, `filter`; `Builtins.Pure/Libs/Stream.fs`):
 a transform node holds its callable, not a closure over it (`StreamImpl.
@@ -382,9 +397,8 @@ Unfold/Mapped/Filtered`), and a pull is a step machine (`Stream.pull`):
 `toBlob`) drives it: an `Apply` is a `requestApply`, so the transform runs
 as a frame of the pulling process, its answer forced (`withValue`) and
 handed back to the pull; a `Wait` is waited for, and a request after it is
-the landing case above. The access re-intersection that used to happen on
-every pull happens once, when the transform is built: the builder's active
-access is folded into the callable (`narrowedBy`), and the frame push
+the landing case above. The builder's active access is folded into the
+callable once, when the transform is built (`narrowedBy`), and the frame push
 narrows the puller's access by it, as `Apply` narrows any frame's. So a
 narrow producer's transform stays narrow under a wide consumer, and the
 deferred-execution matrix in `PermissionsGate` still holds. F# code that
@@ -392,35 +406,87 @@ owns a native stream (the HTTP client's body, tests) pulls with
 `Stream.readNext`, which drives `Wait` and raises on `Apply`: a stream that
 runs Dark code is pulled from a Dark process.
 
-Not migrated, and why:
+Still through `Execution.executeApplicable`, on purpose: `Router.step` per
+request in `HttpServer.fs` (a poll and at most one check, on the thread that
+took the request, before the handler is spawned) and the `onListening`
+callback; `LiveValues.fs`, which runs a function for inspection, not as part
+of a program.
 
-- `HttpServer.fs` (the per-request handler, `onListening`): the handler runs
-  on a pool thread through `executeApplicable`. The plan's leaf makes it a
-  spawned process on a worker (`Scheduler.SpawnApply` is there for it); left
-  for the live track, whose file it is, since it changes `serve`'s latency
-  shape and is measured by `scripts/perf/http`.
+Tests (`Scheduler.Tests.fs`, the frames group): a process parked inside
+`List.map f` or a stream transform shows the lambda's frame in `ps` and
+resumes; a tight loop in a mapped lambda is preempted; an error in one names
+the lambda's frame; a transform over a stream whose source waits on the host
+before every element runs as a frame, scheduled and unscheduled. The cost is
+within noise on the gate and the bench (`docs/perf/history.md`).
 
-Measured, the list family: gate 9.5 MB against 9.4 (exact totals 9,463,000
-against 9,428,440 bytes: +0.4%, inside the 0.8% noise band; the first cut,
-with a record per request and a closure per element, was 11.1 MB, +19%);
-`bench ab` before against after, interp-list -1.7% (13 of 15 pairs faster),
-eval-listheavy -0.1%, eval-map1000 -0.4%, interp-arith +1.5% (2 of 15;
-arith applies no lambda, so that is the bigger step structs or noise).
-Tests (`Scheduler.Tests.fs`): a process parked inside `List.map f` shows the
-lambda's frame in `ps` and resumes; a tight loop inside a mapped lambda is
-preempted and another process runs between the slices; an error inside a
-mapped lambda names the lambda's frame; all 6,734 testfile cases pass over
-the migrated builtins.
+## Host operations are requests: a builtin names, the loop performs
 
-Measured, the stream family: gate 9.5 MB, unchanged (the reference workload
-has no stream); `bench ab` before against after, eval-stream (3,000
-elements through a map and a filter) -1.8%, 14 of 15 pairs faster;
-interp-arith +0.5% (noise). Tests: a process parked inside a stream
-transform shows the lambda's frame in `ps` and resumes; a transform over a
-stream whose source waits on the host before every element (a test stream
-built like a network one) runs as a frame, scheduled and unscheduled; the
-stream testfiles and the SSE parser (an `unfold` whose step pulls bytes)
-pass unchanged.
+A builtin that touches the OS names the operation (`Interpreter.requestHost
+vm op next`) and the loop performs it; nothing is checked or awaited inside
+the body (in `Builtins.Cli`: `File`,
+`Directory`, `Environment`, `Execution`, `Posix`; in the HTTP client: the
+guest request and stream open, and the sync transport's GET and POST):
+
+- The body puts the `Host.Operation` and a continuation on the VM
+  (`VMState.pendingHostOp`, `pendingHostNext`; no record, same as an apply
+  request) and returns a placeholder. Right after the body returns,
+  `invokeBuiltin` sees the request and performs it through the one checked
+  boundary (`PermissionCheck.performHostWithAccess`, under the body's access),
+  then hands the outcome to `next`; a continuation may name another operation,
+  or ask for an apply, and is driven the same way (`performRequested`). The
+  body itself is a value again: no builder, nothing awaited inside it.
+- A synchronous operation (every file, directory, environment and libc call:
+  microseconds, and a pool hop would cost more than the wait) completes on the
+  spot and nothing parks. One that waits (an HTTP request; a process run or a
+  round of process IO, which `Host.blocking` moves to the pool so a `sleep 10`
+  in one process does not stall a scheduler's others) parks the process as any
+  wait does, and the VM records the operation (`hostInflight`) so `ps` says
+  `the host: process-run /bin/bash` rather than the builtin's name.
+- A body that had to wait before it could name the operation (`File.write` of
+  a persisted blob reads the bytes from the store first) names it from the
+  continuation of that wait, and the landing performs it. Rare; the
+  ephemeral-blob case, which is nearly every write, names it at once.
+- Denials and rejections raise at the call: the check runs on the loop's
+  thread, before anything is performed, under the same access the body ran
+  with.
+
+Two OS-facing calls still perform from inside the body, on purpose.
+`httpGetUnsafeBytesStart` starts a sync GET and hands back a handle for
+`httpAwaitBytes` to collect: the point is not to wait, so it has no
+continuation to give the loop. The HTTP server's bind is performed under the
+child guest state's access, not the calling frame's, and `serve` then runs
+its listener in the same body; the bind is synchronous, so nothing parks
+there anyway.
+
+The host boundary (`Host.perform`: resolve, check, execute, audit) is called
+from one line in the loop for every OS-facing builtin, which is the shape the
+Rust port wants (an operation is a value the host answers) and what lets `ps`
+name the wait.
+
+## An HTTP request is a process
+
+`serve` spawns each request's handler as a process on a worker, with the
+server's process as its parent: `ps` shows it under the server with its own
+frames, the budget can preempt it, a read inside it is a value in flight, and
+a slow handler never holds up another (a request that sleeps 800 ms sits
+beside three that answer at once; the batch takes one slow request, not four).
+The handler's outcome is the response:
+
+- It returns a `Http.Response`: that is the response.
+- It raises: 500, the body says `The handler failed: <the error>`.
+- It runs past the request timeout: the server cancels it (politely, so
+  what it has on the host completes and its children stop with it) and
+  answers 504, `The handler ran for more than N ms and was cancelled`. The
+  limit is the store's `http.requestTimeoutMs`, read once when `serve`
+  starts; 30 s unset; 0 means no limit.
+- It is stopped from outside (`dark ps cancel`/`kill` on the request's
+  process): 503, `The request was stopped: <reason>`.
+- The router has no usable version (a live `serve` whose newest router
+  fails its checks and has no last good one): 503, `Service Unavailable`.
+
+A finished leaf process (a request, a spawned read) skips the group-wide
+scan for children: `childCounts` says whether it ever had any. That scan
+was most of a request's cost as a process.
 
 ## Traces
 
@@ -456,7 +522,7 @@ same the trace row stores), its trace, its status (`running`, `done`,
 `failed`, `suspended`), and, for a fork, the execution and the position it
 branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
 [--at <position>]`. `Stdlib.Exec.Execution` is the Dark side (`list`, `get`,
-`fork`, `armResume`).
+`fork`, `armResume`, `export`, `import`).
 
 - Ctrl-C during a traced run: the CLI's handler stores the log as it stands,
   marks the execution suspended, prints the resume command and leaves
@@ -472,7 +538,7 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   the run had got to without the world seeing it twice. A logged call the
   log cannot stand in for (an `Exec.spawn`, an OS subprocess, an open HTTP
   stream: a live handle the old process owned) stops the resume at that
-  step, naming it, and the run stays suspended. A logged file read whose file has changed
+  step, naming it, and leaves the run as it was (its status and its log). A logged file read whose file has changed
   since the run was recorded warns and continues on what it read then. The
   first ordinal a process asks for that the log lacks ends that process's
   replay for good, so nothing later in the log can be handed to it after a
@@ -489,15 +555,14 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   the rule above turns into "live from the first hole".
 - Replay after a package edit: the input is re-parsed, so names resolve to
   the new code, and the effects come from the log: the new pure code runs
-  against the old I/O. Live's H9 (live values) can start from this.
-- The determinism audit (every pure builtin, run twice on the same inputs,
-  must agree): a scan of every builtin declared with no effects for the
-  nondeterministic APIs (guids, clocks, random, environment, hash codes,
-  unordered enumeration) finds three, all host facts read live and not
+  against the old I/O. Live values (`docs/live.md`) are this, one call at a
+  time.
+- Three builtins declared with no effects read a host fact live and are not
   recorded, by design: `cliTerminalColorEnabled` (the terminal's colour
   support), `interpreterStatsEnableDetailedTiming` and `interpreterStatsGet`
   (dev instrumentation). A replay in another terminal renders for that
-  terminal. Dark's dict is an ordered map, so enumeration is deterministic.
+  terminal. Every other pure builtin answers the same twice on the same
+  inputs; Dark's dict is an ordered map, so enumeration is deterministic.
   `uuidGenerate` declares `Random` and is in the log.
 
 Tested in `CliExec.Tests.fs`: record and resume, fork at a position, suspend
@@ -510,7 +575,8 @@ the echo and the refusal.
 `dark exec export <id> [<file>]` writes an execution as one text file: its
 row, its trace row, and the trace's effect log, blobs base64, versioned by
 the first line. `dark exec import <file>` on another machine stores those
-rows with their ids kept, status suspended, and `dark exec resume <id>`
+rows with their ids and status kept (a run caught mid-flight arrives
+suspended), and `dark exec resume <id>`
 takes it up there: the log answers every call it has, then the run goes
 live. A bundle carries no code: the other side resolves the log's hashes
 from its own store, so it needs the same package code (a synced branch).
@@ -518,111 +584,12 @@ Moving the file is the person's: `scp`, a shared folder, an attachment.
 Through the relay would be a `/exec` route and storage on the relay; not
 built, since the relay carries package ops only and lives on its own deploy.
 
-## Host operations are requests: a builtin names, the loop performs
-
-A builtin that touches the OS used to call `PermissionCheck.performHost` from
-inside its `uply` body: the check, the wait and the result were all inside a
-builder the loop could only park on as an opaque task. It names the operation
-instead (`Interpreter.requestHost vm op next`; in `Builtins.Cli`: `File`,
-`Directory`, `Environment`, `Execution`, `Posix`; in the HTTP client: the
-guest request and stream open, and the sync transport's GET and POST):
-
-- The body puts the `Host.Operation` and a continuation on the VM
-  (`VMState.pendingHostOp`, `pendingHostNext`; no record, same as an apply
-  request) and returns a placeholder. Right after the body returns,
-  `invokeBuiltin` sees the request and performs it through the one checked
-  boundary (`PermissionCheck.performHostWithAccess`, under the body's access),
-  then hands the outcome to `next`; a continuation may name another operation,
-  or ask for an apply, and is driven the same way (`performRequested`). The
-  body itself is a value again: no builder, nothing awaited inside it.
-- A synchronous operation (every file, directory, environment and libc call:
-  microseconds, and a pool hop would cost more than the wait) completes on the
-  spot and nothing parks. One that waits (an HTTP request; a process run or a
-  round of process IO, which `Host.blocking` moves to the pool so a `sleep 10`
-  in one process does not stall a scheduler's others) parks the process as any
-  wait does, and the VM records the operation (`hostInflight`) so `ps` says
-  `the host: process-run /bin/bash` rather than the builtin's name.
-- A body that had to wait before it could name the operation (`File.write` of
-  a persisted blob reads the bytes from the store first) names it from the
-  continuation of that wait, and the landing performs it. Rare; the
-  ephemeral-blob case, which is nearly every write, names it at once.
-- Denials and rejections raise at the call as before: the check runs on the
-  loop's thread, before anything is performed, under the same access the body
-  ran with.
-
-Two OS-facing calls still perform from inside the body, on purpose.
-`httpGetUnsafeBytesStart` starts a sync GET and hands back a handle for
-`httpAwaitBytes` to collect: the point is not to wait, so it has no
-continuation to give the loop. The HTTP server's bind is performed under the
-child guest state's access, not the calling frame's, and `serve` then runs
-its listener in the same body; the bind is synchronous, so nothing parks
-there anyway.
-
-The host boundary itself (`Host.perform`: resolve, check, execute, audit) did
-not move. What moved is who calls it: the loop, from one line, for every
-OS-facing builtin, which is the shape the Rust port wants (an operation is a
-value the host answers) and what lets `ps` name the wait.
-
-## An HTTP request is a process
-
-`serve` spawns each request's handler as a process on a worker, with the
-server's process as its parent: `ps` shows it under the server with its own
-frames, the budget can preempt it, a read inside it is a value in flight, and
-a slow handler never holds up another (a request that sleeps 800 ms sits
-beside three that answer at once; the batch takes one slow request, not four).
-The handler's outcome is the response:
-
-- It returns a `Http.Response`: that is the response.
-- It raises: 500, the body says `The handler failed: <the error>`.
-- It runs past the request timeout: the server cancels it (politely, so
-  what it has on the host completes and its children stop with it) and
-  answers 504, `The handler ran for more than N ms and was cancelled`. The
-  limit is the store's `http.requestTimeoutMs`, read once when `serve`
-  starts; 30 s unset; 0 means no limit.
-- It is stopped from outside (`dark ps cancel`/`kill` on the request's
-  process): 503, `The request was stopped: <reason>`.
-- The router has no usable version (a live `serve` whose newest router
-  fails its checks and has no last good one): 503, `Service Unavailable`.
-
-A finished leaf process (a request, a spawned read) skips the group-wide
-scan for children: `childCounts` says whether it ever had any. That scan
-was most of a request's cost as a process.
-
-## `Host.await`, the contract
-
-```
-module Darklang.Stdlib.Host
-type EventSpec = Key | StoreChanged | Timer of ms: Int64 | ExecDone of id: Uuid
-type Change = Unknown
-type Event = Key of KeyRead | StoreChanged of Change | Timer | ExecDone of id: Uuid
-let await (specs: List<EventSpec>) : Event
-```
-
-Under the scheduler the calling process parks on the first spec to fire.
-Outside one (a plain `execute`) it blocks the thread polling, which is what the
-live track's shim does today and what the rebase deletes. `Builtin.hostAwait`
-declares `{Stdin; PackageRead}` statically, the union of what any spec could
-need.
-
-`readKey ()` is unchanged for users; under the scheduler its body is "park on
-`[Key]`, return the key".
-
-## Entry points
-
-- `Cli.fs` `main`: the entry function is the root process of a fresh scheduler
-  that runs on the main thread until it finishes. (`DARK_SCHEDULER=off`, in
-  `Cli.fs`, runs the old plain path; a bisect switch for whoever is asking
-  whether an oddity is the scheduler's, not a setting.)
-- `cliParseAndExecuteScript`: each expression is a child process of the CLI's,
-  awaited in order. So a script budget-yields, a `readKey` in it parks, and
-  `ps` lists it. Daemons are launched as `eval` and ride the same path.
-- `execute` everywhere else, unchanged.
-
 ## `dark ps`
 
 `Stdlib.Exec.list/inspect/cancel` over `Builtin.execList/execInspect/execCancel`
-(`Builtins.Language/Libs/Exec.fs`), and `Builtin.execKill` called by id from
-`cli/ps.dark`, the one place; rendered by `cli/ps.dark` as a tree, a process
+(`Builtins.Language/Libs/Exec.fs`), and `Cli.Ps.killById`, the one wrapper of
+`execKill` (the escape hatch is the CLI's, not the stdlib's); rendered by
+`cli/ps.dark` as a tree, a process
 under the one that spawned it. Rows are copies;
 nothing hands Dark a reference into a running VM. A process on a worker is
 snapshotted from another thread: its call stack is read best-effort (a frame

@@ -301,10 +301,21 @@ let private replayEchoesAndRefuses =
               state
               [ "eval"
                 "let h = Stdlib.Cli.Process.spawn \"sleep 0\"\nStdlib.Cli.Process.terminate h" ]
-          let! prefix2 = latestPrefix ()
-          let! refused = runCli state [ "exec"; "resume"; prefix2 ]
+          let! spawned = latest ()
+          let! logBefore = Executions.log spawned.traceId
+          let! refused = runCli state [ "exec"; "resume"; prefixOf spawned ]
           Expect.stringContains refused "cannot resume past step" "the resume stops"
           Expect.stringContains refused "cliSpawnProcess" "naming the call"
+          let! after = Executions.get spawned.id
+          Expect.equal
+            (after |> Option.map (fun e -> e.status))
+            (Some spawned.status)
+            "and the run is left with the status it had"
+          let! logAfter = Executions.log spawned.traceId
+          Expect.equal
+            (List.length logAfter)
+            (List.length logBefore)
+            "with its log as it was"
         finally
           (runCli state [ "permissions"; "remove"; "process"; "/bin/bash" ]).Wait()
       })

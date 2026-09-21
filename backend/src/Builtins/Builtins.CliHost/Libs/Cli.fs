@@ -580,7 +580,9 @@ let execute
     // Ctrl-C, resumed and forked (`LibDB.Executions`). A resume armed by `dark exec resume` takes
     // the recorded run's trace and replays its log; anything else records afresh. Without a
     // recording tracer (trace detail off) there is no log, so no row either.
-    let tracer, executionId =
+    // `priorStatus`: what the row said before a resume set it running, put back if the resume
+    // is refused at a step it cannot reproduce.
+    let tracer, executionId, priorStatus =
       match LibDB.Executions.Replay.take () with
       | Some resume ->
         let e = resume.execution
@@ -602,7 +604,7 @@ let execute
            with
            | true, t -> Some(t.ToUniversalTime())
            | _ -> None)
-        tracer, Some e.id
+        tracer, Some e.id, Some e.status
       | None ->
         let traceID = AT.TraceID.create ()
         let tracer = Tracing.createCliTracer traceID traceDesc inputName inputValue
@@ -616,9 +618,9 @@ let execute
             traceID
             LibDB.Executions.Running
             None
-          tracer, Some id
+          tracer, Some id, None
         else
-          tracer, None
+          tracer, None, None
 
     let state = childState parentState pm tracer.executionTracing program
 
@@ -667,24 +669,34 @@ let execute
             executionId
             |> Option.iter (fun id ->
               if LibDB.Executions.Foreground.clear id then
-                LibDB.Executions.setStatus id LibDB.Executions.Failed)
+                let status =
+                  match LibExecution.Interpreter.ReplayPolicy.takeRefusal (), priorStatus with
+                  | Some _, Some prior -> prior
+                  | _ -> LibDB.Executions.Failed
+                LibDB.Executions.setStatus id status)
             return raise ex
         }
       // A run a suspend took out of the foreground stores nothing more: the log and the row are
-      // what the suspend left, for `resume`.
+      // what the suspend left, for `resume`. A resume refused at a step it cannot reproduce is
+      // left as it was too, log and status: storing would write the replayed prefix over the
+      // whole log.
       let stillOurs =
         match executionId with
         | Some id -> LibDB.Executions.Foreground.clear id
         | None -> true
+      let refused = LibExecution.Interpreter.ReplayPolicy.takeRefusal ()
       if stillOurs then
-        do! tracer.storeTraceResults state
-        executionId
-        |> Option.iter (fun id ->
-          LibDB.Executions.setStatus
-            id
-            (match result with
-             | Ok _ -> LibDB.Executions.Done
-             | Error _ -> LibDB.Executions.Failed))
+        match refused, executionId, priorStatus with
+        | Some _, Some id, Some prior -> LibDB.Executions.setStatus id prior
+        | _ ->
+          do! tracer.storeTraceResults state
+          executionId
+          |> Option.iter (fun id ->
+            LibDB.Executions.setStatus
+              id
+              (match result with
+               | Ok _ -> LibDB.Executions.Done
+               | Error _ -> LibDB.Executions.Failed))
       return result
   }
 

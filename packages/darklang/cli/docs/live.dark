@@ -15,7 +15,7 @@ Any module with these three is a view:
   type Model = { count: Int }
   type Msg = | Inc
   let init () : Model = Model { count = 0 }
-  let update (m: Model) (e: Apps.Host.Event<Msg>) : Model = ...
+  let update (m: Model) (e: Darklang.Cli.Apps.Host.Event<Msg>) : Model = ...
   let render (m: Model) : Stdlib.Cli.UI.Node.Node<Msg> =
     Stdlib.Cli.UI.Node.column [ Stdlib.Cli.UI.Node.bold "counter"; ... ]
 
