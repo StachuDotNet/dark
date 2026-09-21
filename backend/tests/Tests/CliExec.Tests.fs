@@ -18,21 +18,22 @@ open Tests.CliDsl
 module Executions = LibDB.Executions
 
 
-/// The most recent execution's id, as `exec` shows it (the first eight characters).
-let private latestPrefix () : Task<string> =
-  task {
-    let! rows = Executions.list 1
-    match rows with
-    | e :: _ -> return (string e.id).Substring(0, 8)
-    | [] -> return failtest "no execution was recorded"
-  }
-
 let private latest () : Task<Executions.Execution> =
   task {
     let! rows = Executions.list 1
     match rows with
     | e :: _ -> return e
     | [] -> return failtest "no execution was recorded"
+  }
+
+/// An execution's id as `exec` shows it: the first eight characters.
+let private prefixOf (e : Executions.Execution) : string =
+  (string e.id).Substring(0, 8)
+
+let private latestPrefix () : Task<string> =
+  task {
+    let! e = latest ()
+    return prefixOf e
   }
 
 /// Two uuids, so a replay is told apart from a rerun by its output.
@@ -72,7 +73,7 @@ let private forkDivergesAfterThePosition =
       task {
         let! first = runCli state [ "eval"; twoUuids ]
         let! parent = latest ()
-        let prefix = (string parent.id).Substring(0, 8)
+        let prefix = prefixOf parent
         // Position 1: the first uuid's row (seq 0) is kept, the second (seq 1) is not.
         let! forked = runCli state [ "exec"; "fork"; prefix; "--at"; "1" ]
         Expect.stringContains forked "forked" "the fork is announced"
@@ -82,11 +83,9 @@ let private forkDivergesAfterThePosition =
           child.parent
           (Some(parent.id, 1L))
           "and knows where it came from"
-        let! shown =
-          runCli state [ "exec"; "show"; (string child.id).Substring(0, 8) ]
+        let! shown = runCli state [ "exec"; "show"; prefixOf child ]
         Expect.stringContains shown "forked from" "show says so"
-        let! resumed =
-          runCli state [ "exec"; "resume"; (string child.id).Substring(0, 8) ]
+        let! resumed = runCli state [ "exec"; "resume"; prefixOf child ]
         let last = resumed.Split('\n') |> Array.last
         match words first, words last with
         | [ a1; b1 ], [ a2; b2 ] ->
@@ -103,9 +102,11 @@ let private suspendThenResume =
       task {
         // The second uuid comes after a pause long enough to suspend during.
         let program =
-          "let a = Stdlib.Uuid.generate ()\nlet _ = Stdlib.Cli.Posix.sleep 2000.0\nlet b = Stdlib.Uuid.generate ()\nStdlib.String.join [ Stdlib.Uuid.toString a, Stdlib.Uuid.toString b ] \" \""
+          "let a = Stdlib.Uuid.generate ()\nlet _ = Stdlib.Cli.Posix.sleep 800.0\nlet b = Stdlib.Uuid.generate ()\nStdlib.String.join [ Stdlib.Uuid.toString a, Stdlib.Uuid.toString b ] \" \""
         let running = runCli state [ "eval"; program ]
-        // Until the run is in the foreground, then a moment more for the first uuid.
+        // Until the run is in the foreground, then a moment more for the first uuid (made in
+        // the first few milliseconds; the tracer holds it until a flush, so there is nothing
+        // to poll for).
         let deadline = System.DateTime.UtcNow.AddSeconds 5.
         while (Executions.Foreground.currentId ()).IsNone
               && System.DateTime.UtcNow < deadline do
@@ -128,8 +129,7 @@ let private suspendThenResume =
           e.status
           Executions.Suspended
           "the run's own ending left the suspend alone"
-        let! resumed =
-          runCli state [ "exec"; "resume"; (string e.id).Substring(0, 8) ]
+        let! resumed = runCli state [ "exec"; "resume"; prefixOf e ]
         let last = resumed.Split('\n') |> Array.last
         match words first, words last with
         | [ a1; _ ], [ a2; b2 ] ->
@@ -174,7 +174,7 @@ let private exportImportResume =
       task {
         let! first = runCli state [ "eval"; twoUuids ]
         let! e = latest ()
-        let prefix = (string e.id).Substring(0, 8)
+        let prefix = prefixOf e
         let! bundle = Executions.Bundle.export e.id
         let text =
           match bundle with
@@ -214,6 +214,8 @@ let private retentionKeepsTheNewestAndTheSuspended =
     "retention drops the oldest runs past trace.keep but never a suspended one"
     (fun state ->
       task {
+        let keep, bytes =
+          LibDB.Tracing.TraceRetention.keep, LibDB.Tracing.TraceRetention.maxBytes
         LibDB.Tracing.TraceRetention.setForTesting 2L 0L
         try
           // Four runs; the first is suspended by hand so it must survive.
@@ -244,7 +246,7 @@ let private retentionKeepsTheNewestAndTheSuspended =
             (rows |> List.forall (fun e -> List.contains (string e.traceId) traces))
             "every listed execution still has its trace: the rows went together"
         finally
-          LibDB.Tracing.TraceRetention.setForTesting 200L (256L * 1024L * 1024L)
+          LibDB.Tracing.TraceRetention.setForTesting keep bytes
       })
 
 
@@ -290,17 +292,43 @@ let private replayEchoesAndRefuses =
           "the logged print is echoed"
         let uuid = first.Split('\n') |> Array.last
         Expect.stringContains resumed uuid "the uuid came from the log"
-        // A spawned process is a live handle the log cannot hand back.
+        // A spawned process is a live handle the log cannot hand back. The grant lands in the
+        // shared store, so it is taken back whatever happens.
         let! _ = runCli state [ "permissions"; "allow"; "process"; "/bin/bash" ]
-        let! _ =
-          runCli
-            state
-            [ "eval"
-              "let h = Stdlib.Cli.Process.spawn \"sleep 0\"\nStdlib.Cli.Process.terminate h" ]
-        let! prefix2 = latestPrefix ()
-        let! refused = runCli state [ "exec"; "resume"; prefix2 ]
-        Expect.stringContains refused "cannot resume past step" "the resume stops"
-        Expect.stringContains refused "cliSpawnProcess" "naming the call"
+        try
+          let! _ =
+            runCli
+              state
+              [ "eval"
+                "let h = Stdlib.Cli.Process.spawn \"sleep 0\"\nStdlib.Cli.Process.terminate h" ]
+          let! prefix2 = latestPrefix ()
+          let! refused = runCli state [ "exec"; "resume"; prefix2 ]
+          Expect.stringContains refused "cannot resume past step" "the resume stops"
+          Expect.stringContains refused "cliSpawnProcess" "naming the call"
+        finally
+          (runCli state [ "permissions"; "remove"; "process"; "/bin/bash" ]).Wait()
+      })
+
+
+/// `dark ps` as a command: the captioned table, and a refusal that says what to do.
+let private psListsTheTree =
+  cliTestWithFreshTraces
+    "ps prints this dark's table and refuses an unknown id by name"
+    (fun state ->
+      task {
+        // The harness runs commands unscheduled, so the table is empty here; the shape is
+        // what this pins. The tree itself is `Scheduler.Tests`' and the demo's.
+        let! out = runCli state [ "ps" ]
+        Expect.stringContains out "this dark (pid" "the local table is captioned"
+        Expect.stringContains
+          out
+          "id  entry  status  turns  parent"
+          "with its columns"
+        let! missing = runCli state [ "ps"; "show"; "nope" ]
+        Expect.stringContains
+          missing
+          "no process whose id starts with nope"
+          "an unknown id is refused, not answered plausibly"
       })
 
 
@@ -312,4 +340,5 @@ let tests =
     exportImportResume
     retentionKeepsTheNewestAndTheSuspended
     byteCapSparesTheRunThatTrippedIt
-    replayEchoesAndRefuses ]
+    replayEchoesAndRefuses
+    psListsTheTree ]

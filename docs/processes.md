@@ -500,13 +500,10 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   terminal. Dark's dict is an ordered map, so enumeration is deterministic.
   `uuidGenerate` declares `Random` and is in the log.
 
-Tested (`CliExec.Tests.fs`): a run is kept and `resume` gives the same two
-uuids; a fork at position 1 keeps the first uuid and makes the second afresh,
-and `show` names its parent; a run suspended mid-way (its log has the first
-uuid only) resumes with that uuid answered from the log and the rest live,
-and the interrupted run's own ending leaves the suspend alone; a package edit
-between record and resume runs the new code (`v2:`) against the recorded
-uuid.
+Tested in `CliExec.Tests.fs`: record and resume, fork at a position, suspend
+mid-way and resume, replay after an edit, export and import, retention
+(the count cap sparing a suspended run, the byte cap sparing the newest),
+the echo and the refusal.
 
 ## A run on another machine
 

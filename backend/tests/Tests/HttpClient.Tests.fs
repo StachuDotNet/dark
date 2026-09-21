@@ -748,9 +748,28 @@ module StreamDvalTests =
 /// They share one `HttpListener`, which on Linux is .NET's managed implementation and does not take
 /// forty concurrent requests well: one goes unaccepted and comes back `NetworkError`. Which one
 /// varies, so it presents as a flake. Serialising them is also faster than not.
+/// The GET-and-HEAD builtin refuses a write method rather than performing it as a read.
+let private readBuiltinRefusesAWriteMethod =
+  testTask "httpClientRead answers BadMethod to POST" {
+    let! (state : RT.ExecutionState) = executionStateFor pmPT true Map.empty
+    let request : RT.BuiltInFn =
+      state.fns.builtIn[RT.FQFnName.builtin "httpClientRead" 0]
+    let instrs : RT.Instructions =
+      { registerCount = 1; instructions = []; resultIn = 0 }
+    let vm = RT.VMState.create (None, instrs)
+    let args =
+      [| RT.DString "POST"
+         RT.DString "http://192.0.2.1/"
+         RT.DList(RT.ValueType.Unknown, []) |]
+    let! (answer : RT.Dval) = request.fn (struct (state, vm, [], args)) |> Ply.toTask
+    match answer with
+    | RT.DEnum(_, _, _, "Error", [ RT.DEnum(_, _, _, "BadMethod", []) ]) -> ()
+    | other -> failtest $"expected BadMethod, got {other}"
+  }
+
 let tests =
   [ versions |> List.map (fun v -> testList v (testsFromFiles v))
-    [ StreamDvalTests.tests ] ]
+    [ StreamDvalTests.tests; readBuiltinRefusesAWriteMethod ] ]
   |> List.concat
   |> testList "HttpClient"
   |> testSequencedGroup "httpclient"

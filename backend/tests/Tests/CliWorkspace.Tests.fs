@@ -281,16 +281,61 @@ let private getText (port : int) : Task<int * string> =
     return (int response.StatusCode, body)
   }
 
-let private isNone (dv : RT.Dval) : bool =
-  match dv with
-  | RT.DEnum(_, _, _, "None", []) -> true
-  | _ -> false
+/// The Dark source for a package location under `Tests`.
+let private locSource (modules : List<string>) (name : string) : string =
+  let mods = modules |> List.map (fun m -> $"\"{m}\"") |> String.concat "; "
+  $"Darklang.LanguageTools.ProgramTypes.PackageLocation {{ owner = \"Tests\"; modules = [{mods}]; name = \"{name}\" }}"
+
+/// A live server (`serve` without the command) for the router at <param routerLoc>, resolved
+/// on <param branchSource> (Dark source for the branch id), with `--dev` when <param dev>:
+/// the port is handed to <param body>, and the listener is stopped after it.
+let private withLiveServer
+  (state : RT.ExecutionState)
+  (branchSource : string)
+  (routerLoc : string)
+  (dev : bool)
+  (body : int -> Task<unit>)
+  : Task<unit> =
+  task {
+    let! init =
+      evalUnder
+        state
+        $"Darklang.Stdlib.Live.Router.start {branchSource} ({routerLoc})"
+    let! step = evalUnder state "Darklang.Stdlib.Live.Router.step"
+    let step =
+      match step with
+      | RT.DApplicable a -> a
+      | other -> failtest $"expected the step to be a fn, got {other}"
+    let port = Tests.HttpServer.allocateFreePort ()
+    let cts = new CancellationTokenSource()
+    let! listener = Tests.HttpServer.bindListener port
+    let listenerTask =
+      Builtins.Http.Server.Libs.HttpServer.runListenerLive
+        state
+        listener
+        (int64 port)
+        init
+        step
+        dev
+        Builtins.Http.Server.Libs.HttpServer.defaultMaxBodyBytes
+        false
+        false
+        false
+        cts.Token
+    try
+      do! body port
+    finally
+      cts.Cancel()
+      try
+        listenerTask.Wait 2000 |> ignore<bool>
+      with _ ->
+        ()
+  }
 
 /// The Dark source for the test router's location.
-let private routerLocation =
-  "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = [\"LiveHttp\"]; name = \"router\" }"
+let private routerLocation = locSource [ "LiveHttp" ] "router"
 
-/// The claim `dark serve` now makes: a saved edit is on the next request, a broken save is not.
+/// The claim `dark serve` makes: a saved edit is on the next request, a broken save is not.
 ///
 /// In-process on purpose (`cliTest`): the listener and the author have to share one store, and the
 /// diagnostic the routing step prints has to be capturable. Authoring goes through the real `fn`
@@ -307,96 +352,68 @@ let private serveFollowsEdits =
           "Tests.LiveHttp.router"
           "(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdlib.Http.responseWithText (Tests.LiveHttp.page ()) 200"
 
-      let! init =
-        evalUnder
+      do!
+        withLiveServer
           state
-          $"Darklang.Stdlib.Live.Router.start Darklang.SCM.Branch.mainBranchId ({routerLocation})"
-      let! step = evalUnder state "Darklang.Stdlib.Live.Router.step"
-      let step =
-        match step with
-        | RT.DApplicable a -> a
-        | other -> failtest $"expected the step to be a fn, got {other}"
-
-      let port = Tests.HttpServer.allocateFreePort ()
-      let cts = new CancellationTokenSource()
-      let! listener = Tests.HttpServer.bindListener port
-
-      let listenerTask =
-        Builtins.Http.Server.Libs.HttpServer.runListenerLive
-          state
-          listener
-          (int64 port)
-          init
-          step
+          "Darklang.SCM.Branch.mainBranchId"
+          routerLocation
           false
-          Builtins.Http.Server.Libs.HttpServer.defaultMaxBodyBytes
-          false
-          false
-          false
-          cts.Token
+          (fun port ->
+            task {
+              let! (status, body) = getText port
+              Expect.equal (status, body) (200, "one") "the version at start"
 
-      try
-        let! (status, body) = getText port
-        Expect.equal (status, body) (200, "one") "the version at start"
+              do! author "Tests.LiveHttp.page" "(): String = \"two\""
+              let! (_, body) = getText port
+              Expect.equal body "two" "an edit to a callee is on the next request"
 
-        do! author "Tests.LiveHttp.page" "(): String = \"two\""
-        let! (_, body) = getText port
-        Expect.equal body "two" "an edit to a callee is on the next request"
+              // A body that does not match the declared return type: the save lands (WIP is yours to
+              // break), the router is repointed at it, and the check on what landed refuses it.
+              let! watch =
+                evalUnder
+                  state
+                  "Darklang.Stdlib.Live.watch Darklang.SCM.Branch.mainBranchId"
+              do! author "Tests.LiveHttp.page" "(): String = 3"
+              let! (status, body) = getText port
+              Expect.equal
+                (status, body)
+                (200, "two")
+                "a broken save keeps the last good version"
 
-        // A body that does not match the declared return type: the save lands (WIP is yours to
-        // break), the router is repointed at it, and the check on what landed refuses it.
-        let! watch =
-          evalUnder
-            state
-            "Darklang.Stdlib.Live.watch Darklang.SCM.Branch.mainBranchId"
-        do! author "Tests.LiveHttp.page" "(): String = 3"
-        let! (status, body) = getText port
-        Expect.equal
-          (status, body)
-          (200, "two")
-          "a broken save keeps the last good version"
+              // The diagnostic the server printed went to its own thread's stdout, out of this flow's
+              // capture; ask the same question the routing step asked and check the words.
+              let! _ =
+                pollChange state watch "expected the broken save to be reported"
+              let! routerLoc = evalUnder state routerLocation
+              let! why =
+                callByName
+                  state
+                  "Darklang.Stdlib.Live.diagnose"
+                  [ RT.DUuid PT.BranchId.Main.Guid; routerLoc ]
+              let why =
+                match why with
+                | RT.DEnum(_, _, _, "Some", [ RT.DString s ]) -> s
+                | other -> failtest $"expected a diagnostic, got {other}"
+              Expect.stringContains
+                why
+                "still on the last good version"
+                "the diagnostic names what it kept"
+              Expect.stringContains why "expected String, got Int" "and says why"
 
-        // The diagnostic the server printed went to its own thread's stdout, out of this flow's
-        // capture; ask the same question the routing step asked and check the words.
-        let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        match polled with
-        | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ _ ]), []) -> ()
-        | other -> failtest $"expected the broken save to be reported, got {other}"
-        let! routerLoc = evalUnder state routerLocation
-        let! why =
-          callByName
-            state
-            "Darklang.Stdlib.Live.diagnose"
-            [ RT.DUuid PT.BranchId.Main.Guid; routerLoc ]
-        let why =
-          match why with
-          | RT.DEnum(_, _, _, "Some", [ RT.DString s ]) -> s
-          | other -> failtest $"expected a diagnostic, got {other}"
-        Expect.stringContains
-          why
-          "still on the last good version"
-          "the diagnostic names what it kept"
-        Expect.stringContains why "expected String, got Int" "and says why"
+              do! author "Tests.LiveHttp.page" "(): String = \"three\""
+              let! (_, body) = getText port
+              Expect.equal body "three" "the fix is on the next request"
 
-        do! author "Tests.LiveHttp.page" "(): String = \"three\""
-        let! (_, body) = getText port
-        Expect.equal body "three" "the fix is on the next request"
-
-        do!
-          author
-            "Tests.LiveHttp.router"
-            "(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdlib.Http.responseWithText (Tests.LiveHttp.page ()) 201"
-        let! (status, _) = getText port
-        Expect.equal
-          status
-          201
-          "an edit to the router itself is on the next request"
-      finally
-        cts.Cancel()
-        try
-          listenerTask.Wait 2000 |> ignore<bool>
-        with _ ->
-          ()
+              do!
+                author
+                  "Tests.LiveHttp.router"
+                  "(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdlib.Http.responseWithText (Tests.LiveHttp.page ()) 201"
+              let! (status, _) = getText port
+              Expect.equal
+                status
+                201
+                "an edit to the router itself is on the next request"
+            })
     })
 
 /// `poll` names what landed and `affects` walks to what depends on it, on one store.
@@ -411,29 +428,19 @@ let private pollAndAffects =
       do! author "Tests.LivePoll.bystander" "(): Int = 7"
 
       let loc (name : string) : Task<RT.Dval> =
-        evalUnder
-          state
-          $"Darklang.LanguageTools.ProgramTypes.PackageLocation {{ owner = \"Tests\"; modules = [\"LivePoll\"]; name = \"{name}\" }}"
+        evalUnder state (locSource [ "LivePoll" ] name)
 
       let! watch =
         evalUnder
           state
           "Darklang.Stdlib.Live.watch Darklang.SCM.Branch.mainBranchId"
 
-      let! quiet = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-      let watch, change =
-        match quiet with
-        | RT.DTuple(w, c, []) -> w, c
-        | other -> failtest $"poll returned {other}"
-      Expect.isTrue (isNone change) "a fresh watch has nothing to report"
+      // A fresh watch has nothing to report.
+      let! watch = pollQuiet state watch
 
       do! author "Tests.LivePoll.leaf" "(): Int = 2"
 
-      let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-      let change =
-        match polled with
-        | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ change ]), []) -> change
-        | other -> failtest $"expected the edit to be reported, got {other}"
+      let! (_, change) = pollChange state watch "expected the edit to be reported"
 
       let! touched = callByName state "Darklang.Stdlib.Live.touchedNames" [ change ]
       let names =
@@ -676,8 +683,7 @@ let private viewFollowsEdits =
 
 
 /// `serve --branch`: the same as above, with the router and its callee authored on a branch.
-/// The branch's ops are inert (never `applied`), which is the case demo 2's `--branch` variant
-/// found the poll blind to.
+/// The branch's ops are inert (never `applied`), so a watch on the branch must see them.
 let private serveFollowsEditsOnABranch =
   cliTest "serve --branch follows edits made on the branch" (fun target ->
     task {
@@ -690,57 +696,23 @@ let private serveFollowsEditsOnABranch =
           author
             "Tests.LiveBranchHttp.router"
             "(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdlib.Http.responseWithText (Tests.LiveBranchHttp.page ()) 200"
-        let routerLoc =
-          "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = [\"LiveBranchHttp\"]; name = \"router\" }"
-        let! init =
-          evalUnder
+        do!
+          withLiveServer
             state
-            $"Darklang.Stdlib.Live.Router.start (Darklang.SCM.PackageOps.currentBranch ()) ({routerLoc})"
-        let! step = evalUnder state "Darklang.Stdlib.Live.Router.step"
-        let step =
-          match step with
-          | RT.DApplicable a -> a
-          | other -> failtest $"expected the step to be a fn, got {other}"
-        let port = Tests.HttpServer.allocateFreePort ()
-        let cts = new CancellationTokenSource()
-        let! listener = Tests.HttpServer.bindListener port
-        let listenerTask =
-          Builtins.Http.Server.Libs.HttpServer.runListenerLive
-            state
-            listener
-            (int64 port)
-            init
-            step
+            "(Darklang.SCM.PackageOps.currentBranch ())"
+            (locSource [ "LiveBranchHttp" ] "router")
             false
-            Builtins.Http.Server.Libs.HttpServer.defaultMaxBodyBytes
-            false
-            false
-            false
-            cts.Token
-        try
-          let! (status, body) = getText port
-          Expect.equal (status, body) (200, "one") "the version at start"
-
-          do! author "Tests.LiveBranchHttp.page" "(): String = \"two\""
-          let! (_, body) = getText port
-          Expect.equal body "two" "an edit on the branch is on the next request"
-
-          do! author "Tests.LiveBranchHttp.page" "(): String = 3"
-          let! (_, body) = getText port
-          Expect.equal
-            body
-            "two"
-            "a broken save on the branch keeps the last good version"
-
-          do! author "Tests.LiveBranchHttp.page" "(): String = \"three\""
-          let! (_, body) = getText port
-          Expect.equal body "three" "the fix is on the next request"
-        finally
-          cts.Cancel()
-          try
-            listenerTask.Wait 2000 |> ignore<bool>
-          with _ ->
-            ()
+            (fun port ->
+              task {
+                let! (status, body) = getText port
+                Expect.equal (status, body) (200, "one") "the version at start"
+                do! author "Tests.LiveBranchHttp.page" "(): String = \"two\""
+                let! (_, body) = getText port
+                Expect.equal
+                  body
+                  "two"
+                  "an edit on the branch is on the next request"
+              })
       finally
         (archiveBranches target [ "live-serve" ]).Wait()
     })
@@ -812,9 +784,9 @@ let private modelSavesAndResumes =
 
 
 /// The window a live host must never observe: an op is in the log but not yet folded into
-/// `locations`. Authoring inserts, folds, then marks applied in three steps; a poll that lands
-/// between the first and the last used to take the op, resolve the name to the previous hash,
-/// and never look again. Now the op is reported only once it is applied.
+/// `locations`. An op is reported only once it is applied. Authoring inserts, folds, then marks
+/// applied in three steps; a poll that took the op between the insert and the fold would resolve
+/// the name to the previous hash and never look again.
 let private pollIgnoresAnOpUntilItIsApplied =
   cliTest
     "a poll between an op's insert and its fold reports nothing; the poll after reports it"
@@ -828,11 +800,7 @@ let private pollIgnoresAnOpUntilItIsApplied =
           evalUnder
             state
             "Darklang.Stdlib.Live.watch Darklang.SCM.Branch.mainBranchId"
-        let! quiet = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let watch =
-          match quiet with
-          | RT.DTuple(w, RT.DEnum(_, _, _, "None", []), []) -> w
-          | other -> failtest $"a fresh watch reported something: {other}"
+        let! watch = pollQuiet state watch
 
         // Phase 1 of a save, by hand: the op rows land, unapplied. This is what a poll mid-fold sees.
         // A fresh body per run: the log is content-addressed and the store outlives the run.
@@ -851,11 +819,7 @@ let private pollIgnoresAnOpUntilItIsApplied =
                  "ts", Sql.string (LibDB.Inserts.nextOriginTs ()) ] ]))
         statements |> Sql.executeTransactionSync |> ignore<List<int>>
 
-        let! midFold = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let watch =
-          match midFold with
-          | RT.DTuple(w, RT.DEnum(_, _, _, "None", []), []) -> w
-          | other -> failtest $"an op that is not folded yet was reported: {other}"
+        let! watch = pollQuiet state watch
 
         // The fold, then the applied mark, as `insertAndApplyOps` does them.
         do! LibDB.PackageOpPlayback.applyOpsFrom "op" ops
@@ -866,11 +830,7 @@ let private pollIgnoresAnOpUntilItIsApplied =
         |> Sql.executeTransactionSync
         |> ignore<List<int>>
 
-        let! afterFold = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let change =
-          match afterFold with
-          | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ change ]), []) -> change
-          | other -> failtest $"the folded op was not reported: {other}"
+        let! (_, change) = pollChange state watch "the folded op was not reported"
         let! names = callByName state "Darklang.Stdlib.Live.touchedNames" [ change ]
         match names with
         | RT.DList(_, items) ->
@@ -883,8 +843,7 @@ let private pollIgnoresAnOpUntilItIsApplied =
 
 
 /// A branch's own ops are never `applied`: they are stored inert and tagged in one transaction,
-/// so the applied-only rule for main (above) must not hide them from a watch on the branch. It
-/// did: `serve --branch` never saw a save, and demo 2's `--branch` variant could not run.
+/// so the applied-only rule for main (above) must not hide them from a watch on the branch.
 let private pollOnABranchSeesTheBranchsOwnSaves =
   cliTest "a poll on a branch reports the branch's own saves" (fun target ->
     task {
@@ -897,11 +856,7 @@ let private pollOnABranchSeesTheBranchsOwnSaves =
             state
             "Darklang.Stdlib.Live.watch (Darklang.SCM.PackageOps.currentBranch ())"
         do! author "Tests.LiveBranchPoll.leaf" "(): Int = 1"
-        let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let change =
-          match polled with
-          | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ change ]), []) -> change
-          | other -> failtest $"the branch save was not reported: {other}"
+        let! (_, change) = pollChange state watch "the branch save was not reported"
         let! names = callByName state "Darklang.Stdlib.Live.touchedNames" [ change ]
         match names with
         | RT.DList(_, items) ->
@@ -934,8 +889,7 @@ let private aFixedCalleeIsNotAdoptedThroughItsBrokenDependent =
             $"Tests.{m}.router"
             $"(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdlib.Http.responseWithText (Tests.{m}.page ()) 200"
 
-        let routerLoc =
-          $"(Darklang.LanguageTools.ProgramTypes.PackageLocation {{ owner = \"Tests\"; modules = [\"{m}\"]; name = \"router\" }})"
+        let routerLoc = "(" + locSource [ m ] "router" + ")"
         let! lg =
           evalUnder
             state
@@ -954,11 +908,7 @@ let private aFixedCalleeIsNotAdoptedThroughItsBrokenDependent =
             state
             "Darklang.Stdlib.Live.watch Darklang.SCM.Branch.mainBranchId"
         do! author $"Tests.{m}.page" "(): String = 3"
-        let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let watch =
-          match polled with
-          | RT.DTuple(w, RT.DEnum(_, _, _, "Some", [ _ ]), []) -> w
-          | other -> failtest $"the break was not reported: {other}"
+        let! (watch, _) = pollChange state watch "the break was not reported"
         let! lg =
           callByName
             state
@@ -974,10 +924,7 @@ let private aFixedCalleeIsNotAdoptedThroughItsBrokenDependent =
         let! _ =
           authorIntoMain
             $"module Tests.{m}\n\nlet page () : String = \"fixed {body}\""
-        let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        match polled with
-        | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ _ ]), []) -> ()
-        | other -> failtest $"the fix was not reported: {other}"
+        let! _ = pollChange state watch "the fix was not reported"
         let! lg =
           callByName
             state
@@ -1010,50 +957,31 @@ let private devErrorPageCarriesTheListener =
           author
             "Tests.LiveDev.router"
             "(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdlib.Http.responseWithText (Stdlib.Int.toString (Stdlib.Int.divide 1 0)) 200"
-        let routerLoc =
-          "Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = [\"LiveDev\"]; name = \"router\" }"
-        let! init =
-          evalUnder
+        do!
+          withLiveServer
             state
-            $"Darklang.Stdlib.Live.Router.start Darklang.SCM.Branch.mainBranchId ({routerLoc})"
-        let! step = evalUnder state "Darklang.Stdlib.Live.Router.step"
-        let step =
-          match step with
-          | RT.DApplicable a -> a
-          | other -> failtest $"expected the step to be a fn, got {other}"
-        let port = Tests.HttpServer.allocateFreePort ()
-        let cts = new CancellationTokenSource()
-        let! listener = Tests.HttpServer.bindListener port
-        let listenerTask =
-          Builtins.Http.Server.Libs.HttpServer.runListenerLive
-            state
-            listener
-            (int64 port)
-            init
-            step
+            "Darklang.SCM.Branch.mainBranchId"
+            (locSource [ "LiveDev" ] "router")
             true
-            Builtins.Http.Server.Libs.HttpServer.defaultMaxBodyBytes
-            false
-            false
-            false
-            cts.Token
-        try
-          use client = new System.Net.Http.HttpClient()
-          let! response = client.GetAsync($"http://localhost:{port}/")
-          let! body = response.Content.ReadAsStringAsync()
-          Expect.equal (int response.StatusCode) 500 "the handler failed"
-          Expect.stringContains
-            (string response.Content.Headers.ContentType)
-            "text/html"
-            "the failure is a page"
-          Expect.stringContains body "/__live" "and the page carries the listener"
-          Expect.stringContains body "The handler failed" "with the error on it"
-        finally
-          cts.Cancel()
-          try
-            listenerTask.Wait 2000 |> ignore<bool>
-          with _ ->
-            ()
+            (fun port ->
+              task {
+                use client = new System.Net.Http.HttpClient()
+                let! response = client.GetAsync($"http://localhost:{port}/")
+                let! body = response.Content.ReadAsStringAsync()
+                Expect.equal (int response.StatusCode) 500 "the handler failed"
+                Expect.stringContains
+                  (string response.Content.Headers.ContentType)
+                  "text/html"
+                  "the failure is a page"
+                Expect.stringContains
+                  body
+                  "/__live"
+                  "and the page carries the listener"
+                Expect.stringContains
+                  body
+                  "The handler failed"
+                  "with the error on it"
+              })
       })
 
 /// The Dark source for an annotated print of a function: its live values, one per call at a
@@ -1208,8 +1136,7 @@ let private observeAndShow =
       task {
         let state = executionState target
         let author = author target
-        let viewLoc =
-          "(Darklang.LanguageTools.ProgramTypes.PackageLocation { owner = \"Tests\"; modules = []; name = \"LiveObs\" })"
+        let viewLoc = ("(" + locSource [] "LiveObs" + ")")
         let observe () =
           evalUnder
             state
@@ -1329,8 +1256,8 @@ let private observeAndShow =
         // The same wake carried the render's save, so the reload's toast wins over "showing".
         Expect.stringContains
           (String.concat " " after)
-          "Tests.LiveObs"
-          "and the frame names the view it moved to"
+          "changed:"
+          "and the toast says what changed, not that it switched"
       })
 
 

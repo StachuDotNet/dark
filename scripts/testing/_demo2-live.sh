@@ -42,8 +42,7 @@ x A fn Demo.Site.router '(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdl
 echo "--- B syncs once, then follows on the sync daemon"
 x B sync | tail -1
 # The auto-sync daemon: `dark sync` every apps.sync.intervalMs, as a detached `dark apps daemon-main
-# sync` (a command, so it has the host's transport; an `eval` guest did not, which is why this used to
-# be a shell loop).
+# sync` (a command, so it has the host's transport).
 x B config set apps.sync.intervalMs 2000 | tail -1
 x B apps start sync | tail -1
 DPID=""
@@ -57,7 +56,7 @@ x A fn Demo.Site.page '(): String = "site v2"' | grep -E "autopush|Pushed" | hea
 for i in $(seq 1 40); do body=$(curl -s "http://localhost:$SPORT/"); [ "$body" = "site v2" ] && break; sleep 0.5; done
 echo "B serves: $body after $(( $(date +%s) - T0 ))s"
 echo "--- A breaks the page; B keeps the last good one"
-x A fn Demo.Site.page '(): String = 3' | grep -E "autopush|Pushed|At-rest" | head -3
+x A fn Demo.Site.page '(): String = 3' | grep -E "autopush|Pushed|Type check" | head -3
 sleep 6
 echo "B serves: $(curl -s http://localhost:$SPORT/)"
 grep "\[live\]" "$ROOT/serve.log" | tail -2

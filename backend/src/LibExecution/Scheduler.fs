@@ -881,7 +881,7 @@ type Scheduler(quantum : int64) =
             [] }
 
   /// `Snapshot`, for this scheduler's own table.
-  member internal this.SnapshotHere() : list<ProcessSummary> =
+  member this.SnapshotHere() : list<ProcessSummary> =
     lock sync (fun () -> processes.Values |> Seq.map this.SummaryOf |> List.ofSeq)
 
 

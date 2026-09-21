@@ -710,8 +710,7 @@ let aPullIsReportedByThePoller =
     task {
       activate b
       // The same state the other Dark-driven two-store tests use (`evalDarkExpr`'s), built AFTER
-      // the swap so its package manager answers from the store that is active. Under the CLI
-      // harness's state this raised ValueNotFound for `mainBranchId` in the full run only.
+      // the swap so its package manager answers from the store that is active.
       let! state = executionStateFor pmPT false Map.empty
       let poll (watch : RT.Dval) =
         Tests.CliTestHarness.callByName state "Darklang.Stdlib.Live.poll" [ watch ]

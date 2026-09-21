@@ -19,7 +19,7 @@ open TestUtils.PTShortcuts
 /// Every call is followed by `TraceExpr(exprId, resultReg)`, the live-values hook
 /// (`docs/live.md`, "Live values"). The expectations below were written for the
 /// instruction stream without it and are about everything else, so it is dropped
-/// before comparing; `LiveValues.traceExprFollowsEveryCall` checks it on its own. A
+/// before comparing; `LiveValues.traceExprFollowsACall` checks it on its own. A
 /// jump that spans a call counts the hook too, so those offsets are one more than
 /// the plain stream would have.
 let rec withoutTraceExpr (instrs : List<RT.Instruction>) : List<RT.Instruction> =
@@ -1759,8 +1759,8 @@ module PackageFn =
 module LiveValues =
   /// The hook the live values ride on: right after a call's `Apply`, a `TraceExpr`
   /// carrying the `EApply`'s own id and the register the result landed in.
-  let traceExprFollowsEveryCall =
-    testTask "every EApply is followed by TraceExpr with its id and result register" {
+  let traceExprFollowsACall =
+    testTask "an EApply is followed by TraceExpr with its id and result register" {
       let expr = E.Fns.Builtin.fullyApplied
       let exprId =
         match expr with
@@ -1782,7 +1782,7 @@ module LiveValues =
       | None -> failtest "no TraceExpr followed the Apply"
     }
 
-  let tests = testList "LiveValues" [ traceExprFollowsEveryCall ]
+  let tests = testList "LiveValues" [ traceExprFollowsACall ]
 
 
 let tests =

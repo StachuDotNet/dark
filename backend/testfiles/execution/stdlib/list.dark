@@ -11,6 +11,10 @@ Stdlib.List.isEmpty [] = true
 
 Stdlib.List.map [ 1L, 2L ] (fun x -> x + 1L) = [ 2L, 3L ]
 
+// A run nobody scheduled (this harness) spawns onto the shared scheduler.
+Stdlib.List.parallelMap [ 1L, 2L, 3L ] (fun x -> x * 2L) = [ 2L, 4L, 6L ]
+Stdlib.List.parallelMap [] (fun x -> x) = []
+
 
 Stdlib.List.append [ 1L, 2L, 3L ] [ 4L, 5L, 6L ] = [ 1L, 2L, 3L, 4L, 5L, 6L ]
 Stdlib.List.append [ 3L, 4L ] [ 5L, 6L ] = [ 3L, 4L, 5L, 6L ]
