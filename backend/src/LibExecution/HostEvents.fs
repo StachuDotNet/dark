@@ -42,9 +42,9 @@ type HostEvent =
   /// A key, already in its Dark shape (`Stdlib.Cli.Stdin.KeyRead`). The reader thread builds it;
   /// the scheduler hands it over untouched.
   | Key of keyRead : RT.Dval
-  /// The store's data version moved. `change` is `Stdlib.Host.Change`: `Unknown` until live's
-  /// `scmOpsSince` lands and the poll can say what changed.
-  | StoreChanged of change : RT.Dval
+  /// The store's data version moved. Carries nothing: which ops landed is Dark's question,
+  /// answered by `Stdlib.Host.await` before the loop sees the event.
+  | StoreChanged
   /// A timer registered by a subscription fired.
   | Timer of TimerId
   /// The task a process was parked on finished (well or badly). Internal: the scheduler resumes
@@ -72,13 +72,9 @@ type Sources =
     mutable readKey : Option<unit -> RT.Dval>
     /// The store's current data version, cheap enough to call five times a second.
     mutable storeVersion : Option<unit -> int64>
-    /// How `StoreChanged` describes what changed, if the host has a way to say from here. None:
-    /// the event carries `Unit`, and `Stdlib.Host.await` describes the change in Dark
-    /// (`Stdlib.Live.poll`) before the loop sees it.
-    mutable storeChange : Option<unit -> RT.Dval>
   }
 
-let sources : Sources = { readKey = None; storeVersion = None; storeChange = None }
+let sources : Sources = { readKey = None; storeVersion = None }
 
 
 /// One scheduler's queue, plus the one-shot timers it arms.
@@ -194,12 +190,8 @@ type private StorePoll(version : unit -> int64, intervalMs : int) =
             lastVersion
         if now <> lastVersion then
           lastVersion <- now
-          let change =
-            match sources.storeChange with
-            | Some describe -> describe ()
-            | None -> RT.DUnit
           for q in watchers.Keys do
-            q.Post(HostEvent.StoreChanged change)),
+            q.Post HostEvent.StoreChanged),
       null,
       intervalMs,
       intervalMs

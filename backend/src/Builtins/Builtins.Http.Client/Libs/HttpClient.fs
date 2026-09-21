@@ -220,7 +220,7 @@ let private fetchOutcome
       Dval.resultError KTBlob KTString (DString $"{verb} failed: {reason}")
 
 /// One Sync-profile host request. The caller gate has already run; the instance policy
-/// scopes the URL, which is what replaced the origin allowlist.
+/// scopes the URL.
 let private syncOp
   (method : string)
   (uri : string)
@@ -250,6 +250,19 @@ let private pendingFetches =
 open LibExecution.Builtin.Shortcuts
 
 
+/// `Result<Response, RequestError>`, the answer of `read` and `request`.
+let private responseOk (response : Dval) : Dval =
+  Dval.resultOk
+    (KTCustomType(responseOKType (), []))
+    (KTCustomType(responseErrorType (), []))
+    response
+
+let private responseError (error : Dval) : Dval =
+  Dval.resultError
+    (KTCustomType(responseOKType (), []))
+    (KTCustomType(responseErrorType (), []))
+    error
+
 /// One guest-profile request, named for the loop to perform: the shared body of
 /// `httpClientRead` and `httpClientRequest`. `wrapper` is the Dark fn a bad header names.
 let private guestRequest
@@ -260,10 +273,8 @@ let private guestRequest
   (reqHeaders : List<Dval>)
   (body : byte[])
   : Ply<Dval> =
-  let responseTypeOK = KTCustomType(responseOKType (), [])
-  let responseTypeErr = KTCustomType(responseErrorType (), [])
-  let resultOk = Dval.resultOk responseTypeOK responseTypeErr
-  let resultError = Dval.resultError responseTypeOK responseTypeErr
+  let resultOk = responseOk
+  let resultError = responseError
   match parseHeaders vm (FQFnName.fqPackage (wrapper ())) reqHeaders with
   | Error headerError ->
     Ply(
@@ -334,10 +345,7 @@ let fns () : List<BuiltInFn> =
               [||]
           | _ ->
             Ply(
-              Dval.resultError
-                (KTCustomType(responseOKType (), []))
-                (KTCustomType(responseErrorType (), []))
-                (RequestError.toDT HostTypes.HttpRequestError.BadMethod)
+              responseError (RequestError.toDT HostTypes.HttpRequestError.BadMethod)
             )
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable

@@ -8,8 +8,8 @@
 ///   buffering) would add synchronization semantics Dark does not
 ///   have elsewhere; revisit if fan-in/fan-out becomes a real use
 ///   case.
-/// - Actor-mailbox (Erlang-style, with a scheduler) is out of scope
-///   given Dark has no scheduler story.
+/// - Actor mailboxes are not streams: `Exec.spawn` and `Host.await`
+///   are the process story, this is the lazy-sequence one.
 module Builtins.Pure.Libs.Stream
 
 open System.Threading.Tasks

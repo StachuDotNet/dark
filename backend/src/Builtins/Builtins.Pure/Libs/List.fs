@@ -6,10 +6,8 @@ open LibExecution.Builtin.Shortcuts
 
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
-module Exe = LibExecution.Execution
 module Interpreter = LibExecution.Interpreter
 module TypeChecker = LibExecution.TypeChecker
-module ValueType = LibExecution.ValueType
 module RTE = RuntimeError
 
 
@@ -42,127 +40,11 @@ module DvalComparator =
     | Less -> -1
     | Equal -> 0
 
-// Based on https://github.com/dotnet/runtime/blob/57bfe474518ab5b7cfe6bf7424a79ce3af9d6657/src/coreclr/tools/Common/Sorting/MergeSortCore.cs#L55
-module Sort =
-  exception InvalidSortComparatorInt of int64
-
-  type Comparer = Dval -> Dval -> Ply<int>
-
-  type Array = array<Dval>
-
-  let copy
-    (source : Array)
-    (sourceIndex : int)
-    (target : Array)
-    (destIndex : int)
-    (length : int)
-    : unit =
-    System.Array.Copy(source, sourceIndex, target, destIndex, length)
-
-  let merge
-    (localCopyofHalfOfArray : Array)
-    (arrayToSort : Array)
-    (index : int)
-    (halfLen : int)
-    (length : int)
-    (comparer : Comparer)
-    : Ply<unit> =
-    uply {
-      let mutable leftHalfIndex = 0
-      let mutable rightHalfIndex = index + halfLen
-      let rightHalfEnd = index + length
-
-      // this whole thing is just a hacky for-loop with breaks
-      let mutable i' = 0
-      let mutable cont = true
-
-      while (cont && i' < length) do
-        // Advance the array here to make sure we do it, but use `i` for the calculations
-        let i = i'
-        i' <- i' + 1
-
-        if (leftHalfIndex = halfLen) then
-          // All of the remaining elements must be from the right half, and thus must already be in position
-          cont <- false // break
-        elif rightHalfIndex = rightHalfEnd then
-          // Copy remaining elements from the local copy
-          copy
-            localCopyofHalfOfArray
-            leftHalfIndex
-            arrayToSort
-            (index + i)
-            (length - i)
-
-          cont <- false // break
-        else
-          let v0 = localCopyofHalfOfArray[leftHalfIndex]
-          let v1 = arrayToSort[rightHalfIndex]
-          let! comparisonResult = comparer v0 v1
-
-          if comparisonResult <= 0 then
-            arrayToSort[i + index] <- v0
-            leftHalfIndex <- leftHalfIndex + 1
-          else
-            arrayToSort[i + index] <- v1
-            rightHalfIndex <- rightHalfIndex + 1
-    }
-
-  let rec mergeSortHelper
-    (arrayToSort : Array)
-    (index : int)
-    (length : int)
-    (comparer : Comparer)
-    (scratchSpace : Array)
-    : Ply<unit> =
-    uply {
-      if length <= 1 then
-        return ()
-      elif length = 2 then
-        let v0 = arrayToSort[index]
-        let v1 = arrayToSort[index + 1]
-        let! result = comparer v0 v1
-
-        if result > 0 then
-          arrayToSort[index] <- v1
-          arrayToSort[index + 1] <- v0
-
-      else
-        let halfLen = length / 2
-        do! mergeSortHelper arrayToSort index halfLen comparer scratchSpace
-
-        let nextIndex = index + halfLen
-        let nextLength = length - halfLen
-        do! mergeSortHelper arrayToSort nextIndex nextLength comparer scratchSpace
-
-        copy arrayToSort index scratchSpace 0 halfLen
-        return! merge scratchSpace arrayToSort index halfLen length comparer
-    }
-
-  let sequentialSort
-    (arrayToSort : Array)
-    (index : int)
-    (length : int)
-    (comparer : Comparer)
-    : Ply<unit> =
-    let scratchSpace =
-      System.Array.CreateInstance(typeof<Dval>, arrayToSort.Length / 2) :?> Array
-
-    mergeSortHelper arrayToSort index length comparer scratchSpace
-
-  let sort (comparer : Comparer) (arrayToSort : Array) : Ply<unit> =
-    sequentialSort arrayToSort 0 arrayToSort.Length comparer
-
 let varA = TVariable "a"
 let varB = TVariable "b"
 let varC = TVariable "c"
 
 
-/// The result of a `map`: its element type comes from the values the lambda returned.
-///
-/// Same shape as `listFlatten`. Merge the element ValueTypes where they agree and build the list
-/// directly; where they do not, hand it to `DvalCreator.list`, which is the general path and reports
-/// the mismatch properly. Accumulating with `push`, which is what the Dark version did, merged the
-/// same types one element at a time.
 /// Sort (key, value) pairs the way the Dark `sortBy` did.
 ///
 /// It was `map (fun x -> (fn x, x)) |> sort |> map Tuple2.second`, so it sorted the *tuple*, and
@@ -180,6 +62,12 @@ let private sortedByKey
   |> fun l -> DList(vt, l)
 
 
+/// The result of a `map`: its element type comes from the values the lambda returned.
+///
+/// Same shape as `listFlatten`. Merge the element ValueTypes where they agree and build the list
+/// directly; where they do not, hand it to `DvalCreator.list`, which is the general path and reports
+/// the mismatch properly. Accumulating with `push`, which is what the Dark version did, merged the
+/// same types one element at a time.
 let private mappedList (vm : VMState) (items : List<Dval>) : Dval =
   let merged =
     items
@@ -228,10 +116,6 @@ let private mappedListOrPromise (vm : VMState) (items : List<Dval>) : Dval =
     mappedList vm items
 
 
-/// A `filter` predicate returned something other than a bool.
-///
-/// The same error the Dark version raised, since its body was `if f elem then ... else ...` and this
-/// is what the interpreter says about an `if` on a non-bool.
 /// A `filterMap` function that returned something other than an `Option`.
 ///
 /// The Dark version matched `Some`/`None` and would fail with "No matching case found" on anything
@@ -244,12 +128,21 @@ let private notAnOption (actual : Dval) =
   )
 
 
+/// A `filter` predicate returned something other than a bool.
+///
+/// The same error the Dark version raised, since its body was `if f elem then ... else ...` and this
+/// is what the interpreter says about an `if` on a non-bool.
 let private predicateNotBool (actual : Dval) =
   RuntimeError.Bool(
     RuntimeError.Bools.ConditionRequiresBool(Dval.toValueType actual, actual)
   )
 
 
+// Every builtin here that takes a callable applies it as a frame on the caller's own stack
+// (`Interpreter.requestApply`), not a nested VM: `ps` sees the lambda, the budget can preempt
+// it, and a read in it parks the process. Where the builtin looks at the answer (a predicate,
+// a key, the value built so far) the answer is forced; where it only collects it (`map`), a
+// read still in flight stays in flight and the list comes back as one promise.
 let fns () : List<BuiltInFn> =
   [ { name = fn "listFold" 0
       typeParams = []
@@ -268,9 +161,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, vm, [], [| DList(_, items); init; DApplicable app |] ->
-          // Each step is a frame on the caller's own stack (`Interpreter.requestApply`). The
-          // value built so far is forced before the next step (`withValue`): the lambda takes it
-          // as an argument.
+          // The value built so far is forced before the next step (`withValue`): the lambda
+          // takes it as an argument.
           match items with
           | [] -> Ply init
           | first :: tail ->
@@ -351,7 +243,6 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, vm, [], [| DList(_, items); DApplicable app |] ->
-          // Each application is a frame on the caller's own stack (`Interpreter.requestApply`).
           // Built back to front and reversed once. A read a lambda hands back stays in flight and
           // the list comes back as one promise (`mappedListOrPromise`).
           match items with
@@ -391,8 +282,7 @@ let fns () : List<BuiltInFn> =
           // Was two interpreted passes and a tuple per element around a native sort: one `map` to
           // build `(key, value)`, the sort, then a second `map` of `Tuple2.second`, which is why
           // `Tuple2.second` showed up in profiles of code that never mentions it. Only the key
-          // function needs interpreting, and each of its applications is a frame on the caller's
-          // own stack (`Interpreter.requestApply`); a key is looked at, so it is forced.
+          // function needs interpreting.
           //
           // The result keeps the source list's ValueType: sorting is a permutation, so the elements
           // are exactly the ones already merged into it. `listSort` does the same.
@@ -437,8 +327,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, [], [| DList(_, items); DApplicable app |] ->
           // The Dark version recursed a package call, an Option match and a `push` per element on
           // top of the lambda application, and it is used widely enough for that to show up in a
-          // profile of anything. Each application is a frame on the caller's own stack
-          // (`Interpreter.requestApply`); the Option is looked at, so it is forced.
+          // profile of anything.
           //
           // Built back to front and reversed once, as `listMap` does.
           match items with
@@ -508,10 +397,10 @@ let fns () : List<BuiltInFn> =
           Param.make "bs" (TList varB) ""
           Param.makeWithArgs
             "fn"
-            (TFn(NEList.doubleton varA varB, TVariable "c"))
+            (TFn(NEList.doubleton varA varB, varC))
             ""
             [ "a"; "b" ] ]
-      returnType = TList(TVariable "c")
+      returnType = TList varC
       description =
         "Maps <param fn> over <param as> and <param bs> in parallel, stopping when either runs "
         + "out"
@@ -520,8 +409,7 @@ let fns () : List<BuiltInFn> =
         | _, vm, [], [| DList(_, listA); DList(_, listB); DApplicable app |] ->
           // The Dark version recursed with `pushBack`, which copies the accumulator every element,
           // so it was quadratic on top of the package call and the two-argument lambda application.
-          // Built back to front and reversed once, as `listMap` and `listIndexedMap` do; each
-          // application is a frame on the caller's own stack (`Interpreter.requestApply`).
+          // Built back to front and reversed once, as `listMap` and `listIndexedMap` do.
           match listA, listB with
           | a :: tailA, b :: tailB ->
             let mutable acc = []
@@ -555,9 +443,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, vm, [], [| DList(_, items); DApplicable app |] ->
-          // Each application is a frame on the caller's own stack (`Interpreter.requestApply`),
-          // not a nested VM: `ps` sees the lambda, the budget can preempt it, and a read in it
-          // parks the process. Built back to front and reversed once at the end. A lambda that
+          // Built back to front and reversed once at the end. A lambda that
           // returns a read still in flight hands it back as it is, and the list comes back as one
           // promise (`mappedListOrPromise`). One continuation for the whole list, over two
           // mutable cells, rather than a closure per element.
@@ -594,9 +480,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, vm, [], [| DList(vt, items); DApplicable app |] ->
           // The result holds a subset of the values that came in, so it keeps their ValueType
-          // exactly. Nothing to merge, and nothing that can fail to. Each application is a frame
-          // on the caller's own stack (`Interpreter.requestApply`); the answer is looked at, so
-          // it is forced.
+          // exactly. Nothing to merge, and nothing that can fail to.
           match items with
           | [] -> Ply(DList(vt, []))
           | first :: tail ->
@@ -680,8 +564,6 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, vm, [], [| DList(_, items); DApplicable app |] ->
-          // Each application is a frame on the caller's own stack (`Interpreter.requestApply`);
-          // the answer is looked at, so it is forced.
           match items with
           | [] -> Ply(DBool false)
           | first :: tail ->
@@ -727,7 +609,7 @@ let fns () : List<BuiltInFn> =
             | [] -> false
             | elem :: tail ->
               let vtElem = Dval.toValueType elem
-              match ValueType.merge vtElem vtValue with
+              match VT.merge vtElem vtValue with
               | Error _ ->
                 RTE.EqualityCheckOnIncompatibleTypes(vtElem, vtValue)
                 |> raiseRTE vm.threadID
@@ -752,8 +634,6 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, vm, [], [| DList(vt, items); DApplicable app |] ->
-          // Each application is a frame on the caller's own stack (`Interpreter.requestApply`);
-          // the answer is looked at, so it is forced.
           match items with
           | [] -> Ply(TypeChecker.DvalCreator.option vm.threadID vt None)
           | first :: tail ->

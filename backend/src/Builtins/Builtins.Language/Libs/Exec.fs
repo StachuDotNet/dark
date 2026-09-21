@@ -1,4 +1,5 @@
-/// The process table, for `dark ps`: what the scheduler in this instance is running, as data.
+/// Processes, as Dark sees them: the table `dark ps` renders, and spawn, await and cancel over
+/// the scheduler.
 ///
 /// Beside Instrumentation for the same reason that sits beside Reflection: these report on the
 /// system executing the code. Everything here is a copy taken on the scheduler thread through
@@ -127,11 +128,21 @@ let private detailToDT (p : Scheduler.ProcessSummary) : Dval =
 /// `None` for no preference. It runs on the scheduler's own thread, unscheduled, between slices,
 /// so it should be quick and should not wait; a failure or an answer of another shape counts as
 /// no preference for that turn, and the first failure is said once on stderr.
+/// What stderr says once when `exec.policy` cannot be used for a turn: the setting, what went
+/// wrong, and how to put it back.
+let policyComplaint (policy : string) (what : string) : string =
+  $"exec.policy: {policy} {what}; round robin for this turn. "
+  + "`dark config set exec.policy Darklang.Stdlib.Exec.Policy.roundRobin` resets it."
+
 let chooserFor
   (state : ExecutionState)
   (fn : FQFnName.FQFnName)
   : List<Scheduler.ProcessSummary> -> Option<Scheduler.ProcessId> =
   let mutable complained = false
+  let complain (what : string) =
+    if not complained then
+      complained <- true
+      System.Console.Error.WriteLine(policyComplaint (string fn) what)
   // The policy's own calls are nobody's business: they are not in the trace of whatever runs.
   let state = { state with tracing = LibExecution.Execution.noTracing }
   fun runnable ->
@@ -145,31 +156,21 @@ let chooserFor
       | Ok(DEnum(_, _, _, "Some", [ DUuid id ])) -> Some id
       | Ok(DEnum(_, _, _, "None", [])) -> None
       | Ok other ->
-        if not complained then
-          complained <- true
-          System.Console.Error.WriteLine
-            $"exec.policy: the policy answered {other} rather than a process id; round robin for now"
+        complain $"answered {other} rather than a process id"
         None
       | Error(rte, _) ->
-        if not complained then
-          complained <- true
-          System.Console.Error.WriteLine
-            $"exec.policy: the policy failed ({rte}); round robin for now"
+        complain $"failed ({rte})"
         None
     with ex ->
-      if not complained then
-        complained <- true
-        System.Console.Error.WriteLine
-          $"exec.policy: the policy failed ({ex.Message}); round robin for now"
+      complain $"failed ({ex.Message})"
       None
 
 
-/// The scheduler this call runs under, if any. Without one (a plain `execute`) the table is
-/// empty rather than an error: there are no processes to list.
+/// The table of the scheduler this call runs under; a run nobody scheduled sees the shared one,
+/// where its own spawns live.
 let private snapshot () : List<Scheduler.ProcessSummary> =
-  match Scheduler.Scheduler.Current with
-  | Some s -> s.Snapshot() |> List.sortBy (fun p -> p.started)
-  | None -> []
+  Scheduler.Scheduler.CurrentOrShared.Snapshot()
+  |> List.sortBy (fun p -> p.started)
 
 
 /// `Stdlib.Exec.Handle<'a>`: what `spawn` hands back, `{ id }`.
@@ -197,15 +198,28 @@ let private resultOf (vm : VMState) (result : ExecutionResult) : Dval =
     vm.nestedCallStack <- stack
     raiseRTE vm.threadID rte
 
+/// A handle the table does not know: never spawned on this instance, or finished long enough
+/// ago to have been forgotten (the table keeps the last few dozen finished processes).
+let private noSuchProcess () : RuntimeError.Error =
+  RuntimeError.UncaughtException(
+    "no process has this handle: it was not spawned here, or it finished long enough ago "
+    + "to be forgotten (`Exec.await` it before many others finish)",
+    []
+  )
+
+/// Tell `ps` what the calling process is about to park on.
+let private parkOn (p : Scheduler.Process) : unit =
+  match Scheduler.Scheduler.CurrentProcess with
+  | Some me -> me.parkHint <- ValueSome(Scheduler.OnProcess p.id)
+  | None -> ()
+
 /// Wait for `p`, parking the calling process when there is one.
 let private awaitProcess (vm : VMState) (p : Scheduler.Process) : Ply<Dval> =
   let task = p.completion.Task
   if task.IsCompletedSuccessfully then
     Ply(resultOf vm task.Result)
   else
-    match Scheduler.Scheduler.CurrentProcess with
-    | Some me -> me.parkHint <- ValueSome(Scheduler.OnProcess p.id)
-    | None -> ()
+    parkOn p
     uply {
       let! result = task
       return resultOf vm result
@@ -233,6 +247,8 @@ let fns () : List<BuiltInFn> =
       sqlSpec = NotQueryable
       previewable = Impure
       deprecated = NotDeprecated
+      // The table is not a trace; `TraceRead`/`TraceWrite` are borrowed because they are
+      // on by default and a read is a read: `ps` needs no permission of its own.
       callEffects = set [ LibExecution.Effects.Effect.TraceRead ] }
     { name = fn "execList" 0
       typeParams = []
@@ -361,9 +377,7 @@ let fns () : List<BuiltInFn> =
           let pid = pidOfHandle vm handle
           match Scheduler.Scheduler.CurrentOrShared.Find pid with
           | Some p -> awaitProcess vm p
-          | None ->
-            RuntimeError.UncaughtException("no process has this handle", [])
-            |> raiseRTE vm.threadID
+          | None -> noSuchProcess () |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -405,9 +419,7 @@ let fns () : List<BuiltInFn> =
             elif ms <= 0L then
               Ply(optionOf None)
             else
-              match Scheduler.Scheduler.CurrentProcess with
-              | Some me -> me.parkHint <- ValueSome(Scheduler.OnProcess p.id)
-              | None -> ()
+              parkOn p
               uply {
                 // The timer is dropped as soon as the process wins, so a short await inside a
                 // loop does not leave a timer per iteration ticking.
@@ -424,9 +436,7 @@ let fns () : List<BuiltInFn> =
                   cts.Cancel()
                   return some task.Result
               }
-          | None ->
-            RuntimeError.UncaughtException("no process has this handle", [])
-            |> raiseRTE vm.threadID
+          | None -> noSuchProcess () |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -468,9 +478,7 @@ let fns () : List<BuiltInFn> =
               let pid = pidOfHandle vm h
               match s.Find pid with
               | Some p -> h, p
-              | None ->
-                RuntimeError.UncaughtException("no process has this handle", [])
-                |> raiseRTE vm.threadID)
+              | None -> noSuchProcess () |> raiseRTE vm.threadID)
           match procs with
           | [] ->
             RuntimeError.UncaughtException("select needs at least one handle", [])
@@ -545,9 +553,7 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | _, _, _, [| DUuid id |] ->
-          match Scheduler.Scheduler.Current with
-          | Some s -> DBool(s.Kill id) |> Ply
-          | None -> DBool false |> Ply
+          DBool(Scheduler.Scheduler.CurrentOrShared.Kill id) |> Ply
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

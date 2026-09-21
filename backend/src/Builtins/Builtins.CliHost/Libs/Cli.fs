@@ -631,7 +631,7 @@ let execute
 
       // Under the scheduler each expression is its own process, spawned from the CLI's
       // process and awaited: it budget-yields, `ps` lists it, and a `readKey` in it parks
-      // instead of holding the thread. Without one (tests, the LSP) it runs inline as before.
+      // instead of holding the thread. Without one (tests, the LSP) it runs inline.
       let runOne (instr : RT.Instructions) : Ply<RT.ExecutionResult> =
         match Scheduler.Scheduler.Current, Scheduler.Scheduler.CurrentProcess with
         | Some s, Some parent ->

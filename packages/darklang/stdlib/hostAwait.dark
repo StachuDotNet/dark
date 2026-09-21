@@ -24,6 +24,15 @@ type EventSpec =
   | ExecDone of id: Uuid
 
 
+/// What the runtime delivers: the first of the requested specs to happen, before `await` has
+/// described a store change. `Builtin.hostAwait` returns this; loops see `Event`.
+type RawEvent =
+  | Key of Stdlib.Cli.Stdin.KeyRead.KeyRead
+  | StoreChanged
+  | Timer
+  | ExecDone of id: Uuid
+
+
 /// What `Host.await` came back with: the first of the requested specs to happen.
 type Event =
   /// One read of the keyboard, as the runtime reads it: a key, a paste, or a coalesced burst with
@@ -70,8 +79,10 @@ let begin () : Unit =
 /// to carry no op (the counter moves for a config write too) is not an event, and the wait goes on.
 let await (specs: List<EventSpec>) : Event =
   match Builtin.hostAwait specs with
-  | StoreChanged _ ->
+  | Key k -> Event.Key k
+  | Timer -> Event.Timer
+  | ExecDone id -> Event.ExecDone id
+  | StoreChanged ->
     match describeChange () with
     | Some change -> Event.StoreChanged change
     | None -> await specs
-  | event -> event

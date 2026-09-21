@@ -146,7 +146,8 @@ let private resolveEntryPoint () : RT.FQFnName.FQFnName =
 /// The store-change source for the scheduler's poll: `LibDB.Sqlite.DataVersion`, one held
 /// connection per store, since `PRAGMA data_version` answers per connection.
 let private installStoreVersionSource () : unit =
-  Builtins.Cli.Libs.Stdin.installStoreVersionSource LibDB.Sqlite.DataVersion.current
+  LibExecution.HostEvents.sources.storeVersion <-
+    Some LibDB.Sqlite.DataVersion.current
 
 /// The store's `exec.*` settings, read in one query at startup (each `Config.get` is a round
 /// trip of about 8 KB, and the allocation gate counts startup). Empty when the store cannot
@@ -199,8 +200,11 @@ let private installPolicy
             Builtins.Language.Libs.Exec.chooserFor state fn
           )
       | None ->
-        System.Console.Error.WriteLine
-          $"exec.policy '{named}' didn't resolve; scheduling round robin"
+        System.Console.Error.WriteLine(
+          Builtins.Language.Libs.Exec.policyComplaint
+            named
+            "did not resolve to a function"
+        )
     | [] -> ()
 
 let execute

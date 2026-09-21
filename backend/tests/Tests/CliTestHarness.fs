@@ -304,7 +304,8 @@ type LoopDriver =
   { scheduler : LibExecution.Scheduler.Scheduler; state : RT.ExecutionState }
 
 let loopDriver (state : RT.ExecutionState) : LoopDriver =
-  Builtins.Cli.Libs.Stdin.installStoreVersionSource LibDB.Sqlite.DataVersion.current
+  LibExecution.HostEvents.sources.storeVersion <-
+    Some LibDB.Sqlite.DataVersion.current
   { scheduler =
       LibExecution.Scheduler.Scheduler(LibExecution.Scheduler.defaultQuantum)
     state = state }
@@ -366,7 +367,7 @@ let pushKey (d : LoopDriver) (key : string) (char : string) : Task<unit> =
 /// Say the store moved: what the store poll would post. `Host.await` then asks the op log what
 /// landed, so a tick with nothing new is absorbed and the loop keeps waiting.
 let pushTick (d : LoopDriver) : unit =
-  d.scheduler.PushEvent(LibExecution.HostEvents.HostEvent.StoreChanged RT.DUnit)
+  d.scheduler.PushEvent LibExecution.HostEvents.HostEvent.StoreChanged
 
 
 // ─── Test builders ────────────────────────────────────────────────────────

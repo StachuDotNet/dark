@@ -68,10 +68,7 @@ type ExecutionPoint =
 
 type Detail =
   { summary: Summary
-    /// The call stack at the moment of the snapshot, outermost first. A process parked
-    /// inside a higher-order builtin (`List.map f` where `f` waits) shows the frame that
-    /// called the builtin; the lambda's own frames are in a nested VM until the
-    /// re-entry-removal follow-up.
+    /// The call stack at the moment of the snapshot, outermost first.
     frames: List<ExecutionPoint> }
 
 

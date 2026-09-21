@@ -264,7 +264,7 @@ module Type =
     module Host =
       let private p addl = p ("Host" :: addl)
       let eventSpec = p [] "EventSpec"
-      let event = p [] "Event"
+      let rawEvent = p [] "RawEvent"
 
     /// The process table (`dark ps`).
     module Exec =

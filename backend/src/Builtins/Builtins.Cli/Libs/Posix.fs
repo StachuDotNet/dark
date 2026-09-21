@@ -550,20 +550,10 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, _, [| DInt fd; DBlob ref |] ->
-          // The bytes are usually in hand (an ephemeral blob); a persisted one is read from the
-          // store first, and the operation is named after that wait.
-          let written (bytes : byte[]) : Ply<Dval> =
+          Blob.withBytes state ref (fun bytes ->
             let op = HostTypes.PosixOp.FdWrite(intToInt32 vm fd, bytes)
             posixResult KTInt vm op (fun response ->
-              Dval.int (bigint (Host.expectWritten response)))
-          let bytes = Blob.readBytes state ref
-          match Ply.trySync bytes with
-          | ValueSome bytes -> written bytes
-          | ValueNone ->
-            uply {
-              let! bytes = bytes
-              return! written bytes
-            }
+              Dval.int (bigint (Host.expectWritten response))))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

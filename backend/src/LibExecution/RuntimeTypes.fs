@@ -1317,21 +1317,9 @@ and Promise
 /// until the enclosing [DStream] is drained via `readStreamNext` or
 /// `readStreamChunk`.
 ///
-/// Mapped/Filtered hold pre-bound `Dval -> Ply<...>` closures rather
-/// than the raw [Applicable]. The builtin wrapper (Stream.map etc.)
-/// closes over `exeState`/`vmState` when constructing the closure, so
-/// the drain path in Dval.fs stays decoupled from Execution — Dval.fs
-/// can't call Exe.executeApplicable directly since it sits earlier in
-/// the dependency chain.
-///
-/// TODO Mapped/Filtered closures hold a reference to the originating
-/// `ExecutionState`. If a Stream ever outlives its execution (long-lived
-/// debug pause, returned-from-handler-and-stashed), the closure pins
-/// stale state. Today this can't manifest — DStream isn't persistable
-/// (`isPersistable` rejects, binary-serialise raises), so a stream
-/// returned from a handler dies with its VM. Fix when it becomes a
-/// real path: pass `state` as a parameter to `next`/`nextChunk` rather
-/// than capturing it.
+/// Mapped/Filtered hold the [Applicable] itself; the puller applies it
+/// as a frame on its own stack (`Interpreter.requestApply`), so a
+/// stream captures no execution state and Dval.fs runs no Dark code.
 ///
 /// Take tracks both the original `n` (for introspection/printing) and
 /// a mutable `remaining` counter that decrements on each pull.

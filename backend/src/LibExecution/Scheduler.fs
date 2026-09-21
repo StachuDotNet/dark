@@ -197,7 +197,6 @@ type Scheduler(quantum : int64) =
   /// been told about the latest one is woken at once: a change that lands while a host loop is
   /// rendering is not lost.
   let mutable storeGen = 0L
-  let mutable latestChange = RT.DUnit
   let mutable nextTimerId = 0L
   let mutable thread = -1
   /// Set by `Stop`; the loop leaves at its next turn.
@@ -423,7 +422,7 @@ type Scheduler(quantum : int64) =
         wake.SetResult(HE.HostEvent.Key(pendingKeys.Dequeue()))
       elif wantsStore && p.storeGenSeen < storeGen then
         p.storeGenSeen <- storeGen
-        wake.SetResult(HE.HostEvent.StoreChanged latestChange)
+        wake.SetResult HE.HostEvent.StoreChanged
       else
         // Only when it will actually park: a wake delivered above completes the builtin
         // synchronously and the process never parks, so a hint set then would describe the
@@ -479,10 +478,9 @@ type Scheduler(quantum : int64) =
         match waiting with
         | Some sub -> this.Satisfy(sub, ev)
         | None -> ())
-    | HE.HostEvent.StoreChanged change ->
+    | HE.HostEvent.StoreChanged ->
       lock sync (fun () ->
         storeGen <- storeGen + 1L
-        latestChange <- change
         let waiting =
           subscriptions
           |> Seq.filter (fun s -> List.contains HE.EventSpec.StoreChanged s.specs)

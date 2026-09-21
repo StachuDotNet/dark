@@ -86,19 +86,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, _, [| DBlob ref; DString path |] ->
-          // The bytes are usually in hand (an ephemeral blob); a persisted one is read from the
-          // store first, and the operation is named after that wait, which the interpreter
-          // takes too.
-          let bytes = Blob.readBytes state ref
-          match Ply.trySync bytes with
-          | ValueSome bytes ->
-            fileUnitOp vm (Host.Operation.FileWrite(Host.expandHome path, bytes))
-          | ValueNone ->
-            uply {
-              let! bytes = bytes
-              return!
-                fileUnitOp vm (Host.Operation.FileWrite(Host.expandHome path, bytes))
-            }
+          Blob.withBytes state ref (fun bytes ->
+            fileUnitOp vm (Host.Operation.FileWrite(Host.expandHome path, bytes)))
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

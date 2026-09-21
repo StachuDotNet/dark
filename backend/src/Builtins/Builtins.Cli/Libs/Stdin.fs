@@ -374,7 +374,7 @@ let keyReadToDval
   keyRead
 
 
-/// Block for one key, as `readKey` always has: Ctrl+C is input while we read.
+/// Block for one key; Ctrl+C is input while we read.
 let private readOneKey () : Dval =
   Console.TreatControlCAsInput <- true
   let readKey, pasteText, repeat = readKeyOrPaste ()
@@ -390,14 +390,6 @@ let private installKeySource () : unit =
     HE.sources.readKey <- Some readOneKey
 
 
-/// Install the store-change source: the host passes a cheap "current data version" and the
-/// poll posts `StoreChanged` when it moves. The event carries no description: which ops landed is
-/// Dark's question, and `Stdlib.Host.await` answers it with `Stdlib.Live.poll` before handing the
-/// event to the loop.
-let installStoreVersionSource (version : unit -> int64) : unit =
-  HE.sources.storeVersion <- Some version
-
-
 /// `Stdlib.Host.EventSpec`, as F#.
 let private eventSpecOfDval (vm : VMState) (d : Dval) : HE.EventSpec =
   match d with
@@ -410,13 +402,14 @@ let private eventSpecOfDval (vm : VMState) (d : Dval) : HE.EventSpec =
     |> raiseRTE vm.threadID
 
 
-/// `Stdlib.Host.Event`, from what the queue delivered.
+/// `Stdlib.Host.RawEvent`, from what the queue delivered. `Stdlib.Host.await` turns it into an
+/// `Event`, describing a store change on the way.
 let private eventToDval (ev : HE.HostEvent) : Dval =
-  let typeName = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Host.event ())
+  let typeName = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Host.rawEvent ())
   let case name fields = DEnum(typeName, typeName, [], name, fields)
   match ev with
   | HE.HostEvent.Key k -> case "Key" [ k ]
-  | HE.HostEvent.StoreChanged change -> case "StoreChanged" [ change ]
+  | HE.HostEvent.StoreChanged -> case "StoreChanged" []
   | HE.HostEvent.Timer _ -> case "Timer" []
   | HE.HostEvent.ExecDone(id, _) -> case "ExecDone" [ DUuid id ]
   | HE.HostEvent.Completed _
@@ -446,7 +439,10 @@ let private awaitBlocking (specs : HE.EventSpec list) : HE.HostEvent =
   let versionAt = HE.sources.storeVersion |> Option.map (fun v -> v ())
   let mutable result = None
   while result.IsNone do
-    if wantsKey && (Console.IsInputRedirected || Console.KeyAvailable) then
+    if
+      wantsKey
+      && (Console.IsInputRedirected || pushedBack.IsSome || Console.KeyAvailable)
+    then
       result <- Some(HE.HostEvent.Key(readOneKey ()))
     else
       match timer with
@@ -455,11 +451,7 @@ let private awaitBlocking (specs : HE.EventSpec list) : HE.HostEvent =
       | _ ->
         match wantsStore, versionAt, HE.sources.storeVersion with
         | true, Some before, Some version when version () <> before ->
-          let change =
-            match HE.sources.storeChange with
-            | Some describe -> describe ()
-            | None -> DUnit
-          result <- Some(HE.HostEvent.StoreChanged change)
+          result <- Some HE.HostEvent.StoreChanged
         | _ -> Threading.Thread.Sleep 15
   Option.get result
 
@@ -472,13 +464,15 @@ let fns () : List<BuiltInFn> =
         let typeName =
           FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.keyRead ())
         TCustomType(NR.ok typeName, [])
-      description = "Reads a single line from the standard input."
+      description =
+        "Reads one key press: the key, its modifiers, the text of a paste or the repeat count "
+        + "of a burst. Under the scheduler the process parks until a key arrives."
       fn =
         (function
         | _, _, _, [| DUnit |] ->
           // Under the scheduler the process parks on the event queue and other processes keep
           // running while it waits; the reader thread posts the key. Redirected stdin never
-          // parks: `readKeyOrPaste` answers Escape at once, as it always has.
+          // parks: `readKeyOrPaste` answers Escape at once.
           installKeySource ()
           match
             Scheduler.Scheduler.Current,
@@ -600,7 +594,7 @@ let fns () : List<BuiltInFn> =
             "" ]
       returnType =
         TCustomType(
-          NR.ok (FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Host.event ())),
+          NR.ok (FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Host.rawEvent ())),
           []
         )
       description =
