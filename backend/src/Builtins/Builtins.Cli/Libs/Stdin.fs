@@ -411,7 +411,7 @@ let private eventToDval (ev : HE.HostEvent) : Dval =
   | HE.HostEvent.Key k -> case "Key" [ k ]
   | HE.HostEvent.StoreChanged -> case "StoreChanged" []
   | HE.HostEvent.Timer _ -> case "Timer" []
-  | HE.HostEvent.ExecDone(id, _) -> case "ExecDone" [ DUuid id ]
+  | HE.HostEvent.ExecDone id -> case "ExecDone" [ DUuid id ]
   | HE.HostEvent.Completed _
   | HE.HostEvent.Wake ->
     Exception.raiseInternal

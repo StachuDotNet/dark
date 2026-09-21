@@ -5,8 +5,8 @@
 ///
 /// This is the host side; `dark ps` renders it. What is inside another OS process (its own Dark
 /// process tree) is that process's, not the registry's: the registry is the outer ring, one row
-/// per OS process, and reaching into a row is a signal (`ps cancel` sends TERM, which is the
-/// Ctrl-C path that suspends a traced run; `ps kill` sends KILL).
+/// per OS process, and reaching into a row is a signal (`ps cancel` sends INT, the Ctrl-C path
+/// that suspends a traced run; `ps kill` sends KILL).
 module LibExecution.HostRegistry
 
 open System
@@ -25,7 +25,6 @@ type Entry =
   }
 
 let mutable private directory : string = ""
-let mutable private ownFile : string = ""
 
 let private alive (pid : int) : bool =
   if OperatingSystem.IsLinux() then
@@ -37,44 +36,33 @@ let private alive (pid : int) : bool =
     with _ ->
       false
 
+// Written with the writer and read with the document, never the reflecting serializer, which
+// the published (AOT) binary does not have.
 let private serialize (e : Entry) : string =
-  let esc (s : string) =
-    s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ")
-  $"{{\"pid\":{e.pid},\"title\":\"{esc e.title}\",\"command\":\"{esc e.command}\",\"branch\":\"{esc e.branch}\",\"started\":\"{e.started:O}\"}}"
-
-let private field (json : string) (name : string) : string =
-  let key = $"\"{name}\":"
-  match json.IndexOf key with
-  | -1 -> ""
-  | i ->
-    let rest = json.Substring(i + key.Length)
-    if rest.StartsWith "\"" then
-      let sb = Text.StringBuilder()
-      let mutable j = 1
-      let mutable fin = false
-      while not fin && j < rest.Length do
-        match rest[j] with
-        | '\\' when j + 1 < rest.Length ->
-          sb.Append(rest[j + 1]) |> ignore<Text.StringBuilder>
-          j <- j + 2
-        | '"' -> fin <- true
-        | c ->
-          sb.Append c |> ignore<Text.StringBuilder>
-          j <- j + 1
-      sb.ToString()
-    else
-      rest.Substring(0, rest.IndexOfAny [| ','; '}' |])
+  use buffer = new MemoryStream()
+  (use w = new Text.Json.Utf8JsonWriter(buffer)
+   w.WriteStartObject()
+   w.WriteNumber("pid", e.pid)
+   w.WriteString("title", e.title)
+   w.WriteString("command", e.command)
+   w.WriteString("branch", e.branch)
+   w.WriteString("started", e.started.ToString "O")
+   w.WriteEndObject())
+  Text.Encoding.UTF8.GetString(buffer.ToArray())
 
 let private parse (json : string) : Option<Entry> =
   try
+    use doc = Text.Json.JsonDocument.Parse json
+    let root = doc.RootElement
+    let text (name : string) = root.GetProperty(name).GetString()
     Some
-      { pid = int (field json "pid")
-        title = field json "title"
-        command = field json "command"
-        branch = field json "branch"
+      { pid = root.GetProperty("pid").GetInt32()
+        title = text "title"
+        command = text "command"
+        branch = text "branch"
         started =
           DateTime.Parse(
-            field json "started",
+            text "started",
             null,
             Globalization.DateTimeStyles.RoundtripKind
           ) }
@@ -102,15 +90,14 @@ let register (title : string) (command : string) (branch : string) : unit =
             branch = branch
             started = DateTime.UtcNow }
       )
-      ownFile <- path
       let remove () =
         try
           File.Delete path
         with _ ->
           ()
       AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> remove ())
-      // A TERM (what `ps cancel <pid>` sends) does not always reach ProcessExit through a
-      // blocking wait; remove the file first, then let the default termination proceed.
+      // A TERM does not always reach ProcessExit through a blocking wait; remove the file
+      // first, then let the default termination proceed.
       if not (OperatingSystem.IsWindows()) then
         Runtime.InteropServices.PosixSignalRegistration.Create(
           Runtime.InteropServices.PosixSignal.SIGTERM,
@@ -147,12 +134,3 @@ let list () : Entry list =
         None)
     |> Array.sortBy (fun e -> e.started)
     |> Array.toList
-
-
-/// Whether the file at `path` has been written since `since`. For a resume's stale-read warning
-/// (`Interpreter.ReplayPolicy`); a path that is not a file answers false.
-let fileChangedSince (path : string) (since : DateTime) : bool =
-  try
-    File.Exists path && File.GetLastWriteTimeUtc path > since
-  with _ ->
-    false

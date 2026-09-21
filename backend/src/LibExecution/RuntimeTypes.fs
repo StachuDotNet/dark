@@ -1290,7 +1290,7 @@ and [<NoComparison>] Dval =
 
   /// A read in flight. The interpreter hands one back instead of parking the process when a
   /// builtin whose effects are all reads has to wait; it is forced (the process parks on it) at
-  /// the first instruction that inspects, stores or passes the value, at `demand`, and at the
+  /// the first instruction that inspects, stores or passes the value, at `await`, and at the
   /// end of the run. So one is only ever at the top level of a register, a frame's result or a
   /// builtin's returned value, never inside a list, record, closure or dict, and no builtin body
   /// ever receives one: they are forced before the call. `docs/processes.md`, "Reads are
@@ -3046,10 +3046,9 @@ type VMState =
     /// Instructions this VM may still run before the scheduler takes the thread back.
     ///
     /// `runSyncInstructions` counts it down and stops at zero, which `runFrame` reports as
-    /// `FrameBudget`; `Scheduler.step` refills it before every slice. Negative means unlimited, which
-    /// is what every VM that is not a scheduled process runs with: `execute` never sees a budget bail,
-    /// and a VM a builtin borrows to apply a lambda counts against nothing (a process parked inside
-    /// `List.map` is parked as a Ply, not preempted; see `docs/processes.md`).
+    /// `FrameBudget`; `Scheduler.Step` refills it before every slice. Negative means unlimited,
+    /// which is what a VM nobody schedules runs with (`execute`, and the VMs `LiveValues.fs` and
+    /// the HTTP server's handler path build for a callable of their own).
     mutable budget : int64
 
     /// Reads this VM's calls handed back as promises that have not landed yet, for `ps`.
@@ -3261,6 +3260,10 @@ type VMState =
     vm.pendingApplicable <- Unchecked.defaultof<_>
     vm.pendingArg <- DUnit
     vm.pendingMoreArgs <- []
+    vm.pendingFinish <- Unchecked.defaultof<_>
+    vm.pendingHostOp <- Unchecked.defaultof<_>
+    vm.pendingHostNext <- Unchecked.defaultof<_>
+    vm.hostInflight <- Unchecked.defaultof<_>
     vm.nestedCallStack <- []
     vm.finalResult <- ValueNone
     vm.matchBindings.Clear()

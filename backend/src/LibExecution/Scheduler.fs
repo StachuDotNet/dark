@@ -2,7 +2,7 @@
 /// inspect, and a cooperative scheduler that runs many of them on one thread.
 ///
 /// A process is a `VMState` plus the `ExecutionState` it runs under plus a status. The scheduler
-/// steps a process with `Interpreter.stepScheduled`, which runs it until it finishes, has to wait
+/// steps a process with `Interpreter.executeSync`, which runs it until it finishes, has to wait
 /// for something, or spends its instruction budget. A waiting process is parked on the task it is
 /// waiting for, and the task's continuation posts `Completed` to the event queue; the scheduler
 /// thread resumes it from there. A preempted process goes to the back of the runnable queue.
@@ -18,9 +18,9 @@
 /// concurrent and content-keyed and whose tracer is asked for a per-process view at spawn
 /// (`docs/processes.md`, "What a process shares and what it owns").
 ///
-/// Not here yet, deliberately (`docs/processes.md` lists them with the follow-up that brings each):
-/// a process parked inside a higher-order builtin (`List.map f` where `f` awaits) is parked as one
-/// Ply and `ps` sees the outer frame only; no user-level `spawn`; no record/replay.
+/// The one edge (`docs/processes.md`, "Edges"): a callable the HTTP server's handler path or
+/// `LiveValues` runs still gets a VM of its own through `Execution.executeApplicable`, outside
+/// any process.
 module LibExecution.Scheduler
 
 open System.Threading
@@ -129,6 +129,10 @@ type ProcessSummary =
 /// Instructions a process may run per slice. The BEAM's reductions, sized so a tight loop yields
 /// several hundred times a second and an ordinary program almost never does.
 let defaultQuantum = 10_000L
+
+/// How often the store is polled for a change (`PRAGMA data_version`) while a process waits on
+/// `StoreChanged`: the ceiling on how long a saved edit takes to reach a live view.
+let storePollMs = 200
 
 /// How many worker schedulers a group starts: one per core unless the host says otherwise
 /// (`exec.workers` in the store's config; `Cli.fs` reads it).
@@ -252,15 +256,10 @@ type Scheduler(quantum : int64) =
     | Some s -> s
     | None -> shared.Value
 
-  member _.Quantum = quantum
-
   member _.Queue = queue
 
   /// Runnable or parked processes on this scheduler right now.
   member _.Live : int = Volatile.Read &live
-
-  /// The thread this scheduler's loop runs on, or -1 when it is not running.
-  member _.Thread : int = thread
 
   member _.Group
     with get () = group
@@ -378,7 +377,7 @@ type Scheduler(quantum : int64) =
     | None -> this.FindHere pid
 
   /// `Find`, on this scheduler's own table.
-  member _.FindHere(pid : ProcessId) : Option<Process> =
+  member internal _.FindHere(pid : ProcessId) : Option<Process> =
     match lock sync (fun () -> processes.TryGetValue pid) with
     | true, p -> Some p
     | false, _ -> None
@@ -433,13 +432,20 @@ type Scheduler(quantum : int64) =
         for spec in specs do
           match spec with
           | HE.EventSpec.Key -> HE.Shared.requestKey queue
-          | HE.EventSpec.StoreChanged -> HE.Shared.watchStore queue 200
+          | HE.EventSpec.StoreChanged -> HE.Shared.watchStore queue storePollMs
           | HE.EventSpec.Timer ms ->
             let id = Interlocked.Increment &nextTimerId
             sub.timers <- (id, queue.ArmTimer(id, ms)) :: sub.timers
           | HE.EventSpec.ExecDone pid ->
             execDoneWatchers.AddOrUpdate(pid, [ this ], (fun _ ws -> this :: ws))
-            |> ignore<Scheduler list>)
+            |> ignore<Scheduler list>
+            // Already over (or forgotten): nothing will post, so answer now. Registered
+            // first, so a finish racing this sees the watcher either way.
+            match this.Find pid with
+            | Some { status = Done _ }
+            | Some { status = Failed _ }
+            | None -> this.Satisfy(sub, HE.HostEvent.ExecDone pid)
+            | Some _ -> ())
     wake.Task
 
   /// Wake a subscription and drop it.
@@ -453,14 +459,14 @@ type Scheduler(quantum : int64) =
   member private this.Dispatch(ev : HE.HostEvent) : unit =
     match ev with
     | HE.HostEvent.Completed pid ->
-      match lock sync (fun () -> processes.TryGetValue pid) with
-      | true, p ->
+      match this.FindHere pid with
+      | Some p ->
         match p.status with
         | Parked _ ->
           p.status <- Runnable
           lock sync (fun () -> runnable.Enqueue p)
         | _ -> ()
-      | false, _ -> ()
+      | None -> ()
     | HE.HostEvent.Key k ->
       lock sync (fun () ->
         let waiting =
@@ -489,7 +495,7 @@ type Scheduler(quantum : int64) =
           sub.proc.storeGenSeen <- storeGen
           this.Satisfy(sub, ev))
     | HE.HostEvent.Wake -> ()
-    | HE.HostEvent.ExecDone(pid, _) ->
+    | HE.HostEvent.ExecDone pid ->
       lock sync (fun () ->
         let waiting =
           subscriptions
@@ -511,23 +517,23 @@ type Scheduler(quantum : int64) =
     // Does nothing in non-tests.
     p.exeState.test.postTestExecutionHook p.exeState.test
     lock sync (fun () ->
-      // Only a VM that ran to completion has popped every frame, which is what `reuseFor` needs.
+      // Only a VM that ran to completion has popped every frame, which is what `reuseFor`
+      // needs; one with a read still in flight would have that read's landing count against
+      // the next process.
       match result with
-      | Ok _ when spareVMs.Count < 8 -> spareVMs.Push p.vm
+      | Ok _ when spareVMs.Count < 8 && Volatile.Read &p.vm.inflight = 0 ->
+        spareVMs.Push p.vm
       | _ -> ()
       finished.Enqueue p.id
       while finished.Count > keepFinished do
         processes.Remove(finished.Dequeue()) |> ignore<bool>)
-    match result with
-    | Ok dv ->
-      // To the schedulers with a Dark subscriber waiting on this process, wherever they are.
-      match execDoneWatchers.TryRemove p.id with
-      | true, watchers ->
-        let ev = HE.HostEvent.ExecDone(p.id, dv)
-        for s in List.distinct watchers do
-          s.Queue.Post ev
-      | false, _ -> ()
-    | Error _ -> ()
+    // To the schedulers with a Dark subscriber waiting on this process, wherever they are;
+    // how it ended is the subscriber's to ask (`Exec.await`).
+    match execDoneWatchers.TryRemove p.id with
+    | true, watchers ->
+      for s in List.distinct watchers do
+        s.Queue.Post(HE.HostEvent.ExecDone p.id)
+    | false, _ -> ()
     p.completion.TrySetResult result |> ignore<bool>
     match p.parent with
     | Some par ->
@@ -593,6 +599,16 @@ type Scheduler(quantum : int64) =
       Exception.raiseInternal
         "Scheduler.Step off the scheduler thread"
         [ "thread", Thread.CurrentThread.ManagedThreadId; "scheduler", thread ]
+    // A stop asked for (`Cancel`, `Kill`) or a cap crossed: the process ends here with the
+    // reason, before its slice.
+    if isNull p.stopReason then
+      p.stopReason <-
+        if maxTurns > 0L && p.slices >= maxTurns then
+          $"stopped: over {maxTurns} turns (exec.maxTurns)"
+        elif maxBytes > 0L && p.allocated >= maxBytes then
+          $"stopped: over {maxBytes} bytes allocated (exec.maxBytes)"
+        else
+          null
     if not (isNull p.stopReason) then
       this.Finish(
         p,
@@ -621,21 +637,10 @@ type Scheduler(quantum : int64) =
             resume ()
           | None -> ()
 
-          // The caps, before the slice: over either, the process ends here with the reason.
-          let over =
-            if maxTurns > 0L && p.slices >= maxTurns then
-              $"stopped: over {maxTurns} turns (exec.maxTurns)"
-            elif maxBytes > 0L && p.allocated >= maxBytes then
-              $"stopped: over {maxBytes} bytes allocated (exec.maxBytes)"
-            else
-              null
-          if not (isNull over) then
-            p.stopReason <- over
-            raise (RT.RuntimeErrorException(None, RTE.UncaughtException(over, [])))
           p.vm.budget <- quantum
           p.slices <- p.slices + 1L
           let allocBefore = System.GC.GetAllocatedBytesForCurrentThread()
-          let outcome = Interpreter.stepScheduled p.exeState p.vm
+          let outcome = Interpreter.executeSync p.exeState p.vm
           p.allocated <-
             p.allocated
             + (System.GC.GetAllocatedBytesForCurrentThread() - allocBefore)
@@ -732,8 +737,6 @@ type Scheduler(quantum : int64) =
     HE.Shared.unwatchStore queue
     queue.Post HE.HostEvent.Wake
 
-  member _.Stopping : bool = Volatile.Read &stopping
-
   // -- ps --
 
   /// Stop a process. It finishes `Failed(reason)` at its next turn. `hard` (`ps kill`) gives a
@@ -745,7 +748,12 @@ type Scheduler(quantum : int64) =
   /// first; one that completes within it completes. Any scheduler in the group finds it. Its
   /// undetached children are stopped the same way, now (so a parent waiting on one is not
   /// kept waiting) and again when it finishes (for any spawned in between).
-  member this.Stop(pid : ProcessId, reason : string, hard : bool) : bool =
+  member private this.StopProcess
+    (
+      pid : ProcessId,
+      reason : string,
+      hard : bool
+    ) : bool =
     let found =
       match group with
       | Some g -> g.All |> List.exists (fun s -> s.StopHere(pid, reason, hard))
@@ -755,10 +763,11 @@ type Scheduler(quantum : int64) =
 
   /// `ps kill`.
   member this.Kill(pid : ProcessId) : bool =
-    this.Stop(pid, "stopped by ps kill", true)
+    this.StopProcess(pid, "stopped by ps kill", true)
 
   /// `Exec.cancel`, `ps cancel`.
-  member this.Cancel(pid : ProcessId) : bool = this.Stop(pid, "cancelled", false)
+  member this.Cancel(pid : ProcessId) : bool =
+    this.StopProcess(pid, "cancelled", false)
 
   /// Every unfinished, undetached child of `pid`, anywhere in the group, is stopped.
   member this.StopChildrenOf(pid : ProcessId, reason : string, hard : bool) : unit =
@@ -769,7 +778,7 @@ type Scheduler(quantum : int64) =
     for s in schedulers do
       s.StopChildrenHere(pid, reason, hard)
 
-  member this.StopChildrenHere
+  member internal this.StopChildrenHere
     (
       pid : ProcessId,
       reason : string,
@@ -793,7 +802,12 @@ type Scheduler(quantum : int64) =
       this.StopChildrenOf(c.id, reason, hard)
 
   /// `Stop`, on this scheduler's own table.
-  member this.StopHere(pid : ProcessId, reason : string, hard : bool) : bool =
+  member internal this.StopHere
+    (
+      pid : ProcessId,
+      reason : string,
+      hard : bool
+    ) : bool =
     match lock sync (fun () -> processes.TryGetValue pid) with
     | true, p ->
       p.stopReason <- reason
@@ -847,7 +861,7 @@ type Scheduler(quantum : int64) =
             [] }
 
   /// `Snapshot`, for this scheduler's own table.
-  member this.SnapshotHere() : list<ProcessSummary> =
+  member internal this.SnapshotHere() : list<ProcessSummary> =
     lock sync (fun () -> processes.Values |> Seq.map this.SummaryOf |> List.ofSeq)
 
 
@@ -873,15 +887,11 @@ and Workers(root : Scheduler, quantum : int64, count : int) =
         )
       thread.Start())
 
-  member _.Root : Scheduler = root
-
   /// The workers, without the root.
   member _.Members : Scheduler list = workers
 
   /// Root first, then the workers.
   member _.All : Scheduler list = root :: workers
-
-  member _.Count : int = List.length workers
 
   /// Spawn on the least loaded worker.
   member _.Spawn

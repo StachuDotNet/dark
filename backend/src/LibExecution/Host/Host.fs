@@ -208,6 +208,15 @@ let private classify (e : exn) : Failure =
 
 // ── input normalization ───────────────────────────────────────────────────────
 
+/// Whether the file at `path` has been written since `since`. For a resume's stale-read warning
+/// (`Interpreter.ReplayPolicy`); a path that is not a file answers false.
+let fileChangedSince (path : string) (since : System.DateTime) : bool =
+  try
+    System.IO.File.Exists path && System.IO.File.GetLastWriteTimeUtc path > since
+  with _ ->
+    false
+
+
 /// The path used by both the permission check and the filesystem call:
 /// lexically resolved, then with every symlinked ancestor replaced by its
 /// target (`Permissions.FilePath`), so `/tmp/x` on macOS is checked and

@@ -41,7 +41,7 @@ wrapping it cost nothing. The one field added is `budget`.
 
 ## The step
 
-`Interpreter.stepScheduled exeState vm : StepOutcome` is the scheduler's whole
+`Interpreter.executeSync exeState vm : StepOutcome` is the scheduler's whole
 view of the interpreter:
 
 - `StepDone dv`: the root frame returned.
@@ -56,7 +56,7 @@ view of the interpreter:
 
 There is one loop. `executeSync` runs frames until something has to be waited
 for and answers a `StepOutcome`; `awaitOf` turns the wait into `(wait,
-resume)` at the bail site. `stepScheduled` is that loop; an unscheduled run
+resume)` at the bail site. `executeSync` is that loop; an unscheduled run
 (`execute`: tests, the LSP, a host running a function itself) is
 `driveToEnd`, fifteen lines that await each `wait` in place and step again.
 Its budget is negative, so it never sees `StepBudget`. The task-based second
@@ -107,15 +107,18 @@ process-wide (`HostEvents.Shared`) and deliver to whichever queue asked:
 - `Timer id`: a one-shot `System.Threading.Timer` armed per `Timer ms` spec,
   disposed when something else satisfies the subscription; a late fire posts
   an id nobody wants and is dropped.
-- `StoreChanged change`: a 200 ms poll of `PRAGMA data_version` on a
-  connection of its own (the pragma answers per connection), posted to every
-  queue watching. `change` is `Host.Change.Unknown` until the live track's
-  `scmOpsSince` can say what changed. Latched per process: a process that
+- `StoreChanged`: a poll of `PRAGMA data_version` every `Scheduler.storePollMs`
+  (200 ms) on a connection of its own (the pragma answers per connection),
+  posted to every queue watching. It carries nothing: which ops landed is
+  Dark's question, answered by `Stdlib.Live.poll` inside `Stdlib.Host.await`
+  before the loop sees the event. Latched per process: a process that
   subscribes after a change it has not been told about is woken at once, so
   a change during a render is not lost.
 - `Completed pid`: internal; the parked task finished.
-- `ExecDone (pid, dv)`: a process finished, for Dark subscribers. Posted to
-  every queue in the group, since the subscriber may be on another scheduler.
+- `ExecDone pid`: a process finished, well or badly, for Dark subscribers
+  (`Exec.await` says how). Posted to the schedulers with a subscriber for it,
+  which may not be the one that ran it; a subscription to a process already
+  over, or forgotten, is answered at once.
 - `Wake`: nothing to route; the loop, blocked with nothing runnable, looks
   again (a spawn from another thread, a `Stop`).
 
@@ -213,17 +216,17 @@ that looks at the value waits for it. Every write (`print`, `File.write`, a
 POST, a db write) runs when it is reached, in program order. So
 
 ```
-let pages = List.map HttpClient.get urls   // every GET is in flight, at once
-print "fetching"                           // a write: runs now
-let first = List.head pages                // looks at the list: waits for all
-File.write out first.body                  // in order
+let pages = List.map urls (fun u -> HttpClient.get u [])  // every GET in flight, at once
+Stdlib.printLine "fetching"                              // a write: runs now
+let first = List.head pages                              // looks at the list: waits for all
+Cli.FileSystem.writeFile out first.body                  // in order
 ```
 
 `Stdlib.await x` forces a read now rather than at its first use; it is the
-identity function, since calling anything with the value is what forces it.
-`Stdlib.awaitAll` is the same for a list. (`Exec.await h` is the one for a
-handle; the two share the word and not the module, since one function cannot
-be typed as both `'a -> 'a` and `Handle<'a> -> 'a`.)
+identity function, since calling anything with the value is what forces it,
+and it works on a list of reads as well as one. (`Exec.await h` is the one
+for a handle; the two share the word and not the module, since one function
+cannot be typed as both `'a -> 'a` and `Handle<'a> -> 'a`.)
 
 How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
 
@@ -261,13 +264,21 @@ How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
 - A read that failed raises at the force point, with the read's own error and
   the frames it was called from added below the stack (`vm.nestedCallStack`),
   so the report names both sites. A denial is raised at the call, before
-  anything is in flight: the ambient effect check runs before the body.
-- `List.map` is promise-aware (`Execution.executeApplicable1Deferred`): a
-  lambda that returns a read in flight hands it back rather than being forced
-  at the end of its run, and the map's result is one promise for the whole
-  list, landing when every element has. Everything else that applies a lambda
-  gets the lambda's result forced. So `List.map get urls` is where the reads
-  fan out; `List.filter get urls` would run them one by one.
+  anything is in flight: the ambient effect check runs before the body. The
+  corollary: a read that had to wait and whose value nothing ever looks at
+  has no force point, so its failure is never raised (`let _ = HttpClient.get
+  bad []` followed by code that never reads it succeeds). Reads that finish
+  on the calling thread raise at the call as they always have; only a real
+  wait is deferred. `Stdlib.await x` is the way to say the failure matters.
+  Forcing every leftover promise at a frame's return would make each return
+  a barrier; deciding whether the end of a run should is a follow-up.
+- `List.map` is promise-aware (`mappedListOrPromise` in `Builtins.Pure`'s
+  `List.fs`): a lambda that returns a read in flight hands it back rather
+  than being forced at the end of its run, and the map's result is one
+  promise for the whole list, landing when every element has. Everything else
+  that applies a lambda gets the lambda's result forced. So `List.map urls
+  (fun u -> HttpClient.get u [])` is where the reads fan out; the same lambda
+  under `List.filter` would run them one by one.
 - The bound: at most `Promises.maxInflight` reads in flight per OS process,
   256, fixed rather than a setting (past it the program is saturating
   whatever it reads from). Past it a read is awaited in program order, so a

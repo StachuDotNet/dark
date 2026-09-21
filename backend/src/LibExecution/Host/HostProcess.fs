@@ -327,10 +327,9 @@ let terminate (processId : int64) : int * string * string =
 
 // ───────── the process's own title ─────────
 
-/// What a system monitor shows for this process. Every Dark process used to show as `dark`;
-/// this names what it runs (`dark serve`, `dark apps sync`, `dark eval`) so a person looking at
-/// the box can tell them apart, which is half of the "what is running" story `dark ps` is the
-/// other half of.
+/// What a system monitor shows for this process: `dark` plus what it runs (`dark serve`, `dark
+/// apps sync`, `dark eval`), so a person looking at the box can tell them apart; `dark ps` is
+/// the other half of the "what is running" story.
 ///
 /// Linux: the kernel's `comm` (what `top`, `pgrep -x` and the desktop monitors show), 15 bytes,
 /// written to `/proc/self/comm`. The full command line (`ps aux`) is the original argv memory,

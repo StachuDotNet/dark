@@ -156,7 +156,7 @@ let rec private andThen (step : PullStep) (k : Option<Dval> -> PullStep) : PullS
 /// A `Filtered` node's rejections and a `Concat` node's exhausted heads recurse here, but not
 /// on the F# stack for long: a rejection goes back to the puller as an `Apply` and comes back
 /// through the continuation, so each turn starts fresh.
-let rec pull (impl : StreamImpl) : PullStep =
+let rec private pull (impl : StreamImpl) : PullStep =
   match impl with
   | FromIO(next, _elemType, _disposer, _nextChunk) ->
     let p = next ()

@@ -822,27 +822,63 @@ Stdlib.Exec.await slow"""
 
 let private spawnedErrorReachesAwait =
   testTask "a spawned process that fails raises at await, under the spawner's access" {
+    Trace.take () |> ignore<List<string>>
     let! state = executionStateFor pmPT false Map.empty
-    let denied =
+    // Spawning is allowed and nothing else is, so the spawn itself goes through and the
+    // child's read is what gets denied: the child inherits the spawner's access.
+    let spawnOnly =
       LibExecution.Execution.restrictRun
-        LibExecution.Permissions.Policy.denyAll
+        (LibExecution.Permissions.Policy.allowEffects (
+          Set.singleton LibExecution.Effects.Effect.Concurrency
+        ))
         state
     do!
       withWorkers 2 (fun root ->
         task {
-          // Denied for package reads, so the spawned read is denied too: the child inherits the
-          // spawner's access.
           let! (p : Scheduler.Process) =
             spawn
               root
-              denied
+              spawnOnly
               """let h = Stdlib.Exec.spawn (fun () -> Builtin.testRead 61L)
+let _ = Builtin.testTrace "spawned"
 Stdlib.Exec.await h"""
           let! result = runOnThread root p
+          Expect.equal
+            (Trace.take ())
+            [ "spawned" ]
+            "the program got past the spawn"
           match result with
           | Error(RTE.UncaughtException(msg, _), _) ->
             Expect.stringContains msg "permission denied" "the child's denial"
           | other -> failtest $"expected the child's denial at await, got {other}"
+        })
+  }
+
+
+let private execDoneAnswersAFinishedProcess =
+  testTask
+    "Host.await [ExecDone id] returns for a process already over, and for one that failed" {
+    let! state = executionStateFor pmPT false Map.empty
+    do!
+      withWorkers 2 (fun root ->
+        task {
+          let! (p : Scheduler.Process) =
+            spawn
+              root
+              state
+              """let done_ = Stdlib.Exec.spawn (fun () -> 1L)
+let _ = Stdlib.Exec.await done_
+let bad = Stdlib.Exec.spawn (fun () -> Stdlib.Int64.divide 1L 0L)
+let first = Stdlib.Host.await [ Stdlib.Host.EventSpec.ExecDone done_.id ]
+let second = Stdlib.Host.await [ Stdlib.Host.EventSpec.ExecDone bad.id ]
+match (first, second) with
+| (ExecDone a, ExecDone b) -> a == done_.id && b == bad.id
+| _ -> false"""
+          let! result = runOnThread root p
+          Expect.equal
+            (expectOk result "the program")
+            (RT.DBool true)
+            "both waits came back with the right id"
         })
   }
 
@@ -1329,6 +1365,7 @@ let tests =
         inflightBoundHolds
         spawnAwaitSelect
         spawnedErrorReachesAwait
+        execDoneAnswersAFinishedProcess
         httpGetIsARead
         parkedInsideMapShowsTheLambda
         budgetYieldInsideMap

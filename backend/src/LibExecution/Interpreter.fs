@@ -876,6 +876,12 @@ let private resolveTypeArgsAsync
 
 
 
+/// The classic rule: an effectful call (`ord >= 0`) is recorded whenever effects are traced; a
+/// pure one only under full tracing.
+let inline private recordsCall (tracing : Tracing.Tracing) (ord : int64) : bool =
+  (ord >= 0L && tracing.traceEffects) || not tracing.skipTracing
+
+
 /// Record a builtin's result in the trace, and hand it back.
 ///
 /// Top-level for the same reason as `finishBuiltin` below it: a local here is captured by that
@@ -888,11 +894,7 @@ let private traceBuiltinResult
   (allArgs : Dval[])
   (result : Dval)
   : Dval =
-  // The classic rule: an effectful call (`ord >= 0`) is recorded whenever effects are traced; a
-  // pure one only under full tracing.
-  if
-    (ord >= 0L && exeState.tracing.traceEffects) || not exeState.tracing.skipTracing
-  then
+  if recordsCall exeState.tracing ord then
     let source : Tracing.Source = (currentFrame.executionPoint, None)
     let fnRecord : Tracing.FunctionRecord = (source, FQFnName.Builtin fn.name)
     let args = NEList.ofListUnsafe "" [] (List.ofArray allArgs)
@@ -962,6 +964,17 @@ let rec private performRequested
     out
 
 
+/// A read landed badly: raise its failure here, at the force point, with the read and where it
+/// was called from below the stack. An RTE is raised as an RTE, anything else as itself.
+let private raiseReadFailure (vm : VMState) (p : Promise) (t : Task<Dval>) : 'a =
+  vm.nestedCallStack <- [ p.Site; Function p.Fn ]
+  match t.Exception with
+  | null -> raise (System.OperationCanceledException "a read was cancelled")
+  | agg ->
+    match agg.GetBaseException() with
+    | RuntimeErrorException(_, rte) -> raiseRTE vm.threadID rte
+    | ex -> raise ex
+
 /// For a builtin's continuation that has to look at the callable's result: `k` with the value,
 /// waiting for a read still in flight first (the interpreter parks the process on the wait and
 /// drives on when it lands). A continuation that only carries the result along (`List.map`) does
@@ -974,25 +987,13 @@ let withValue (vm : VMState) (dv : Dval) (k : Dval -> Ply<Dval>) : Ply<Dval> =
       // is raised here, naming the read below the stack, and `k`'s own failures are its own.
       let! landed =
         p.Task.ContinueWith(
-          (fun (t : Task<Dval>) ->
-            if t.IsCompletedSuccessfully then
-              Ok t.Result
-            else
-              match t.Exception with
-              | null ->
-                Error(
-                  System.OperationCanceledException "a read was cancelled" :> exn
-                )
-              | agg -> Error(agg.GetBaseException())),
+          (fun (t : Task<Dval>) -> t),
           TaskContinuationOptions.ExecuteSynchronously
         )
-      match landed with
-      | Ok v -> return! k v
-      | Error ex ->
-        vm.nestedCallStack <- [ p.Site; Function p.Fn ]
-        match ex with
-        | RuntimeErrorException(_, rte) -> return raiseRTE vm.threadID rte
-        | ex -> return raise ex
+      if landed.IsCompletedSuccessfully then
+        return! k landed.Result
+      else
+        return raiseReadFailure vm p landed
     }
   | v -> k v
 
@@ -1077,8 +1078,13 @@ module ReplayPolicy =
 
   let private warned = System.Collections.Generic.HashSet<string>()
 
+  /// The old run's output, told apart from the new run's: dimmed on a terminal, marked where
+  /// dimming would be lost.
   let private dim (s : string) : string =
-    if System.Console.IsOutputRedirected then s else $"\u001b[2m{s}\u001b[0m"
+    if System.Console.IsOutputRedirected then
+      $"[replayed] {s}"
+    else
+      $"\u001b[2m{s}\u001b[0m"
 
   /// Run before a logged call's result is handed back. Raises to stop the resume.
   let beforeServing
@@ -1109,15 +1115,31 @@ module ReplayPolicy =
       | Some since ->
         for a in args do
           match a with
-          | DString path when
-            HostRegistry.fileChangedSince path since && warned.Add path
-            ->
+          | DString path when Host.fileChangedSince path since && warned.Add path ->
             System.Console.Error.WriteLine(
               $"resume: step {ord} read {path}, which has changed since this run was "
               + "recorded; the run continues on what it read then"
             )
           | _ -> ()
       | None -> ()
+
+
+/// What to do with the final result of a builtin's apply chain made at this call: record it in
+/// the trace, as `finishBuiltin` would have, since the builtin's own return handed back only a
+/// placeholder. Null when nothing records, so an untraced chain allocates nothing for it. Set on
+/// the VM (`pendingFinish`) by `invokeBuiltin`; whoever begins the chain takes it off.
+let private finishFor
+  (exeState : ExecutionState)
+  (currentFrame : CallFrame)
+  (fn : BuiltInFn)
+  (ord : int64)
+  (allArgs : Dval[])
+  : Dval -> unit =
+  if recordsCall exeState.tracing ord then
+    let args = Array.copy allArgs
+    fun dv -> traceBuiltinResult exeState currentFrame fn ord args dv |> ignore<Dval>
+  else
+    Unchecked.defaultof<_>
 
 
 /// Everything from "we have the arguments and a checked symbol table" to "we have a checked result".
@@ -1214,6 +1236,7 @@ let private invokeBuiltin
       // The body asked for an apply (`requestApply`): this is its placeholder, not its result.
       // The result is checked where it is made and reaches the trace through the continuation.
       if requested vm then
+        vm.pendingFinish <- finishFor exeState currentFrame fn ord allArgs
         Ply result
       else
         finishBuiltin
@@ -1252,16 +1275,7 @@ let private invokeBuiltin
             Exception.raiseInternal
               "requestApply after the first await of a read"
               [ "builtin", fn.name.name ]
-          let traced =
-            (ord >= 0L && exeState.tracing.traceEffects)
-            || not exeState.tracing.skipTracing
-          vm.pendingFinish <-
-            if traced then
-              fun dv ->
-                traceBuiltinResult exeState currentFrame fn ord allArgs dv
-                |> ignore<Dval>
-            else
-              Unchecked.defaultof<_>
+          vm.pendingFinish <- finishFor exeState currentFrame fn ord allArgs
           return result
         else
           return!
@@ -2207,9 +2221,6 @@ module Promises =
 
   let mutable private inflight = 0
 
-  /// Reads in flight across the OS process right now.
-  let inflightNow () : int = Volatile.Read &inflight
-
   /// A promise for `call`, which has not finished, if there is room for one more. `ValueNone`
   /// says await it in program order instead.
   let tryMake
@@ -2253,13 +2264,7 @@ module Promises =
       registers[reg] <- t.Result
       null
     elif t.IsCompleted then
-      vm.nestedCallStack <- [ p.Site; Function p.Fn ]
-      match t.Exception with
-      | null -> raise (System.OperationCanceledException "a read was cancelled")
-      | agg ->
-        match agg.GetBaseException() with
-        | RuntimeErrorException(_, rte) -> raiseRTE vm.threadID rte
-        | ex -> raise ex
+      raiseReadFailure vm p t
     else
       t
 
@@ -2267,8 +2272,8 @@ module Promises =
 /// Ask the interpreter to apply `applicable` to `args` in this VM, as a frame of its own, and to
 /// hand the result to `next`; `next` answers the builtin's result or asks again. For a builtin
 /// that takes a callable (`List.map`, `List.filter`, ...): the lambda then runs where `ps` can
-/// see it, the budget can preempt it and a read in it can park the process, instead of in a
-/// nested VM on the host stack (`Execution.executeApplicable`, the old way). Call it and return
+/// see it, the budget can preempt it and a read in it can park the process, rather than on a
+/// VM of its own through `Execution.executeApplicable`. Call it and return
 /// what it returns; the value it hands back is a placeholder the interpreter never uses.
 let requestApply
   (vm : VMState)
@@ -2446,7 +2451,8 @@ let inline private pushFrame (vm : VMState) (frame : CallFrame) : unit =
 
 
 /// Start a builtin's apply request (`requestApply`): push the callable's frame from `caller`,
-/// with `cont` to receive its result, and answer as the `Apply` instruction would. A builtin or
+/// with the request's `next` to receive its result and `finish` for the chain's end, and answer
+/// as the `Apply` instruction would. A builtin or
 /// package function passed as the callable is called through the ordinary paths and its result
 /// driven straight on. Mutually recursive with `drive`: a continuation may ask again.
 let rec private beginRequest
@@ -2617,6 +2623,13 @@ and private drive
   | ValueNone -> AwaitContinuation(out, reg, pcAfter, next, finish)
 
 
+/// The chain-end hook `invokeBuiltin` left on the VM, cleared so it is used once.
+let inline private takeFinish (vm : VMState) : Dval -> unit =
+  let finish = vm.pendingFinish
+  vm.pendingFinish <- Unchecked.defaultof<_>
+  finish
+
+
 /// A builtin's awaited result has landed: into its register, and the counter past the `Apply`.
 /// Unless the body asked for an apply after its wait (`invokeBuiltin`): then the value is a
 /// placeholder, the callable's frame goes on the stack instead, and the counter stays until
@@ -2629,32 +2642,18 @@ let private landBuiltin
   (dv : Dval)
   : ApplyOutcome =
   if requested vm then
-    let finish = vm.pendingFinish
-    vm.pendingFinish <- Unchecked.defaultof<_>
-    beginRequest exeState vm frame reg (frame.programCounter + 1) finish true
+    beginRequest
+      exeState
+      vm
+      frame
+      reg
+      (frame.programCounter + 1)
+      (takeFinish vm)
+      true
   else
     frame.registers[reg] <- dv
     frame.programCounter <- frame.programCounter + 1
     ApplyDone
-
-
-/// What to do with the final result of a builtin's apply chain made at this call: record it in
-/// the trace, as `finishBuiltin` would have, since the builtin's own return handed back only a
-/// placeholder. Null when nothing records, so an untraced chain allocates nothing for it.
-let private finishFor
-  (exeState : ExecutionState)
-  (currentFrame : CallFrame)
-  (fn : BuiltInFn)
-  (args : ArgSeq)
-  (ord : int64)
-  : Dval -> unit =
-  let traced =
-    (ord >= 0L && exeState.tracing.traceEffects) || not exeState.tracing.skipTracing
-  if traced then
-    let args = Array.copy (ArgSeq.toArrayFor currentFrame args)
-    fun dv -> traceBuiltinResult exeState currentFrame fn ord args dv |> ignore<Dval>
-  else
-    Unchecked.defaultof<_>
 
 
 /// One `Apply` instruction, run without entering the interpreter's computation expression.
@@ -2842,7 +2841,7 @@ let private applyInstructionForced
                 currentFrame
                 putResultIn
                 (currentFrame.programCounter + 1)
-                (finishFor exeState currentFrame fn ctx.args -1L)
+                (takeFinish vm)
                 false
           else
             // Usually already finished, in which case there's no bind to pay for.
@@ -2944,7 +2943,7 @@ let private applyInstructionForced
                   currentFrame
                   putResultIn
                   (currentFrame.programCounter + 1)
-                  (finishFor exeState currentFrame biFn ctx.args -1L)
+                  (takeFinish vm)
                   false
             else
               match Ply.trySync call with
@@ -2992,7 +2991,7 @@ let private applyInstructionForced
                   currentFrame
                   putResultIn
                   (currentFrame.programCounter + 1)
-                  Unchecked.defaultof<_>
+                  (takeFinish vm)
                   false
             else
               registers[putResultIn] <- dv
@@ -3018,7 +3017,7 @@ let inline private forceOperand
 
 
 /// One `Apply`, once its operands are plain values. A read still in flight among them is settled
-/// first: every callee, builtin or not, gets values (`demand x` is an identity function, and this
+/// first: every callee, builtin or not, gets values (`Stdlib.await x` is an identity function, and this
 /// is how it forces). One type test per operand; the rest only runs when one is a promise.
 /// Inlined into the drain, so the scan costs no call of its own.
 let inline private applyInstruction
@@ -3280,12 +3279,14 @@ let private runSyncInstructions
            | [] -> ()
        | _ -> ())
 
+      // A landed operand runs the instruction again at once; one still in flight stops the
+      // drain with the counter on it.
+      let landedRetry = retry && isNull force
       let handled =
         if retry then
           if not (isNull force) then
             pending <- AwaitForce(force, forceReg)
             running <- false
-          // Landed, or parked: either way not this turn; a landed one runs again at once.
           retry <- false
           force <- null
           false
@@ -3305,7 +3306,7 @@ let private runSyncInstructions
             vm.stats.syncMissByOpcode[tag] <- vm.stats.syncMissByOpcode[tag] + 1L
 
       if handled then counter <- counter + 1
-      elif not retry then running <- false
+      elif not landedRetry then running <- false
 
     | LoadValue _ -> running <- false
 
@@ -4221,23 +4222,25 @@ let private awaitOf
   (step : FrameStep)
   : StepOutcome =
   let frame = vm.callFrames[vm.currentFrameID]
+  // A chain that waits again from its resume is rare (a continuation that waits twice in a
+  // row) and is waited for on the spot.
+  let driveToValue (first : ApplyOutcome) : unit =
+    let mutable outcome = first
+    while (match outcome with
+           | AwaitContinuation _ -> true
+           | _ -> false) do
+      match outcome with
+      | AwaitContinuation(ply2, reg2, pc2, next2, finish2) ->
+        let dv2 = (Ply.toTask ply2).Result
+        outcome <- drive exeState vm frame reg2 pc2 next2 finish2 (Ply dv2) true
+      | _ -> ()
   match step with
   | FrameAwaitBuiltin(call, reg) ->
     let running = Ply.toTask call
     StepAwait(
       running,
-      fun () ->
-        // A request made after the wait starts a chain (`landBuiltin`); a further wait from
-        // it is rare and waited for on the spot, as below.
-        let mutable outcome = landBuiltin exeState vm frame reg running.Result
-        while (match outcome with
-               | AwaitContinuation _ -> true
-               | _ -> false) do
-          match outcome with
-          | AwaitContinuation(ply2, reg2, pc2, next2, finish2) ->
-            let dv2 = (Ply.toTask ply2).Result
-            outcome <- drive exeState vm frame reg2 pc2 next2 finish2 (Ply dv2) true
-          | _ -> ()
+      // A request made after the wait starts a chain (`landBuiltin`).
+      fun () -> driveToValue (landBuiltin exeState vm frame reg running.Result)
     )
   | FrameAwaitPackage(call, reg) ->
     let running = Ply.toTask call
@@ -4252,22 +4255,14 @@ let private awaitOf
     )
   | FrameAwaitContinuation(ply, reg, pc, next, finish) ->
     // Parked on a builtin's continuation (a callable it asked for has returned, and what the
-    // builtin does with that waits). Driven on when it lands; a further wait from `drive` is
-    // rare (a continuation that waits twice in a row) and is waited for on the spot.
+    // builtin does with that waits). Driven on when it lands.
     let running = Ply.toTask ply
     StepAwait(
       running,
       fun () ->
-        let mutable outcome =
+        driveToValue (
           drive exeState vm frame reg pc next finish (Ply running.Result) true
-        while (match outcome with
-               | AwaitContinuation _ -> true
-               | _ -> false) do
-          match outcome with
-          | AwaitContinuation(ply2, reg2, pc2, next2, finish2) ->
-            let dv2 = (Ply.toTask ply2).Result
-            outcome <- drive exeState vm frame reg2 pc2 next2 finish2 (Ply dv2) true
-          | _ -> ()
+        )
     )
   | FrameAwaitForce(task, reg) ->
     // Parked on the read. The wait never faults: a read that failed stays a promise in the
@@ -4292,18 +4287,19 @@ let private awaitOf
     Exception.raiseInternal "a finished block is not a wait" [ "vm", vm.threadID ]
 
 
-/// The interpreter loop, for as long as nothing actually awaits.
+/// The interpreter loop: run `vm` until it finishes, has to wait, or exhausts `vm.budget`. The
+/// scheduler's step, and what an unscheduled run drives to the end (`driveToEnd`).
 ///
-/// The loop below is a `task`, and a `task` that completes synchronously still allocates the `Task`
-/// it returns. That is one allocation per *entry*, which is nothing for a script and a great deal
-/// for a builtin folding a list: `executeApplicable` enters once per element, and the `Task` was
-/// half of everything that path allocated.
+/// A `task` that completes synchronously still allocates the `Task` it returns: one allocation
+/// per entry, which is nothing for a script and a great deal for a builtin applying a lambda
+/// per element, and nearly every such lambda is arithmetic, a comparison or a push that never
+/// waits. So the loop has no builder: it runs until something has to be waited for and hands
+/// that back as a `StepOutcome`. The scheduler parks on it; `driveToEnd` awaits it in place
+/// and calls back in.
 ///
-/// Nearly every lambda a builtin applies is arithmetic, a comparison or a push, and never awaits at
-/// all. So run the same loop with no builder for as long as that holds, and hand over the moment it
-/// stops. The two share `runFrame` and `returnFromFrame`, which is where the real work is; what is
-/// duplicated here is the dispatch around them.
-let private executeSync (exeState : ExecutionState) (vm : VMState) : StepOutcome =
+/// `vm.budget` is the caller's: set it before every slice. The root frame's access must already
+/// be seeded (`seedRootAccess`), which `executeUnder` does for an unscheduled run.
+let executeSync (exeState : ExecutionState) (vm : VMState) : StepOutcome =
   let mutable bail = ValueNone
 
   // `TryGetValue`, not `ContainsKey` and then the indexer: the key is a `uuid`, so that was two
@@ -4432,14 +4428,6 @@ let private executeSync (exeState : ExecutionState) (vm : VMState) : StepOutcome
     | ValueNone -> Exception.raiseInternal "No finalResult found" []
 
 
-/// Run `vm` until it finishes, awaits, or exhausts `vm.budget`. The scheduler's step.
-///
-/// `vm.budget` is the caller's: set it before every slice. The root frame's access must already be
-/// seeded (`seedRootAccess`), which `executeUnder` does for an unscheduled run.
-let stepScheduled (exeState : ExecutionState) (vm : VMState) : StepOutcome =
-  executeSync exeState vm
-
-
 /// An unscheduled run (a test's `execute`, the LSP, a host that runs a function itself): the
 /// same loop the scheduler steps, driven to the end here, each wait awaited in place. Nothing
 /// preempts it: its budget is negative, so `StepBudget` never comes.
@@ -4466,8 +4454,8 @@ let private driveToEnd
   }
 
 
-/// Seed the root frame with the access the run starts under. `executeUnder`'s first two lines,
-/// for a scheduled process that is stepped rather than run.
+/// Seed the root frame with the access the run starts under: what `executeUnder` does before
+/// running, and `Scheduler.Spawn` before stepping.
 let seedRootAccess (access : Permissions.Access) (vm : VMState) : unit =
   vm.callFrames[vm.currentFrameID].access <- access
   vm.activeAccess <- access
@@ -4488,8 +4476,7 @@ let executeUnder
   (access : Permissions.Access)
   (vm : VMState)
   : Ply<Dval> =
-  vm.callFrames[vm.currentFrameID].access <- access
-  vm.activeAccess <- access
+  seedRootAccess access vm
   match executeSync exeState vm with
   | StepDone dv -> Ply dv
   | bailed ->

@@ -110,34 +110,42 @@ let state (packageManager : RT.PackageManager) =
 
 
 
+/// A dotted package name (`Darklang.Stdlib.Exec.Policy.roundRobin`) as the function it names,
+/// or `None` when nothing in the store has it. Owner `Darklang` when the name has no owner.
+let private resolvePackageFn (dotted : string) : Option<RT.FQFnName.FQFnName> =
+  match List.rev (dotted.Split('.') |> Array.toList) with
+  | name :: revRest ->
+    let owner, modules =
+      match List.rev revRest with
+      | o :: mods -> o, mods
+      | [] -> "Darklang", []
+    let location : PT.PackageLocation =
+      { owner = owner; modules = modules; name = name }
+    (LibDB.PackageManager.pt.findFn location).Result
+    |> Option.map (fun fqPkg ->
+      RT.FQFnName.Package(
+        LibExecution.ProgramTypesToRuntimeTypes.FQFnName.Package.toRT fqPkg
+      ))
+  | [] -> None
+
 /// The CLI entry point is a stored, per-install pointer: `config_v0` key `entry_point`, a package
 /// location like `Darklang.Cli.executeCliCommand`, defaulting to the shipped CLI. Stored as a NAME
 /// (resolved to a hash here) so it follows the latest content. Any miss falls back to the default.
-let private resolveEntryPoint () : RT.FQFnName.FQFnName =
+let private resolveEntryPoint
+  (settings : Map<string, string>)
+  : RT.FQFnName.FQFnName =
   let defaultFn = RT.FQFnName.fqPackage (PackageRefs.Fn.Cli.executeCliCommand ())
   try
-    match (LibDB.Config.get "entry_point").Result with
+    match Map.tryFind "entry_point" settings with
     | None
     | Some "" -> defaultFn
     | Some loc ->
-      match List.rev (loc.Split('.') |> Array.toList) with
-      | name :: revRest ->
-        let owner, modules =
-          match List.rev revRest with
-          | o :: mods -> o, mods
-          | [] -> "Darklang", []
-        let location : PT.PackageLocation =
-          { owner = owner; modules = modules; name = name }
-        match (LibDB.PackageManager.pt.findFn location).Result with
-        | Some fqPkg ->
-          RT.FQFnName.Package(
-            LibExecution.ProgramTypesToRuntimeTypes.FQFnName.Package.toRT fqPkg
-          )
-        | None ->
-          System.Console.Error.WriteLine
-            $"entry point '{loc}' didn't resolve; running the default CLI"
-          defaultFn
-      | [] -> defaultFn
+      match resolvePackageFn loc with
+      | Some fn -> fn
+      | None ->
+        System.Console.Error.WriteLine
+          $"entry point '{loc}' didn't resolve; running the default CLI"
+        defaultFn
   with e ->
     System.Console.Error.WriteLine
       $"entry point lookup failed ({e.Message}); running the default CLI"
@@ -149,14 +157,15 @@ let private installStoreVersionSource () : unit =
   LibExecution.HostEvents.sources.storeVersion <-
     Some LibDB.Sqlite.DataVersion.current
 
-/// The store's `exec.*` and `trace.*` settings, read in one query at startup (each
-/// `Config.get` is a round trip of about 8 KB, and the allocation gate counts startup). Empty
-/// when the store cannot answer. All are `dark config set`; no environment variable shadows
-/// any of them.
-let private execSettings () : Map<string, string> =
+/// The store's startup settings, read in one query (each `Config.get` is a round trip of about
+/// 8 KB, and the allocation gate counts startup): the entry point, the `exec.*` knobs and the
+/// `trace.*` caps. Empty when the store cannot answer. All are `dark config set`; no environment
+/// variable shadows any of them.
+let private startupSettings () : Map<string, string> =
   try
     (LibDB.Config.getMany
-      [ "exec.workers"
+      [ "entry_point"
+        "exec.workers"
         "exec.policy"
         "exec.maxTurns"
         "exec.maxBytes"
@@ -186,31 +195,18 @@ let private installPolicy
   : unit =
   let named = Map.tryFind "exec.policy" settings |> Option.defaultValue ""
   if named <> "" then
-    match List.rev (named.Split('.') |> Array.toList) with
-    | name :: revRest ->
-      let owner, modules =
-        match List.rev revRest with
-        | o :: mods -> o, mods
-        | [] -> "Darklang", []
-      let location : PT.PackageLocation =
-        { owner = owner; modules = modules; name = name }
-      match (LibDB.PackageManager.pt.findFn location).Result with
-      | Some fqPkg ->
-        let fn =
-          RT.FQFnName.Package(
-            LibExecution.ProgramTypesToRuntimeTypes.FQFnName.Package.toRT fqPkg
-          )
-        LibExecution.Scheduler.policy <-
-          LibExecution.Scheduler.Chooser(
-            Builtins.Language.Libs.Exec.chooserFor state fn
-          )
-      | None ->
-        System.Console.Error.WriteLine(
-          Builtins.Language.Libs.Exec.policyComplaint
-            named
-            "did not resolve to a function"
+    match resolvePackageFn named with
+    | Some fn ->
+      LibExecution.Scheduler.policy <-
+        LibExecution.Scheduler.Chooser(
+          Builtins.Language.Libs.Exec.chooserFor state fn
         )
-    | [] -> ()
+    | None ->
+      System.Console.Error.WriteLine(
+        Builtins.Language.Libs.Exec.policyComplaint
+          named
+          "did not resolve to a function"
+      )
 
 let execute
   (packageManager : RT.PackageManager)
@@ -244,13 +240,14 @@ let execute
     let safeMode = List.contains "--safe" args
     // Boot-level; strip it so it doesn't reach the entry-point fn as a command arg.
     let args = args |> List.filter (fun a -> a <> "--safe")
+    let settings = startupSettings ()
     let fnName =
       if safeMode then
         System.Console.Error.WriteLine
           "running in --safe mode: the shipped default CLI"
         RT.FQFnName.fqPackage (PackageRefs.Fn.Cli.executeCliCommand ())
       else
-        resolveEntryPoint ()
+        resolveEntryPoint settings
     let args =
       args |> List.map RT.DString |> Dval.list RT.KTString |> NEList.singleton
     // The CLI's top level is a process: the scheduler runs on this thread until it finishes,
@@ -262,7 +259,6 @@ let execute
       return result
     else
       installStoreVersionSource ()
-      let settings = execSettings ()
       LibExecution.Scheduler.defaultWorkers <- workerCount settings
       let cap (key : string) : int64 =
         match Map.tryFind key settings with
@@ -338,7 +334,7 @@ let private installAuditLog () : unit =
 /// The title a system monitor shows (`setProcessTitle`): `dark` plus the command, plus the one
 /// argument that tells commands of the same kind apart (a daemon's slug, a served port), within
 /// the kernel's 15 bytes. Global flags (`--branch <b>`, `--safe`) are skipped.
-let processTitle (args : string list) : string =
+let private processTitle (args : string list) : string =
   let rec drop (args : string list) =
     match args with
     | "--branch" :: _ :: rest -> drop rest
@@ -417,22 +413,7 @@ let main (args : string[]) =
     installSuspendOnInterrupt ()
     let title = processTitle (List.ofArray args)
     LibExecution.HostProcess.setProcessTitle title
-    // Listed for `dark ps` from any shell; the file goes when this process does.
-    LibExecution.HostRegistry.setDirectory LibConfig.Config.runDir
-    let branchArg =
-      let rec go (xs : string list) =
-        match xs with
-        | "--branch" :: b :: _ -> b
-        | _ :: rest -> go rest
-        | [] ->
-          match System.Environment.GetEnvironmentVariable "DARK_BRANCH" with
-          | null -> ""
-          | b -> b
-      go (List.ofArray args)
-    LibExecution.HostRegistry.register
-      title
-      ("dark " + String.concat " " args)
-      branchArg
+    let commandLine = "dark " + String.concat " " args
 
 
     // Now safe to access LibConfig paths. Gated on DARK_TELEMETRY, the same switch the Dark side
@@ -662,6 +643,18 @@ let main (args : string[]) =
     LibDB.PackageManager.selectBranch (
       branchId |> Option.defaultValue PT.BranchId.Main
     )
+
+    // Listed for `dark ps` from any shell, once the branch is known; the file goes when this
+    // process does. The branch is its name where one was given, else the stored id, else main.
+    LibExecution.HostRegistry.setDirectory LibConfig.Config.runDir
+    LibExecution.HostRegistry.register
+      title
+      commandLine
+      (match flagName, envName, branchId with
+       | Some name, _, _
+       | None, Some name, _ -> name
+       | None, None, Some id -> string id
+       | None, None, None -> "")
 
     let result =
       Telemetry.time "cli.execute" [] (fun () ->

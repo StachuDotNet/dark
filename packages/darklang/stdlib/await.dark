@@ -7,7 +7,3 @@ module Darklang.Stdlib
 let await (x: 'a) : 'a =
   x
 
-
-/// `await` for a list of reads.
-let awaitAll (xs: List<'a>) : List<'a> =
-  xs

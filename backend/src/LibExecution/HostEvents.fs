@@ -50,10 +50,10 @@ type HostEvent =
   /// The task a process was parked on finished (well or badly). Internal: the scheduler resumes
   /// the process on its own thread.
   | Completed of ProcessId
-  /// A process finished with this value. For Dark subscribers (`ExecDone id`); F# callers await the
-  /// process directly. Posted to every queue in the process's group, since the subscriber may be
-  /// on another scheduler than the one that ran it.
-  | ExecDone of ProcessId * RT.Dval
+  /// A process finished, well or badly. For Dark subscribers (`ExecDone id`), who ask
+  /// `Exec.await` how; F# callers await the process directly. Posted to the schedulers with a
+  /// subscriber for it (`Scheduler.Finish`), which may not be the one that ran it.
+  | ExecDone of ProcessId
   /// Nothing to route: a process became runnable from outside the loop (a spawn from another
   /// thread), or the loop was asked to stop, and the loop, blocked on the queue with nothing
   /// runnable, has to look again.
@@ -81,14 +81,9 @@ let sources : Sources = { readKey = None; storeVersion = None }
 type Queue() =
   let events = new BlockingCollection<HostEvent>(new ConcurrentQueue<HostEvent>())
 
-  member _.Post(ev : HostEvent) : unit =
-    // A queue whose scheduler has stopped (a worker after `Stop`) is closed; a late source
-    // posting to it has nobody to reach, and that is fine.
-    try
-      events.Add ev
-    with
-    | :? System.InvalidOperationException
-    | :? System.ObjectDisposedException -> ()
+  /// A queue outlives its scheduler's loop: a late source posting after `Stop` reaches
+  /// nobody, and that is fine.
+  member _.Post(ev : HostEvent) : unit = events.Add ev
 
   /// Take the next event, blocking until there is one.
   member _.Take() : HostEvent = events.Take()
@@ -113,10 +108,6 @@ type Queue() =
     { new System.IDisposable with
         member _.Dispose() = timer.Dispose() }
 
-  interface System.IDisposable with
-    member _.Dispose() =
-      events.CompleteAdding()
-      events.Dispose()
 
 
 /// The stdin reader thread, for one `readKey` source: reads one key per request and posts it to
