@@ -128,7 +128,7 @@ it is idempotent (a poll and at most one check), so the race costs a repeated ch
 The router's hash is the approval root, so the guest state is re-derived when the hash
 moves. A newly broken version is said once on stdout (`[live] <entry>: still on the
 last good version; the newest has a type error: <why>`), and the fix too (`[live] now
-serving the new version of <entry>`), beside the `[HttpServer] ...` request lines; the
+on the new version of <entry>`), beside the `[HttpServer] ...` request lines; the
 wire keeps getting the last good one. `--no-live` pins the
 version resolved at start. What a request answers when its handler is slow, raises or
 is stopped (504, 500, 503, and `http.requestTimeoutMs`) is in `docs/processes.md`, "An
@@ -167,8 +167,8 @@ followed by id across frames.
 
 ## The host loop
 
-Every TUI host is written against one contract, provided by a shim today and by the
-scheduler's event queue later:
+Every TUI host is written against one contract, the scheduler's event queue behind
+`Stdlib.Host.await`:
 
 ```
 let rec loop model =
@@ -180,19 +180,22 @@ let rec loop model =
   | _ -> loop model
 ```
 
-`Stdlib.Host.await [Key; StoreChanged; Timer ms]` returns the first that fired:
-`Key of KeyRead` (the runtime's read: a key, a paste, a burst with its repeat count),
-`StoreChanged of Live.Change`, `Timer`. It is `Builtin.hostAwait` (`docs/processes.md`:
-under the scheduler the calling process parks on the event queue, fed by a reader
-thread, timers and a store poll over `LibDB.Sqlite.DataVersion`; outside a scheduler the
-thread is held, polling) plus one thing the runtime cannot do: say which ops landed. The
-poll posts that the store MOVED; `await` describes it with `Live.poll` from a watch the
-runtime keeps in one slot (`Builtin.hostWatchGet/Set`, since `await` takes no state and a
-Dark value does not outlive the call that made it), and a move that carried no op (a
-config write) is absorbed and the wait goes on. `Host.begin ()` starts the watch before
-a loop resolves its entries, so an edit during startup is not missed. The shim that
-stood in for the scheduler on 2026-09-19 (a Dark loop over `stdinReadKeyTimeout`) is
-gone; the loops did not change when it went.
+`Stdlib.Host.await [Key; StoreChanged; Timer ms; ExecDone id]` returns the first that
+fired: `Key of KeyRead` (the runtime's read: a key, a paste, a burst with its repeat
+count), `StoreChanged of Live.Change`, `Timer`, `ExecDone of id` (a process finished; ask
+`Exec.await` how). It is `Builtin.hostAwait` (`docs/processes.md`: under the scheduler
+the calling process parks on the event queue, fed by a reader thread, timers and a
+store poll over `LibDB.Sqlite.DataVersion`; outside a scheduler the thread is held,
+polling) plus one thing the runtime cannot do: say which ops landed. The poll posts that
+the store MOVED; `await` describes it with `Live.poll` from a watch the runtime keeps in
+one slot (`Builtin.hostWatchGet/Set`, since `await` takes no state and a Dark value does
+not outlive the call that made it), and a move that carried no op (a config write) is
+absorbed and the wait goes on. `Host.begin ()` starts the watch before a loop resolves
+its entries, so an edit during startup is not missed.
+
+A view of something that moves on its own (`ps --watch`) sets `View.every = Some ms`;
+the host then adds `Timer ms` to every wait and hands the view an `Event.Tick`, which its
+`update` must match. A view with `every = None` never sees a tick.
 
 The loop itself is `cli/apps/host.dark`. A `View` is three fns by name (`init : Unit ->
 'model`, `update : 'model -> Host.Event<'msg> -> 'model`, `render : 'model -> Node`), on an

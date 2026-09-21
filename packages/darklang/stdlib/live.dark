@@ -14,7 +14,7 @@
 /// that passed its checks when the newest one does not. In-flight work keeps the hashes it started with.
 ///
 /// Nothing here knows about threads, timers or a queue. `poll` is a question; who asks it, and when, is
-/// the host's business (`Stdlib.Host.await` today; the scheduler's store-change event later).
+/// the host's business (`Stdlib.Host.await`).
 module Darklang.Stdlib.Live
 
 
@@ -58,7 +58,7 @@ type Watch =
 
 /// More ops than this in one poll, and the change is reported as unknown rather than described: a
 /// host would re-run everything anyway, and describing ten thousand ops to reach that answer is waste.
-val describeAtMost = 500L
+val describeAtMost = 500
 
 // --- what an agent points you at ---
 
@@ -105,44 +105,39 @@ let watch (branchId: Uuid) : Watch =
       reported = reported
       shown = Stdlib.LocalStore.configGet showKey }
 
-/// The name an op binds or unbinds, if it does one of those.
-let touchedBy (op: LanguageTools.ProgramTypes.PackageOp) : Stdlib.Option.Option<Touched> =
+let kindOf (target: LanguageTools.ProgramTypes.Reference) : LanguageTools.ProgramTypes.ItemKind =
+  match target with
+  | PackageType _ -> LanguageTools.ProgramTypes.ItemKind.Type
+  | PackageValue _ -> LanguageTools.ProgramTypes.ItemKind.Value
+  | PackageFn _ -> LanguageTools.ProgramTypes.ItemKind.Fn
+
+/// The names an op binds or unbinds, if it does one of those.
+let touchedBy (op: LanguageTools.ProgramTypes.PackageOp) : List<Touched> =
   match op with
   | SetName(location, target, _previous) ->
-    let kind =
-      match target with
-      | PackageType _ -> LanguageTools.ProgramTypes.ItemKind.Type
-      | PackageValue _ -> LanguageTools.ProgramTypes.ItemKind.Value
-      | PackageFn _ -> LanguageTools.ProgramTypes.ItemKind.Fn
-
-    Stdlib.Option.Option.Some(Touched { location = location; kind = kind })
+    [ Touched { location = location; kind = kindOf target } ]
   | Unbind(location, _previous) ->
-    // The kind is not on the op. A dependent of any kind at that name is a dependent, so walk all three.
-    Stdlib.Option.Option.Some(
-      Touched { location = location; kind = LanguageTools.ProgramTypes.ItemKind.Fn })
+    // The kind is not on the op, and dependents are matched by kind, so all three are walked.
+    [ Touched { location = location; kind = LanguageTools.ProgramTypes.ItemKind.Fn }
+      Touched { location = location; kind = LanguageTools.ProgramTypes.ItemKind.Type }
+      Touched { location = location; kind = LanguageTools.ProgramTypes.ItemKind.Value } ]
   // A name put back on a version it held before: content-addressed, a second `SetName` would be the
   // op that already exists, so the revert is a decision. It binds the name all the same.
   | Decision(_id, location, _reason, Override target) ->
-    let kind =
-      match target with
-      | PackageType _ -> LanguageTools.ProgramTypes.ItemKind.Type
-      | PackageValue _ -> LanguageTools.ProgramTypes.ItemKind.Value
-      | PackageFn _ -> LanguageTools.ProgramTypes.ItemKind.Fn
-
-    Stdlib.Option.Option.Some(Touched { location = location; kind = kind })
-  | _ -> Stdlib.Option.Option.None
+    [ Touched { location = location; kind = kindOf target } ]
+  | _ -> []
 
 /// A change nobody can describe. Everything is affected.
 let unknownChange () : Change =
   Change { ops = []; touched = []; unknown = true }
 
 /// Ask once. `None` when nothing landed in the op log since the last poll; a config write or a trace
-/// moves the counter too, and those are not changes to what runs.
+/// moves the counter too, and those are not changes to what runs. The one exception is `show`: a
+/// moved `live.show` is answered as a change that touched nothing, so a host can read `shown`.
 ///
 /// When something did land, the name caches are dropped BEFORE the change is reported, so the caller's
 /// next name lookup sees the store as it is. That is the whole reload: nothing else has to happen for a
 /// name resolved after this to answer with the new hash.
-///
 let poll (w: Watch) : (Watch * Stdlib.Option.Option<Change>) =
   let now = version ()
 
@@ -161,8 +156,7 @@ let poll (w: Watch) : (Watch * Stdlib.Option.Option<Change>) =
 
     // Ids first, then the blobs for the new ones only.
     let landed =
-      SCM.PackageOps.summariesByIds
-        (Stdlib.List.take newIds (Stdlib.Int.fromInt64 describeAtMost))
+      SCM.PackageOps.summariesByIds (Stdlib.List.take newIds describeAtMost)
 
     if Stdlib.List.isEmpty landed then
       let sincePassed = w.since != (SCM.PackageOps.storeNow ())
@@ -180,16 +174,17 @@ let poll (w: Watch) : (Watch * Stdlib.Option.Option<Change>) =
       SCM.Draft.invalidateCaches ()
 
       let change =
-        if (Stdlib.List.length newIds) >= (Stdlib.Int.fromInt64 describeAtMost) then
+        if (Stdlib.List.length newIds) >= describeAtMost then
           unknownChange ()
         else
           let touched =
             landed
-            |> Stdlib.List.filterMap (fun s ->
+            |> Stdlib.List.map (fun s ->
               match s.op with
               | Some op -> touchedBy op
-              | None -> Stdlib.Option.Option.None)
-            |> Stdlib.List.uniqueBy (fun t -> t.location)
+              | None -> [])
+            |> Stdlib.List.flatten
+            |> Stdlib.List.uniqueBy (fun t -> (t.location, t.kind))
 
           Change { ops = landed; touched = touched; unknown = false }
 
@@ -211,9 +206,6 @@ let poll (w: Watch) : (Watch * Stdlib.Option.Option<Change>) =
 /// Never walk further than this. Past it, the change touched so much that "re-run everything" is
 /// the right answer and cheaper than finishing the walk.
 val walkAtMost = 2000
-
-let locationOfTouched (t: Touched) : LanguageTools.ProgramTypes.PackageLocation =
-  t.location
 
 /// Everything that depends, transitively, on any of <param touched>, as names. Over-approximates: a
 /// dependent through a branch that never runs is still a dependent. Never misses.
@@ -241,7 +233,7 @@ let dependents
             Stdlib.Option.Option.Some(Touched { location = location; kind = kind }))
       |> Stdlib.List.uniqueBy (fun t -> t.location)
 
-    (found, Stdlib.List.append seen (found |> Stdlib.List.map locationOfTouched))
+    (found, Stdlib.List.append seen (found |> Stdlib.List.map (fun t -> t.location)))
 
   let walk
     (frontier: List<Touched>)
@@ -256,7 +248,7 @@ let dependents
       let (next, seen) = step frontier seen
       walk next seen (depth + 1)
 
-  walk touched (touched |> Stdlib.List.map locationOfTouched) 0
+  walk touched (touched |> Stdlib.List.map (fun t -> t.location)) 0
 
 /// Does <param change> reach <param entry>: is `entry` one of the names it touched, or something that
 /// depends on one of them? An unknown change reaches everything.
@@ -355,32 +347,25 @@ let calleeDeclarations
 
   walk (SCM.Deps.dependenciesOf hash) [] []
 
-/// Look the name up again and decide what to run, given the ops that just <param landed> (`[]` when
-/// nothing is known to have, as at start).
+/// Look the name up again and decide what to run.
 ///
-/// Checked at rest (`AtRestTypeChecker.checkPackageOps`, against the store's closure): the newest
-/// version at the name when it differs from the hash held, everything that version calls
-/// (`calleeDeclarations`), and every declaration in `landed`. The callees are what catch a broken
-/// CALLEE: the entry's own body checks clean against a callee's unchanged signature, so checking the
-/// entry alone adopts a version that fails on its first call. `landed` covers the callee that broke
-/// in this poll (propagation repoints the entry to it in the same batch); the walk covers the callee
-/// that broke in an earlier poll and is fixed now, when the poll lands before propagation has
-/// repointed the entry away from the broken one. `Failed` on any of them keeps the previous hash and
-/// carries the report, so a broken save never blanks a screen or a site: the previous version is
-/// still in the store, and it still runs, on the callees it was built against.
-let refresh
-  (branchId: Uuid)
-  (landed: List<SCM.PackageOps.OpSummary>)
-  (lg: LastGood)
-  : LastGood =
+/// Checked at rest (`AtRestTypeChecker.checkPackageOps`, against the store's closure) whenever the
+/// newest version at the name differs from the hash held: that version, and everything it calls
+/// (`calleeDeclarations`). The callees are what catch a broken CALLEE: the entry's own body checks
+/// clean against a callee's unchanged signature, so checking the entry alone adopts a version that
+/// fails on its first call. Calls are by hash, so a version that has not moved runs exactly what it
+/// ran; a declaration that landed beside the entry and is not in its closure is not its business,
+/// and does not hold it back. `Failed` keeps the previous hash and carries the report, so a broken
+/// save never blanks a screen or a site: the previous version is still in the store, and it still
+/// runs, on the callees it was built against.
+let refresh (branchId: Uuid) (lg: LastGood) : LastGood =
   match LanguageTools.PackageManager.Function.find branchId lg.entry with
   | None ->
     { lg with problem = Stdlib.Option.Option.Some $"no function named {entryName lg.entry}" }
   | Some newest ->
     let moved = lg.hash != (Stdlib.Option.Option.Some newest)
-    let arrived = declarationsIn landed
 
-    if (Stdlib.Bool.not moved) && (Stdlib.List.isEmpty arrived) then
+    if Stdlib.Bool.not moved then
       { lg with report = Stdlib.Option.Option.None; problem = Stdlib.Option.Option.None }
     else
       match LanguageTools.PackageManager.Function.get newest with
@@ -391,13 +376,7 @@ let refresh
                 $"{entryName lg.entry} points at a version the store does not have" }
       | Some fn ->
         let candidates =
-          if moved then
-            Stdlib.List.flatten
-              [ [ LanguageTools.ProgramTypes.PackageOp.AddFn fn ]
-                calleeDeclarations newest
-                arrived ]
-          else
-            arrived
+          Stdlib.List.push (calleeDeclarations newest) (LanguageTools.ProgramTypes.PackageOp.AddFn fn)
 
         let report = LanguageTools.AtRestTypeChecker.checkPackageOps candidates
 
@@ -502,6 +481,21 @@ let diagnostic (lg: LastGood) : Stdlib.Option.Option<String> =
     | None -> Stdlib.Option.Option.None
 
 
+/// The one line a host says when a refresh changed something, or nothing when it did not: the
+/// diagnostic when one appeared or changed, "now on the new version of X" when the hash moved
+/// or a diagnostic cleared. The caller prefixes it (`[live]`, the daemon's name).
+let transition (before: LastGood) (after: LastGood) : Stdlib.Option.Option<String> =
+  let was = diagnostic before
+  let now = diagnostic after
+  match now with
+  | Some why -> if now != was then Stdlib.Option.Option.Some why else Stdlib.Option.Option.None
+  | None ->
+    if (after.hash != before.hash) || (Stdlib.Option.isSome was) then
+      Stdlib.Option.Option.Some $"now on the new version of {entryName after.entry}"
+    else
+      Stdlib.Option.Option.None
+
+
 // --- a router that follows edits ---
 
 /// The per-request step for `Stdlib.HttpServer.serveLive` when the router is a NAME: hold the
@@ -513,7 +507,7 @@ module Router =
       lastGood: LastGood }
 
   let start (branchId: Uuid) (entry: LanguageTools.ProgramTypes.PackageLocation) : State =
-    State { watch = watch branchId; lastGood = refresh branchId [] (Stdlib.Live.start entry) }
+    State { watch = watch branchId; lastGood = refresh branchId (Stdlib.Live.start entry) }
 
   /// One request's worth of following: did the store move, does it reach the router, and if so
   /// which hash is the router now. A newly broken version is said once, on stdout, which is where a
@@ -527,16 +521,11 @@ module Router =
     | None -> ({ s with watch = watch }, applicable s.lastGood)
     | Some change ->
       if affects change s.lastGood.entry then
-        let lg = refresh watch.branchId change.ops s.lastGood
-        let before = diagnostic s.lastGood
-        let after = diagnostic lg
+        let lg = refresh watch.branchId s.lastGood
 
-        if after != before then
-          match after with
-          | Some line -> Stdlib.printLine $"[live] {line}"
-          | None -> Stdlib.printLine $"[live] now serving the new version of {entryName lg.entry}"
-        else
-          ()
+        match transition s.lastGood lg with
+        | Some line -> Stdlib.printLine $"[live] {line}"
+        | None -> ()
 
         (State { watch = watch; lastGood = lg }, applicable lg)
       else
@@ -557,14 +546,13 @@ let touchingOnly (entry: LanguageTools.ProgramTypes.PackageLocation) : Change =
         [ Touched { location = entry; kind = LanguageTools.ProgramTypes.ItemKind.Fn } ]
       unknown = false }
 
-/// What a host that had never seen <param entry> would say about it after <param change>: `None` when
-/// the newest version is fine, else why it would not be applied.
+/// What a host that had never seen <param entry> would say about it now: `None` when the newest
+/// version is fine, else why it would not be applied.
 let diagnose
   (branchId: Uuid)
-  (change: Change)
   (entry: LanguageTools.ProgramTypes.PackageLocation)
   : Stdlib.Option.Option<String> =
-  diagnostic (refresh branchId change.ops (start entry))
+  diagnostic (refresh branchId (start entry))
 
 
 /// Apply <param f> to <param arg> and get a failure back as a value. A fn a host resolved live is
@@ -607,10 +595,8 @@ let versionsNewestFirst
     | Some h -> [ LanguageTools.ProgramTypes.hashToString h ]
     | None -> []
 
-  // Deduplicated in order (`List.uniqueBy` sorts, and the order is the point).
   Stdlib.List.append current (Stdlib.List.reverse (SCM.Propagation.authoringOrder loc))
-  |> Stdlib.List.fold [] (fun seen h -> if Stdlib.List.member seen h then seen else Stdlib.List.push seen h)
-  |> Stdlib.List.reverse
+  |> Stdlib.List.dedup
   |> Stdlib.List.map (fun h -> LanguageTools.ProgramTypes.Hash.Hash h)
 
 /// Whether <param hash> passes its at-rest checks with everything it calls. `None` when it does;
@@ -681,21 +667,29 @@ let observe (branchId: Uuid) (view: LanguageTools.ProgramTypes.PackageLocation) 
     | Some r -> Stdlib.Option.Option.Some r
     | None -> initReport
 
-  // The model from the newest init that runs; its error if the newest one raised.
-  let (model, initRte) =
-    initVersions
+  // The first version that runs, and the first error if none did.
+  let firstThatRuns
+    (versions: List<LanguageTools.ProgramTypes.Hash>)
+    (call: LanguageTools.ProgramTypes.Hash -> Stdlib.Result.Result<'a, String>)
+    (who: String)
+    : (Stdlib.Option.Option<'a> * Stdlib.Option.Option<String>) =
+    versions
     |> Stdlib.List.fold (Stdlib.Option.Option.None, Stdlib.Option.Option.None) (fun acc h ->
       let (found, firstRte) = acc
       match found with
       | Some _ -> acc
       | None ->
-        match callAt h () with
-        | Ok m -> (Stdlib.Option.Option.Some m, firstRte)
+        match call h with
+        | Ok v -> (Stdlib.Option.Option.Some v, firstRte)
         | Error e ->
           (Stdlib.Option.Option.None,
            (match firstRte with
             | Some _ -> firstRte
-            | None -> Stdlib.Option.Option.Some $"{entryName (inView "init")}: {e}")))
+            | None -> Stdlib.Option.Option.Some $"{who}: {e}")))
+
+  // The model from the newest init that runs; its error if the newest one raised.
+  let (model, initRte) =
+    firstThatRuns initVersions (fun h -> callAt h ()) (entryName (inView "init"))
 
   match model with
   | None ->
@@ -706,19 +700,10 @@ let observe (branchId: Uuid) (view: LanguageTools.ProgramTypes.PackageLocation) 
     Observation { report = report; render = ""; rte = rte }
   | Some m ->
     let (picture, renderRte) =
-      renderVersions
-      |> Stdlib.List.fold (Stdlib.Option.Option.None, Stdlib.Option.Option.None) (fun acc h ->
-        let (found, firstRte) = acc
-        match found with
-        | Some _ -> acc
-        | None ->
-          match callAt h m with
-          | Ok tree -> (Stdlib.Option.Option.Some(Stdlib.Cli.UI.Text.render tree), firstRte)
-          | Error e ->
-            (Stdlib.Option.Option.None,
-             (match firstRte with
-              | Some _ -> firstRte
-              | None -> Stdlib.Option.Option.Some $"{entryName (inView "render")}: {e}")))
+      firstThatRuns
+        renderVersions
+        (fun h -> Stdlib.Result.map (callAt h m) (fun tree -> Stdlib.Cli.UI.Text.render tree))
+        (entryName (inView "render"))
 
     let rte =
       match renderRte with
@@ -752,7 +737,7 @@ module Values =
       problem: Stdlib.Option.Option<String> }
 
   /// How the trace store may name a call to <param entry>: by the dotted name (what it writes when
-  /// the name resolves), and by each version's hash (what it falls back to), newest first.
+  /// the name resolves), and by each version's hash (what it falls back to).
   let versionsOf
     (branchId: Uuid)
     (entry: LanguageTools.ProgramTypes.PackageLocation)

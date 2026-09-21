@@ -134,15 +134,11 @@ let launcher () : String =
   Stdlib.Cli.Sys.currentExecutablePath ()
 
 
-// Spawn `expr` DETACHED so it survives this process exiting: `nohup … &` backgrounds it + shields it
-// from hangups, the launching `sh -c` returns immediately, and the child reparents to init. Output
-// appends to the daemon's logfile. The entrypoint must `claimPidfile name` first.
-let launchDetached (name: String) (expr: String) : Stdlib.Result.Result<Unit, String> =
-  launchDetachedWith name [ "eval", expr ]
-
-// The same, for a CLI COMMAND rather than an expression: `dark <args...>`. A command runs in the
-// CLI's own host state, which an `eval` guest does not get; a daemon that needs the host's
-// capabilities (the sync transport) is launched this way.
+// Spawn `dark <args...>` DETACHED so it survives this process exiting: `nohup … &` backgrounds it
+// + shields it from hangups, the launching `sh -c` returns immediately, and the child reparents to
+// init. Output appends to the daemon's logfile. The entrypoint must `claimPidfile name` first. A
+// command rather than an expression: a command runs in the CLI's own host state, which an `eval`
+// guest does not get, and a daemon needs the host's capabilities (the sync transport).
 let launchDetachedWith (name: String) (args: List<String>) : Stdlib.Result.Result<Unit, String> =
   // Create the run dir up front: the shell redirect below (and the pidfile) need it to exist, and
   // `claimPidfile` only mkdirs it from inside the child -- too late for this redirect on a fresh machine.
@@ -187,13 +183,9 @@ let waitUntilRunning
       waitUntilRunning name (tries - 1)
 
 
-// Launch a named daemon detached, running `expr`, then VERIFY it actually came up -- returns the live pid
-// or an error if it never claimed its pidfile (instead of falsely reporting success the instant the
-// shell forks). Refuses if it's already running.
-let start (name: String) (expr: String) : Stdlib.Result.Result<Int, String> =
-  startWith name [ "eval", expr ]
-
-// `start`, for a CLI command (`dark <args...>`) rather than an expression.
+// Launch a named daemon detached, running `dark <args...>`, then VERIFY it actually came up:
+// returns the live pid or an error if it never claimed its pidfile (instead of falsely reporting
+// success the instant the shell forks). Refuses if it's already running.
 let startWith (name: String) (args: List<String>) : Stdlib.Result.Result<Int, String> =
   if isRunning name then
     Stdlib.Result.Result.Error $"{name} is already running (see `status`)"

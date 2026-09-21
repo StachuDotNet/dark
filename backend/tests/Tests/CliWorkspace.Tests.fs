@@ -359,17 +359,15 @@ let private serveFollowsEdits =
         // The diagnostic the server printed went to its own thread's stdout, out of this flow's
         // capture; ask the same question the routing step asked and check the words.
         let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let change =
-          match polled with
-          | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ change ]), []) -> change
-          | other ->
-            failtest $"expected the broken save to be reported, got {other}"
+        match polled with
+        | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ _ ]), []) -> ()
+        | other -> failtest $"expected the broken save to be reported, got {other}"
         let! routerLoc = evalUnder state routerLocation
         let! why =
           callByName
             state
             "Darklang.Stdlib.Live.diagnose"
-            [ RT.DUuid PT.BranchId.Main.Guid; change; routerLoc ]
+            [ RT.DUuid PT.BranchId.Main.Guid; routerLoc ]
         let why =
           match why with
           | RT.DEnum(_, _, _, "Some", [ RT.DString s ]) -> s
@@ -941,7 +939,7 @@ let private aFixedCalleeIsNotAdoptedThroughItsBrokenDependent =
         let! lg =
           evalUnder
             state
-            $"Darklang.Stdlib.Live.refresh Darklang.SCM.Branch.mainBranchId [] (Darklang.Stdlib.Live.start {routerLoc})"
+            $"Darklang.Stdlib.Live.refresh Darklang.SCM.Branch.mainBranchId (Darklang.Stdlib.Live.start {routerLoc})"
         let hashOf (lg : RT.Dval) =
           match lg with
           | RT.DRecord(_, _, _, fields) ->
@@ -957,21 +955,15 @@ let private aFixedCalleeIsNotAdoptedThroughItsBrokenDependent =
             "Darklang.Stdlib.Live.watch Darklang.SCM.Branch.mainBranchId"
         do! author $"Tests.{m}.page" "(): String = 3"
         let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let watch, change =
+        let watch =
           match polled with
-          | RT.DTuple(w, RT.DEnum(_, _, _, "Some", [ c ]), []) -> w, c
+          | RT.DTuple(w, RT.DEnum(_, _, _, "Some", [ _ ]), []) -> w
           | other -> failtest $"the break was not reported: {other}"
-        let opsOf (change : RT.Dval) =
-          match change with
-          | RT.DRecord(_, _, _, fields) ->
-            Map.tryFind "ops" fields
-            |> Option.defaultWith (fun () -> failtest "a Change has ops")
-          | other -> failtest $"expected a Change, got {other}"
         let! lg =
           callByName
             state
             "Darklang.Stdlib.Live.refresh"
-            [ RT.DUuid PT.BranchId.Main.Guid; opsOf change; lg ]
+            [ RT.DUuid PT.BranchId.Main.Guid; lg ]
         Expect.equal
           (hashOf lg)
           good
@@ -983,15 +975,14 @@ let private aFixedCalleeIsNotAdoptedThroughItsBrokenDependent =
           authorIntoMain
             $"module Tests.{m}\n\nlet page () : String = \"fixed {body}\""
         let! polled = callByName state "Darklang.Stdlib.Live.poll" [ watch ]
-        let change =
-          match polled with
-          | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ c ]), []) -> c
-          | other -> failtest $"the fix was not reported: {other}"
+        match polled with
+        | RT.DTuple(_, RT.DEnum(_, _, _, "Some", [ _ ]), []) -> ()
+        | other -> failtest $"the fix was not reported: {other}"
         let! lg =
           callByName
             state
             "Darklang.Stdlib.Live.refresh"
-            [ RT.DUuid PT.BranchId.Main.Guid; opsOf change; lg ]
+            [ RT.DUuid PT.BranchId.Main.Guid; lg ]
         Expect.equal
           (hashOf lg)
           good

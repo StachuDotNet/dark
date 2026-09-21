@@ -89,11 +89,6 @@ let band (severity: Severity) (message: String) : Node<'msg> = Node.Band(severit
 let table (columns: List<String>) (rows: List<List<String>>) : Node<'msg> =
   Node.Table(columns, rows)
 
-/// A `Column` of one `Text` per line of <param s>.
-let lines (s: String) : Node<'msg> =
-  Node.Column(Stdlib.String.split s "\n" |> Stdlib.List.map (fun l -> Node.Text l))
-
-
 // --- measuring ---
 
 /// The width of the widest cell in each column of a table, headers included.
@@ -262,7 +257,23 @@ let paint
   if region.rows <= 0 || region.cols <= 0 then
     []
   else
-    match node with
+    let stack (children: List<Node<'msg>>) (indent: Int) (marker: String) : List<Layout.Span> =
+    let (_top, chunks) =
+      children
+      |> Stdlib.List.fold (0, []) (fun acc child ->
+        let (top, collected) = acc
+        let (rows, _) = measure child
+
+        if top >= region.rows then
+          (top, collected)
+        else
+          let mark = if marker == "" then [] else Layout.at region top 0 (Colors.dimText marker)
+          let spans = paint child (sub region top indent rows (region.cols - indent)) focus style
+          (top + rows, Stdlib.List.push collected (Stdlib.List.append mark spans)))
+
+    chunks |> Stdlib.List.reverse |> Stdlib.List.flatten
+
+  match node with
     | Empty -> []
     | Text s -> textAt 0 s
     | Rows rows -> rows |> Stdlib.List.indexedMap (fun i r -> textAt i r) |> Stdlib.List.flatten
@@ -294,35 +305,9 @@ let paint
       Layout.at region 0 0 box
     | Link(label, _) -> textAt 0 (Colors.underlineText label)
     | Region(rows, cols, inner) -> paint inner (sub region 0 0 rows cols) focus style
-    | Column children ->
-      let (_top, chunks) =
-        children
-        |> Stdlib.List.fold (0, []) (fun acc child ->
-          let (top, collected) = acc
-          let (rows, _) = measure child
-
-          if top >= region.rows then
-            (top, collected)
-          else
-            let spans = paint child (sub region top 0 rows region.cols) focus style
-            (top + rows, Stdlib.List.push collected spans))
-
-      chunks |> Stdlib.List.reverse |> Stdlib.List.flatten
-    | ListOf children ->
-      let (_top, chunks) =
-        children
-        |> Stdlib.List.fold (0, []) (fun acc child ->
-          let (top, collected) = acc
-          let (rows, _) = measure child
-
-          if top >= region.rows then
-            (top, collected)
-          else
-            let marker = Layout.at region top 0 (Colors.dimText "-")
-            let spans = paint child (sub region top 2 rows (region.cols - 2)) focus style
-            (top + rows, Stdlib.List.push collected (Stdlib.List.append marker spans)))
-
-      chunks |> Stdlib.List.reverse |> Stdlib.List.flatten
+    // A column stacks its children; a list is a column with a marker and a two-column indent.
+    | Column children -> stack children 0 ""
+    | ListOf children -> stack children 2 "-"
     | Row children ->
       // Natural widths, one column of gap between children; the last child that overflows takes
       // what is left and is clipped there.
@@ -365,17 +350,7 @@ let rowOf (node: Node<'msg>) (id: String) : Stdlib.Option.Option<Int> =
     | Styled(_, inner) -> find inner top
     | Region(_, _, inner) -> find inner top
     | Row children -> children |> Stdlib.List.filterMap (fun c -> find c top) |> Stdlib.List.head
-    | Column children ->
-      let (_, found) =
-        children
-        |> Stdlib.List.fold (top, Stdlib.Option.Option.None) (fun acc child ->
-          let (at, found) = acc
-          match found with
-          | Some _ -> acc
-          | None ->
-            let (rows, _) = measure child
-            (at + rows, find child at))
-      found
+    | Column children
     | ListOf children ->
       let (_, found) =
         children

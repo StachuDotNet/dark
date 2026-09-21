@@ -1,7 +1,6 @@
 /// The host loop: runs a live `View` in the terminal, and follows edits to it.
 ///
-/// One loop, written once against `Stdlib.Host.await`, and it does not change when the shim behind
-/// `await` is replaced by the scheduler:
+/// One loop, written once against `Stdlib.Host.await`; how the wait happens is the runtime's:
 ///
 ///   loop session =
 ///     match Host.await [Key; StoreChanged] with
@@ -64,7 +63,7 @@ let resolveAll
   match (entryOf view.init, entryOf view.update, entryOf view.render) with
   | (Some i, Some u, Some r) ->
     let lg (loc: LanguageTools.ProgramTypes.PackageLocation) : Stdlib.Live.LastGood =
-      Stdlib.Live.refresh branchId [] (Stdlib.Live.start loc)
+      Stdlib.Live.refresh branchId (Stdlib.Live.start loc)
 
     let (initLg, updateLg, renderLg) = (lg i, lg u, lg r)
 
@@ -281,13 +280,7 @@ let shownView () : Stdlib.Option.Option<Model.View> =
   Stdlib.Live.shown ()
   |> Stdlib.Option.map (fun loc ->
     let path = Stdlib.Live.entryName loc
-
-    Model.View
-      { name = path
-        title = path
-        init = path ++ ".init"
-        update = path ++ ".update"
-        render = path ++ ".render"; every = Stdlib.Option.Option.None })
+    Model.viewAt path path path)
 
 /// Switch to the view `Live.show` names when it is not the one on screen: a fresh session for it,
 /// on this session's terminal. A view that does not resolve stays where it was and says so.
@@ -313,12 +306,13 @@ let affected (s: Session<'model, 'msg>) (change: Stdlib.Live.Change) : Bool =
 /// Take the change: resolve the entries again through last-good, keep the model, say what moved.
 let reload (s: Session<'model, 'msg>) (change: Stdlib.Live.Change) : Session<'model, 'msg> =
   let names =
-    if change.unknown then "the store" else Stdlib.String.join (Stdlib.Live.touchedNames change) ", "
+    if change.unknown then "more than 500 ops (everything re-run)"
+    else Stdlib.String.join (Stdlib.Live.touchedNames change) ", "
 
   { s with
-      init = Stdlib.Live.refresh s.branchId change.ops s.init
-      update = Stdlib.Live.refresh s.branchId change.ops s.update
-      render = Stdlib.Live.refresh s.branchId change.ops s.render
+      init = Stdlib.Live.refresh s.branchId s.init
+      update = Stdlib.Live.refresh s.branchId s.update
+      render = Stdlib.Live.refresh s.branchId s.render
       toast = Stdlib.Option.Option.Some $"changed: {names}" }
 
 
@@ -337,8 +331,7 @@ let sessionLocation (view: Model.View) : Stdlib.Option.Option<LanguageTools.Prog
 
 /// Snapshot the model as a `val` in the store, so a later `--resume <name>` starts from it, on
 /// another machine after a sync if you like. A value that cannot be stored (a stream, a lambda)
-/// says why. This is the first half of session branches; after record/replay `:save` becomes a
-/// fork of the view's execution and this goes.
+/// says why.
 let snapshot (branchId: Uuid) (view: Model.View) (model: 'model) : Stdlib.Result.Result<String, String> =
   match sessionLocation view with
   | None -> Stdlib.Result.Result.Error "the view's render is not a package fn name"

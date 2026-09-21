@@ -62,7 +62,7 @@ let onKey
 let onStoreChanged (state: State) (change: Stdlib.Live.Change) : State =
   let names =
     if change.unknown then
-      "the store"
+      "more than 500 ops (everything re-run)"
     else
       Stdlib.String.join (Stdlib.Live.touchedNames change) ", "
 

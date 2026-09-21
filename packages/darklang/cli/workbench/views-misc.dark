@@ -235,20 +235,20 @@ let builtinDetailLines (state: State) : List<String> =
 // the table is what the scheduler holds at that moment.
 
 /// One item per row of the tree, in the tree's order, so the highlighted row and the stack on
-/// the right are the same process.
+/// the right are the same process. The one read of the table: the row's cells ride in `desc`,
+/// tab-separated, so `render` draws what the loader saw and reads nothing.
 let loadProcessItems () : List<BodyItem> =
-  Cli.Ps.treeRowsWithIds SCM.Branch.mainBranchId (Stdlib.Exec.list ())
+  Cli.Ps.treeRowsWithIds (SCM.PackageOps.currentBranch ()) (Stdlib.Exec.list ())
   |> Stdlib.List.map (fun (id, cells) ->
     BodyItem
       { name = Cli.Ps.idPrefix id
         kind = "process"
         isModule = false
-        desc = Stdlib.Option.withDefault (Stdlib.List.getAt cells 1) "" })
+        desc = Stdlib.String.join cells "\t" })
 
-/// The table as a tree. `render` is pure over the state: the rows were read by the loader.
+/// The table as a tree, from the rows the loader read.
 let processTree (state: State) : Stdlib.Cli.UI.Node.Node<Unit> =
-  let branchId = state.branchId
-  let rows = Cli.Ps.treeRows branchId (Stdlib.Exec.list ())
+  let rows = state.items |> Stdlib.List.map (fun item -> Stdlib.String.split item.desc "\t")
 
   if Stdlib.List.isEmpty rows then
     Stdlib.Cli.UI.Node.dim "(no processes: the scheduler is not running this workbench)"

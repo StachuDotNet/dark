@@ -2,8 +2,8 @@
 ///
 /// Every node becomes one element with a `dark-` class, so a stylesheet can do what the terminal's
 /// SGR codes do. `Button` and `Input` become a form that posts the message as JSON to the page's own
-/// URL, which is what a `viewRoute` will read `update` from. Text is escaped, always: a view renders
-/// values it did not choose.
+/// URL; nothing reads it yet, and nothing serves `page` yet (a view in a browser is a follow-up).
+/// Text is escaped, always: a view renders values it did not choose.
 module Darklang.Stdlib.Cli.UI.Html
 
 let className (style: Node.Style) : String =

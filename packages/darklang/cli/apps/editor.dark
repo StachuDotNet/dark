@@ -326,13 +326,13 @@ let uninstall (state: State) : State =
       state
 
 /// Start the selected daemon if stopped, stop it if running.
-let toggleDaemon (state: State) (app: Model.App) (entrypoint: String) : State =
+let toggleDaemon (state: State) (app: Model.App) : State =
   if Stdlib.Cli.Daemon.isRunning app.slug then
     match Stdlib.Cli.Daemon.stop app.slug with
     | Ok msg -> { state with message = Stdlib.Cli.UI.Colors.success msg }
     | Error e -> { state with message = Stdlib.Cli.UI.Colors.error e }
   else
-    match Stdlib.Cli.Daemon.startWith app.slug [ "apps", "daemon-main", app.slug ] with
+    match Command.launchDaemon (SCM.PackageOps.currentBranch ()) app with
     | Ok pid -> { state with message = Stdlib.Cli.UI.Colors.success $"started {app.name} (pid {Stdlib.Int.toString pid})" }
     | Error e -> { state with message = Stdlib.Cli.UI.Colors.error e }
 
@@ -344,9 +344,7 @@ let activate (state: State) : Action =
     match app.target with
     | Foreground command -> Action.LaunchFg command
     | Views _ -> Action.LaunchFg $"apps view {app.slug}"
-    | Daemon entrypoint ->
-      Action.Continue
-        (refreshPresentation (toggleDaemon state app entrypoint))
+    | Daemon _ -> Action.Continue (refreshPresentation (toggleDaemon state app))
 
 
 let handleKey

@@ -28,17 +28,11 @@ let loop
 
   match Stdlib.Host.await [ Stdlib.Host.EventSpec.StoreChanged, Stdlib.Host.EventSpec.Timer (timerMs intervalMs) ] with
   | StoreChanged change when Stdlib.Live.affects change lg.entry ->
-    let refreshed = Stdlib.Live.refresh branchId change.ops lg
-    let before = Stdlib.Live.diagnostic lg
-    let after = Stdlib.Live.diagnostic refreshed
+    let refreshed = Stdlib.Live.refresh branchId lg
 
-    match after with
-    | Some why -> if after != before then Stdlib.printLine $"{name}: {why}" else ()
-    | None ->
-      if refreshed.hash != lg.hash then
-        Stdlib.printLine $"{name}: now running the new version of {Stdlib.Live.entryName lg.entry}"
-      else
-        ()
+    match Stdlib.Live.transition lg refreshed with
+    | Some line -> Stdlib.printLine $"{name}: {line}"
+    | None -> ()
 
     // The wait was cut short by the change; the next tick runs on the new version after a
     // full interval, not at once. A change that lands during this plain wait is reported by
@@ -60,7 +54,7 @@ let run (name: String) (stepName: String) (init: 's) (intervalMs: Int) : Int =
   | Some entry ->
     Stdlib.Host.begin ()
     let branchId = SCM.PackageOps.currentBranch ()
-    let lg = Stdlib.Live.refresh branchId [] (Stdlib.Live.start entry)
+    let lg = Stdlib.Live.refresh branchId (Stdlib.Live.start entry)
 
     match lg.hash with
     | None ->

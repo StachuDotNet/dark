@@ -41,6 +41,16 @@ let recordStartedHash (branchId: Uuid) (app: Model.App) : Unit =
       (Stdlib.Dict.setOverridingDuplicates cfg (startedHashKey app.slug) (entrypointHash branchId entrypoint))
   | _ -> ()
 
+/// Start <param app>'s daemon detached (`dark apps daemon-main <slug>`), recording the version it
+/// started on so `apps list` can say when it falls behind. The one launch path: `apps start` and
+/// the apps editor both come through here.
+let launchDaemon (branchId: Uuid) (app: Model.App) : Stdlib.Result.Result<Int, String> =
+  match Stdlib.Cli.Daemon.startWith app.slug [ "apps", "daemon-main", app.slug ] with
+  | Ok pid ->
+    recordStartedHash branchId app
+    Stdlib.Result.Result.Ok pid
+  | Error e -> Stdlib.Result.Result.Error e
+
 /// "behind" when the entrypoint a running daemon started on is no longer the version at its name.
 /// A daemon on `Apps.Runner` follows its STEP between ticks and never needs this for the step; the
 /// entrypoint itself, and any daemon written as one long-running fn, needs `apps restart`.
@@ -74,9 +84,10 @@ let row (branchId: Uuid) (app: Model.App) : String =
   let extra =
     match app.target with
     | Daemon _ ->
-      let running = Stdlib.String.startsWith (daemonState app.slug) "running"
+      let daemon = daemonState app.slug
+      let running = Stdlib.String.startsWith daemon "running"
       let behind = if running then behindSuffix branchId app else ""
-      "  " ++ Stdlib.Cli.UI.Colors.dimText ("· " ++ (daemonState app.slug) ++ behind)
+      "  " ++ Stdlib.Cli.UI.Colors.dimText ("· " ++ daemon ++ behind)
     | _ -> ""
   $"  {app.name}  {Stdlib.Cli.UI.Colors.dimText ($"({app.slug})  [{tag}]")}  {Stdlib.Cli.UI.Colors.dimText app.description}{extra}"
 
@@ -146,9 +157,8 @@ let startDaemon (state: Cli.AppState) (slug: String) : Cli.AppState =
           (Stdlib.Cli.UI.Colors.error $"'{slug}' has an entrypoint that isn't a plain function name")
       else
 
-      match Stdlib.Cli.Daemon.startWith slug [ "apps", "daemon-main", slug ] with
+      match launchDaemon state.currentBranchId app with
       | Ok pid ->
-        recordStartedHash state.currentBranchId app
         Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"✓ {app.name} started (pid {Stdlib.Int.toString pid})")
       | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
     | Foreground _ ->
@@ -169,15 +179,7 @@ let viewApp
   : Cli.AppState =
   match Registry.findBySlug state.currentBranchId slug with
   | None when Stdlib.String.contains slug "." ->
-    let view =
-      Model.View
-        { name = slug
-          title = slug
-          init = slug ++ ".init"
-          update = slug ++ ".update"
-          render = slug ++ ".render"; every = Stdlib.Option.Option.None }
-
-    match Host.openView state.currentBranchId view resume with
+    match Host.openView state.currentBranchId (Model.viewAt slug slug slug) resume with
     | Ok _ -> state
     | Error e ->
       Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
@@ -303,7 +305,9 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     match Stdlib.Live.shown () with
     | Some loc -> viewApp state (Stdlib.Live.entryName loc) "" Stdlib.Option.Option.None
     | None ->
-      Stdlib.printLine (Stdlib.Cli.UI.Colors.error "apps view <slug> or <Module.Path>; nothing has called Live.show yet")
+      Stdlib.printLine
+        (Stdlib.Cli.UI.Colors.error
+          "nothing to show yet: `apps view <slug>` or `apps view <Module.Path>` opens one; `apps view` alone opens whatever `Stdlib.Live.show` last pointed at")
       { state with exitCode = 1 }
 
   | [ "view", slug ] -> viewApp state slug "" Stdlib.Option.Option.None

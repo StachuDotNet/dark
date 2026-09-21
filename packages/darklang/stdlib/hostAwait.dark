@@ -3,8 +3,7 @@
 /// Every host loop (a TUI, a daemon's runner, the CLI's own read loop) is written against `await`:
 /// park until one of the things it asked for happens, get told which. Under the scheduler the
 /// calling process gives up the thread while it waits, so other processes keep running; outside
-/// one (a plain `execute`) the thread is held, polling, the way `readKey` always was. The loop
-/// knows neither.
+/// one (a plain `execute`) the thread is held, polling. The loop knows neither.
 ///
 /// Nothing outside this file reads a key with a timeout, sleeps in slices, or remembers when it
 /// last looked at the store. If a loop needs any of that, it is asking for an `EventSpec` that does

@@ -15,8 +15,21 @@ type View =
     update: String
     render: String
     /// Repaint every this many ms with a `Tick` event, for a view of something that moves on its
-    /// own (a process table); `None` for a view that only changes on a key or a save.
+    /// own (a process table); `None` for a view that only changes on a key or a save. A view
+    /// that sets this must match `Tick` in its `update`; nothing checks that before the first
+    /// tick, which would otherwise land as a runtime error under the view.
     every: Stdlib.Option.Option<Int64> }
+
+/// A view whose three fns are `<path>.init`, `.update` and `.render`, repainting on keys and
+/// saves only.
+let viewAt (name: String) (title: String) (path: String) : View =
+  View
+    { name = name
+      title = title
+      init = path ++ ".init"
+      update = path ++ ".update"
+      render = path ++ ".render"
+      every = Stdlib.Option.Option.None }
 
 /// How an app launches, and the reference it carries — one axis, no invalid states.
 type Target =
