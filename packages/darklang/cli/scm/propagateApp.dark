@@ -171,8 +171,7 @@ let component () : Cli.Component.Component<Cli.PropagateApp.State> =
     { view = fun state _size -> Component.viewOfString (render state)
       onKey = onKey
       save = Component.noSave
-      refresh = Component.noRefresh
-      onStoreChanged = Component.ignoreStore }
+      refresh = Component.noRefresh }
 
 
 let launch (cliState: AppState) : AppState =

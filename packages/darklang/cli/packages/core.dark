@@ -366,8 +366,7 @@ let saveAuthored
       | _ -> ()
 
       Stdlib.printLine ""
-      // `live.autopush`: a save is a commit and a push when the mode is on. A no-op otherwise.
-      Cli.Sync.Autopush.afterAuthoring state
+      state
 
     | Error msg ->
       [ ""
