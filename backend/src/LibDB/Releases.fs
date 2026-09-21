@@ -266,6 +266,19 @@ let steps : List<Step> =
         fun () ->
           addColumnIfMissing "trace_fn_calls" "ord" "INTEGER NOT NULL DEFAULT -1" }
 
+    // A fork's cut is a `seq` (trace-wide), not an ordinal (per process); the column says so.
+    // Only a store made while the column had its first name has it to rename.
+    { name = "20260921_000004_executions_parent_seq"
+      run =
+        fun () ->
+          if
+            tableExists "executions"
+            && hasColumn "executions" "parent_ord"
+            && not (hasColumn "executions" "parent_seq")
+          then
+            Sql.query "ALTER TABLE executions RENAME COLUMN parent_ord TO parent_seq"
+            |> Sql.executeStatementSync }
+
     // NEW STEPS GO ABOVE THIS LINE -- `scripts/migrations/new` appends here, and edits nothing else.
     ]
 

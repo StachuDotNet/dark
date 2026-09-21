@@ -161,18 +161,6 @@ let fnSignatureEqual
   typeParamsEqual && paramsEqual && returnEqual
 
 
-/// Repoint this item's dependents NOW, into the draft, and say so in one line.
-///
-/// On EDIT rather than at commit, which is the whole point of propagating at all: you change `base` in
-/// order to find out what it does to the things above it, and you cannot find that out while `dep` is
-/// still pinned to the old version. Seeing the impact is how you decide whether to commit, so it has to
-/// happen first.
-///
-/// Nothing is committed here. The repoints land in the DRAFT like any other edit, `dark status` counts
-/// them, and `dark commit` is still the moment the whole thing is blessed.
-///
-/// Quiet by design: one line, or nothing when nothing moved. A wall of per-edit consequences is the churn
-/// this design exists to remove.
 /// What a save's propagation did, for the save to say in its own words.
 type Followed =
   { /// The dependents now on the new version, by name, in the order they were repointed.
@@ -186,7 +174,18 @@ let nothingFollowed () : Followed =
   Followed { names = []; broken = []; failure = Stdlib.Option.Option.None }
 
 /// Repoint the dependents of <param location> at <param currentHash>, now, into the draft, and say
-/// what followed. The caller prints; a save is at most two lines and decides its own glyph from this.
+/// what followed.
+///
+/// On EDIT rather than at commit, which is the whole point of propagating at all: you change `base` in
+/// order to find out what it does to the things above it, and you cannot find that out while `dep` is
+/// still pinned to the old version. Seeing the impact is how you decide whether to commit, so it has to
+/// happen first.
+///
+/// Nothing is committed here. The repoints land in the DRAFT like any other edit, `dark status` counts
+/// them, and `dark commit` is still the moment the whole thing is blessed.
+///
+/// Quiet by design: the caller prints, a save is at most two lines and decides its own glyph from
+/// this. A wall of per-edit consequences is the churn this design exists to remove.
 let repointNow
   (branchId: Uuid)
   (location: LanguageTools.ProgramTypes.PackageLocation)
@@ -209,7 +208,7 @@ let repointNow
 
       // The one thing worth saying at the SAVE that nothing else says in the same breath: some of
       // what just followed you is now broken. The draft check already covers the items; this only
-      // takes the repointed ones among its failures -- branch-correct, unlike the old report.
+      // takes the repointed ones among its failures, asked on this branch.
       let byHash =
         repoints |> Stdlib.List.map (fun r -> (SCM.Draft.referenceHash r.toRef, nameOf r))
 

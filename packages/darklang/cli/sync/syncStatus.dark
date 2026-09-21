@@ -59,7 +59,7 @@ let executeImport (state: AppState) (path: String) : AppState =
         SCM.PackageOps.recordSyncBases source
 
         Cli.printOk
-          $"Imported {Stdlib.Int.toString outcome.imported} new op(s), of {Stdlib.Int.toString (Stdlib.List.length ops)} in file."
+          $"Imported {Cli.Text.plural outcome.imported "new op"}, of {Stdlib.Int.toString (Stdlib.List.length ops)} in file."
 
         reportDetection outcome.bulk outcome.detected
         reportConflicts outcome.conflicts
@@ -83,7 +83,8 @@ let executeImport (state: AppState) (path: String) : AppState =
 /// written on two machines lands the SAME id carrying each machine's own origin_ts, and two stores holding
 /// exactly the same ops report a different max.
 /// What `dark sync status` knows, as data. Read by `Status.load`, rendered by `Status.render`:
-/// the same tree prints once for the command and repaints in a live pane (`dark apps view sync`).
+/// the same tree prints once for the command and repaints every five seconds in the stats
+/// app's sync pane (`dark apps view stats sync`).
 module Status =
   type Verdict =
     | InSync
@@ -192,7 +193,7 @@ module Status =
 
   let update (m: Model) (event: Cli.Apps.Host.Event<Msg>) : Model =
     match event with
-    | Msg Reload -> load m.url
+    | Tick | Msg Reload -> load m.url
     | Key _ -> m
 
   let render (m: Model) : Stdlib.Cli.UI.Node.Node<Msg> =
@@ -208,17 +209,17 @@ module Status =
       let verdict =
         match m.verdict with
         | InSync -> ok "in sync."
-        | ToSend n -> ok $"{Stdlib.Int64.toString n} op(s) to send -- `dark push {m.url}`."
+        | ToSend n -> ok $"{Cli.Text.plural (Stdlib.Int.fromInt64 n) "op"} to send -- `dark push {m.url}`."
         | Behind -> ok $"behind the relay -- `dark pull {m.url}`."
         | BothWays n ->
-          ok $"out of sync both ways ({Stdlib.Int64.toString n} op(s) to send) -- `dark sync {m.url}`."
+          ok $"out of sync both ways ({Cli.Text.plural (Stdlib.Int.fromInt64 n) "op"} to send) -- `dark sync {m.url}`."
 
       let branchHints =
         Stdlib.List.append
           (m.unpushedBranches
            |> Stdlib.List.map (fun entry ->
              let (name, n) = entry
-             hint $"branch \"{name}\": {Stdlib.Int64.toString n} op(s) not on the relay -- `dark branch push {name}`."))
+             hint $"branch \"{name}\": {Cli.Text.plural (Stdlib.Int.fromInt64 n) "op"} not on the relay -- `dark branch push {name}`."))
           (m.unpulledFrom
            |> Stdlib.List.map (fun owner ->
              hint $"the relay holds branches from \"{owner}\" you haven't pulled -- `dark branch pull --from {owner}`."))

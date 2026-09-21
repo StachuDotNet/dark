@@ -660,7 +660,7 @@ a reader drops any whose pid is gone, which is what survives a crash. The
 registry is the outer ring, one row per OS process; what is inside another
 process (its own Dark process tree) is its own, so `ps` shows this instance's
 tree under the machine's rows. Reaching into a row is a signal: `ps cancel
-<pid>` sends TERM, the Ctrl-C path that suspends a traced run; `ps kill <pid>`
+<pid>` sends INT, the Ctrl-C path that suspends a traced run; `ps kill <pid>`
 sends KILL. `ps --watch` repaints both tables every half second with a cursor
 (`c`, `k`, Escape), and the workbench's Processes pane lists the machine's
 rows under its own.

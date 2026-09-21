@@ -234,14 +234,16 @@ let builtinDetailLines (state: State) : List<String> =
 // (`Stdlib.Exec.inspect`) is the detail. Refreshed on every transition, like every other loader:
 // the table is what the scheduler holds at that moment.
 
+/// One item per row of the tree, in the tree's order, so the highlighted row and the stack on
+/// the right are the same process.
 let loadProcessItems () : List<BodyItem> =
-  Stdlib.Exec.list ()
-  |> Stdlib.List.map (fun p ->
+  Cli.Ps.treeRowsWithIds SCM.Branch.mainBranchId (Stdlib.Exec.list ())
+  |> Stdlib.List.map (fun (id, cells) ->
     BodyItem
-      { name = Cli.Ps.idPrefix p.id
+      { name = Cli.Ps.idPrefix id
         kind = "process"
         isModule = false
-        desc = Cli.Ps.entryText SCM.Branch.mainBranchId p.entry })
+        desc = Stdlib.Option.withDefault (Stdlib.List.getAt cells 1) "" })
 
 /// The table as a tree. `render` is pure over the state: the rows were read by the loader.
 let processTree (state: State) : Stdlib.Cli.UI.Node.Node<Unit> =
@@ -259,11 +261,11 @@ let processTree (state: State) : Stdlib.Cli.UI.Node.Node<Unit> =
       | machine ->
         [ Stdlib.Cli.UI.Node.text ""
           Stdlib.Cli.UI.Node.dim "elsewhere on this machine"
-          Stdlib.Cli.UI.Node.table [ "pid", "process", "branch", "started", "command" ] machine ]
+          Stdlib.Cli.UI.Node.table Cli.Ps.machineColumns machine ]
 
     Stdlib.Cli.UI.Node.column
       (Stdlib.List.append
-        [ Stdlib.Cli.UI.Node.table [ "id", "entry", "status", "turns", "parent" ] rows
+        [ Stdlib.Cli.UI.Node.table Cli.Ps.localColumns rows
           Stdlib.Cli.UI.Node.text ""
           Stdlib.Cli.UI.Node.dim "the selected row's call stack is on the right; `dark ps show <id>` has all of it" ]
         others)

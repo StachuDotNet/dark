@@ -11,7 +11,7 @@
 /// mode that silently held back your broken save would leave the host on code you have moved past
 /// without telling you. The ordinary `dark commit` still refuses them; this is the live lane.
 ///
-/// `squash` for the trail of tiny commits this leaves is a later SCM verb.
+/// This leaves a trail of small commits; there is no squash yet.
 module Darklang.Cli.Sync.Autopush
 
 val configKey = "live.autopush"
@@ -88,7 +88,7 @@ let pushDraft (state: AppState) : Outcome =
               else
                 Cli.Branch.executePush state (Stdlib.Uuid.toString branchId) relay)
 
-          if Stdlib.String.contains story "Pushed" then
+          if pushWentThrough story then
             Outcome.Pushed hash
           else
             let last =
@@ -100,6 +100,15 @@ let pushDraft (state: AppState) : Outcome =
               |> Stdlib.Option.withDefault "the push did not go through"
 
             Outcome.Failed $"committed {Stdlib.String.first hash 8}; {last}"
+
+/// Whether the push verb's output says it pushed. The verbs print rather than return, so this
+/// reads their success lines: `Pushed N ops` and `Already up to date` from `dark push`
+/// (syncPushPull.dark), `pushed branch` from `dark branch push` (branch.dark). Reword one of
+/// those and reword this.
+let pushWentThrough (story: String) : Bool =
+  (Stdlib.String.contains story "Pushed ")
+  || (Stdlib.String.contains story "Already up to date")
+  || (Stdlib.String.contains story "pushed branch")
 
 /// `pushDraft` for a caller with only a branch and no CLI state: the workbench and the LSP.
 let pushDraftOn (branchId: Uuid) : Outcome =

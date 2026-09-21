@@ -561,8 +561,7 @@ let runInteractiveLoop (state: AppState) : Int =
         Telemetry.log "preInput" tLoopStart
 
       // Wait for a key, or for the package store to change under the page. The waiting is
-      // `Stdlib.Host.await`'s business (a shim today, the scheduler's queue later); this loop only
-      // says what it is waiting for.
+      // `Stdlib.Host.await`'s business; this loop only says what it is waiting for.
       let tReadKey =
         if renderedState.telemetryEnabled then Telemetry.now () else 0
 

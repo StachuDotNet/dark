@@ -57,7 +57,7 @@ the values follow, no new call needed. The run has to have been recorded with
 ## What a save prints
 
   dark val My.Counter.title '"v2"'
-  Updated value My.Counter.title
+  ✓ Updated value My.Counter.title
     My.Counter.render follows
   dark val My.Counter.title 3
   ! Updated value My.Counter.title

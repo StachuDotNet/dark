@@ -14,7 +14,7 @@ state resets between calls; package changes persist.
   typecheck                                       # audit declarations on the branch
   status                                          # inspect changes
   commit "message" -y                            # save them
-  apps view Darklang.Example.Counter              # a live view; edits repaint it
+  apps view stats                                 # a live view; edits repaint it
   ps                                              # what is running
   exec resume <id>                                # pick a Ctrl-C'd run back up
 
@@ -210,7 +210,7 @@ Every run is a process: reads run at once with no code change, writes keep
 order, `await x` waits here; `Exec.spawn`/`await`/`cancel` when you want control;
 `ps` shows what is running on the machine, `exec resume <id>` picks a Ctrl-C'd run
 back up, `exec fork` branches one. `docs processes` and `docs live` have the
-short versions; `docs/processes.md` and `docs/live.md` in the repo the design.
+short versions; `docs/processes.md` and `docs/live.md` in the repo have the design.
 
 ## Name Resolution
 Names resolve relative to the current module, searching from

@@ -68,7 +68,9 @@ let available () : List<Model.App> =
                   title = "Sync status"
                   init = "Darklang.Cli.Sync.Status.init"
                   update = "Darklang.Cli.Sync.Status.update"
-                  render = "Darklang.Cli.Sync.Status.render"; every = Stdlib.Option.Option.None } ] } ]
+                  render = "Darklang.Cli.Sync.Status.render"
+                  // A relay's count moves on its own; ask again every five seconds.
+                  every = Stdlib.Option.Option.Some 5000L } ] } ]
 
 
 /// Any `App` value declared anywhere, discovered by type — so a user's own app shows up in

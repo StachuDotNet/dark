@@ -1,14 +1,15 @@
-/// `dark ps`: what is running in this instance right now.
+/// `dark ps`: what is running. First every other Dark process on this machine (a serve, a
+/// daemon, another terminal), from the registry each one writes at startup; then this
+/// instance's own processes as a tree.
 ///
-/// The data is `Stdlib.Exec.list`/`inspect`/`cancel`; this file only renders it. One scheduler
-/// per OS process, so this shows the processes of the `dark` you are in: from a shell that is
-/// the CLI itself plus whatever it spawned (each `eval` expression is one); from the workbench
-/// or a REPL it is everything that instance is running.
+/// The data is `Stdlib.Exec.list`/`inspect`/`cancel`/`machineList`; this file only renders it.
+/// One scheduler per OS process, so the tree is the processes of the `dark` you are in: from a
+/// shell that is the CLI itself plus whatever it spawned (each `eval` expression is one); from
+/// the workbench or a REPL it is everything that instance is running.
 module Darklang.Cli.Ps
 
 
-let idPrefix (id: Uuid) : String =
-  Stdlib.String.slice (Stdlib.Uuid.toString id) 0 8
+let idPrefix (id: Uuid) : String = Cli.Text.shortId id
 
 
 let entryText (branchId: Uuid) (entry: Stdlib.Exec.Entry) : String =
@@ -48,7 +49,7 @@ let statusText (branchId: Uuid) (status: Stdlib.Exec.Status) : String =
   | Done -> "finished"
   | Failed rte ->
     let message = PrettyPrinter.RuntimeTypes.RuntimeError.toString branchId rte
-    $"failed: {message}"
+    $"failed: {Cli.Text.oneLine message}"
 
 
 let row (branchId: Uuid) (depth: Int) (p: Stdlib.Exec.Summary) : List<String> =
@@ -99,20 +100,12 @@ let find (prefix: String) : Stdlib.Result.Result<Stdlib.Exec.Summary, String> =
     |> Stdlib.List.filter (fun p -> Stdlib.String.startsWith (Stdlib.Uuid.toString p.id) prefix)
   match matches with
   | [ one ] -> Stdlib.Result.Result.Ok one
-  | [] -> Stdlib.Result.Result.Error $"no process whose id starts with {prefix}"
+  | [] -> Stdlib.Result.Result.Error $"no process whose id starts with {prefix} -- `dark ps` lists them"
   | _ -> Stdlib.Result.Result.Error $"more than one process starts with {prefix}; give more of the id"
 
 
-/// "812 B", "34 KB", "2.1 MB": bytes at a glance.
-let bytesText (n: Int64) : String =
-  let n = Stdlib.Int.fromInt64 n
-  if n < 1024 then $"{Stdlib.Int.toString n} B"
-  else if n < 1048576 then $"{Stdlib.Int.toString (Stdlib.Int.divide n 1024)} KB"
-  else
-    let tenths = Stdlib.Int.divide n 104858
-    $"{Stdlib.Int.toString (Stdlib.Int.divide tenths 10)}.{Stdlib.Int.toString (Stdlib.Int.``mod`` tenths 10)} MB"
-
-/// "0.3 s ago", "12 s ago", "4 min ago": how long something has been running, at a glance.
+/// "0.3 s ago", "12 s ago", "4 min ago": how long something has been running, at a glance. Past
+/// an hour it is `Cli.RelativeTime.ago`'s "3 hours ago" / "2 days ago".
 let startedAgoText (started: DateTime) : String =
   let ms = Stdlib.DateTime.subtractMs (Stdlib.DateTime.now ()) started
 
@@ -124,59 +117,65 @@ let startedAgoText (started: DateTime) : String =
   else if ms < 3600000 then
     $"{Stdlib.Int.toString (Stdlib.Int.divide ms 60000)} min ago"
   else
-    $"{Stdlib.Int.toString (Stdlib.Int.divide ms 3600000)} h ago"
+    Cli.RelativeTime.ago started
 
 
-/// The other Dark processes on this machine (a serve, a daemon, another terminal), one row each,
-/// oldest first; this process is left out, its own table follows.
-let machineRows () : List<List<String>> =
+/// The other Dark processes on this machine (a serve, a daemon, another terminal), oldest
+/// first, as (pid, the five cells of its row); this process is left out, its own table follows.
+let machineEntries () : List<(Int * List<String>)> =
   let me = Stdlib.Cli.Sys.currentPid ()
   Stdlib.Exec.machineList ()
   |> Stdlib.List.filter (fun m -> (Stdlib.Int.fromInt64 m.pid) != me)
   |> Stdlib.List.map (fun m ->
-    [ Stdlib.Int64.toString m.pid
-      m.title
-      (if m.branch == "" then "main" else m.branch)
-      startedAgoText m.started
-      m.command ])
+    (Stdlib.Int.fromInt64 m.pid,
+     [ Stdlib.Int64.toString m.pid
+       m.title
+       (if m.branch == "" then "main" else m.branch)
+       startedAgoText m.started
+       m.command ]))
+
+val machineColumns = [ "pid", "process", "branch", "started", "command" ]
+val localColumns = [ "id", "entry", "status", "turns", "parent" ]
+
+let machineRows () : List<List<String>> =
+  machineEntries () |> Stdlib.List.map (fun (_, cells) -> cells)
 
 let printMachine () : Unit =
   match machineRows () with
   | [] -> ()
   | rows ->
-    Stdlib.Cli.UI.Table.print [ "pid", "process", "branch", "started", "command" ] rows
+    Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText "elsewhere on this machine")
+    Stdlib.Cli.UI.Table.print machineColumns rows
     Stdlib.printLine ""
 
 let printList (branchId: Uuid) : Unit =
   printMachine ()
-  let rows = treeRows branchId (Stdlib.Exec.list ())
-  Stdlib.Cli.UI.Table.print [ "id", "entry", "status", "turns", "parent" ] rows
-
-
-let startedAgo (started: DateTime) : String = startedAgoText started
+  let me = Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())
+  Stdlib.printLine (Stdlib.Cli.UI.Colors.dimText $"this dark (pid {me})")
+  Stdlib.Cli.UI.Table.print localColumns (treeRows branchId (Stdlib.Exec.list ()))
 
 
 /// One process in full. The short id names it, as everywhere else; <param full> adds the whole uuid.
 let printShowWith (branchId: Uuid) (prefix: String) (full: Bool) : Unit =
   match find prefix with
-  | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+  | Error e -> Cli.printErr e
   | Ok p ->
     match Stdlib.Exec.inspect p.id with
-    | None -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"process {idPrefix p.id} is gone")
+    | None -> Cli.printErr $"process {idPrefix p.id} is gone"
     | Some detail ->
       let s = detail.summary
       let id = if full then Stdlib.Uuid.toString s.id else idPrefix s.id
       Stdlib.printLine $"{id}  {entryText branchId s.entry}"
-      Stdlib.printLine $"  status   {statusText branchId s.status}"
-      Stdlib.printLine $"  started  {startedAgo s.started}"
-      Stdlib.printLine $"  turns    {Stdlib.Int64.toString s.slices}"
-      Stdlib.printLine $"  memory   {bytesText s.allocated} allocated"
+      Stdlib.printLine $"  status    {statusText branchId s.status}"
+      Stdlib.printLine $"  started   {startedAgoText s.started}"
+      Stdlib.printLine $"  turns     {Stdlib.Int64.toString s.slices}"
+      Stdlib.printLine $"  memory    {Cli.Text.bytes (Stdlib.Int.fromInt64 s.allocated)} allocated"
       if s.inflight > 0L then
-        Stdlib.printLine $"  reads in flight  {Stdlib.Int64.toString s.inflight}"
+        Stdlib.printLine $"  inflight  {Stdlib.Int64.toString s.inflight} reads"
       else
         ()
       match s.parent with
-      | Some pid -> Stdlib.printLine $"  parent   {if full then Stdlib.Uuid.toString pid else idPrefix pid}"
+      | Some pid -> Stdlib.printLine $"  parent    {if full then Stdlib.Uuid.toString pid else idPrefix pid}"
       | None -> ()
       match detail.frames with
       | [] -> ()
@@ -203,22 +202,38 @@ let printAll () : Unit =
 /// for the call, so this is the one place the builtin is called by id.
 let killById (id: Uuid) : Bool = Builtin.execKill id
 
-let isPid (s: String) : Bool =
-  match Stdlib.Int.parse s with
-  | Ok _ -> true
-  | Error _ -> false
+/// Signal another Dark process on this machine. `cancel` is INT, the Ctrl-C path: a traced run
+/// is suspended (`dark exec` keeps it), a daemon or a serve ends. `kill` is KILL.
+let signalMachine (pid: Int) (hard: Bool) : String =
+  let known = Stdlib.Exec.machineList () |> Stdlib.List.filter (fun m -> (Stdlib.Int.fromInt64 m.pid) == pid)
+  let pidText = Stdlib.Int.toString pid
+  match known with
+  | [] -> Stdlib.Cli.UI.Colors.error $"no Dark process on this machine has pid {pidText} -- `dark ps` lists them"
+  | m :: _ ->
+    let signal = if hard then Stdlib.Cli.Posix.sigkill else Stdlib.Cli.Posix.sigint
+    match Stdlib.Cli.Posix.kill pid signal with
+    | Ok () ->
+      if hard then $"killed {m.title} (pid {pidText})"
+      else $"asked {m.title} (pid {pidText}) to stop"
+    | Error _ -> Stdlib.Cli.UI.Colors.error $"could not signal pid {pidText}"
 
-let signalMachine (pid: String) (signal: Int) (said: String) : Unit =
-  match Stdlib.Int.parse pid with
-  | Error _ -> ()
-  | Ok n ->
-    let known = Stdlib.Exec.machineList () |> Stdlib.List.filter (fun m -> (Stdlib.Int.fromInt64 m.pid) == n)
-    match known with
-    | [] -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"no Dark process on this machine has pid {pid}")
-    | m :: _ ->
-      match Stdlib.Cli.Posix.kill n signal with
-      | Ok () -> Stdlib.printLine $"{said} {m.title} (pid {pid}) to stop"
-      | Error _ -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not signal pid {pid}")
+/// Stop a process in this instance by id prefix: `cancel` at its next turn, `kill` now.
+let stopLocal (prefix: String) (hard: Bool) : String =
+  match find prefix with
+  | Error e -> Stdlib.Cli.UI.Colors.error e
+  | Ok p ->
+    let ok = if hard then killById p.id else Stdlib.Exec.cancel (Stdlib.Exec.Handle { id = p.id })
+    if ok then
+      if hard then $"killed process {idPrefix p.id} without waiting for what it was doing"
+      else $"asked process {idPrefix p.id} to stop; it ends at its next turn"
+    else
+      Stdlib.Cli.UI.Colors.error $"process {idPrefix p.id} is gone"
+
+/// A pid names another Dark process on this machine; anything else is an id prefix in this one.
+let stop (target: String) (hard: Bool) : String =
+  match Stdlib.Int.parse target with
+  | Ok pid -> signalMachine pid hard
+  | Error _ -> stopLocal target hard
 
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
@@ -234,57 +249,38 @@ let execute (state: AppState) (args: List<String>) : AppState =
           every = Stdlib.Option.Option.Some 500L }
     match Apps.Host.openView state.currentBranchId view Stdlib.Option.Option.None with
     | Ok _ -> ()
-    | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+    | Error e -> Cli.printErr e
   | [ "show", prefix ] -> printShow state.currentBranchId prefix
   | [ "show", prefix, "--full" ] -> printShowWith state.currentBranchId prefix true
-  // A pid names another Dark process on this machine: `cancel` is TERM (the Ctrl-C path, which
-  // suspends a traced run), `kill` is KILL. An id prefix names a process in this instance.
-  | [ "cancel", pid ] when isPid pid -> signalMachine pid 15 "asked"
-  | [ "kill", pid ] when isPid pid -> signalMachine pid 9 "killed"
-  | [ "cancel", prefix ] ->
-    match find prefix with
-    | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
-    | Ok p ->
-      if Stdlib.Exec.cancel (Stdlib.Exec.Handle { id = p.id }) then
-        Stdlib.printLine $"asked process {idPrefix p.id} to stop; it ends at its next turn"
-      else
-        Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"process {idPrefix p.id} is gone")
-  | [ "kill", prefix ] ->
-    match find prefix with
-    | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
-    | Ok p ->
-      if killById p.id then
-        Stdlib.printLine $"stopped process {idPrefix p.id} without waiting for what it was doing"
-      else
-        Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"process {idPrefix p.id} is gone")
+  | [ "cancel", target ] -> Stdlib.printLine (stop target false)
+  | [ "kill", target ] -> Stdlib.printLine (stop target true)
+  | [ "show" ] | [ "cancel" ] | [ "kill" ] ->
+    let verb = Stdlib.Option.withDefault (Stdlib.List.head args) ""
+    Cli.printErr $"ps {verb} needs an id prefix (or a pid) -- `dark ps` lists them"
   | _ -> Stdlib.printLine (help state)
   state
 
 
 let complete (_state: AppState) (args: List<String>) : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "show", "cancel", "kill" ] |> Stdlib.List.map Completion.simple
+  | [] -> [ "show", "cancel", "kill", "--watch" ] |> Stdlib.List.map Completion.simple
+  | [ "show" ] | [ "cancel" ] | [ "kill" ] ->
+    Stdlib.Exec.list () |> Stdlib.List.map (fun p -> Completion.simple (idPrefix p.id))
   | _ -> []
 
 
 let help (_state: AppState) : String =
-  [ "Usage: ps"
-    "       ps --watch"
-    "       ps show <id-prefix> [--full]"
-    "       ps cancel <id-prefix> | <pid>"
-    "       ps kill <id-prefix> | <pid>"
+  [ "Usage: ps                       what is running: other Dark processes on this machine,"
+    "                                then this instance's own, as a tree (a process under the"
+    "                                one that spawned it)"
+    "       ps --watch               the same, repainted every half second; up/down move,"
+    "                                c cancels the row, k kills it, esc quits"
+    "       ps show <id> [--full]    one process: status, turns, memory, call stack"
+    "       ps cancel <id> | <pid>   stop it at its next turn; what it has on the host finishes"
+    "       ps kill <id> | <pid>     stop it now, for a process stuck in a call that never returns"
     ""
-    "What is running: first every other Dark process on this machine (a serve, a daemon,"
-    "another terminal; from the registry each one writes at startup), then this instance's"
-    "own processes, oldest first, as a tree: a process is listed under the one that spawned"
-    "it. `--watch` repaints every half second; esc quits, c and k on a row cancel or kill it."
-    "`show` adds the call stack. `cancel` asks one to stop at its next turn, letting what it"
-    "is doing on the host finish; `kill` does not wait for the host, for a process stuck in a"
-    "call that never returns. Both take its children with it unless they were spawned"
-    "detached."
-    ""
-    "A process is a wrapped VM the scheduler steps; the CLI's own run is one, and so is"
-    "each expression an `eval` runs. See docs/processes.md in the repo." ]
+    "Both stops take the process's children with it unless they were spawned detached."
+    "`dark docs processes` has the rest." ]
   |> Stdlib.String.join "\n"
 
 
@@ -307,20 +303,11 @@ module Watch =
 
   let gather () : List<Row> =
     let branchId = SCM.PackageOps.currentBranch ()
-    let me = Stdlib.Cli.Sys.currentPid ()
     let machine =
-      Stdlib.Exec.machineList ()
-      |> Stdlib.List.filter (fun m -> (Stdlib.Int.fromInt64 m.pid) != me)
-      |> Stdlib.List.map (fun m ->
-        Row.Machine(
-          Stdlib.Int.fromInt64 m.pid,
-          [ Stdlib.Int64.toString m.pid
-            m.title
-            (if m.branch == "" then "main" else m.branch)
-            startedAgoText m.started ]))
-    let all = Stdlib.Exec.list ()
+      machineEntries ()
+      |> Stdlib.List.map (fun (pid, cells) -> Row.Machine(pid, Stdlib.List.dropLast cells))
     let local =
-      treeRowsWithIds branchId all
+      treeRowsWithIds branchId (Stdlib.Exec.list ())
       |> Stdlib.List.map (fun (id, cells) -> Row.Local(id, cells))
     Stdlib.List.append machine local
 
@@ -333,21 +320,12 @@ module Watch =
   let act (m: Model) (hard: Bool) : Model =
     match Stdlib.List.getAt m.rows m.cursor with
     | None -> m
-    | Some(Machine(pid, cells)) ->
-      let signal = if hard then 9 else 15
-      match Stdlib.Cli.Posix.kill pid signal with
-      | Ok () -> { m with note = $"{(if hard then "killed" else "asked")} pid {Stdlib.Int.toString pid} to stop" }
-      | Error _ -> { m with note = $"could not signal pid {Stdlib.Int.toString pid}" }
-    | Some(Local(id, _)) ->
-      let ok =
-        if hard then killById id else Stdlib.Exec.cancel (Stdlib.Exec.Handle { id = id })
-      if ok then { m with note = $"{(if hard then "killed" else "asked")} {idPrefix id} to stop" }
-      else { m with note = $"{idPrefix id} is gone" }
+    | Some(Machine(pid, _)) -> { m with note = signalMachine pid hard }
+    | Some(Local(id, _)) -> { m with note = stopLocal (idPrefix id) hard }
 
   let update (m: Model) (event: Apps.Host.Event<Msg>) : Model =
     match event with
-    | Tick -> clamp { m with rows = gather () }
-    | Msg Refresh -> clamp { m with rows = gather () }
+    | Tick | Msg Refresh -> clamp { m with rows = gather () }
     | Key k ->
       match k.key with
       | UpArrow -> clamp { m with cursor = m.cursor - 1; note = "" }
@@ -376,10 +354,14 @@ module Watch =
         match r with
         | Local(_, cells) -> Stdlib.Option.Option.Some(mark i cells)
         | _ -> Stdlib.Option.Option.None)
+    let me = Stdlib.Int.toString (Stdlib.Cli.Sys.currentPid ())
     Stdlib.Cli.UI.Node.column
-      [ (if Stdlib.List.isEmpty machineRows then Stdlib.Cli.UI.Node.dim "no other Dark process on this machine"
-         else Stdlib.Cli.UI.Node.table [ "pid", "process", "branch", "started" ] machineRows)
+      [ Stdlib.Cli.UI.Node.dim "elsewhere on this machine"
+        (if Stdlib.List.isEmpty machineRows then Stdlib.Cli.UI.Node.dim "  none"
+         else Stdlib.Cli.UI.Node.table (Stdlib.List.dropLast machineColumns) machineRows)
         Stdlib.Cli.UI.Node.text ""
-        Stdlib.Cli.UI.Node.table [ "id", "entry", "status", "turns", "parent" ] localRows
+        Stdlib.Cli.UI.Node.dim $"this dark (pid {me})"
+        (if Stdlib.List.isEmpty localRows then Stdlib.Cli.UI.Node.dim "  none"
+         else Stdlib.Cli.UI.Node.table localColumns localRows)
         Stdlib.Cli.UI.Node.text ""
-        Stdlib.Cli.UI.Node.dim (if m.note == "" then "up/down move, c cancel, k kill, esc quit" else m.note) ]
+        Stdlib.Cli.UI.Node.dim (if m.note == "" then "up/down move, c cancel, k kill" else m.note) ]

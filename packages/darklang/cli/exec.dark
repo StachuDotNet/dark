@@ -3,8 +3,7 @@
 module Darklang.Cli.Exec
 
 
-let idPrefix (id: Uuid) : String =
-  Stdlib.String.slice (Stdlib.Uuid.toString id) 0 8
+let idPrefix (id: Uuid) : String = Cli.Text.shortId id
 
 
 let statusText (status: Stdlib.Exec.Execution.Status) : String =
@@ -22,16 +21,23 @@ let find (prefix: String) : Stdlib.Result.Result<Stdlib.Exec.Execution.Execution
     |> Stdlib.List.filter (fun e -> Stdlib.String.startsWith (Stdlib.Uuid.toString e.id) prefix)
   match matches with
   | [ one ] -> Stdlib.Result.Result.Ok one
-  | [] -> Stdlib.Result.Result.Error $"no execution whose id starts with {prefix}"
+  | [] -> Stdlib.Result.Result.Error $"no execution whose id starts with {prefix} -- `dark exec` lists them"
   | _ -> Stdlib.Result.Result.Error $"more than one execution starts with {prefix}; give more of the id"
 
 
-let oneLine (text: String) : String =
-  let flat = Stdlib.String.replaceAll text "\n" " "
-  if Stdlib.String.length flat > 40 then
-    (Stdlib.String.slice flat 0 37) ++ "..."
-  else
-    flat
+let oneLine (text: String) : String = Cli.Text.oneLine text
+
+/// "22 minutes ago", from the stamp the store keeps (ISO with fractional seconds, which the
+/// parser does not take: the fraction is cut).
+let whenText (created: String) : String =
+  let whole =
+    match Stdlib.String.split created "." with
+    | [ s ] -> s
+    | s :: _ -> s ++ "Z"
+    | [] -> created
+  match Stdlib.DateTime.parse whole with
+  | Ok t -> Cli.RelativeTime.ago t
+  | Error _ -> created
 
 
 let row (e: Stdlib.Exec.Execution.Execution) : List<String> =
@@ -39,26 +45,26 @@ let row (e: Stdlib.Exec.Execution.Execution) : List<String> =
     match e.parent with
     | Some((id, _at)) -> idPrefix id
     | None -> ""
-  [ idPrefix e.id, statusText e.status, e.entry, oneLine e.input, parent ]
+  [ idPrefix e.id, statusText e.status, whenText e.created, e.entry, oneLine e.input, parent ]
 
 
 let printList () : Unit =
   let rows = Stdlib.Exec.Execution.list 50L |> Stdlib.List.map (fun e -> row e)
   match rows with
-  | [] -> Stdlib.printLine "no executions yet (runs are kept when tracing is on)"
-  | _ -> Stdlib.Cli.UI.Table.print [ "id", "status", "entry", "input", "forked from" ] rows
+  | [] -> Stdlib.printLine "no executions yet: every `eval` and `run` makes one (unless DARK_CONFIG_TRACE_DETAIL=off)"
+  | _ -> Stdlib.Cli.UI.Table.print [ "id", "status", "when", "entry", "input", "forked from" ] rows
 
 
 let printShow (prefix: String) : Unit =
   match find prefix with
-  | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+  | Error e -> Cli.printErr e
   | Ok e ->
     Stdlib.printLine (Stdlib.Uuid.toString e.id)
-    Stdlib.printLine $"  status:   {statusText e.status}"
-    Stdlib.printLine $"  entry:    {e.entry}"
-    Stdlib.printLine $"  input:    {oneLine e.input}"
-    Stdlib.printLine $"  trace:    {Stdlib.Uuid.toString e.traceId}"
-    Stdlib.printLine $"  started:  {e.created}"
+    Stdlib.printLine $"  status    {statusText e.status}"
+    Stdlib.printLine $"  entry     {e.entry}"
+    Stdlib.printLine $"  input     {oneLine e.input}"
+    Stdlib.printLine $"  trace     {Stdlib.Uuid.toString e.traceId}"
+    Stdlib.printLine $"  started   {whenText e.created} ({e.created})"
     match e.parent with
     | Some((id, at)) ->
       Stdlib.printLine $"  forked from {Stdlib.Uuid.toString id}, keeping its log before position {Stdlib.Int64.toString at}"
@@ -70,11 +76,11 @@ let printShow (prefix: String) : Unit =
 /// it ran in, and the call. Capped; the whole trace is `dark traces view`.
 let printLog (traceId: String) : Unit =
   match Tracing.Store.view traceId with
-  | None -> Stdlib.printLine "  log:      gone (the trace was deleted; this run cannot be resumed)"
+  | None -> Stdlib.printLine "  log       gone (the trace was deleted; this run cannot be resumed)"
   | Some trace ->
     let logged = trace.functionCalls |> Stdlib.List.filter (fun c -> c.ord >= 0L)
     let count = Stdlib.List.length logged
-    Stdlib.printLine $"  log:      {Stdlib.Int.toString count} calls with effects"
+    Stdlib.printLine $"  log       {Stdlib.Int.toString count} calls with effects"
     Stdlib.List.take logged 40
     |> Stdlib.List.iter (fun c ->
       let process =
@@ -94,11 +100,13 @@ let printLog (traceId: String) : Unit =
 let resume (state: AppState) (prefix: String) : AppState =
   match find prefix with
   | Error e ->
-    Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+    Cli.printErr e
     state
   | Ok e ->
     if Stdlib.Exec.Execution.armResume e.id then
       Stdlib.printLine $"resuming {idPrefix e.id}: {oneLine e.input}"
+      // An entry is `eval` or `run <file>`, as the host records them; anything else is refused
+      // rather than guessed at.
       if e.entry == "eval" then
         match Eval.evaluate state e.input false with
         | Ok(Some s) ->
@@ -108,36 +116,35 @@ let resume (state: AppState) (prefix: String) : AppState =
         | Error message ->
           Stdlib.printLine $"Error: {message}"
           { state with exitCode = 1 }
-      else
-        let filename =
-          if Stdlib.String.startsWith e.entry "run " then
-            Stdlib.String.dropFirst e.entry 4
-          else
-            e.entry
+      else if Stdlib.String.startsWith e.entry "run " then
+        let filename = Stdlib.String.dropFirst e.entry 4
         Run.runScript state filename e.input [] false false false [] 0
+      else
+        Cli.printErr $"execution {idPrefix e.id} was started by `{e.entry}`, which resume does not know"
+        state
     else
-      Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"execution {idPrefix e.id} is gone")
+      Cli.printErr $"execution {idPrefix e.id} is gone: its log was deleted, so there is nothing to replay"
       state
 
 
 let fork (prefix: String) (at: Stdlib.Option.Option<Int64>) : Unit =
   match find prefix with
-  | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+  | Error e -> Cli.printErr e
   | Ok e ->
     match Stdlib.Exec.Execution.fork e.id at with
     | Ok child ->
       Stdlib.printLine $"forked {idPrefix e.id} as {Stdlib.Uuid.toString child}"
-      Stdlib.printLine $"  resume it with: exec resume {idPrefix child}"
-    | Error msg -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
+      Stdlib.printLine $"  resume it with: dark exec resume {idPrefix child}"
+    | Error msg -> Cli.printErr msg
 
 
 /// `exec export <id> [<file>]`: the run as one file, for `import` on another machine.
 let export (prefix: String) (path: Stdlib.Option.Option<String>) : Unit =
   match find prefix with
-  | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+  | Error e -> Cli.printErr e
   | Ok e ->
     match Stdlib.Exec.Execution.export e.id with
-    | Error msg -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
+    | Error msg -> Cli.printErr msg
     | Ok bundle ->
       let file =
         match path with
@@ -146,22 +153,23 @@ let export (prefix: String) (path: Stdlib.Option.Option<String>) : Unit =
       match Stdlib.Cli.File.writeText file bundle with
       | Ok () ->
         Stdlib.printLine $"wrote {file}"
-        Stdlib.printLine $"  on the other machine: dark exec import {file}, then exec resume {idPrefix e.id}"
-      | Error err -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not write {file}: {err.message}")
+        Stdlib.printLine $"  on the other machine: dark exec import {file}, then dark exec resume {idPrefix e.id}"
+      | Error err -> Cli.printErr $"could not write {file}: {err.message}"
 
 /// `exec import <file>`: a bundle from `export`, stored here with its status, ids kept.
 let import (path: String) : Unit =
   match Stdlib.Cli.File.readText path with
-  | Error err -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not read {path}: {err.message}")
+  | Error err -> Cli.printErr $"could not read {path}: {err.message}"
   | Ok bundle ->
     match Stdlib.Exec.Execution.import bundle with
     | Ok id ->
       Stdlib.printLine $"imported {idPrefix id}"
-      Stdlib.printLine $"  resume it with: exec resume {idPrefix id}"
-    | Error msg -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
+      Stdlib.printLine $"  resume it with: dark exec resume {idPrefix id}"
+    | Error msg -> Cli.printErr msg
 
 
 let execute (state: AppState) (args: List<String>) : AppState =
+  // `resume` runs the input and may set an exit code; every other verb just prints.
   match args with
   | [ "resume", prefix ] -> resume state prefix
   | _ ->
@@ -173,10 +181,14 @@ let execute (state: AppState) (args: List<String>) : AppState =
     | [ "fork", prefix, "--at", at ] ->
       match Stdlib.Int64.parse at with
       | Ok n -> fork prefix (Stdlib.Option.Option.Some n)
-      | Error _ -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"--at wants a number, not {at}")
+      | Error _ -> Cli.printErr $"--at wants a position from `exec show`, not {at}"
     | [ "export", prefix ] -> export prefix Stdlib.Option.Option.None
     | [ "export", prefix, file ] -> export prefix (Stdlib.Option.Option.Some file)
     | [ "import", file ] -> import file
+    | [ "import" ] -> Cli.printErr "exec import needs a file from `exec export`"
+    | [ "show" ] | [ "resume" ] | [ "fork" ] | [ "export" ] ->
+      let verb = Stdlib.Option.withDefault (Stdlib.List.head args) ""
+      Cli.printErr $"exec {verb} needs an id prefix -- `dark exec` lists them"
     | _ -> Stdlib.printLine (help state)
     state
 
@@ -184,20 +196,21 @@ let execute (state: AppState) (args: List<String>) : AppState =
 let complete (_state: AppState) (args: List<String>) : List<Completion.CompletionItem> =
   match args with
   | [] -> [ "list", "show", "resume", "fork", "export", "import" ] |> Stdlib.List.map Completion.simple
+  | [ "show" ] | [ "resume" ] | [ "fork" ] | [ "export" ] ->
+    Stdlib.Exec.Execution.list 50L |> Stdlib.List.map (fun e -> Completion.simple (idPrefix e.id))
   | _ -> []
 
 
 let help (_state: AppState) : String =
-  [ "Usage: exec"
+  [ "Usage: exec [list]"
     "       exec show <id-prefix>"
     "       exec resume <id-prefix>"
     "       exec fork <id-prefix> [--at <position>]"
     "       exec export <id-prefix> [<file>]"
     "       exec import <file>"
     ""
-    "The runs this instance has kept: every `eval` and `run` (tracing is on by default at the"
-    "`effects` level), with the log of what each did to the world; the oldest go past"
-    "`trace.keep` traces (a served request is one too) or `trace.maxMb` of log."
+    "The runs this instance has kept: every `eval` and `run`, with the log of what each did to"
+    "the world (`dark docs processes` says how long they are kept)."
     "A run stopped with Ctrl-C is suspended; `resume` runs it again, answering every"
     "call the log has instead of performing it, and goes live where the log ends."
     "`fork` makes a new run that shares the log up to a position (`show` lists them) and"

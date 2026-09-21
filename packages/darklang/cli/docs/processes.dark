@@ -40,7 +40,7 @@ Spawning is the `concurrency` effect; a policy can forbid it.
   ps cancel <id> | <pid> stop it politely (what it has on the host finishes first)
   ps kill <id> | <pid>   stop it now (for a process stuck in a call that never returns)
 
-A tight loop cannot freeze a TUI or a server: it gets a slice, then others
+A tight loop cannot freeze a TUI or a server: it gets a turn, then others
 run. In a system monitor a Dark process shows as what it runs: `dark serve
 :9090`, `dark eval`, `dark <daemon>`.
 
@@ -58,15 +58,17 @@ sent and got back), so Ctrl-C does not lose it.
 
 A resume echoes what the old run printed (dimmed), stops if the log holds
 something it cannot have again (a spawned process, an open stream), and warns
-when a file it read has changed since. The oldest logs go past `trace.keep`
-runs or `trace.maxMb` of log; a suspended run's never.
+when a file it read has changed since. The oldest are dropped once there are
+more than `trace.keep` traces (a served request is one) or `trace.maxMb` of
+log; a suspended run's never.
 
 ## Knobs, all optional
 
   config set exec.workers <n>          worker threads (default: one per core)
-  config set http.requestTimeoutMs <n> a server cancels a handler past this: 504
-  config set exec.maxTurns <n>         stop a process past this many turns
-  config set exec.maxBytes <n>         ... or this many bytes allocated
+  config set http.requestTimeoutMs <n> a server cancels a handler past this: 504 (30 s)
+  config set trace.keep <n>            traces kept (200); trace.maxMb, MB of log kept (256)
+  config set exec.maxTurns <n>         expert: stop a process past this many turns
+  config set exec.maxBytes <n>         expert: ... or this many bytes allocated
 
 The design is `docs/processes.md` in the repository; the live half of the
 story is `docs live`.
