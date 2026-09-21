@@ -391,14 +391,11 @@ let private installKeySource () : unit =
 
 
 /// Install the store-change source: the host passes a cheap "current data version" and the
-/// poll posts `StoreChanged` when it moves. The change description is `Change.Unknown` until
-/// the live track's `scmOpsSince` can say what changed.
+/// poll posts `StoreChanged` when it moves. The event carries no description: which ops landed is
+/// Dark's question, and `Stdlib.Host.await` answers it with `Stdlib.Live.poll` before handing the
+/// event to the loop.
 let installStoreVersionSource (version : unit -> int64) : unit =
   HE.sources.storeVersion <- Some version
-  HE.sources.storeChange <-
-    Some(fun () ->
-      let typeName = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Host.change ())
-      DEnum(typeName, typeName, [], "Unknown", []))
 
 
 /// `Stdlib.Host.EventSpec`, as F#.

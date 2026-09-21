@@ -72,7 +72,9 @@ type Sources =
     mutable readKey : Option<unit -> RT.Dval>
     /// The store's current data version, cheap enough to call five times a second.
     mutable storeVersion : Option<unit -> int64>
-    /// How `StoreChanged` describes what changed. `Unknown` today.
+    /// How `StoreChanged` describes what changed, if the host has a way to say from here. None:
+    /// the event carries `Unit`, and `Stdlib.Host.await` describes the change in Dark
+    /// (`Stdlib.Live.poll`) before the loop sees it.
     mutable storeChange : Option<unit -> RT.Dval>
   }
 

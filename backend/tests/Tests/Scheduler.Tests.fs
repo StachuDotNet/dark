@@ -289,7 +289,7 @@ let private killWakesAParkedProcess =
       "kill found the process"
     let! result = running
     match result with
-    | Error(RTE.UncaughtException("cancelled", _), _) -> ()
+    | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
     | other -> failtest $"expected the stuck process to be cancelled, got {other}"
   }
 
@@ -522,7 +522,7 @@ let private psSeesTheWholeGroup =
           Expect.isTrue (root.Kill stuck.id) "kill found it through the group"
           let! result = root.Await stuck
           match result with
-          | Error(RTE.UncaughtException("cancelled", _), _) -> ()
+          | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
           | other -> failtest $"expected cancelled, got {other}"
         })
   }

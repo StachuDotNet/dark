@@ -143,23 +143,10 @@ let private resolveEntryPoint () : RT.FQFnName.FQFnName =
       $"entry point lookup failed ({e.Message}); running the default CLI"
     defaultFn
 
-/// The store-change source for the scheduler's event queue: `PRAGMA data_version` on one
-/// long-lived connection of its own. The pragma answers per connection (it moves when any
-/// OTHER connection commits, this process's own writers included), so a pooled connection
-/// would answer about whichever one it happened to get. The live track's `dataVersion` leaf
-/// is the same fifteen lines in `LibDB.Sqlite`; the merge keeps one.
+/// The store-change source for the scheduler's poll: `LibDB.Sqlite.DataVersion`, one held
+/// connection per store, since `PRAGMA data_version` answers per connection.
 let private installStoreVersionSource () : unit =
-  let connection =
-    lazy
-      (let c = new Microsoft.Data.Sqlite.SqliteConnection(LibDB.Sqlite.connString)
-       c.Open()
-       c)
-  let sync = obj ()
-  Builtins.Cli.Libs.Stdin.installStoreVersionSource (fun () ->
-    lock sync (fun () ->
-      use cmd = connection.Value.CreateCommand()
-      cmd.CommandText <- "PRAGMA data_version"
-      cmd.ExecuteScalar() |> unbox<int64>))
+  Builtins.Cli.Libs.Stdin.installStoreVersionSource LibDB.Sqlite.DataVersion.current
 
 /// A positive number from an environment variable, else from the store's config
 /// (`dark config set <key> N`), else `fallback`.
