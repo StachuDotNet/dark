@@ -18,6 +18,7 @@ module PackageRefs = LibExecution.PackageRefs
 module NR = LibExecution.RuntimeTypes.NameResolution
 module Scheduler = LibExecution.Scheduler
 module HE = LibExecution.HostEvents
+module HostTypes = LibExecution.HostTypes
 
 
 let private typ (name : unit -> string) : FQTypeName.FQTypeName =
@@ -43,6 +44,7 @@ let private eventSpecToDT (spec : HE.EventSpec) : Dval =
 let private parkedToDT (parked : Scheduler.Parked) : Dval =
   let case = enumOf PackageRefs.Type.Stdlib.Exec.parkedOn
   match parked with
+  | Scheduler.OnHost op -> case "Host" [ DString(HostTypes.describeOperation op) ]
   | Scheduler.OnBuiltin b -> case "Builtin" [ RT2DT.FQFnName.Builtin.toDT b ]
   | Scheduler.OnPackageFn h -> case "PackageFn" [ RT2DT.FQFnName.Package.toDT h ]
   | Scheduler.OnLambda -> case "Lambda" []
@@ -271,6 +273,40 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "execSpawnDetached" 0
+      typeParams = [ "a" ]
+      parameters =
+        [ Param.makeWithArgs
+            "f"
+            (TFn(NEList.singleton TUnit, TVariable "a"))
+            ""
+            [ "unit" ] ]
+      returnType =
+        TCustomType(
+          NR.ok (typ PackageRefs.Type.Stdlib.Exec.handle),
+          [ TVariable "a" ]
+        )
+      description =
+        "`execSpawn`, for a process that keeps running after the one that started it has "
+        + "finished."
+      fn =
+        (function
+        | state, vm, _, [| DApplicable f |] ->
+          let s = Scheduler.Scheduler.CurrentOrShared
+          let parent =
+            Scheduler.Scheduler.CurrentProcess |> Option.map (fun p -> p.id)
+          let p = s.SpawnApply(state, f, DUnit, parent, vm.activeAccess)
+          // Set by the spawner, which is the only process that could finish it meanwhile and
+          // is busy here; nothing races it.
+          p.detached <- true
+          handleOf p.id |> Ply
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ LibExecution.Effects.Effect.Concurrency ]
+      deprecated = NotDeprecated }
+
+
     { name = fn "execAwait" 0
       typeParams = [ "a" ]
       parameters =
@@ -291,6 +327,69 @@ let fns () : List<BuiltInFn> =
           let pid = pidOfHandle vm handle
           match Scheduler.Scheduler.CurrentOrShared.Find pid with
           | Some p -> awaitProcess vm p
+          | None ->
+            RuntimeError.UncaughtException("no process has this handle", [])
+            |> raiseRTE vm.threadID
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = Set.empty
+      deprecated = NotDeprecated }
+
+
+    { name = fn "execAwaitWithin" 0
+      typeParams = [ "a" ]
+      parameters =
+        [ Param.make "ms" TInt64 ""
+          Param.make
+            "handle"
+            (TCustomType(
+              NR.ok (typ PackageRefs.Type.Stdlib.Exec.handle),
+              [ TVariable "a" ]
+            ))
+            "" ]
+      returnType = TypeReference.option (TVariable "a")
+      description =
+        "`execAwait`, giving up after `ms` milliseconds: None then, and the process keeps "
+        + "running."
+      fn =
+        (function
+        | _, vm, _, [| DInt64 ms; handle |] ->
+          let pid = pidOfHandle vm handle
+          match Scheduler.Scheduler.CurrentOrShared.Find pid with
+          | Some p ->
+            // The inner type is the handle's `'a`, which nothing here knows: an unknown.
+            let optionOf (dv : Option<Dval>) : Dval =
+              let tn = Dval.optionType ()
+              match dv with
+              | Some dv -> DEnum(tn, tn, [ ValueType.Unknown ], "Some", [ dv ])
+              | None -> DEnum(tn, tn, [ ValueType.Unknown ], "None", [])
+            let some (result : ExecutionResult) = optionOf (Some(resultOf vm result))
+            let task = p.completion.Task
+            if task.IsCompletedSuccessfully then
+              Ply(some task.Result)
+            elif ms <= 0L then
+              Ply(optionOf None)
+            else
+              match Scheduler.Scheduler.CurrentProcess with
+              | Some me -> me.parkHint <- ValueSome(Scheduler.OnProcess p.id)
+              | None -> ()
+              uply {
+                // The timer is dropped as soon as the process wins, so a short await inside a
+                // loop does not leave a timer per iteration ticking.
+                use cts = new System.Threading.CancellationTokenSource()
+                let delay = System.Threading.Tasks.Task.Delay(int ms, cts.Token)
+                let! first =
+                  System.Threading.Tasks.Task.WhenAny(
+                    task :> System.Threading.Tasks.Task,
+                    delay
+                  )
+                if obj.ReferenceEquals(first, delay) then
+                  return optionOf None
+                else
+                  cts.Cancel()
+                  return some task.Result
+              }
           | None ->
             RuntimeError.UncaughtException("no process has this handle", [])
             |> raiseRTE vm.threadID
@@ -374,13 +473,41 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "execCancel" 0
+      typeParams = [ "a" ]
+      parameters =
+        [ Param.make
+            "handle"
+            (TCustomType(
+              NR.ok (typ PackageRefs.Type.Stdlib.Exec.handle),
+              [ TVariable "a" ]
+            ))
+            "" ]
+      returnType = TBool
+      description =
+        "Ask the process behind `handle` to stop, and its undetached children; it fails with "
+        + "'cancelled' at its next turn, after what it is doing on the host completes. False for "
+        + "a handle nobody has."
+      fn =
+        (function
+        | _, vm, _, [| handle |] ->
+          let pid = pidOfHandle vm handle
+          DBool(Scheduler.Scheduler.CurrentOrShared.Cancel pid) |> Ply
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ LibExecution.Effects.Effect.TraceWrite ]
+      deprecated = NotDeprecated }
+
+
     { name = fn "execKill" 0
       typeParams = []
       parameters = [ Param.make "id" TUuid "" ]
       returnType = TBool
       description =
-        "Ask a process to stop; it fails with 'stopped by ps kill' at its next turn. False for an id "
-        + "nobody has."
+        "`dark ps kill`: stop a process without waiting for what it is doing on the host; it fails "
+        + "with 'stopped by ps kill' at its next turn, which a parked one is given now. Its "
+        + "undetached children go the same way. False for an id nobody has."
       fn =
         (function
         | _, _, _, [| DUuid id |] ->

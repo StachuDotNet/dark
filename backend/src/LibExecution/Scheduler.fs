@@ -36,7 +36,10 @@ type ProcessId = HE.ProcessId
 
 /// What a parked process is waiting for. For `ps`; the mechanism is always a task.
 type Parked =
-  /// A builtin that had to wait (`sleep`, an HTTP call, a script `eval` runs, ...).
+  /// A host operation the interpreter is performing for a builtin (a file read, an HTTP
+  /// request, a process run): the one thing a process is most often waiting on.
+  | OnHost of HostTypes.Operation
+  /// A builtin that had to wait (`sleep`, a script `eval` runs, ...).
   | OnBuiltin of RT.FQFnName.Builtin
   /// A package function call that had to wait.
   | OnPackageFn of RT.FQFnName.Package
@@ -72,8 +75,13 @@ type Process =
     mutable status : Status
     /// Slices run so far: how many times the budget was refilled.
     mutable slices : int64
-    /// True once `Kill` was asked for; the next step finishes it instead of running it.
-    mutable cancelRequested : bool
+    /// Why the process was asked to stop (`Kill`), or null; the next step finishes it with
+    /// this message instead of running it.
+    mutable stopReason : string
+    /// True when the stop was a `Kill` (abandon what it waits on) rather than a `Cancel`.
+    mutable stopHard : bool
+    /// A detached process outlives its parent; the rest die with theirs (`Finish`).
+    mutable detached : bool
     /// Completes when the process finishes, for F# callers (`Await`).
     completion : TaskCompletionSource<RT.ExecutionResult>
     /// Set at park, run on the scheduler thread right before the next step: the register write.
@@ -291,7 +299,9 @@ type Scheduler(quantum : int64) =
         started = System.DateTime.UtcNow
         status = Runnable
         slices = 0L
-        cancelRequested = false
+        stopReason = null
+        stopHard = false
+        detached = false
         completion =
           TaskCompletionSource<RT.ExecutionResult>(
             TaskCreationOptions.RunContinuationsAsynchronously
@@ -472,7 +482,7 @@ type Scheduler(quantum : int64) =
 
   // -- Stepping --
 
-  member private _.Finish(p : Process, result : RT.ExecutionResult) : unit =
+  member private this.Finish(p : Process, result : RT.ExecutionResult) : unit =
     p.status <-
       match result with
       | Ok dv -> Done dv
@@ -501,6 +511,10 @@ type Scheduler(quantum : int64) =
       | false, _ -> ()
     | Error _ -> ()
     p.completion.TrySetResult result |> ignore<bool>
+    // Its children go with it, wherever in the group they run, unless spawned detached: a
+    // process that spawned and never awaited leaves nothing running behind it, and a stop
+    // of a parent reaches everything under it, as hard or as politely as the parent's was.
+    this.StopChildrenOf(p.id, "its parent finished", p.stopHard)
 
   member private this.Fail(p : Process, ex : exn) : unit =
     match ex with
@@ -528,17 +542,21 @@ type Scheduler(quantum : int64) =
   /// is an `Apply` whose callee register still holds the callable; anything else is a rare opcode.
   member private _.Describe(p : Process) : Parked =
     try
-      let frame = p.vm.callFrames[p.vm.currentFrameID]
-      match frame.instrData.instructions[frame.programCounter] with
-      | RT.Apply(_, calleeReg, _, _) ->
-        match frame.registers[calleeReg] with
-        | RT.DApplicable(RT.AppNamedFn fn) ->
-          match fn.name with
-          | RT.FQFnName.Builtin b -> OnBuiltin b
-          | RT.FQFnName.Package h -> OnPackageFn h
-        | RT.DApplicable(RT.AppLambda _) -> OnLambda
+      let op = p.vm.hostInflight
+      if not (obj.ReferenceEquals(op, null)) then
+        OnHost op
+      else
+        let frame = p.vm.callFrames[p.vm.currentFrameID]
+        match frame.instrData.instructions[frame.programCounter] with
+        | RT.Apply(_, calleeReg, _, _) ->
+          match frame.registers[calleeReg] with
+          | RT.DApplicable(RT.AppNamedFn fn) ->
+            match fn.name with
+            | RT.FQFnName.Builtin b -> OnBuiltin b
+            | RT.FQFnName.Package h -> OnPackageFn h
+          | RT.DApplicable(RT.AppLambda _) -> OnLambda
+          | _ -> OnRareOpcode
         | _ -> OnRareOpcode
-      | _ -> OnRareOpcode
     with _ ->
       OnRareOpcode
 
@@ -549,11 +567,11 @@ type Scheduler(quantum : int64) =
       Exception.raiseInternal
         "Scheduler.Step off the scheduler thread"
         [ "thread", Thread.CurrentThread.ManagedThreadId; "scheduler", thread ]
-    if p.cancelRequested then
+    if not (isNull p.stopReason) then
       this.Finish(
         p,
         Error(
-          RTE.UncaughtException("stopped by ps kill", []),
+          RTE.UncaughtException(p.stopReason, []),
           Execution.callStackFromVM p.vm
         )
       )
@@ -676,21 +694,68 @@ type Scheduler(quantum : int64) =
 
   // -- ps --
 
-  /// Ask a process to stop. It finishes `Failed("stopped by ps kill")` at its next turn, which a parked
-  /// process is given at once: whatever it was waiting for is abandoned (the task's late
-  /// completion posts for a process that is no longer parked, and is dropped). A running
-  /// process finishes its slice first; one that completes within it completes. Any scheduler in
-  /// the group finds it.
-  member this.Kill(pid : ProcessId) : bool =
-    match group with
-    | Some g -> g.All |> List.exists (fun s -> s.KillHere pid)
-    | None -> this.KillHere pid
+  /// Stop a process. It finishes `Failed(reason)` at its next turn. `hard` (`ps kill`) gives a
+  /// parked process that turn at once: whatever it was waiting for is abandoned (the task's
+  /// late completion posts for a process that is no longer parked, and is dropped). Not hard
+  /// (`Exec.cancel`, `ps cancel`) lets a wait on the host or on another process complete
+  /// first, so a write in flight finishes; a wait on events (`Host.await`, `readKey`) is cut
+  /// either way, since nothing is in flight there. A running process finishes its slice
+  /// first; one that completes within it completes. Any scheduler in the group finds it. Its
+  /// undetached children are stopped the same way, now (so a parent waiting on one is not
+  /// kept waiting) and again when it finishes (for any spawned in between).
+  member this.Stop(pid : ProcessId, reason : string, hard : bool) : bool =
+    let found =
+      match group with
+      | Some g -> g.All |> List.exists (fun s -> s.StopHere(pid, reason, hard))
+      | None -> this.StopHere(pid, reason, hard)
+    if found then this.StopChildrenOf(pid, reason, hard)
+    found
 
-  /// `Kill`, on this scheduler's own table.
-  member this.KillHere(pid : ProcessId) : bool =
+  /// `ps kill`.
+  member this.Kill(pid : ProcessId) : bool =
+    this.Stop(pid, "stopped by ps kill", true)
+
+  /// `Exec.cancel`, `ps cancel`.
+  member this.Cancel(pid : ProcessId) : bool = this.Stop(pid, "cancelled", false)
+
+  /// Every unfinished, undetached child of `pid`, anywhere in the group, is stopped.
+  member this.StopChildrenOf(pid : ProcessId, reason : string, hard : bool) : unit =
+    let schedulers =
+      match group with
+      | Some g -> g.All
+      | None -> [ this ]
+    for s in schedulers do
+      s.StopChildrenHere(pid, reason, hard)
+
+  member this.StopChildrenHere
+    (
+      pid : ProcessId,
+      reason : string,
+      hard : bool
+    ) : unit =
+    let children =
+      lock sync (fun () ->
+        processes.Values
+        |> Seq.filter (fun c ->
+          c.parent = Some pid
+          && not c.detached
+          && isNull c.stopReason
+          && (match c.status with
+              | Done _
+              | Failed _ -> false
+              | _ -> true))
+        |> List.ofSeq)
+    for c in children do
+      this.StopHere(c.id, reason, hard) |> ignore<bool>
+      // Grandchildren, wherever they run.
+      this.StopChildrenOf(c.id, reason, hard)
+
+  /// `Stop`, on this scheduler's own table.
+  member this.StopHere(pid : ProcessId, reason : string, hard : bool) : bool =
     match lock sync (fun () -> processes.TryGetValue pid) with
     | true, p ->
-      p.cancelRequested <- true
+      p.stopReason <- reason
+      p.stopHard <- hard
       lock sync (fun () ->
         let mine =
           subscriptions |> Seq.filter (fun s -> s.proc.id = pid) |> List.ofSeq
@@ -699,8 +764,10 @@ type Scheduler(quantum : int64) =
           for (_, timer) in sub.timers do
             timer.Dispose()
           sub.wake.TrySetCanceled() |> ignore<bool>)
+      // A hard stop abandons the wait: the turn is posted now. A soft one lets it land; a
+      // cut event subscription lands on its own (the cancelled wake posts like any completion).
       match p.status with
-      | Parked _ -> queue.Post(HE.HostEvent.Completed pid)
+      | Parked _ when hard -> queue.Post(HE.HostEvent.Completed pid)
       | _ -> ()
       true
     | false, _ -> false

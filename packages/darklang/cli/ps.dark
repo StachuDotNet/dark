@@ -1,6 +1,6 @@
 /// `dark ps`: what is running in this instance right now.
 ///
-/// The data is `Stdlib.Exec.list`/`inspect`/`kill`; this file only renders it. One scheduler
+/// The data is `Stdlib.Exec.list`/`inspect`/`cancel`; this file only renders it. One scheduler
 /// per OS process, so this shows the processes of the `dark` you are in: from a shell that is
 /// the CLI itself plus whatever it spawned (each `eval` expression is one); from the workbench
 /// or a REPL it is everything that instance is running.
@@ -27,6 +27,7 @@ let eventSpecText (spec: Stdlib.Host.EventSpec) : String =
 
 let parkedText (branchId: Uuid) (parked: Stdlib.Exec.ParkedOn) : String =
   match parked with
+  | Host op -> $"the host: {op}"
   // The builtin's bare name: `Builtin.` says nothing a reader of this column needs.
   | Builtin b -> b.name
   | PackageFn h -> PrettyPrinter.RuntimeTypes.FQFnName.package branchId h
@@ -50,16 +51,34 @@ let statusText (branchId: Uuid) (status: Stdlib.Exec.Status) : String =
     $"failed: {message}"
 
 
-let row (branchId: Uuid) (p: Stdlib.Exec.Summary) : List<String> =
+let row (branchId: Uuid) (depth: Int) (p: Stdlib.Exec.Summary) : List<String> =
   let parent =
     match p.parent with
     | Some id -> idPrefix id
     | None -> ""
+  let indent = Stdlib.String.repeat "  " depth
   [ idPrefix p.id
-    entryText branchId p.entry
+    $"{indent}{entryText branchId p.entry}"
     statusText branchId p.status
     Stdlib.Int64.toString p.slices
     parent ]
+
+
+/// The rows as a tree: each process under the one that spawned it, oldest first at every level.
+/// A process whose parent is not in the list (it finished and was forgotten) is a root.
+let treeRows (branchId: Uuid) (all: List<Stdlib.Exec.Summary>) : List<List<String>> =
+  let ids = all |> Stdlib.List.map (fun p -> p.id)
+  let isRoot (p: Stdlib.Exec.Summary) : Bool =
+    match p.parent with
+    | None -> true
+    | Some pid -> Stdlib.Bool.not (Stdlib.List.``member`` ids pid)
+  let under (depth: Int) (p: Stdlib.Exec.Summary) : List<List<String>> =
+    let children =
+      all |> Stdlib.List.filter (fun c -> c.parent == Stdlib.Option.Option.Some p.id)
+    Stdlib.List.append
+      [ row branchId depth p ]
+      (children |> Stdlib.List.map (fun c -> under (depth + 1) c) |> Stdlib.List.flatten)
+  all |> Stdlib.List.filter isRoot |> Stdlib.List.map (fun p -> under 0 p) |> Stdlib.List.flatten
 
 
 let executionPointText (branchId: Uuid) (ep: Stdlib.Exec.ExecutionPoint) : String =
@@ -81,7 +100,7 @@ let find (prefix: String) : Stdlib.Result.Result<Stdlib.Exec.Summary, String> =
 
 
 let printList (branchId: Uuid) : Unit =
-  let rows = Stdlib.Exec.list () |> Stdlib.List.map (fun p -> row branchId p)
+  let rows = treeRows branchId (Stdlib.Exec.list ())
   Stdlib.Cli.UI.Table.print [ "id", "entry", "status", "turns", "parent" ] rows
 
 
@@ -145,12 +164,22 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [] -> printList state.currentBranchId
   | [ "show", prefix ] -> printShow state.currentBranchId prefix
   | [ "show", prefix, "--full" ] -> printShowWith state.currentBranchId prefix true
+  | [ "cancel", prefix ] ->
+    match find prefix with
+    | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+    | Ok p ->
+      if Stdlib.Exec.cancel (Stdlib.Exec.Handle { id = p.id }) then
+        Stdlib.printLine $"asked process {idPrefix p.id} to stop; it ends at its next turn"
+      else
+        Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"process {idPrefix p.id} is gone")
   | [ "kill", prefix ] ->
     match find prefix with
     | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
     | Ok p ->
-      if Stdlib.Exec.kill p.id then
-        Stdlib.printLine $"asked process {idPrefix p.id} to stop; it ends at its next turn"
+      // The escape hatch, not the stdlib verb: a process stuck in a host call is ended without
+      // waiting for the call, so this is the one place the builtin is called by id.
+      if Builtin.execKill p.id then
+        Stdlib.printLine $"stopped process {idPrefix p.id} without waiting for what it was doing"
       else
         Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"process {idPrefix p.id} is gone")
   | _ -> Stdlib.printLine (help state)
@@ -159,17 +188,22 @@ let execute (state: AppState) (args: List<String>) : AppState =
 
 let complete (_state: AppState) (args: List<String>) : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "show", "kill" ] |> Stdlib.List.map Completion.simple
+  | [] -> [ "show", "cancel", "kill" ] |> Stdlib.List.map Completion.simple
   | _ -> []
 
 
 let help (_state: AppState) : String =
   [ "Usage: ps"
     "       ps show <id-prefix> [--full]"
+    "       ps cancel <id-prefix>"
     "       ps kill <id-prefix>"
     ""
-    "What this instance is running: every process its scheduler knows, oldest first."
-    "`show` adds the call stack; `kill` asks one to stop at its next turn."
+    "What this instance is running: every process its scheduler knows, oldest first, as a"
+    "tree: a process is listed under the one that spawned it."
+    "`show` adds the call stack. `cancel` asks one to stop at its next turn, letting what it"
+    "is doing on the host finish; `kill` does not wait for the host, for a process stuck in a"
+    "call that never returns. Both take its children with it unless they were spawned"
+    "detached."
     ""
     "A process is a wrapped VM the scheduler steps; the CLI's own run is one, and so is"
     "each expression an `eval` runs. See docs/processes.md in the repo." ]

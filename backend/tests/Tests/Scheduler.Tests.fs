@@ -279,7 +279,7 @@ let private killWakesAParkedProcess =
       spawn
         s
         state
-        $"match Stdlib.Uuid.parse \"{stuck.id}\" with | Ok id -> Stdlib.Exec.kill id | Error _ -> false"
+        $"match Stdlib.Uuid.parse \"{stuck.id}\" with | Ok id -> Builtin.execKill id | Error _ -> false"
     // The loop runs until the stuck one is finished, which the kill is what makes happen.
     let running = runOnThread s stuck
     let! killed = s.Await killer
@@ -290,7 +290,7 @@ let private killWakesAParkedProcess =
     let! result = running
     match result with
     | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
-    | other -> failtest $"expected the stuck process to be cancelled, got {other}"
+    | other -> failtest $"expected the stuck process to be killed, got {other}"
   }
 
 
@@ -688,7 +688,7 @@ let private failedReadRaisesAtDemand =
         state
         """let a = Builtin.testFailingRead 21L
 let _ = Builtin.testTrace "after the call"
-Stdlib.Exec.demand a"""
+Stdlib.await a"""
     let running = runOnThread s p
     waitFor "the read in flight" (fun () -> Gates.waiting () = [ 21L ])
     waitForTrace "the call itself did not raise" [ "after the call" ]
@@ -968,6 +968,69 @@ let private errorInsideMapNamesTheLambda =
   }
 
 
+/// A stream transform's callable runs as a frame of the pulling process, where `ps` sees it
+/// and a wait in it parks the process rather than the thread.
+let private parkedInsideStreamMapShowsTheLambda =
+  testTask "a process parked inside a stream transform shows the lambda's frame" {
+    Gates.reset ()
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let! (p : Scheduler.Process) =
+      spawn
+        s
+        state
+        """Stdlib.Stream.toList (Stdlib.Stream.map (Stdlib.Stream.fromList [ 1L; 2L ]) (fun x -> (let _ = Builtin.testGateWait 93L in Stdlib.Int64.add x 1L)))"""
+    let running = runOnThread s p
+    waitFor "the process to park inside the transform" (fun () ->
+      match p.status with
+      | Scheduler.Parked _ -> true
+      | _ -> false)
+    let frames =
+      s.Snapshot()
+      |> List.tryFind (fun q -> q.id = p.id)
+      |> Option.map (fun q -> q.frames)
+      |> Option.defaultValue []
+    Expect.isTrue
+      (frames
+       |> List.exists (fun ep ->
+         match ep with
+         | RT.Lambda _ -> true
+         | _ -> false))
+      $"the lambda's frame is on the stack: {frames}"
+    Gates.release 93L
+    let! result = running
+    Expect.equal
+      (expectOk result "the drain")
+      (RT.DList(RT.ValueType.Known RT.KTInt64, [ RT.DInt64 2L; RT.DInt64 3L ]))
+      "the drain finished after the lambda resumed"
+  }
+
+
+/// The source waits on the host before every element (a network stream's shape), so the
+/// transform is asked for after the pulling builtin's first wait: the frame is pushed from
+/// where the wait lands, in the scheduler's step and in a plain run.
+let private transformAfterTheSourceWaits =
+  testTask "a transform over a stream that waits on the host runs as a frame" {
+    let! state = executionStateFor pmPT false Map.empty
+    let code =
+      """Stdlib.Stream.toList (Stdlib.Stream.filter (Stdlib.Stream.map (Builtin.testSlowStream [ 1L; 2L; 3L; 4L ]) (fun x -> x * 10L)) (fun x -> x > 10L))"""
+    let expected =
+      RT.DList(
+        RT.ValueType.Known RT.KTInt64,
+        [ RT.DInt64 20L; RT.DInt64 30L; RT.DInt64 40L ]
+      )
+    // Scheduled: the wait parks the process; the landing pushes the lambda's frame.
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let! (p : Scheduler.Process) = spawn s state code
+    let! result = runOnThread s p
+    Expect.equal (expectOk result "the scheduled drain") expected "scheduled"
+    // Unscheduled (a test's `execute`): the same landing in the task loop.
+    let! instrs = instrsFor code
+    let! plain = LibExecution.Execution.executeExpr state instrs
+    Expect.equal (expectOk plain "the plain drain") expected "unscheduled"
+  }
+
+
 /// Two equal spinners on one scheduler: round robin lands the older first; a Dark policy
 /// (`Stdlib.Exec.Policy.youngestFirst`) asked between slices lands the younger first.
 let private darkPolicyOrders =
@@ -1019,6 +1082,169 @@ let private darkPolicyOrders =
 
 // Sequenced: the tests share the process-wide trace, gates and key source in `LibTest` and
 // `HostEvents`.
+let private parkedOnAHostOperation =
+  testTask "a process waiting on the host is parked on the operation, and resumes" {
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    // A process run the host performs for the builtin; a second's sleep is long enough to be
+    // seen parked and short enough for the test.
+    let! (p : Scheduler.Process) =
+      spawn s state """(Stdlib.Cli.execute "sleep 1").exitCode"""
+    let running = runOnThread s p
+    waitFor "the process to park on the host" (fun () ->
+      match p.status with
+      | Scheduler.Parked _ -> true
+      | _ -> false)
+    match p.status with
+    | Scheduler.Parked(Scheduler.OnHost(LibExecution.HostTypes.Operation.ProcessRun(_,
+                                                                                    args,
+                                                                                    _))) ->
+      Expect.equal (List.tryLast args) (Some "sleep 1") "parked on the run itself"
+    | other ->
+      failtest $"expected the process parked on the host operation, got {other}"
+    let! result = running
+    Expect.equal (expectOk result "the run") (RT.Dval.int 0I) "the run finished"
+  }
+
+
+// -- Cancellation: soft and hard, and the tree --
+
+let private cancelLetsTheWaitLand =
+  testTask "cancel lets what a process waits on land, then stops it" {
+    Gates.reset ()
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let! (p : Scheduler.Process) =
+      spawn s state "let _ = Builtin.testGateWait 60L in Builtin.testTrace \"after\""
+    let running = runOnThread s p
+    waitFor "the process to park on the gate" (fun () ->
+      match p.status with
+      | Scheduler.Parked _ -> true
+      | _ -> false)
+    Expect.isTrue (s.Cancel p.id) "cancel found it"
+    // Still parked: a soft stop does not abandon the wait.
+    Thread.Sleep 100
+    match p.status with
+    | Scheduler.Parked _ -> ()
+    | other -> failtest $"expected the cancelled process still parked, got {other}"
+    Gates.release 60L
+    let! result = running
+    match result with
+    | Error(RTE.UncaughtException("cancelled", _), _) -> ()
+    | other -> failtest $"expected cancelled, got {other}"
+    Expect.equal (Trace.take ()) [] "the code after the wait did not run"
+  }
+
+
+let private childrenDieWithTheParent =
+  testTask "a parent's end stops its children, unless spawned detached" {
+    Gates.reset ()
+    Trace.take () |> ignore<List<string>>
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    // Two children that would run forever; the parent finishes at once without awaiting them.
+    let! (parent : Scheduler.Process) =
+      spawn
+        s
+        state
+        """(let spin (n: Int64) : Int64 =
+              if n == 0L then 1L else spin (n + 1L)
+            let attached = Stdlib.Exec.spawn (fun () -> spin 1L)
+            let detached = Stdlib.Exec.spawnDetached (fun () -> spin 1L)
+            (attached.id, detached.id))"""
+    let running = runOnThread s parent
+    let! result = running
+    let (attachedId, detachedId) =
+      match expectOk result "the parent" with
+      | RT.DTuple(RT.DUuid a, RT.DUuid d, []) -> a, d
+      | other -> failtest $"expected two ids, got {other}"
+    let find (id : System.Guid) = s.Find id |> Option.get
+    waitFor "the attached child to be stopped" (fun () ->
+      match (find attachedId).status with
+      | Scheduler.Failed _ -> true
+      | _ -> false)
+    match (find attachedId).status with
+    | Scheduler.Failed(RTE.UncaughtException("its parent finished", _), _) -> ()
+    | other ->
+      failtest $"expected the child stopped by its parent's end, got {other}"
+    Thread.Sleep 100
+    match (find detachedId).status with
+    | Scheduler.Failed _
+    | Scheduler.Done _ -> failtest "the detached child should still be running"
+    | _ -> ()
+    Expect.isTrue (s.Kill detachedId) "the detached child is stopped by hand"
+    let! _ = s.Await(find detachedId)
+    ()
+  }
+
+
+let private awaitWithinTimesOut =
+  testTask "awaitWithin gives up on a slow child, which then can be cancelled" {
+    Gates.reset ()
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let! (p : Scheduler.Process) =
+      spawn
+        s
+        state
+        """(let h = Stdlib.Exec.spawn (fun () -> Builtin.testGateWait 61L)
+            let first = Stdlib.Exec.awaitWithin 50L h
+            let _ = Stdlib.Exec.cancel h
+            (first, h.id))"""
+    let running = runOnThread s p
+    let! result = running
+    let childId =
+      match expectOk result "the program" with
+      | RT.DTuple(RT.DEnum(_, _, _, "None", []), RT.DUuid id, []) -> id
+      | other -> failtest $"expected None and the child's id, got {other}"
+    // The child was cancelled softly, so it is still parked on its gate until that lands.
+    let child = s.Find childId |> Option.get
+    match child.status with
+    | Scheduler.Parked _ -> ()
+    | other -> failtest $"expected the child still parked, got {other}"
+    Gates.release 61L
+    let! childResult = s.Await child
+    match childResult with
+    | Error(RTE.UncaughtException("cancelled", _), _) -> ()
+    | other -> failtest $"expected the child cancelled, got {other}"
+  }
+
+
+let private killCascadesHard =
+  testTask "ps kill of a parent reaches a child stuck on the host, at once" {
+    Gates.reset ()
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let! (parent : Scheduler.Process) =
+      spawn
+        s
+        state
+        """let h = Stdlib.Exec.spawn (fun () -> Builtin.testGateWait 62L)
+Stdlib.Exec.await h"""
+    let running = runOnThread s parent
+    let deadline = System.DateTime.UtcNow.AddSeconds 5.
+    while (match parent.status with
+           | Scheduler.Parked _ -> false
+           | _ -> true)
+          && System.DateTime.UtcNow < deadline do
+      Thread.Sleep 5
+    match parent.status with
+    | Scheduler.Parked _ -> ()
+    | other -> failtest $"the parent never parked on its child: {other}"
+    let child : Scheduler.ProcessSummary =
+      s.Snapshot() |> List.find (fun q -> q.parent = Some parent.id) |> Option.get
+    Expect.isTrue (s.Kill parent.id) "kill found the parent"
+    let! result = running
+    match result with
+    | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
+    | other -> failtest $"expected the parent killed, got {other}"
+    let! childResult = s.Await(s.Find child.id |> Option.get)
+    match childResult with
+    | Error(RTE.UncaughtException("stopped by ps kill", _), _) -> ()
+    | other -> failtest $"expected the child killed with it, got {other}"
+  }
+
+
 let tests =
   testSequenced (
     testList
@@ -1045,5 +1271,12 @@ let tests =
         parkedInsideMapShowsTheLambda
         budgetYieldInsideMap
         errorInsideMapNamesTheLambda
-        darkPolicyOrders ]
+        parkedInsideStreamMapShowsTheLambda
+        transformAfterTheSourceWaits
+        darkPolicyOrders
+        parkedOnAHostOperation
+        cancelLetsTheWaitLand
+        childrenDieWithTheParent
+        awaitWithinTimesOut
+        killCascadesHard ]
   )

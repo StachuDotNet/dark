@@ -8,8 +8,9 @@ their own and writes keep their order; `Exec.spawn`/`await` run chosen work
 in the background. A traced run is an execution: kept with the log of what it
 did to the world, suspended by Ctrl-C, resumed or forked by replaying that
 log. A lambda that `List.map` (and the other list builtins) applies is a
-frame on the process's own stack. The follow-ups at the end are where the
-rest goes.
+frame on the process's own stack. A builtin that needs the host (a file, the
+environment, a process, the network) names the operation and the loop
+performs it. The follow-ups at the end are where the rest goes.
 
 The one-paragraph version: a process is a `VMState` plus the `ExecutionState`
 it runs under plus a status. A scheduler steps a process until it finishes,
@@ -50,14 +51,20 @@ view of the interpreter:
   counter sits on the instruction that has not run.
 - `StepAwait (wait, resume)`: something has to be waited for. `wait` is the
   builtin's or package call's task; `resume` writes its result into the frame's
-  register and is run on the scheduler thread when the process's turn comes.
-  For the rare opcodes and the deferred return-type check, `wait` is the
-  existing `handleFrameStep` task, which advances the VM itself as it completes,
-  and `resume` does nothing.
+  register (or, for a request made after the wait, pushes the callable's
+  frame) and is run on the scheduler thread when the process's turn comes.
+  For the rare opcodes and the deferred return-type check, `wait` is a task
+  that advances the VM itself as it completes, and `resume` does nothing.
 
-It reuses `executeSync` and `handleFrameStep` as they were; `execute` (tests,
-the LSP, the HTTP server's per-request handlers) is unchanged and never sees a
-budget bail.
+There is one loop. `executeSync` runs frames until something has to be waited
+for and answers a `StepOutcome`; `awaitOf` turns the wait into `(wait,
+resume)` at the bail site. `stepScheduled` is that loop; an unscheduled run
+(`execute`: tests, the LSP, a host running a function itself) is
+`driveToEnd`, fifteen lines that await each `wait` in place and step again.
+Its budget is negative, so it never sees `StepBudget`. The task-based second
+loop (`executeInnerTask`, with `handleFrameStep` re-deciding every wait) is
+gone: a wait is decided once, where it happens, and the scheduler and the
+plain run differ only in who waits.
 
 ## The budget
 
@@ -65,8 +72,8 @@ budget bail.
 at zero; `runFrame` reports that as `FrameBudget`. The default quantum is
 10,000 instructions (`Scheduler.defaultQuantum`), refilled before every slice.
 A negative budget means unlimited, which is what every VM nobody schedules runs
-with, including the VM a builtin borrows to apply a lambda: a process parked
-inside `List.map f` is parked as one Ply, not preempted inside `f`.
+with. (A callable a builtin applies runs as a frame of the same VM now, so it
+is preempted like anything else; the borrowed-VM case is gone.)
 
 Measured with `scripts/perf/bench ab` against the pre-change binary: within
 noise on `interp-arith`, `interp-list` and `eval-listheavy` (median paired
@@ -329,10 +336,15 @@ the .NET stack. The list builtins now ask instead (`Interpreter.requestApply`):
   read still in flight first, through the same wait. `List.map` and its kin
   carry the result along unlooked-at, so a read in a mapped lambda stays in
   flight and the list comes back as one promise, as before.
-- A request has to come before the body's first await: after it the call
-  site has moved on. The interpreter raises `requestApply after the builtin's
-  first await` rather than misplace a placeholder. A continuation may await
-  and then request; that is `drive`'s ordinary path.
+- A request is usually the body's first move, and the call site sees it.
+  A body that had to wait first (a stream pulling from the network, then
+  applying its transform) may still ask: its wait lands where its result
+  would have gone into the register, and that landing (`landBuiltin`, in
+  all three loops) pushes the frame instead and picks up what records the
+  chain's result from the VM (`pendingFinish`). Not for a read: its wait
+  would have been handed back as a promise with the request inside it, so
+  that raises `requestApply after the first await of a read`. A continuation
+  may await and then request; that is `drive`'s ordinary path.
 - The frame runs under the builtin's applying access narrowed by what the
   callable captured, exactly as `Apply` narrows a frame's. Errors inside the
   lambda propagate through the process's own frames, so the stack names the
@@ -342,13 +354,28 @@ Migrated: `List.map`, `indexedMap`, `map2shortest`, `fold`, `filter`,
 `filterMap`, `findFirst`, `any`, `sortBy` (`Builtins.Pure/Libs/List.fs`), each
 with one continuation over two mutable cells rather than a closure per
 element. `Dict`, `Option`, `Result` and `String` have no re-entry on this
-branch (they are Dark, or take no callable). Not migrated, and why:
+branch (they are Dark, or take no callable).
 
-- `Stream.fs` (`unfold`, `map`, `filter`): the callable runs at pull time,
-  inside the drain's Ply chain, after an await on the source, which is the
-  one place a request cannot come from; moving streams over means threading
-  the continuation through `StreamImpl` and `Dval`'s drain. Correct as it is,
-  opaque when parked.
+Streams (`Stream.unfold`, `map`, `filter`; `Builtins.Pure/Libs/Stream.fs`):
+a transform node holds its callable, not a closure over it (`StreamImpl.
+Unfold/Mapped/Filtered`), and a pull is a step machine (`Stream.pull`):
+`Pulled` an element, `Apply` this callable to this element and continue, or
+`Wait` on native IO and continue. The pulling builtin (`next`, `toList`,
+`toBlob`) drives it: an `Apply` is a `requestApply`, so the transform runs
+as a frame of the pulling process, its answer forced (`withValue`) and
+handed back to the pull; a `Wait` is waited for, and a request after it is
+the landing case above. The access re-intersection that used to happen on
+every pull happens once, when the transform is built: the builder's active
+access is folded into the callable (`narrowedBy`), and the frame push
+narrows the puller's access by it, as `Apply` narrows any frame's. So a
+narrow producer's transform stays narrow under a wide consumer, and the
+deferred-execution matrix in `PermissionsGate` still holds. F# code that
+owns a native stream (the HTTP client's body, tests) pulls with
+`Stream.readNext`, which drives `Wait` and raises on `Apply`: a stream that
+runs Dark code is pulled from a Dark process.
+
+Not migrated, and why:
+
 - `HttpServer.fs` (the per-request handler, `onListening`): the handler runs
   on a pool thread through `executeApplicable`. The plan's leaf makes it a
   spawned process on a worker (`Scheduler.SpawnApply` is there for it); left
@@ -366,6 +393,16 @@ lambda's frame in `ps` and resumes; a tight loop inside a mapped lambda is
 preempted and another process runs between the slices; an error inside a
 mapped lambda names the lambda's frame; all 6,734 testfile cases pass over
 the migrated builtins.
+
+Measured, the stream family: gate 9.5 MB, unchanged (the reference workload
+has no stream); `bench ab` before against after, eval-stream (3,000
+elements through a map and a filter) -1.8%, 14 of 15 pairs faster;
+interp-arith +0.5% (noise). Tests: a process parked inside a stream
+transform shows the lambda's frame in `ps` and resumes; a transform over a
+stream whose source waits on the host before every element (a test stream
+built like a network one) runs as a frame, scheduled and unscheduled; the
+stream testfiles and the SSE parser (an `unfold` whose step pulls bytes)
+pass unchanged.
 
 ## Traces
 
@@ -443,6 +480,51 @@ uuid only) resumes with that uuid answered from the log and the rest live,
 and the interrupted run's own ending leaves the suspend alone; a package edit
 between record and resume runs the new code (`v2:`) against the recorded
 uuid.
+
+## Host operations are requests: a builtin names, the loop performs
+
+A builtin that touches the OS used to call `PermissionCheck.performHost` from
+inside its `uply` body: the check, the wait and the result were all inside a
+builder the loop could only park on as an opaque task. It names the operation
+instead (`Interpreter.requestHost vm op next`; in `Builtins.Cli`: `File`,
+`Directory`, `Environment`, `Execution`, `Posix`; in the HTTP client: the
+guest request and stream open, and the sync transport's GET and POST):
+
+- The body puts the `Host.Operation` and a continuation on the VM
+  (`VMState.pendingHostOp`, `pendingHostNext`; no record, same as an apply
+  request) and returns a placeholder. Right after the body returns,
+  `invokeBuiltin` sees the request and performs it through the one checked
+  boundary (`PermissionCheck.performHostWithAccess`, under the body's access),
+  then hands the outcome to `next`; a continuation may name another operation,
+  or ask for an apply, and is driven the same way (`performRequested`). The
+  body itself is a value again: no builder, nothing awaited inside it.
+- A synchronous operation (every file, directory, environment and libc call:
+  microseconds, and a pool hop would cost more than the wait) completes on the
+  spot and nothing parks. One that waits (an HTTP request; a process run or a
+  round of process IO, which `Host.blocking` moves to the pool so a `sleep 10`
+  in one process does not stall a scheduler's others) parks the process as any
+  wait does, and the VM records the operation (`hostInflight`) so `ps` says
+  `the host: process-run /bin/bash` rather than the builtin's name.
+- A body that had to wait before it could name the operation (`File.write` of
+  a persisted blob reads the bytes from the store first) names it from the
+  continuation of that wait, and the landing performs it. Rare; the
+  ephemeral-blob case, which is nearly every write, names it at once.
+- Denials and rejections raise at the call as before: the check runs on the
+  loop's thread, before anything is performed, under the same access the body
+  ran with.
+
+Two OS-facing calls still perform from inside the body, on purpose.
+`httpGetUnsafeBytesStart` starts a sync GET and hands back a handle for
+`httpAwaitBytes` to collect: the point is not to wait, so it has no
+continuation to give the loop. The HTTP server's bind is performed under the
+child guest state's access, not the calling frame's, and `serve` then runs
+its listener in the same body; the bind is synchronous, so nothing parks
+there anyway.
+
+The host boundary itself (`Host.perform`: resolve, check, execute, audit) did
+not move. What moved is who calls it: the loop, from one line, for every
+OS-facing builtin, which is the shape the Rust port wants (an operation is a
+value the host answers) and what lets `ps` name the wait.
 
 ## `Host.await`, the contract
 
@@ -523,17 +605,37 @@ Each scheduler asks for itself; with workers, that is per core.
 
 Follow-ups in the scheduler plan, in order, and the edges of what is here:
 
-- Host re-entry remains in `Stream.fs` and `HttpServer.fs` (above). Ply out
-  of the interpreter waits on that (`notes/scheduler-and-live`).
+- The HTTP server's per-request handler runs as a process (live's change);
+  `LiveValues.fs` still applies a callable through `executeApplicable`, on a
+  VM of its own, since it runs a function for inspection rather than as part
+  of a program.
 - A policy chooses which runnable process to step, not where a spawn lands:
   `Exec.spawn` still goes to the least loaded worker, in F#.
 - A resume matches recorded processes to new ones by start order; a run that
   spawned may not line up. `resume` is the CLI's, since it runs the input
   through the CLI's own paths; `Exec.fork` from Dark exists.
 - `ps show` says how many reads a process has in flight, not which.
-- A process parked inside a stream transform's lambda shows the frame that
-  called the pulling builtin, not the lambda's (streams still re-enter).
-- Ply out of the interpreter. Awaits are still Plys, parked on as tasks.
+- A pure builtin that reads a blob (`Blob`, `Base64`, `Crypto`, `String`
+  from bytes) answers without a builder when the blob is ephemeral
+  (`Blob.withBytes`), which it nearly always is; a persisted blob still
+  waits for the store inside `uply`. `blobConcat` (a loop over blobs),
+  `jsonParse` (types from the store) and the stream pull machine keep
+  theirs. Measured on 60,000 blob calls: -2.4%, 8 of 8 pairs.
+- A builtin's signature is still `Ply<Dval>`, and a wait is still a `Ply`
+  the loop parks on as a task; a host operation's answer comes back through
+  that task (the scheduler's `Completed` post is the event) rather than as a
+  `Response` event of its own. The loop itself is plain code (`executeSync`,
+  `awaitOf`, `driveToEnd`); the `uply`s left in `Interpreter.fs` are the
+  slow paths (a type check that needs the store, a builtin's result
+  landing). Store-facing builtins (`DB`, the package manager, traces,
+  executions, the CLI host's script runner) await SQLite through `LibDB`,
+  whose queries run on Microsoft.Data.Sqlite; it has no asynchronous I/O, so
+  they complete on the calling thread and the loop sees them as finished
+  values (`Ply.trySync`) rather than parking. A request form for them would
+  be a store-operation type over some sixty distinct queries, a design of
+  its own that buys the scheduler nothing while the store is in-process.
+  `sleep` parks on its timer task, not on a `Timer` event; same effect,
+  `ps` says `sleep`.
 - `Event.ExecDone` carries only the id; a Dark enum cannot hold an untyped
   value. `Exec.await` is how a value comes back.
 - `ps show` shows the call stack, not registers.
