@@ -7,6 +7,18 @@ NativeAOT, **4** is the current branch.
 
 ---
 
+## 2026-09-21: the scheduler's fixed cost, and the budget
+
+The published `steady` budget goes from 9.74 MB to 9.82 MB with the scheduler. Measured against the
+CI-built binary (`scripts/build/build-release-cli-exes.sh`) on a freshly loaded store: 9.8 MB three
+runs out of three, against 9.43 MB on main. That is startup, not the interpreter: a bigger package
+set (`Exec`, `Live`, `Ui.Node`, `ps`, `exec`, the docs topics), the machine registry file written at
+boot, and the worker pool sized from `exec.workers`. The workload itself runs one process on the
+shared scheduler, a few hundred bytes. Two traps met on the way to the number: `scripts/dev/build
+--optimize` produces a CLI that reads about 0.3 MB higher on this gate than the CI script does, and a
+store that has just run the suite reads another 2.5% high, so the gate was "3.5% over" until both
+were fixed. `--update` after the CI-style build, on the reloaded store, is what set the value.
+
 ## 2026-09-21: an HTTP request is a process
 
 The per-request handler is a spawned process on a worker (`Scheduler.SpawnApply`, `HttpServer.fs`)
