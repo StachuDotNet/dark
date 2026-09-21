@@ -107,6 +107,36 @@ let fork (prefix: String) (at: Stdlib.Option.Option<Int64>) : Unit =
     | Error msg -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
 
 
+/// `exec export <id> [<file>]`: the run as one file, for `import` on another machine.
+let export (prefix: String) (path: Stdlib.Option.Option<String>) : Unit =
+  match find prefix with
+  | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
+  | Ok e ->
+    match Stdlib.Exec.Execution.export e.id with
+    | Error msg -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
+    | Ok bundle ->
+      let file =
+        match path with
+        | Some p -> p
+        | None -> $"{idPrefix e.id}.dark-run"
+      match Stdlib.Cli.File.writeText file bundle with
+      | Ok () ->
+        Stdlib.printLine $"wrote {file}"
+        Stdlib.printLine $"  on the other machine: dark exec import {file}, then exec resume {idPrefix e.id}"
+      | Error err -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not write {file}: {err.message}")
+
+/// `exec import <file>`: a bundle from `export`, stored here suspended.
+let import (path: String) : Unit =
+  match Stdlib.Cli.File.readText path with
+  | Error err -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not read {path}: {err.message}")
+  | Ok bundle ->
+    match Stdlib.Exec.Execution.import bundle with
+    | Ok id ->
+      Stdlib.printLine $"imported {idPrefix id}"
+      Stdlib.printLine $"  resume it with: exec resume {idPrefix id}"
+    | Error msg -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error msg)
+
+
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [ "resume", prefix ] -> resume state prefix
@@ -120,13 +150,16 @@ let execute (state: AppState) (args: List<String>) : AppState =
       match Stdlib.Int64.parse at with
       | Ok n -> fork prefix (Stdlib.Option.Option.Some n)
       | Error _ -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"--at wants a number, not {at}")
+    | [ "export", prefix ] -> export prefix Stdlib.Option.Option.None
+    | [ "export", prefix, file ] -> export prefix (Stdlib.Option.Option.Some file)
+    | [ "import", file ] -> import file
     | _ -> Stdlib.printLine (help state)
     state
 
 
 let complete (_state: AppState) (args: List<String>) : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "list", "show", "resume", "fork" ] |> Stdlib.List.map Completion.simple
+  | [] -> [ "list", "show", "resume", "fork", "export", "import" ] |> Stdlib.List.map Completion.simple
   | _ -> []
 
 
@@ -135,11 +168,16 @@ let help (_state: AppState) : String =
     "       exec show <id-prefix>"
     "       exec resume <id-prefix>"
     "       exec fork <id-prefix> [--at <position>]"
+    "       exec export <id-prefix> [<file>]"
+    "       exec import <file>"
     ""
-    "The runs this instance has kept: every `eval` and `run` made while tracing was on"
-    "(DARK_CONFIG_TRACE_DETAIL=effects or on), with the log of what each did to the world."
+    "The runs this instance has kept: every `eval` and `run` (tracing is on by default at the"
+    "`effects` level), with the log of what each did to the world; the oldest go past"
+    "`trace.keep` runs or `trace.maxMb` of log."
     "A run stopped with Ctrl-C is suspended; `resume` runs it again, answering every"
     "call the log has instead of performing it, and goes live where the log ends."
     "`fork` makes a new run that shares the log up to a position and diverges after."
+    "`export` writes a run as one file and `import` takes it in on another machine, so a run"
+    "suspended here can be resumed there (the other side needs the same package code)."
     "What is running right now is `ps`." ]
   |> Stdlib.String.join "\n"

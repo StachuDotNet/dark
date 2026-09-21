@@ -92,9 +92,22 @@ let summaryToDT (p : Scheduler.ProcessSummary) : Dval =
       "parent", Dval.option KTUuid (p.parent |> Option.map DUuid)
       "started", DDateTime(LibExecution.DarkDateTime.fromDateTime p.started)
       "slices", DInt64 p.slices
+      "allocated", DInt64 p.allocated
       "inflight", DInt64(int64 p.inflight) ]
 
 let summaryType () = KTCustomType(typ PackageRefs.Type.Stdlib.Exec.summary, [])
+
+let private machineProcessToDT (e : LibExecution.HostRegistry.Entry) : Dval =
+  recordOf
+    PackageRefs.Type.Stdlib.Exec.machineProcess
+    [ "pid", DInt64(int64 e.pid)
+      "title", DString e.title
+      "command", DString e.command
+      "branch", DString e.branch
+      "started", DDateTime(LibExecution.DarkDateTime.fromDateTime e.started) ]
+
+let private machineProcessType () =
+  KTCustomType(typ PackageRefs.Type.Stdlib.Exec.machineProcess, [])
 
 let private detailToDT (p : Scheduler.ProcessSummary) : Dval =
   let frames = p.frames |> List.map executionPointToDT
@@ -200,7 +213,28 @@ let private awaitProcess (vm : VMState) (p : Scheduler.Process) : Ply<Dval> =
 
 
 let fns () : List<BuiltInFn> =
-  [ { name = fn "execList" 0
+  [ { name = fn "execMachineList" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "" ]
+      returnType =
+        TList(
+          TCustomType(NR.ok (typ PackageRefs.Type.Stdlib.Exec.machineProcess), [])
+        )
+      description =
+        "Every Dark process on this machine that is still running, oldest first: pid, what it "
+        + "runs, its command line, its branch, when it started. From the registry each CLI "
+        + "writes under the rundir at startup."
+      fn =
+        (function
+        | _, _, _, [| DUnit |] ->
+          let rows = LibExecution.HostRegistry.list () |> List.map machineProcessToDT
+          DList(ValueType.Known(machineProcessType ()), rows) |> Ply
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      deprecated = NotDeprecated
+      callEffects = set [ LibExecution.Effects.Effect.TraceRead ] }
+    { name = fn "execList" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
       returnType =

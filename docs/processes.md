@@ -1,27 +1,25 @@
 # Processes and the scheduler
 
-Status: the baseline, cores, concurrent reads, executions, and the list
-builtins with no host re-entry. A running computation is a value the runtime
-can step, park, resume and inspect; one thread runs many of them, and a group
-of worker threads (one per core) runs many more. Reads run concurrently on
-their own and writes keep their order; `Exec.spawn`/`await` run chosen work
-in the background. A traced run is an execution: kept with the log of what it
-did to the world, suspended by Ctrl-C, resumed or forked by replaying that
-log. A lambda that `List.map` (and the other list builtins) applies is a
-frame on the process's own stack. A builtin that needs the host (a file, the
-environment, a process, the network) names the operation and the loop
-performs it. The follow-ups at the end are where the rest goes.
+A running computation is a value the runtime can step, park, resume and
+inspect; one thread runs many of them, and a group of worker threads (one per
+core) runs many more. Reads run concurrently on their own and writes keep
+their order; `Exec.spawn`/`await` run chosen work in the background. A run is
+an execution: kept with the log of what it did to the world, suspended by
+Ctrl-C, resumed or forked by replaying that log, moved to another machine as
+a file. A lambda a builtin applies is a frame on the process's own stack; a
+builtin that needs the host names the operation and the loop performs it.
+`dark docs processes` is the short, user-facing version of this document.
 
-The one-paragraph version: a process is a `VMState` plus the `ExecutionState`
-it runs under plus a status. A scheduler steps a process until it finishes,
-has to wait for something, or spends its instruction budget. A waiting process
-is parked on the task it waits for; when that completes, an event lands on the
+In one paragraph: a process is a `VMState` plus the `ExecutionState` it runs
+under plus a status. A scheduler steps a process until it finishes, has to
+wait for something, or spends its instruction budget. A waiting process is
+parked on the task it waits for; when that completes, an event lands on the
 scheduler's queue and the scheduler thread resumes the process. A preempted
-process goes to the back of the line. Keys, timers and store changes arrive on
-the same queue, so `readKey` parks instead of holding the thread. A scheduler
-is one thread; a process spawned on a worker scheduler runs on another core
-for its whole life, sharing nothing with its neighbours but the state's
-concurrent caches.
+process goes to the back of the line. Keys, timers and store changes arrive
+on the same queue, so `readKey` parks instead of holding the thread. A
+scheduler is one thread; a process spawned on a worker scheduler runs on
+another core for its whole life, sharing nothing with its neighbours but the
+state's concurrent caches.
 
 ---
 
@@ -131,18 +129,18 @@ A `Scheduler` is one loop on one thread. `Scheduler.Workers` is a group: the
 root plus N more schedulers, each looping on a background thread of its own
 (`dark-worker-<i>`), started the first time anything asks for them. N is
 `exec.workers` in the store's config (`dark config set exec.workers 4`), or
-`DARK_EXEC_WORKERS`, or one per core; `Cli.fs` reads it into
-`Scheduler.defaultWorkers` before the root starts.
+one per core, which is the default nobody needs to set; `Cli.fs` reads it
+into `Scheduler.defaultWorkers` before the root starts. No environment
+variable shadows it.
 
 - `root.SpawnOn(...)` spawns on the least loaded worker (fewest runnable or
   parked processes); the process runs there for its whole life. `Spawn`
   keeps it on the calling scheduler.
 - `Await` is the process's completion task and works from anywhere. `ps` and
   `kill` from any scheduler in the group see and reach every process in it.
-- Nothing in the CLI spawns on workers yet: every process today (the CLI's
-  root, each `eval` expression) is on the root. The implicit-reads step and
-  the Http server's handlers are what will use them. So a CLI run that never
-  spawns on a worker never starts the threads.
+- The Http server's request handlers and `Exec.spawn` are what use the
+  workers; the CLI's root and each `eval` expression stay on the root. A CLI
+  run that never spawns on a worker never starts the threads.
 - Measured on the shared desktop (a Threadripper 3960X), warm: four
   CPU-bound processes on four workers finish in 0.59 to 0.65 of the
   one-thread wall time published, 0.34 in Debug. Not the 1/4 an idle
@@ -221,19 +219,23 @@ let first = List.head pages                // looks at the list: waits for all
 File.write out first.body                  // in order
 ```
 
-`Exec.demand x` forces a read now rather than at its first use; it is the
+`Stdlib.await x` forces a read now rather than at its first use; it is the
 identity function, since calling anything with the value is what forces it.
-`Exec.demandAll` is the same for a list.
+`Stdlib.awaitAll` is the same for a list. (`Exec.await h` is the one for a
+handle; the two share the word and not the module, since one function cannot
+be typed as both `'a -> 'a` and `Handle<'a> -> 'a`.)
 
 How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
 
 - At the builtin call site, when the builtin's `Ply` is not finished and the
   call is deferrable, the register gets a `DPromise` (the task, the builtin's
   name and the frame's execution point) instead of the process parking. A
-  call is deferrable when `Effects.allReads fn.callEffects`, or when the body
-  set `vm.readHint` for this call. `Http` is not a read effect, because one
-  builtin carries every method; `httpClientRequest` sets the hint for GET and
-  HEAD, per call. `Clock` and `Random` are not read effects either: reading
+  call is deferrable when every call of the builtin is a read
+  (`Effects.readsOnly`: its effects are all reads, or it is the HTTP
+  client's GET and HEAD builtin, `httpClientRead`, which `Effects.fs` names
+  since `http` stays one word in the permission language and a policy grants
+  a URL, not a method; `HttpClient.get`, `head`, and `request "GET"` go
+  through it). `Clock` and `Random` are not read effects either: reading
   them never waits, and `sleep`, the one clock call that does, is a wait the
   program means to take (it was deferred in a first cut, and `let _ = sleep`
   then slept nobody). A read that finishes synchronously (most file and db
@@ -241,7 +243,7 @@ How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
 - A promise is only ever at the top level of a register, a frame's result, or
   a builtin's returned value. Every instruction that inspects, stores or
   passes a value forces it first: `Apply` forces the callee and every
-  argument (so no builtin body ever sees one, and `demand` is an identity
+  argument (so no builtin body ever sees one, and `await` is an identity
   function), record, enum, list, tuple, dict and string construction force
   their parts, a closure forces what it closes over, `if`, `||`, `&&`, match
   and let patterns force what they look at, and the end of a run forces its
@@ -266,10 +268,10 @@ How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
   list, landing when every element has. Everything else that applies a lambda
   gets the lambda's result forced. So `List.map get urls` is where the reads
   fan out; `List.filter get urls` would run them one by one.
-- The bound: at most `Promises.maxInflight` reads in flight per OS process
-  (`dark config set exec.maxInflight N`, `DARK_EXEC_MAX_INFLIGHT`, default
-  256). Past it a read is awaited in program order, so a map over a hundred
-  thousand urls does not open a hundred thousand sockets.
+- The bound: at most `Promises.maxInflight` reads in flight per OS process,
+  256, fixed rather than a setting (past it the program is saturating
+  whatever it reads from). Past it a read is awaited in program order, so a
+  map over a hundred thousand urls does not open a hundred thousand sockets.
 - Tracing: the builtin's result is recorded when it lands (the recording is
   inside the builtin's own `Ply`); the trace's `seq` is completion order. A
   builtin that combined reads (`List.map`) records its value when the
@@ -285,16 +287,21 @@ How it works (`Interpreter.Promises`, `RuntimeTypes.Promise`):
 Measured: three reads under `List.map` are all in flight before anything
 waits, and the statement after the map runs while they are; two reads in
 program order with a write between them: the write runs before either lands;
-a failed read raises at `demand` with "after the call" already run; the bound
+a failed read raises at `await` with "after the call" already run; the bound
 holds (`Scheduler.Tests.fs`, the reads group).
 
-## `Exec.spawn`, `await`, `select`
+## `Exec.spawn`, `await`, `awaitWithin`, `select`, `cancel`
 
 `Exec.spawn f` starts `f ()` as a process of its own on a worker (the least
 loaded), under the access the caller had at the spawn, like a closure, and
 hands back a `Handle<'a>`; `Exec.await h` is the value it finished with, or
 its error raised again with the child's frames kept below the caller's;
-`Exec.select hs` is the first to finish with its value. `spawn` carries the
+`Exec.awaitWithin ms h` is `None` after `ms` milliseconds and leaves the
+process running; `Exec.select hs` is the first to finish with its value.
+`Exec.cancel h` asks the process to stop, and everything it spawned that was
+not `spawnDetached`; a parent's end does the same to its children, so a
+program that spawned and never awaited leaves nothing running (the tree
+below, and "`dark ps`" for the hard variant). `spawn` carries the
 `Concurrency` effect, ambient and allowed by the default instance policy: a
 spawned process can do nothing the spawner could not. An install whose policy
 was seeded before this effect existed needs `dark permissions allow
@@ -421,8 +428,14 @@ Trace detail has three levels (`DARK_CONFIG_TRACE_DETAIL`): `off`; `effects`,
 the classic rule (only builtin calls with non-empty `callEffects`, with their
 ordinals; no frames, no pure calls; the interpreter keeps its fast paths); and
 `on`, every call, frame and lambda, the tree `traces view` renders, which
-carries the effect log too. The default stays `off` until trace retention
-exists; `effects` is what makes a run resumable.
+carries the effect log too. The default is `effects`, the level that makes
+every run resumable; it is thin enough to leave on because retention keeps
+the tables bounded: after a store, the oldest traces past `trace.keep` (200
+unset) or `trace.maxMb` (256 unset) of logged args and results go, except one
+a suspended execution still needs. What the log holds is what the effects
+were given and returned: an `Authorization` header, a key file's bytes, an
+env value are in it in the clear; a secret you do not want on disk is one
+to keep out of an effect's arguments, or run with `off`.
 
 ## Executions
 
@@ -444,7 +457,12 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   `run` path; the script runner takes the armed resume in place of a fresh
   tracer (`Tracing.createReplayTracer`). Every effectful call whose
   `(process, ordinal)` the log has is answered from it, and not performed: a
-  replayed `printLine` prints nothing, since the world already saw it. The
+  replayed `printLine` is echoed dimmed, so the person resuming sees where
+  the run had got to without the world seeing it twice. A logged call the
+  log cannot stand in for (a spawned process, an open HTTP stream: a live
+  handle the old process owned) stops the resume at that step, naming it,
+  and the run stays suspended. A logged file read whose file has changed
+  since the run was recorded warns and continues on what it read then. The
   first ordinal a process asks for that the log lacks ends that process's
   replay for good, so nothing later in the log can be handed to it after a
   live call; from there the run is live, still recording, and the stored
@@ -480,6 +498,19 @@ uuid only) resumes with that uuid answered from the log and the rest live,
 and the interrupted run's own ending leaves the suspend alone; a package edit
 between record and resume runs the new code (`v2:`) against the recorded
 uuid.
+
+## A run on another machine
+
+`dark exec export <id> [<file>]` writes an execution as one text file: its
+row, its trace row, and the trace's effect log, blobs base64, versioned by
+the first line. `dark exec import <file>` on another machine stores those
+rows with their ids kept, status suspended, and `dark exec resume <id>`
+takes it up there: the log answers every call it has, then the run goes
+live. A bundle carries no code: the other side resolves the log's hashes
+from its own store, so it needs the same package code (a synced branch).
+Moving the file is the person's: `scp`, a shared folder, an attachment.
+Through the relay would be a `/exec` route and storage on the relay; not
+built, since the relay carries package ops only and lives on its own deploy.
 
 ## Host operations are requests: a builtin names, the loop performs
 
@@ -526,6 +557,31 @@ not move. What moved is who calls it: the loop, from one line, for every
 OS-facing builtin, which is the shape the Rust port wants (an operation is a
 value the host answers) and what lets `ps` name the wait.
 
+## An HTTP request is a process
+
+`serve` spawns each request's handler as a process on a worker, with the
+server's process as its parent: `ps` shows it under the server with its own
+frames, the budget can preempt it, a read inside it is a value in flight, and
+a slow handler never holds up another (a request that sleeps 800 ms sits
+beside three that answer at once; the batch takes one slow request, not four).
+The handler's outcome is the response:
+
+- It returns a `Http.Response`: that is the response.
+- It raises: 500, the body says `The handler failed: <the error>`.
+- It runs past the request timeout: the server cancels it (politely, so
+  what it has on the host completes and its children stop with it) and
+  answers 504, `The handler ran for more than N ms and was cancelled`. The
+  limit is the store's `http.requestTimeoutMs`, read once when `serve`
+  starts; 30 s unset; 0 means no limit.
+- It is stopped from outside (`dark ps cancel`/`kill` on the request's
+  process): 503, `The request was stopped: <reason>`.
+- The router has no usable version (a live `serve` whose newest router
+  fails its checks and has no last good one): 503, `Service Unavailable`.
+
+A finished leaf process (a request, a spawned read) skips the group-wide
+scan for children: `childCounts` says whether it ever had any. That scan
+was most of a request's cost as a process.
+
 ## `Host.await`, the contract
 
 ```
@@ -548,8 +604,9 @@ need.
 ## Entry points
 
 - `Cli.fs` `main`: the entry function is the root process of a fresh scheduler
-  that runs on the main thread until it finishes. `DARK_SCHEDULER=off` is the
-  escape hatch back to a plain run.
+  that runs on the main thread until it finishes. (`DARK_SCHEDULER=off`, in
+  `Cli.fs`, runs the old plain path; a bisect switch for whoever is asking
+  whether an oddity is the scheduler's, not a setting.)
 - `cliParseAndExecuteScript`: each expression is a child process of the CLI's,
   awaited in order. So a script budget-yields, a `readKey` in it parks, and
   `ps` lists it. Daemons are launched as `eval` and ride the same path.
@@ -557,8 +614,10 @@ need.
 
 ## `dark ps`
 
-`Stdlib.Exec.list/inspect/kill` over `Builtin.execList/execInspect/execKill`
-(`Builtins.Language/Libs/Exec.fs`), rendered by `cli/ps.dark`. Rows are copies;
+`Stdlib.Exec.list/inspect/cancel` over `Builtin.execList/execInspect/execCancel`
+(`Builtins.Language/Libs/Exec.fs`), and `Builtin.execKill` called by id from
+`cli/ps.dark`, the one place; rendered by `cli/ps.dark` as a tree, a process
+under the one that spawned it. Rows are copies;
 nothing hands Dark a reference into a running VM. A process on a worker is
 snapshotted from another thread: its call stack is read best-effort (a frame
 popped under the read comes back as no frames, never a fault). One group per
@@ -566,20 +625,52 @@ OS process, so `dark ps` from a shell is the CLI alone; from inside an `eval`
 it is the CLI parked on `cliEvaluateExpression` plus the expression's process,
 with `ps show` giving both call stacks.
 
-`ps kill` sets a flag the process sees at its next turn; a parked process is
-given that turn at once and whatever it waited for is abandoned. A running
-process finishes its slice first, so a short program that kills itself
-completes.
+Two ways to stop a process, one asymmetry: `cancel` (`Exec.cancel`, `ps
+cancel`) lets what the process is doing on the host complete before it stops
+at its next turn, while `kill` (`ps kill`) gives a parked process that turn
+at once and abandons what it waited for, which is the escape hatch for a
+process stuck in a call that never returns. Both set a reason the process
+fails with ("cancelled", "stopped by ps kill"); a wait on events
+(`Host.await`, `readKey`) is cut by either, since nothing is in flight
+there; a running process finishes its slice first, so a short program that
+stops itself completes. Both reach the process's undetached children, now
+and again when it finishes (`Scheduler.Stop`, `StopChildrenOf`), as hard or
+as politely as the parent's stop was; a child spawned with
+`Exec.spawnDetached` is left alone. Tested: cancel lets a gate land, then
+stops; children die with the parent unless detached; `awaitWithin` times out
+and the child is cancelled after; a kill of a parent reaches a child stuck on
+the host at once (`Scheduler.Tests.fs`, the cancellation group).
+
+## Every Dark process on the machine
+
+`dark ps` from any shell starts with the other Dark processes on the box: a
+`serve`, a daemon, another terminal's TUI. Each CLI writes one file under
+`<rundir>/run/ps/<pid>.json` at startup (pid, the title a system monitor
+shows, the command line, the branch, when it started) and removes it at exit;
+a reader drops any whose pid is gone, which is what survives a crash. The
+registry is the outer ring, one row per OS process; what is inside another
+process (its own Dark process tree) is its own, so `ps` shows this instance's
+tree under the machine's rows. Reaching into a row is a signal: `ps cancel
+<pid>` sends TERM, the Ctrl-C path that suspends a traced run; `ps kill <pid>`
+sends KILL. `ps --watch` repaints both tables every half second with a cursor
+(`c`, `k`, Escape), and the workbench's Processes pane lists the machine's
+rows under its own.
+
+What a daemon is, in these terms: one OS process (`dark apps daemon-main
+<slug>`, so its title is `dark <slug>`), whose root process is the daemon's
+step loop; anything it spawns is a child in its own table. The registry
+outlives the CLI that started the daemon, since the daemon writes its own row.
 
 ## The scheduling policy, in Dark
 
 Which runnable process a scheduler steps next is round robin: the one that
-has waited longest. That is F#, and the default. A store can name a Dark
+has waited longest. That is F#, and the default. An expert setting, for
+someone studying scheduling rather than using Dark: a store can name a Dark
 function instead:
 
     dark config set exec.policy Darklang.Stdlib.Exec.Policy.youngestFirst
 
-(`DARK_EXEC_POLICY` overrides for one run.) The function takes the runnable
+The function takes the runnable
 processes of the scheduler that is asking, as `List<Stdlib.Exec.Summary>`,
 oldest first, and answers `Option<Uuid>`: the one to step, or `None` for no
 preference. `Stdlib.Exec.Policy` ships `roundRobin`, `youngestFirst` and
@@ -601,42 +692,30 @@ What holds it honest:
 
 Each scheduler asks for itself; with workers, that is per core.
 
-## Not here yet
+## Edges
 
-Follow-ups in the scheduler plan, in order, and the edges of what is here:
+What is deliberately not here, and where the seams are:
 
-- The HTTP server's per-request handler runs as a process (live's change);
-  `LiveValues.fs` still applies a callable through `executeApplicable`, on a
-  VM of its own, since it runs a function for inspection rather than as part
-  of a program.
+- `LiveValues.fs` applies a callable through `executeApplicable`, on a VM of
+  its own: it runs a function for inspection, not as part of a program.
 - A policy chooses which runnable process to step, not where a spawn lands:
-  `Exec.spawn` still goes to the least loaded worker, in F#.
+  `Exec.spawn` goes to the least loaded worker, in F#.
 - A resume matches recorded processes to new ones by start order; a run that
-  spawned may not line up. `resume` is the CLI's, since it runs the input
-  through the CLI's own paths; `Exec.fork` from Dark exists.
-- `ps show` says how many reads a process has in flight, not which.
-- A pure builtin that reads a blob (`Blob`, `Base64`, `Crypto`, `String`
-  from bytes) answers without a builder when the blob is ephemeral
-  (`Blob.withBytes`), which it nearly always is; a persisted blob still
-  waits for the store inside `uply`. `blobConcat` (a loop over blobs),
-  `jsonParse` (types from the store) and the stream pull machine keep
-  theirs. Measured on 60,000 blob calls: -2.4%, 8 of 8 pairs.
-- A builtin's signature is still `Ply<Dval>`, and a wait is still a `Ply`
-  the loop parks on as a task; a host operation's answer comes back through
-  that task (the scheduler's `Completed` post is the event) rather than as a
-  `Response` event of its own. The loop itself is plain code (`executeSync`,
-  `awaitOf`, `driveToEnd`); the `uply`s left in `Interpreter.fs` are the
-  slow paths (a type check that needs the store, a builtin's result
-  landing). Store-facing builtins (`DB`, the package manager, traces,
-  executions, the CLI host's script runner) await SQLite through `LibDB`,
-  whose queries run on Microsoft.Data.Sqlite; it has no asynchronous I/O, so
-  they complete on the calling thread and the loop sees them as finished
-  values (`Ply.trySync`) rather than parking. A request form for them would
-  be a store-operation type over some sixty distinct queries, a design of
-  its own that buys the scheduler nothing while the store is in-process.
-  `sleep` parks on its timer task, not on a `Timer` event; same effect,
-  `ps` says `sleep`.
-- `Event.ExecDone` carries only the id; a Dark enum cannot hold an untyped
-  value. `Exec.await` is how a value comes back.
-- `ps show` shows the call stack, not registers.
-- The reader thread has not been checked on Windows.
+  spawned from Dark may not line up. `resume` is the CLI's, since it runs the
+  input through the CLI's own paths; `Exec.fork` from Dark exists.
+- `ps show` says how many reads a process has in flight, not which, and shows
+  the call stack, not registers.
+- A builtin's signature is still `Ply<Dval>`. Store-facing builtins (`DB`,
+  the package manager, traces, executions, the CLI host's script runner)
+  await SQLite through `LibDB`, which has no asynchronous I/O, so they
+  complete on the calling thread and the loop sees finished values rather
+  than parking; a request form for them would be a store-operation type over
+  some sixty queries that buys nothing while the store is in-process. A pure
+  builtin that reads a persisted blob still waits for the store inside
+  `uply`; an ephemeral one answers without a builder.
+- `sleep` parks on its timer task, not on a `Timer` event; `ps` says `sleep`.
+- `Event.ExecDone` carries only the id (a Dark enum cannot hold an untyped
+  value); `Exec.await` is how a value comes back.
+- Runs moved to another machine are files; a relay route would be its own
+  change on the relay's own deploy.
+- The stdin reader thread has not been checked on Windows.

@@ -13,7 +13,10 @@ type View =
     title: String
     init: String
     update: String
-    render: String }
+    render: String
+    /// Repaint every this many ms with a `Tick` event, for a view of something that moves on its
+    /// own (a process table); `None` for a view that only changes on a key or a save.
+    every: Stdlib.Option.Option<Int64> }
 
 /// How an app launches, and the reference it carries — one axis, no invalid states.
 type Target =

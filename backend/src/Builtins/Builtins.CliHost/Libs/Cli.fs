@@ -592,6 +592,16 @@ let execute
             inputValue
             resume.log
         LibDB.Executions.setStatus e.id LibDB.Executions.Running
+        LibExecution.Interpreter.ReplayPolicy.recordedAt <-
+          (match
+            System.DateTime.TryParse(
+              e.created,
+              null,
+              System.Globalization.DateTimeStyles.RoundtripKind
+            )
+           with
+           | true, t -> Some(t.ToUniversalTime())
+           | _ -> None)
         tracer, Some e.id
       | None ->
         let traceID = AT.TraceID.create ()

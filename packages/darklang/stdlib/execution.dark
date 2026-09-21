@@ -47,6 +47,17 @@ let fork (id: Uuid) (at: Stdlib.Option.Option<Int64>) : Stdlib.Result.Result<Uui
   Builtin.executionFork id at
 
 
+/// The execution as one text bundle (its row, its trace, its effect log), for `import` on another
+/// machine. Carries no code: a resume there needs the same package hashes.
+let export (id: Uuid) : Stdlib.Result.Result<String, String> =
+  Builtin.executionExport id
+
+
+/// Store a bundle from `export` here as a suspended execution, ids kept, so `resume` can take it up.
+let import (bundle: String) : Stdlib.Result.Result<Uuid, String> =
+  Builtin.executionImport bundle
+
+
 /// Arm a resume of `id`: the next `eval` or `run` this instance starts replays its log instead
 /// of performing the effects, then goes live. `dark exec resume` arms and then runs the
 /// execution's own input; that is the whole of a resume.

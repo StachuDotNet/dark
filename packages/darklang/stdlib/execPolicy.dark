@@ -1,7 +1,8 @@
 module Darklang.Stdlib.Exec.Policy
 
 /// Scheduling policies: which runnable process the scheduler steps next, decided
-/// in Dark.
+/// in Dark. An expert setting: round robin is right for using Dark, and this is
+/// for studying scheduling.
 ///
 /// A policy is a function from the runnable processes (oldest first, as
 /// `Exec.list` shows them) to the id of the one to step, or `None` for "no

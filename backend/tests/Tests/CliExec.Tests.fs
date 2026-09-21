@@ -167,8 +167,122 @@ let private replayAfterAnEdit =
       })
 
 
+let private exportImportResume =
+  cliTestWithFreshTraces
+    "a run exported as a bundle, wiped and imported resumes with the same log"
+    (fun state ->
+      task {
+        let! first = runCli state [ "eval"; twoUuids ]
+        let! e = latest ()
+        let prefix = (string e.id).Substring(0, 8)
+        let! bundle = Executions.Bundle.export e.id
+        let text =
+          match bundle with
+          | Ok t -> t
+          | Error m -> failtest $"export failed: {m}"
+        Expect.stringStarts text "dark-execution-bundle v1" "a versioned bundle"
+        // Wipe it, as another machine would never have had it.
+        let tid = string e.traceId
+        Sql.executeTransactionSync
+          [ "DELETE FROM executions WHERE id = @id", [ [ "id", Sql.uuid e.id ] ]
+            "DELETE FROM trace_fn_calls WHERE trace_id = @t",
+            [ [ "t", Sql.string tid ] ]
+            "DELETE FROM traces WHERE id = @t", [ [ "t", Sql.string tid ] ] ]
+        |> ignore<List<int>>
+        let! gone = Executions.get e.id
+        Expect.isNone gone "wiped"
+        let! imported = Executions.Bundle.import text
+        match imported with
+        | Ok id -> Expect.equal id e.id "the id is kept"
+        | Error m -> failtest $"import failed: {m}"
+        let! back = Executions.get e.id
+        Expect.equal
+          (back |> Option.map (fun b -> b.status))
+          (Some Executions.Suspended)
+          "imported suspended"
+        let! resumed = runCli state [ "exec"; "resume"; prefix ]
+        let last = resumed.Split('\n') |> Array.last
+        Expect.equal
+          (words last)
+          (words first)
+          "the same two uuids: the imported log answered both calls"
+      })
+
+
+let private retentionKeepsTheNewestAndTheSuspended =
+  cliTestWithFreshTraces
+    "retention drops the oldest runs past trace.keep but never a suspended one"
+    (fun state ->
+      task {
+        LibDB.Tracing.TraceRetention.setForTesting 2L 0L
+        try
+          // Four runs; the first is suspended by hand so it must survive.
+          let! _ = runCli state [ "eval"; "1L" ]
+          let! first = latest ()
+          Executions.setStatus first.id Executions.Suspended
+          let! _ = runCli state [ "eval"; "2L" ]
+          let! _ = runCli state [ "eval"; "3L" ]
+          // The pass runs at most every ten seconds; the seam reset its clock, and it ran on
+          // the fourth store, which is the one past the cap.
+          LibDB.Tracing.TraceRetention.setForTesting 2L 0L
+          let! _ = runCli state [ "eval"; "4L" ]
+          let! traces =
+            Sql.query "SELECT id FROM traces ORDER BY timestamp"
+            |> Sql.executeAsync (fun read -> read.string "id")
+          Expect.isTrue
+            (List.contains (string first.traceId) traces)
+            "the suspended run's trace is kept whatever its age"
+          Expect.isLessThanOrEqual
+            (List.length traces)
+            3
+            "at most the cap plus the exempt one"
+          let! rows = Executions.list 10
+          Expect.isTrue
+            (rows |> List.exists (fun e -> e.id = first.id))
+            "the suspended execution is still listed"
+        finally
+          LibDB.Tracing.TraceRetention.setForTesting 200L (256L * 1024L * 1024L)
+      })
+
+
+let private replayEchoesAndRefuses =
+  cliTestWithFreshTraces
+    "a resume echoes what the old run printed, and stops at a call it cannot reproduce"
+    (fun state ->
+      task {
+        // Printed once, then a uuid: the echo must show the line again, the uuid must be the log's.
+        let! first =
+          runCli
+            state
+            [ "eval"
+              "let _ = Stdlib.printLine \"hello from the log\"\nStdlib.Uuid.toString (Stdlib.Uuid.generate ())" ]
+        let! prefix = latestPrefix ()
+        let! resumed = runCli state [ "exec"; "resume"; prefix ]
+        Expect.stringContains
+          resumed
+          "hello from the log"
+          "the logged print is echoed"
+        let uuid = first.Split('\n') |> Array.last
+        Expect.stringContains resumed uuid "the uuid came from the log"
+        // A spawned process is a live handle the log cannot hand back.
+        let! _ = runCli state [ "permissions"; "allow"; "process"; "/bin/bash" ]
+        let! _ =
+          runCli
+            state
+            [ "eval"
+              "let h = Stdlib.Cli.Process.spawn \"sleep 0\"\nStdlib.Cli.Process.terminate h" ]
+        let! prefix2 = latestPrefix ()
+        let! refused = runCli state [ "exec"; "resume"; prefix2 ]
+        Expect.stringContains refused "cannot resume past step" "the resume stops"
+        Expect.stringContains refused "cliSpawnProcess" "naming the call"
+      })
+
+
 let tests =
   [ recordThenResume
     forkDivergesAfterThePosition
     suspendThenResume
-    replayAfterAnEdit ]
+    replayAfterAnEdit
+    exportImportResume
+    retentionKeepsTheNewestAndTheSuspended
+    replayEchoesAndRefuses ]

@@ -148,67 +148,37 @@ let private resolveEntryPoint () : RT.FQFnName.FQFnName =
 let private installStoreVersionSource () : unit =
   Builtins.Cli.Libs.Stdin.installStoreVersionSource LibDB.Sqlite.DataVersion.current
 
-/// A positive number from an environment variable, else from the store's config
-/// (`dark config set <key> N`), else `fallback`.
 /// The store's `exec.*` settings, read in one query at startup (each `Config.get` is a round
 /// trip of about 8 KB, and the allocation gate counts startup). Empty when the store cannot
-/// answer.
+/// answer. Two knobs, both `dark config set`: `exec.workers` and `exec.policy`; no environment
+/// variable shadows either.
 let private execSettings () : Map<string, string> =
   try
-    (LibDB.Config.getMany [ "exec.workers"; "exec.maxInflight"; "exec.policy" ])
+    (LibDB.Config.getMany
+      [ "exec.workers"; "exec.policy"; "exec.maxTurns"; "exec.maxBytes" ])
       .Result
   with _ ->
     Map.empty
 
-let private positiveSetting
-  (settings : Map<string, string>)
-  (envVar : string)
-  (key : string)
-  (fallback : int)
-  : int =
-  let parse (s : string) =
-    match System.Int32.TryParse s with
-    | true, n when n >= 1 -> Some n
-    | _ -> None
-  let fromEnv =
-    match System.Environment.GetEnvironmentVariable envVar with
-    | null
-    | "" -> None
-    | s -> parse s
-  match fromEnv with
-  | Some n -> n
-  | None ->
-    match Map.tryFind key settings |> Option.bind parse with
-    | Some n -> n
-    | None -> fallback
-
-/// How many worker schedulers this run may start: `DARK_EXEC_WORKERS`, else the store's
-/// `exec.workers`, else one per core. Never below one.
+/// How many worker schedulers this run may start: the store's `exec.workers`, else one per
+/// core. Never below one.
 let private workerCount (settings : Map<string, string>) : int =
-  positiveSetting
-    settings
-    "DARK_EXEC_WORKERS"
-    "exec.workers"
-    (max 1 System.Environment.ProcessorCount)
+  match Map.tryFind "exec.workers" settings with
+  | Some s ->
+    match System.Int32.TryParse s with
+    | true, n when n >= 1 -> n
+    | _ -> max 1 System.Environment.ProcessorCount
+  | None -> max 1 System.Environment.ProcessorCount
 
-/// How many reads may be in flight at once before one is awaited in program order:
-/// `DARK_EXEC_MAX_INFLIGHT`, else the store's `exec.maxInflight`, else 256.
-let private maxInflight (settings : Map<string, string>) : int =
-  positiveSetting settings "DARK_EXEC_MAX_INFLIGHT" "exec.maxInflight" 256
-
-/// The scheduling policy: `exec.policy` names a Dark function (`Darklang.Stdlib.Exec.Policy.
-/// youngestFirst`, say) that is asked which runnable process to step next whenever there is a
-/// choice; unset, the scheduler round-robins in F# and never asks. `DARK_EXEC_POLICY` overrides.
-/// A name that does not resolve is said and ignored, like a bad entry point.
+/// The scheduling policy, an expert setting: `exec.policy` names a Dark function
+/// (`Darklang.Stdlib.Exec.Policy.youngestFirst`, say) that is asked which runnable process to
+/// step next whenever there is a choice; unset, the scheduler round-robins in F# and never
+/// asks. A name that does not resolve is said and ignored, like a bad entry point.
 let private installPolicy
   (settings : Map<string, string>)
   (state : RT.ExecutionState)
   : unit =
-  let named =
-    match System.Environment.GetEnvironmentVariable "DARK_EXEC_POLICY" with
-    | null
-    | "" -> Map.tryFind "exec.policy" settings |> Option.defaultValue ""
-    | s -> s
+  let named = Map.tryFind "exec.policy" settings |> Option.defaultValue ""
   if named <> "" then
     match List.rev (named.Split('.') |> Array.toList) with
     | name :: revRest ->
@@ -276,7 +246,8 @@ let execute
       args |> List.map RT.DString |> Dval.list RT.KTString |> NEList.singleton
     // The CLI's top level is a process: the scheduler runs on this thread until it finishes,
     // stepping whatever else gets spawned meanwhile (a script under `eval`, an `apps` daemon).
-    // `DARK_SCHEDULER=off` is the escape hatch back to a plain run while this beds in.
+    // `DARK_SCHEDULER=off` is a bisect switch back to a plain run, for finding out whether an
+    // oddity is the scheduler's; not a setting, not documented for users.
     if System.Environment.GetEnvironmentVariable "DARK_SCHEDULER" = "off" then
       let! result = Exe.executeFunction state fnName [] args
       return result
@@ -284,7 +255,15 @@ let execute
       installStoreVersionSource ()
       let settings = execSettings ()
       LibExecution.Scheduler.defaultWorkers <- workerCount settings
-      LibExecution.Interpreter.Promises.maxInflight <- maxInflight settings
+      let cap (key : string) : int64 =
+        match Map.tryFind key settings with
+        | Some v ->
+          match System.Int64.TryParse v with
+          | true, n when n >= 0L -> n
+          | _ -> 0L
+        | None -> 0L
+      LibExecution.Scheduler.maxTurns <- cap "exec.maxTurns"
+      LibExecution.Scheduler.maxBytes <- cap "exec.maxBytes"
       installPolicy settings state
       return LibExecution.Scheduler.executeFunction state fnName [] args
   }
@@ -344,6 +323,34 @@ let private installAuditLog () : unit =
       with _ ->
         ())
 
+/// The title a system monitor shows (`setProcessTitle`): `dark` plus the command, plus the one
+/// argument that tells commands of the same kind apart (a daemon's slug, a served port), within
+/// the kernel's 15 bytes. Global flags (`--branch <b>`, `--safe`) are skipped.
+let processTitle (args : string list) : string =
+  let rec drop (args : string list) =
+    match args with
+    | "--branch" :: _ :: rest -> drop rest
+    | flag :: rest when flag.StartsWith "--" -> drop rest
+    | _ -> args
+  let portOf (rest : string list) =
+    let rec go (xs : string list) =
+      match xs with
+      | "--port" :: p :: _ -> Some p
+      | _ :: xs -> go xs
+      | [] -> None
+    go rest
+  match drop args with
+  | [] -> "dark"
+  | "apps" :: "daemon-main" :: slug :: _ -> $"dark {slug}"
+  | "apps" :: sub :: slug :: _ when sub = "start" || sub = "view" || sub = "run" ->
+    $"dark {slug}"
+  | "serve" :: rest ->
+    match portOf rest with
+    | Some p -> $"dark serve :{p}"
+    | None -> "dark serve"
+  | "run" :: path :: _ -> $"dark {System.IO.Path.GetFileNameWithoutExtension path}"
+  | cmd :: _ -> $"dark {cmd}"
+
 [<EntryPoint>]
 let main (args : string[]) =
   try
@@ -396,6 +403,24 @@ let main (args : string[]) =
     // Record host-operation decisions at the boundary.
     installAuditLog ()
     installSuspendOnInterrupt ()
+    let title = processTitle (List.ofArray args)
+    LibExecution.HostProcess.setProcessTitle title
+    // Listed for `dark ps` from any shell; the file goes when this process does.
+    LibExecution.HostRegistry.setDirectory LibConfig.Config.runDir
+    let branchArg =
+      let rec go (xs : string list) =
+        match xs with
+        | "--branch" :: b :: _ -> b
+        | _ :: rest -> go rest
+        | [] ->
+          match System.Environment.GetEnvironmentVariable "DARK_BRANCH" with
+          | null -> ""
+          | b -> b
+      go (List.ofArray args)
+    LibExecution.HostRegistry.register
+      title
+      ("dark " + String.concat " " args)
+      branchArg
 
 
     // Now safe to access LibConfig paths. Gated on DARK_TELEMETRY, the same switch the Dark side

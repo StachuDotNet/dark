@@ -75,6 +75,8 @@ type Process =
     mutable status : Status
     /// Slices run so far: how many times the budget was refilled.
     mutable slices : int64
+    /// Bytes this process allocated on its scheduler's thread, summed over its slices.
+    mutable allocated : int64
     /// Why the process was asked to stop (`Kill`), or null; the next step finishes it with
     /// this message instead of running it.
     mutable stopReason : string
@@ -115,6 +117,8 @@ type ProcessSummary =
     parent : Option<ProcessId>
     started : System.DateTime
     slices : int64
+    /// Bytes allocated on its scheduler's thread, summed over its slices.
+    allocated : int64
     /// Reads the process handed back as promises that have not landed.
     inflight : int
     /// The call stack at the moment of the snapshot, outermost first.
@@ -127,8 +131,14 @@ type ProcessSummary =
 let defaultQuantum = 10_000L
 
 /// How many worker schedulers a group starts: one per core unless the host says otherwise
-/// (`exec.workers` in the store's config, or `DARK_EXEC_WORKERS`; `Cli.fs` reads both).
+/// (`exec.workers` in the store's config; `Cli.fs` reads it).
 let mutable defaultWorkers : int = max 1 System.Environment.ProcessorCount
+
+/// Per-process caps, expert settings (`exec.maxTurns`, `exec.maxBytes`); 0 is no cap. A process
+/// over either is finished with a plain reason before its next slice, the way a cancel ends it,
+/// so a runaway loop or an allocation storm cannot take the box; `ps` shows what each has used.
+let mutable maxTurns : int64 = 0L
+let mutable maxBytes : int64 = 0L
 
 
 /// Which runnable process a scheduler steps next.
@@ -166,6 +176,12 @@ type Scheduler(quantum : int64) =
   /// posts per finished process, most of a server's per-request cost.
   static let execDoneWatchers =
     System.Collections.Concurrent.ConcurrentDictionary<ProcessId, Scheduler list>()
+
+  /// How many live children each parent has, across the group. A finish cascades to children
+  /// by scanning every scheduler's table; for a leaf (an HTTP request, a spawned read) that scan
+  /// was most of the per-process cost, so a parent with no entry here is skipped.
+  static let childCounts =
+    System.Collections.Concurrent.ConcurrentDictionary<ProcessId, int>()
 
   let queue = new HE.Queue()
   let processes = System.Collections.Generic.Dictionary<ProcessId, Process>()
@@ -299,6 +315,7 @@ type Scheduler(quantum : int64) =
         started = System.DateTime.UtcNow
         status = Runnable
         slices = 0L
+        allocated = 0L
         stopReason = null
         stopHard = false
         detached = false
@@ -314,6 +331,9 @@ type Scheduler(quantum : int64) =
       processes[p.id] <- p
       runnable.Enqueue p)
     Interlocked.Increment &live |> ignore<int>
+    match parent with
+    | Some par -> childCounts.AddOrUpdate(par, 1, (fun _ n -> n + 1)) |> ignore<int>
+    | None -> ()
     // The loop blocks on the queue when nothing is runnable; a spawn from another thread (a
     // test, an F# host, a process on another scheduler) has to wake it. From the scheduler
     // thread it is a harmless no-op.
@@ -511,10 +531,18 @@ type Scheduler(quantum : int64) =
       | false, _ -> ()
     | Error _ -> ()
     p.completion.TrySetResult result |> ignore<bool>
+    match p.parent with
+    | Some par ->
+      match childCounts.AddOrUpdate(par, 0, (fun _ n -> n - 1)) with
+      | n when n <= 0 -> childCounts.TryRemove par |> ignore<bool * int>
+      | _ -> ()
+    | None -> ()
     // Its children go with it, wherever in the group they run, unless spawned detached: a
     // process that spawned and never awaited leaves nothing running behind it, and a stop
     // of a parent reaches everything under it, as hard or as politely as the parent's was.
-    this.StopChildrenOf(p.id, "its parent finished", p.stopHard)
+    // A leaf has no entry in `childCounts`, so the group-wide scan is skipped for it.
+    if childCounts.ContainsKey p.id then
+      this.StopChildrenOf(p.id, "its parent finished", p.stopHard)
 
   member private this.Fail(p : Process, ex : exn) : unit =
     match ex with
@@ -595,9 +623,25 @@ type Scheduler(quantum : int64) =
             resume ()
           | None -> ()
 
+          // The caps, before the slice: over either, the process ends here with the reason.
+          let over =
+            if maxTurns > 0L && p.slices >= maxTurns then
+              $"stopped: over {maxTurns} turns (exec.maxTurns)"
+            elif maxBytes > 0L && p.allocated >= maxBytes then
+              $"stopped: over {maxBytes} bytes allocated (exec.maxBytes)"
+            else
+              null
+          if not (isNull over) then
+            p.stopReason <- over
+            raise (RT.RuntimeErrorException(None, RTE.UncaughtException(over, [])))
           p.vm.budget <- quantum
           p.slices <- p.slices + 1L
-          match Interpreter.stepScheduled p.exeState p.vm with
+          let allocBefore = System.GC.GetAllocatedBytesForCurrentThread()
+          let outcome = Interpreter.stepScheduled p.exeState p.vm
+          p.allocated <-
+            p.allocated
+            + (System.GC.GetAllocatedBytesForCurrentThread() - allocBefore)
+          match outcome with
           | Interpreter.StepDone dv -> this.Finish(p, Ok dv)
           | Interpreter.StepBudget ->
             p.status <- Runnable
@@ -788,6 +832,7 @@ type Scheduler(quantum : int64) =
       parent = p.parent
       started = p.started
       slices = p.slices
+      allocated = p.allocated
       inflight =
         (match p.status with
          | Done _

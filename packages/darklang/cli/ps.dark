@@ -64,21 +64,25 @@ let row (branchId: Uuid) (depth: Int) (p: Stdlib.Exec.Summary) : List<String> =
     parent ]
 
 
-/// The rows as a tree: each process under the one that spawned it, oldest first at every level.
-/// A process whose parent is not in the list (it finished and was forgotten) is a root.
-let treeRows (branchId: Uuid) (all: List<Stdlib.Exec.Summary>) : List<List<String>> =
+/// The rows as a tree, each with its process id: each process under the one that spawned it,
+/// oldest first at every level. A process whose parent is not in the list (it finished and was
+/// forgotten) is a root.
+let treeRowsWithIds (branchId: Uuid) (all: List<Stdlib.Exec.Summary>) : List<(Uuid * List<String>)> =
   let ids = all |> Stdlib.List.map (fun p -> p.id)
   let isRoot (p: Stdlib.Exec.Summary) : Bool =
     match p.parent with
     | None -> true
     | Some pid -> Stdlib.Bool.not (Stdlib.List.``member`` ids pid)
-  let under (depth: Int) (p: Stdlib.Exec.Summary) : List<List<String>> =
+  let under (depth: Int) (p: Stdlib.Exec.Summary) : List<(Uuid * List<String>)> =
     let children =
       all |> Stdlib.List.filter (fun c -> c.parent == Stdlib.Option.Option.Some p.id)
     Stdlib.List.append
-      [ row branchId depth p ]
+      [ (p.id, row branchId depth p) ]
       (children |> Stdlib.List.map (fun c -> under (depth + 1) c) |> Stdlib.List.flatten)
   all |> Stdlib.List.filter isRoot |> Stdlib.List.map (fun p -> under 0 p) |> Stdlib.List.flatten
+
+let treeRows (branchId: Uuid) (all: List<Stdlib.Exec.Summary>) : List<List<String>> =
+  treeRowsWithIds branchId all |> Stdlib.List.map (fun (_, cells) -> cells)
 
 
 let executionPointText (branchId: Uuid) (ep: Stdlib.Exec.ExecutionPoint) : String =
@@ -99,13 +103,17 @@ let find (prefix: String) : Stdlib.Result.Result<Stdlib.Exec.Summary, String> =
   | _ -> Stdlib.Result.Result.Error $"more than one process starts with {prefix}; give more of the id"
 
 
-let printList (branchId: Uuid) : Unit =
-  let rows = treeRows branchId (Stdlib.Exec.list ())
-  Stdlib.Cli.UI.Table.print [ "id", "entry", "status", "turns", "parent" ] rows
+/// "812 B", "34 KB", "2.1 MB": bytes at a glance.
+let bytesText (n: Int64) : String =
+  let n = Stdlib.Int.fromInt64 n
+  if n < 1024 then $"{Stdlib.Int.toString n} B"
+  else if n < 1048576 then $"{Stdlib.Int.toString (Stdlib.Int.divide n 1024)} KB"
+  else
+    let tenths = Stdlib.Int.divide n 104858
+    $"{Stdlib.Int.toString (Stdlib.Int.divide tenths 10)}.{Stdlib.Int.toString (Stdlib.Int.``mod`` tenths 10)} MB"
 
-
-/// "0.3 s ago", "12 s ago", "4 min ago": how long a process has been running, at a glance.
-let startedAgo (started: DateTime) : String =
+/// "0.3 s ago", "12 s ago", "4 min ago": how long something has been running, at a glance.
+let startedAgoText (started: DateTime) : String =
   let ms = Stdlib.DateTime.subtractMs (Stdlib.DateTime.now ()) started
 
   if ms < 10000 then
@@ -113,8 +121,39 @@ let startedAgo (started: DateTime) : String =
     $"{Stdlib.Int.toString (Stdlib.Int.divide tenths 10)}.{Stdlib.Int.toString (Stdlib.Int.``mod`` tenths 10)} s ago"
   else if ms < 60000 then
     $"{Stdlib.Int.toString (Stdlib.Int.divide ms 1000)} s ago"
-  else
+  else if ms < 3600000 then
     $"{Stdlib.Int.toString (Stdlib.Int.divide ms 60000)} min ago"
+  else
+    $"{Stdlib.Int.toString (Stdlib.Int.divide ms 3600000)} h ago"
+
+
+/// The other Dark processes on this machine (a serve, a daemon, another terminal), one row each,
+/// oldest first; this process is left out, its own table follows.
+let machineRows () : List<List<String>> =
+  let me = Stdlib.Cli.Sys.currentPid ()
+  Stdlib.Exec.machineList ()
+  |> Stdlib.List.filter (fun m -> (Stdlib.Int.fromInt64 m.pid) != me)
+  |> Stdlib.List.map (fun m ->
+    [ Stdlib.Int64.toString m.pid
+      m.title
+      (if m.branch == "" then "main" else m.branch)
+      startedAgoText m.started
+      m.command ])
+
+let printMachine () : Unit =
+  match machineRows () with
+  | [] -> ()
+  | rows ->
+    Stdlib.Cli.UI.Table.print [ "pid", "process", "branch", "started", "command" ] rows
+    Stdlib.printLine ""
+
+let printList (branchId: Uuid) : Unit =
+  printMachine ()
+  let rows = treeRows branchId (Stdlib.Exec.list ())
+  Stdlib.Cli.UI.Table.print [ "id", "entry", "status", "turns", "parent" ] rows
+
+
+let startedAgo (started: DateTime) : String = startedAgoText started
 
 
 /// One process in full. The short id names it, as everywhere else; <param full> adds the whole uuid.
@@ -131,6 +170,7 @@ let printShowWith (branchId: Uuid) (prefix: String) (full: Bool) : Unit =
       Stdlib.printLine $"  status   {statusText branchId s.status}"
       Stdlib.printLine $"  started  {startedAgo s.started}"
       Stdlib.printLine $"  turns    {Stdlib.Int64.toString s.slices}"
+      Stdlib.printLine $"  memory   {bytesText s.allocated} allocated"
       if s.inflight > 0L then
         Stdlib.printLine $"  reads in flight  {Stdlib.Int64.toString s.inflight}"
       else
@@ -159,11 +199,48 @@ let printAll () : Unit =
     printShow branchId (idPrefix p.id))
 
 
+/// The escape hatch, not the stdlib verb: a process stuck in a host call is ended without waiting
+/// for the call, so this is the one place the builtin is called by id.
+let killById (id: Uuid) : Bool = Builtin.execKill id
+
+let isPid (s: String) : Bool =
+  match Stdlib.Int.parse s with
+  | Ok _ -> true
+  | Error _ -> false
+
+let signalMachine (pid: String) (signal: Int) (said: String) : Unit =
+  match Stdlib.Int.parse pid with
+  | Error _ -> ()
+  | Ok n ->
+    let known = Stdlib.Exec.machineList () |> Stdlib.List.filter (fun m -> (Stdlib.Int.fromInt64 m.pid) == n)
+    match known with
+    | [] -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"no Dark process on this machine has pid {pid}")
+    | m :: _ ->
+      match Stdlib.Cli.Posix.kill n signal with
+      | Ok () -> Stdlib.printLine $"{said} {m.title} (pid {pid}) to stop"
+      | Error _ -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"could not signal pid {pid}")
+
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] -> printList state.currentBranchId
+  | [ "--watch" ] ->
+    let view =
+      Apps.Model.View
+        { name = "ps"
+          title = "processes"
+          init = "Darklang.Cli.Ps.Watch.init"
+          update = "Darklang.Cli.Ps.Watch.update"
+          render = "Darklang.Cli.Ps.Watch.render"
+          every = Stdlib.Option.Option.Some 500L }
+    match Apps.Host.openView state.currentBranchId view Stdlib.Option.Option.None with
+    | Ok _ -> ()
+    | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
   | [ "show", prefix ] -> printShow state.currentBranchId prefix
   | [ "show", prefix, "--full" ] -> printShowWith state.currentBranchId prefix true
+  // A pid names another Dark process on this machine: `cancel` is TERM (the Ctrl-C path, which
+  // suspends a traced run), `kill` is KILL. An id prefix names a process in this instance.
+  | [ "cancel", pid ] when isPid pid -> signalMachine pid 15 "asked"
+  | [ "kill", pid ] when isPid pid -> signalMachine pid 9 "killed"
   | [ "cancel", prefix ] ->
     match find prefix with
     | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
@@ -176,9 +253,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     match find prefix with
     | Error e -> Stdlib.printLine (Stdlib.Cli.UI.Colors.error e)
     | Ok p ->
-      // The escape hatch, not the stdlib verb: a process stuck in a host call is ended without
-      // waiting for the call, so this is the one place the builtin is called by id.
-      if Builtin.execKill p.id then
+      if killById p.id then
         Stdlib.printLine $"stopped process {idPrefix p.id} without waiting for what it was doing"
       else
         Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"process {idPrefix p.id} is gone")
@@ -194,12 +269,15 @@ let complete (_state: AppState) (args: List<String>) : List<Completion.Completio
 
 let help (_state: AppState) : String =
   [ "Usage: ps"
+    "       ps --watch"
     "       ps show <id-prefix> [--full]"
-    "       ps cancel <id-prefix>"
-    "       ps kill <id-prefix>"
+    "       ps cancel <id-prefix> | <pid>"
+    "       ps kill <id-prefix> | <pid>"
     ""
-    "What this instance is running: every process its scheduler knows, oldest first, as a"
-    "tree: a process is listed under the one that spawned it."
+    "What is running: first every other Dark process on this machine (a serve, a daemon,"
+    "another terminal; from the registry each one writes at startup), then this instance's"
+    "own processes, oldest first, as a tree: a process is listed under the one that spawned"
+    "it. `--watch` repaints every half second; esc quits, c and k on a row cancel or kill it."
     "`show` adds the call stack. `cancel` asks one to stop at its next turn, letting what it"
     "is doing on the host finish; `kill` does not wait for the host, for a process stuck in a"
     "call that never returns. Both take its children with it unless they were spawned"
@@ -208,3 +286,100 @@ let help (_state: AppState) : String =
     "A process is a wrapped VM the scheduler steps; the CLI's own run is one, and so is"
     "each expression an `eval` runs. See docs/processes.md in the repo." ]
   |> Stdlib.String.join "\n"
+
+
+/// `ps --watch`: the same two tables, repainted every half second, with a cursor. Up and down
+/// move it, `c` cancels the row under it, `k` kills it, Escape leaves.
+module Watch =
+  type Row =
+    /// Another Dark process on this machine, by pid.
+    | Machine of pid: Int * cells: List<String>
+    /// A process in this instance, by id.
+    | Local of id: Uuid * cells: List<String>
+
+  type Model =
+    { rows: List<Row>
+      cursor: Int
+      /// What the last `c`/`k` said, shown under the tables until the next key.
+      note: String }
+
+  type Msg = | Refresh
+
+  let gather () : List<Row> =
+    let branchId = SCM.PackageOps.currentBranch ()
+    let me = Stdlib.Cli.Sys.currentPid ()
+    let machine =
+      Stdlib.Exec.machineList ()
+      |> Stdlib.List.filter (fun m -> (Stdlib.Int.fromInt64 m.pid) != me)
+      |> Stdlib.List.map (fun m ->
+        Row.Machine(
+          Stdlib.Int.fromInt64 m.pid,
+          [ Stdlib.Int64.toString m.pid
+            m.title
+            (if m.branch == "" then "main" else m.branch)
+            startedAgoText m.started ]))
+    let all = Stdlib.Exec.list ()
+    let local =
+      treeRowsWithIds branchId all
+      |> Stdlib.List.map (fun (id, cells) -> Row.Local(id, cells))
+    Stdlib.List.append machine local
+
+  let init () : Model = Model { rows = gather (); cursor = 0; note = "" }
+
+  let clamp (m: Model) : Model =
+    let n = Stdlib.List.length m.rows
+    { m with cursor = Stdlib.Int.max 0 (Stdlib.Int.min m.cursor (n - 1)) }
+
+  let act (m: Model) (hard: Bool) : Model =
+    match Stdlib.List.getAt m.rows m.cursor with
+    | None -> m
+    | Some(Machine(pid, cells)) ->
+      let signal = if hard then 9 else 15
+      match Stdlib.Cli.Posix.kill pid signal with
+      | Ok () -> { m with note = $"{(if hard then "killed" else "asked")} pid {Stdlib.Int.toString pid} to stop" }
+      | Error _ -> { m with note = $"could not signal pid {Stdlib.Int.toString pid}" }
+    | Some(Local(id, _)) ->
+      let ok =
+        if hard then killById id else Stdlib.Exec.cancel (Stdlib.Exec.Handle { id = id })
+      if ok then { m with note = $"{(if hard then "killed" else "asked")} {idPrefix id} to stop" }
+      else { m with note = $"{idPrefix id} is gone" }
+
+  let update (m: Model) (event: Apps.Host.Event<Msg>) : Model =
+    match event with
+    | Tick -> clamp { m with rows = gather () }
+    | Msg Refresh -> clamp { m with rows = gather () }
+    | Key k ->
+      match k.key with
+      | UpArrow -> clamp { m with cursor = m.cursor - 1; note = "" }
+      | DownArrow -> clamp { m with cursor = m.cursor + 1; note = "" }
+      | _ ->
+        match k.char with
+        | Some "c" -> act m false
+        | Some "k" -> act m true
+        | _ -> { m with note = "" }
+
+  let render (m: Model) : Stdlib.Cli.UI.Node.Node<Msg> =
+    let mark (i: Int) (cells: List<String>) : List<String> =
+      match cells with
+      | first :: rest -> Stdlib.List.push rest ((if i == m.cursor then "> " else "  ") ++ first)
+      | [] -> []
+    let indexed = Stdlib.List.indexedMap m.rows (fun i r -> (i, r))
+    let machineRows =
+      indexed
+      |> Stdlib.List.filterMap (fun (i, r) ->
+        match r with
+        | Machine(_, cells) -> Stdlib.Option.Option.Some(mark i cells)
+        | _ -> Stdlib.Option.Option.None)
+    let localRows =
+      indexed
+      |> Stdlib.List.filterMap (fun (i, r) ->
+        match r with
+        | Local(_, cells) -> Stdlib.Option.Option.Some(mark i cells)
+        | _ -> Stdlib.Option.Option.None)
+    Stdlib.Cli.UI.Node.column
+      [ (if Stdlib.List.isEmpty machineRows then Stdlib.Cli.UI.Node.dim "no other Dark process on this machine"
+         else Stdlib.Cli.UI.Node.table [ "pid", "process", "branch", "started" ] machineRows)
+        Stdlib.Cli.UI.Node.text ""
+        Stdlib.Cli.UI.Node.table [ "id", "entry", "status", "turns", "parent" ] localRows
+        Stdlib.Cli.UI.Node.text ""
+        Stdlib.Cli.UI.Node.dim (if m.note == "" then "up/down move, c cancel, k kill, esc quit" else m.note) ]

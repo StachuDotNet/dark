@@ -47,7 +47,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
   // `exec.*` keys are read by the F# boot before any Dark runs (`exec.workers` sizes the
   // scheduler's worker pool), so they live in the store's config like `entry_point`, not in
   // the json file.
-  | ["get", key] when Stdlib.String.startsWith key "exec." ->
+  | ["get", key] when (Stdlib.String.startsWith key "exec.") || (Stdlib.String.startsWith key "http.") || (Stdlib.String.startsWith key "trace.") ->
     let value = Stdlib.LocalStore.configGet key
     if value == "" then
       Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Configuration key not found: {key}")
@@ -55,7 +55,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine $"{key} = {value}"
     state
 
-  | ["set", key, value] when Stdlib.String.startsWith key "exec." ->
+  | ["set", key, value] when (Stdlib.String.startsWith key "exec.") || (Stdlib.String.startsWith key "http.") || (Stdlib.String.startsWith key "trace.") ->
     let _ = Stdlib.LocalStore.configSet key value
     Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"Set {key} = {value}")
     state
@@ -99,8 +99,12 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       "  sync.interval_seconds    - Sync check interval (default: 20)"
       "  sync.auto_start          - Auto-start sync service (default: true)"
       "  exec.workers             - Scheduler worker threads (default: one per core)"
-      "  exec.maxInflight         - Reads in flight at once before one waits (default: 256)"
-      "  exec.policy              - Dark fn picking the next process (default: round robin)"
+      "  exec.policy              - Expert: a Dark fn picking the next process (default: round robin)"
+      "  http.requestTimeoutMs    - serve cancels a handler past this and answers 504 (default: 30000; 0 = none)"
+      "  trace.keep               - How many runs to keep the log of (default: 200; 0 = all)"
+      "  trace.maxMb              - How many MB of logged args and results to keep (default: 256; 0 = all)"
+      "  exec.maxTurns            - Expert: stop a process past this many turns (default: none)"
+      "  exec.maxBytes            - Expert: stop a process past this many bytes allocated (default: none)"
       ""
       "Use 'config get <key>' to read a value"
       "Use 'config set <key> <value>' to set a value" ]
@@ -146,8 +150,12 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Cli.Completion.C
       "sync.interval_seconds"
       "sync.auto_start"
       "exec.workers"
-      "exec.maxInflight"
-      "exec.policy" ]
+      "exec.policy"
+      "exec.maxTurns"
+      "exec.maxBytes"
+      "trace.keep"
+      "trace.maxMb"
+      "http.requestTimeoutMs" ]
 
   match args with
   | [] ->

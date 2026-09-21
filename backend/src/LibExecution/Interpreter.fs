@@ -1058,6 +1058,69 @@ let private finishBuiltin
 ///
 /// Shared by the synchronous path and the fallback below it, so there is one copy of the permission gate,
 /// the stats bracket, the result check and the trace.
+/// What a resume does at a logged call beyond handing the result back (`docs/processes.md`,
+/// "Executions"): an effect the log cannot stand in for stops the resume naming the step; the
+/// output of a logged print is echoed dimmed so the person sees what the old run said; a logged
+/// file read whose file has changed since warns. Decided per effect kind in the replay analysis.
+module ReplayPolicy =
+  /// Builtins whose logged result is a handle or a stream the old process owned: nothing here
+  /// can reproduce them, so a resume stops at them rather than skipping.
+  let unreproducible : Set<string> =
+    set
+      [ "cliSpawnProcess"
+        "cliProcessIO"
+        "cliTerminateProcess"
+        "httpClientStream" ]
+
+  /// When the run being resumed was recorded; set by the host that armed the resume, so a
+  /// file read can be compared against it. None when nothing is resuming.
+  let mutable recordedAt : Option<System.DateTime> = None
+
+  let private warned = System.Collections.Generic.HashSet<string>()
+
+  let private dim (s : string) : string =
+    if System.Console.IsOutputRedirected then s else $"\u001b[2m{s}\u001b[0m"
+
+  /// Run before a logged call's result is handed back. Raises to stop the resume.
+  let beforeServing
+    (vm : VMState)
+    (fn : BuiltInFn)
+    (ord : int64)
+    (args : Dval[])
+    : unit =
+    // The runtime's own libc-backed builtins carry `Native` too, so the effect is no test of
+    // reproducibility; the names are. A user-level FFI builtin, when one exists, goes in the set.
+    let name = fn.name.name
+    if Set.contains name unreproducible then
+      RuntimeError.UncaughtException(
+        $"cannot resume past step {ord}: `{name}` gave the old run something this one "
+        + "cannot have again (a live process or a stream); the run stays suspended",
+        []
+      )
+      |> raiseRTE vm.threadID
+    if Set.contains Effects.Effect.Stdout fn.callEffects then
+      // The logged output, dimmed: the world saw it once; the person resuming sees where the
+      // run had got to.
+      for a in args do
+        match a with
+        | DString s -> print (dim s)
+        | _ -> ()
+    if Set.contains Effects.Effect.FileRead fn.callEffects then
+      match recordedAt with
+      | Some since ->
+        for a in args do
+          match a with
+          | DString path when
+            HostRegistry.fileChangedSince path since && warned.Add path
+            ->
+            System.Console.Error.WriteLine(
+              $"resume: step {ord} read {path}, which has changed since this run was "
+              + "recorded; the run continues on what it read then"
+            )
+          | _ -> ()
+      | None -> ()
+
+
 let private invokeBuiltin
   (exeState : ExecutionState)
   (vm : VMState)
@@ -1119,6 +1182,7 @@ let private invokeBuiltin
 
   match replayed with
   | ValueSome result ->
+    ReplayPolicy.beforeServing vm fn ord allArgs
     finishBuiltin
       exeState
       vm
@@ -1132,8 +1196,6 @@ let private invokeBuiltin
       result
   | ValueNone ->
 
-    // Cleared before every body, so a hint is only ever the body's own (`Promises.deferrable`).
-    vm.readHint <- false
     // Every builtin's signature is async because some of them have to be -- HTTP, the package store,
     // anything touching disk. Most aren't: `Int64.add` computes and returns.
     let body = fn.fn (struct (exeState, vm, resolvedTypeArgs, allArgs))
@@ -2128,14 +2190,16 @@ let inline private consumedByNextApply
 
 /// Reads in flight, handed back as promises (`docs/processes.md`, "Reads are concurrent").
 ///
-/// A builtin whose effects are all reads, or that set `vm.readHint`, and whose result is not ready
+/// A builtin whose every call is a read (`Effects.readsOnly`) and whose result is not ready
 /// when it returns, gives the calling frame a `DPromise` instead of parking the process. The
 /// process runs on; the first instruction that inspects, stores or passes the value forces it, and
 /// so does the end of the run. Writes are never deferred, so they keep program order.
 module Promises =
   /// At most this many reads in flight per OS process; past it a read is awaited in program order,
   /// so a map over a hundred thousand urls does not open a hundred thousand sockets.
-  /// `exec.maxInflight` in the store's config; `Cli.fs` reads it.
+  /// A fixed bound, not a setting: past it the program is already saturating whatever it reads
+  /// from, and a knob nobody would know how to set is not a knob. Mutable only so a test can
+  /// lower it to see the bound hold.
   let mutable maxInflight = 256
 
   let mutable private inflight = 0
@@ -2166,12 +2230,10 @@ module Promises =
       |> ignore<Task>
       ValueSome(DPromise(Promise(task, fn, frame.executionPoint)))
 
-  /// Whether this call, whose result is not ready, may be handed back as a promise: its effects
-  /// are all reads, or its body said so for this call. Reads and clears the hint either way.
-  let deferrable (vm : VMState) (fn : BuiltInFn) : bool =
-    let hinted = vm.readHint
-    vm.readHint <- false
-    hinted || Effects.allReads fn.callEffects
+  /// Whether this call, whose result is not ready, may be handed back as a promise: every call
+  /// of the builtin is a read.
+  let inline deferrable (fn : BuiltInFn) : bool =
+    Effects.readsOnly fn.name.name fn.callEffects
 
   /// Settle the promise in `reg`: a landed one is replaced by its value, so the instruction reads
   /// a plain value on its next try, and null comes back; one still in flight comes back as its
@@ -2786,7 +2848,7 @@ let private applyInstructionForced
             | ValueNone ->
               // A read that has to wait becomes a promise and the frame runs on; anything else
               // parks the process here, in program order.
-              if Promises.deferrable vm fn then
+              if Promises.deferrable fn then
                 match
                   Promises.tryMake vm currentFrame (FQFnName.Builtin fn.name) call
                 with

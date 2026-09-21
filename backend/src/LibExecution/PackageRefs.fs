@@ -276,6 +276,7 @@ module Type =
       let executionPoint = p [] "ExecutionPoint"
       let detail = p [] "Detail"
       let handle = p [] "Handle"
+      let machineProcess = p [] "MachineProcess"
 
       /// Durable runs (`dark exec list/show/resume/fork`).
       module Execution =
@@ -555,6 +556,7 @@ module Fn =
     let private p addl = p ("Stdlib" :: addl)
 
     module HttpClient =
+      let read = p [ "HttpClient" ] "read"
       let request = p [ "HttpClient" ] "request"
       let stream = p [ "HttpClient" ] "stream"
 

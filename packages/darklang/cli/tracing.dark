@@ -19,7 +19,7 @@ let emptyStateHint () : String =
   if Darklang.Tracing.Store.enabled () then
     "(Traces are recorded by `darklang eval`, `darklang run`, or HTTP handlers under `darklang serve`.)"
   else
-    "(Recording is OFF, so this is empty whatever ran. For one command: DARK_CONFIG_TRACE_DETAIL=on darklang ...)"
+    "(Recording is off (DARK_CONFIG_TRACE_DETAIL=off), so this is empty whatever ran.)"
 
 
 /// Print the empty-result explanation, dimmed.
@@ -1305,9 +1305,9 @@ let help (_state: Cli.AppState) : String =
     "Traces are recorded when code executes via eval, run, or HTTP handlers."
     "Each trace captures inputs, function calls with arguments, and results."
     ""
-    "Recording is OFF by default, because traces have no retention yet and a busy"
-    "process can fill a disk with them. Turn it on for the command you want:"
-    "  DARK_CONFIG_TRACE_DETAIL=on darklang <command>"
+    "Recording is on by default at the `effects` level: only calls with effects, the log a run"
+    "is resumed or forked from. The oldest logs go past `trace.keep` runs or `trace.maxMb`"
+    "(config). For every call and frame, for one command: DARK_CONFIG_TRACE_DETAIL=on darklang ..."
     ""
     "Examples:"
     "  traces list                          - Show last 20 traces"

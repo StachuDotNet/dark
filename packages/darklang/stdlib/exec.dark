@@ -53,6 +53,8 @@ type Summary =
     started: DateTime
     /// How many slices of the instruction budget it has used.
     slices: Int64
+    /// Bytes it has allocated, summed over its slices.
+    allocated: Int64
     /// Reads it started that have not landed yet.
     inflight: Int64 }
 
@@ -76,6 +78,22 @@ type Detail =
 /// Every process this instance's scheduler knows, finished ones included.
 let list () : List<Summary> =
   Builtin.execList ()
+
+
+/// One Dark process on this machine, from the registry every CLI writes at startup: what `dark ps`
+/// shows across processes, as against `list`, which is this process's own table.
+type MachineProcess =
+  { pid: Int64
+    /// What a system monitor shows: `dark serve :9090`, `dark sync`, `dark eval`.
+    title: String
+    command: String
+    branch: String
+    started: DateTime }
+
+
+/// Every Dark process on this machine still running, oldest first.
+let machineList () : List<MachineProcess> =
+  Builtin.execMachineList ()
 
 
 /// One process in detail, or `None` for an id nobody has.

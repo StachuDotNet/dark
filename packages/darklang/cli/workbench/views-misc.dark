@@ -246,15 +246,27 @@ let loadProcessItems () : List<BodyItem> =
 /// The table as a tree. `render` is pure over the state: the rows were read by the loader.
 let processTree (state: State) : Stdlib.Cli.UI.Node.Node<Unit> =
   let branchId = state.branchId
-  let rows = Stdlib.Exec.list () |> Stdlib.List.map (fun p -> Cli.Ps.row branchId p)
+  let rows = Cli.Ps.treeRows branchId (Stdlib.Exec.list ())
 
   if Stdlib.List.isEmpty rows then
     Stdlib.Cli.UI.Node.dim "(no processes: the scheduler is not running this workbench)"
   else
+    // The machine's other Dark processes go under this instance's table, so the cursor's row
+    // arithmetic above (row = selected + 2) stays true.
+    let others =
+      match Cli.Ps.machineRows () with
+      | [] -> []
+      | machine ->
+        [ Stdlib.Cli.UI.Node.text ""
+          Stdlib.Cli.UI.Node.dim "elsewhere on this machine"
+          Stdlib.Cli.UI.Node.table [ "pid", "process", "branch", "started", "command" ] machine ]
+
     Stdlib.Cli.UI.Node.column
-      [ Stdlib.Cli.UI.Node.table [ "id", "entry", "status", "slices", "parent" ] rows
-        Stdlib.Cli.UI.Node.text ""
-        Stdlib.Cli.UI.Node.dim "the selected row's call stack is on the right; `dark ps show <id>` has all of it" ]
+      (Stdlib.List.append
+        [ Stdlib.Cli.UI.Node.table [ "id", "entry", "status", "turns", "parent" ] rows
+          Stdlib.Cli.UI.Node.text ""
+          Stdlib.Cli.UI.Node.dim "the selected row's call stack is on the right; `dark ps show <id>` has all of it" ]
+        others)
 
 /// The table on the left, the selected process's stack on the right.
 let renderProcesses (state: State) (region: Stdlib.Cli.UI.Layout.Region) : List<Stdlib.Cli.UI.Layout.Span> =
@@ -295,4 +307,4 @@ let processDetailLines (state: State) : List<String> =
           (d.frames |> Stdlib.List.map (fun ep -> Cli.Ps.executionPointText state.branchId ep))
 
 let processHints (state: State) : List<(String * String)> =
-  [ ("↑↓", "select"), ("5", "back to Apps"), ("", "`dark ps kill <id>` stops one") ]
+  [ ("↑↓", "select"), ("5", "back to Apps"), ("", "`dark ps cancel <id>` stops one; `dark ps --watch` for the live view") ]

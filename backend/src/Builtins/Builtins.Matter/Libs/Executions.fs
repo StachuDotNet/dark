@@ -129,6 +129,50 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "executionExport" 0
+      typeParams = []
+      parameters = [ Param.make "id" TUuid "" ]
+      returnType = TypeReference.result TString TString
+      description =
+        "The execution as one text bundle (its row, its trace, its effect log), for `import` on "
+        + "another machine. Carries no code: a resume there needs the same package hashes."
+      fn =
+        (function
+        | _, _, _, [| DUuid id |] ->
+          uply {
+            match! Executions.Bundle.export id with
+            | Ok text -> return Dval.resultOk KTString KTString (DString text)
+            | Error msg -> return Dval.resultError KTString KTString (DString msg)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ LibExecution.Effects.Effect.TraceRead ]
+      deprecated = NotDeprecated }
+
+
+    { name = fn "executionImport" 0
+      typeParams = []
+      parameters = [ Param.make "bundle" TString "" ]
+      returnType = TypeReference.result TUuid TString
+      description =
+        "Store a bundle from `export` here as a suspended execution, ids kept, so `resume` can "
+        + "take it up. An execution already here with that id is left as it is."
+      fn =
+        (function
+        | _, _, _, [| DString text |] ->
+          uply {
+            match! Executions.Bundle.import text with
+            | Ok id -> return Dval.resultOk KTUuid KTString (DUuid id)
+            | Error msg -> return Dval.resultError KTUuid KTString (DString msg)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ LibExecution.Effects.Effect.TraceWrite ]
+      deprecated = NotDeprecated }
+
+
     { name = fn "executionArmResume" 0
       typeParams = []
       parameters = [ Param.make "id" TUuid "" ]

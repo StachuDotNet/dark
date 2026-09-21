@@ -309,6 +309,38 @@ let private resolveRouting
 // ───────── per-request dispatch ─────────
 // ───────── per-request dispatch ─────────
 
+/// How long a request's handler may run before the server answers 504 and cancels it. The
+/// store's `http.requestTimeoutMs`, read once when `serve` starts; 30 s unset; 0 means no limit.
+let mutable requestTimeoutMs : int = 30_000
+
+let private readRequestTimeout () : unit =
+  try
+    match
+      (LibDB.Config.getMany [ "http.requestTimeoutMs" ]).Result
+      |> Map.tryFind "http.requestTimeoutMs"
+    with
+    | Some s ->
+      match System.Int32.TryParse s with
+      | true, n when n >= 0 -> requestTimeoutMs <- n
+      | _ -> ()
+    | None -> ()
+  with _ ->
+    ()
+
+/// What a handler's process came to: a value for `toHttpResponse`, or a response the server
+/// writes itself because there is no value (the handler failed, timed out, or was stopped).
+type private HandlerOutcome =
+  | Value of Dval
+  | Direct of Http.Response.HttpResponse
+
+let private textResponse
+  (status : int)
+  (text : string)
+  : Http.Response.HttpResponse =
+  { statusCode = status
+    body = UTF8.toBytes text
+    headers = [ "Content-Type", "text/plain; charset=utf-8" ] }
+
 /// Run the handler for one request as a PROCESS of its own, on a worker (`docs/processes.md`,
 /// "Cores"): `ps` shows it with the server as its parent and its own frames, the budget can
 /// preempt it, a read in it stays a value in flight, and nothing re-enters the interpreter on the
@@ -317,27 +349,60 @@ let private resolveRouting
 ///
 /// The state is the per-request one (its own tracer); the spawn keeps that and stamps the process
 /// id on it. The access is the guest's, narrowed by the frame that called `serve`, as before.
+///
+/// A handler that runs past `requestTimeoutMs` is cancelled (politely: what it has on the host
+/// completes, then it stops, its children with it) and the client gets a 504. A handler stopped
+/// from outside (`dark ps cancel`/`kill`) gets a 503 naming the reason. A handler that raises
+/// gets a 500 with the error, not a complaint about the response's type.
 let private executeHandler
   (exeState : ExecutionState)
   (handler : Applicable)
   (arg : Dval)
-  : Task<Dval> =
+  : Task<HandlerOutcome> =
   task {
     let scheduler = LibExecution.Scheduler.Scheduler.CurrentOrShared
     let parent =
       LibExecution.Scheduler.Scheduler.CurrentProcess |> Option.map (fun p -> p.id)
     let p = scheduler.SpawnApply(exeState, handler, arg, parent, exeState.access)
-    let! result = scheduler.Await p
-    match result with
-    | Ok dval -> return dval
-    | Error(rte, _callStack) ->
-      let! errorStrResult = Execution.runtimeErrorToString exeState rte
-      let errorStr =
-        match errorStrResult with
-        | Ok(DString s) -> s
-        | Ok other -> string other
-        | Error _ -> string rte
-      return DString $"Handler error: {errorStr}"
+    let completion = scheduler.Await p
+    let! timedOut =
+      task {
+        if requestTimeoutMs <= 0 || completion.IsCompleted then
+          return false
+        else
+          use cts = new CancellationTokenSource()
+          let delay = Task.Delay(requestTimeoutMs, cts.Token)
+          let! first = Task.WhenAny(completion :> Task, delay)
+          if obj.ReferenceEquals(first, delay) then
+            return true
+          else
+            cts.Cancel()
+            return false
+      }
+    if timedOut then
+      scheduler.Cancel p.id |> ignore<bool>
+      Telemetry.event "httpserver.timeout" [ "ms", string requestTimeoutMs ]
+      return
+        Direct(
+          textResponse
+            504
+            $"The handler ran for more than {requestTimeoutMs} ms and was cancelled."
+        )
+    else
+      let! result = completion
+      match result with
+      | Ok dval -> return Value dval
+      | Error(rte, _callStack) ->
+        let! errorStrResult = Execution.runtimeErrorToString exeState rte
+        let errorStr =
+          match errorStrResult with
+          | Ok(DString s) -> s
+          | Ok other -> string other
+          | Error _ -> string rte
+        match p.stopReason with
+        | null -> return Direct(textResponse 500 $"The handler failed: {errorStr}")
+        | reason ->
+          return Direct(textResponse 503 $"The request was stopped: {reason}.")
   }
 
 
@@ -506,7 +571,7 @@ let private handleRequest
               | Ok(handlerState, _) -> handlerState
               | Error _ -> exeState
 
-            let! result =
+            let! outcome =
               match resolved with
               | Ok(handlerState, handler) ->
                 executeHandler
@@ -517,9 +582,14 @@ let private handleRequest
                 // No usable version: say so, keep listening. The diagnostic is on stdout already
                 // (Dark prints it when the verdict changes), so the wire gets a plain 503.
                 Telemetry.event "httpserver.unroutable" [ "reason", msg ]
-                Task.FromResult(DString $"Service Unavailable: {msg}")
+                Task.FromResult(
+                  Direct(textResponse 503 $"Service Unavailable: {msg}")
+                )
             let perRequestState = perRequestStateFor handlerState tracer
-            let! response = Http.Response.toHttpResponse perRequestState result
+            let! response =
+              match outcome with
+              | Value result -> Http.Response.toHttpResponse perRequestState result
+              | Direct response -> Task.FromResult response
             do! tracer.storeTraceResults perRequestState |> Ply.toTask
 
             let respHeaders =
@@ -762,6 +832,7 @@ let private serve
         (set [ Effect.Clock; Effect.Stdout ])
         "httpServerServe"
     use _serveSpan = Telemetry.span "httpserver.serve" [ "port", string port ]
+    readRequestTimeout ()
 
     // Bind through the checked host boundary using the guest access,
     // so the instance policy applies instead of the trusted CLI's.

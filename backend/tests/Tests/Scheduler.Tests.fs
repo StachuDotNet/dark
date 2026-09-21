@@ -15,6 +15,7 @@ open TestUtils.PTShortcuts
 module RT = LibExecution.RuntimeTypes
 module PT = LibExecution.ProgramTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
+module HostRegistry = LibExecution.HostRegistry
 module RTE = RT.RuntimeError
 module Scheduler = LibExecution.Scheduler
 module HE = LibExecution.HostEvents
@@ -847,28 +848,28 @@ Stdlib.Exec.await h"""
 
 
 let private httpGetIsARead =
-  testTask "the HTTP client marks a GET or HEAD as a read, and nothing else" {
+  testTask
+    "the HTTP client's GET and HEAD builtin is a read, and the request builtin is not" {
     let! (state : RT.ExecutionState) = executionStateFor pmPT false Map.empty
+    let readsOnly (name : string) : bool =
+      let b = state.fns.builtIn[RT.FQFnName.builtin name 0]
+      LibExecution.Effects.readsOnly b.name.name b.callEffects
+    Expect.isTrue (readsOnly "httpClientRead") "GET and HEAD are reads"
+    Expect.isFalse (readsOnly "httpClientRequest") "the rest keep their order"
+    // The read builtin refuses a write method rather than performing it as a read.
     let request : RT.BuiltInFn =
-      state.fns.builtIn[RT.FQFnName.builtin "httpClientRequest" 0]
+      state.fns.builtIn[RT.FQFnName.builtin "httpClientRead" 0]
     let instrs : RT.Instructions =
       { registerCount = 1; instructions = []; resultIn = 0 }
     let vm = RT.VMState.create (None, instrs)
-    let hintFor (method : string) : bool =
-      vm.readHint <- false
-      // An unroutable URL: the body sets the hint before it does anything, and what the request
-      // then fails with is not the point.
-      let args =
-        [| RT.DString method
-           RT.DString "http://192.0.2.1/"
-           RT.DList(RT.ValueType.Unknown, [])
-           LibExecution.Blob.newEphemeral [||] |]
-      request.fn (struct (state, vm, [], args)) |> ignore<Ply<RT.Dval>>
-      vm.readHint
-    Expect.isTrue (hintFor "GET") "GET is a read"
-    Expect.isTrue (hintFor "head") "HEAD is a read, however spelled"
-    Expect.isFalse (hintFor "POST") "POST keeps its order"
-    Expect.isFalse (hintFor "DELETE") "DELETE keeps its order"
+    let args =
+      [| RT.DString "POST"
+         RT.DString "http://192.0.2.1/"
+         RT.DList(RT.ValueType.Unknown, []) |]
+    let! (answer : RT.Dval) = request.fn (struct (state, vm, [], args)) |> Ply.toTask
+    match answer with
+    | RT.DEnum(_, _, _, "Error", [ RT.DEnum(_, _, _, "BadMethod", []) ]) -> ()
+    | other -> failtest $"expected BadMethod, got {other}"
   }
 
 
@@ -1245,6 +1246,67 @@ Stdlib.Exec.await h"""
   }
 
 
+let private capsEndARunaway =
+  testTask
+    "a process over exec.maxTurns ends with the reason; ps shows what it allocated" {
+    let! state = executionStateFor pmPT false Map.empty
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let before = Scheduler.maxTurns
+    Scheduler.maxTurns <- 3L
+    try
+      let! (loop : Scheduler.Process) =
+        spawn
+          s
+          state
+          """(let spin (n: Int64) (acc: Int64) : Int64 =
+                if n == 0L then acc else spin (n - 1L) (acc + n)
+              spin 2000000L 0L)"""
+      let! result = runOnThread s loop
+      match result with
+      | Ok dv -> failtest $"the runaway finished: {dv}"
+      | Error(rte, _) ->
+        Expect.stringContains (string rte) "over 3 turns" "the reason names the cap"
+      Expect.equal loop.slices 3L "it got its three turns"
+      let summary = s.SummaryOf loop
+      Expect.isGreaterThan summary.allocated 0L "allocation was accounted per slice"
+    finally
+      Scheduler.maxTurns <- before
+  }
+
+
+let private registryListsAndForgets =
+  testTask "the machine registry lists a live pid and drops a dead one" {
+    let dir =
+      System.IO.Path.Combine(
+        System.IO.Path.GetTempPath(),
+        $"dark-ps-test-{System.Guid.NewGuid()}"
+      )
+    System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
+    HostRegistry.setDirectory dir
+    // A stale entry: a pid no process has.
+    let psDir = System.IO.Path.Combine(dir, "run", "ps")
+    System.IO.Directory.CreateDirectory psDir |> ignore<System.IO.DirectoryInfo>
+    System.IO.File.WriteAllText(
+      System.IO.Path.Combine(psDir, "999999.json"),
+      "{\"pid\":999999,\"title\":\"dark gone\",\"command\":\"dark gone\",\"branch\":\"\",\"started\":\"2026-01-01T00:00:00.0000000Z\"}"
+    )
+    HostRegistry.register "dark tests" "dark tests" "main"
+    let entries = HostRegistry.list ()
+    let me = System.Environment.ProcessId
+    Expect.isTrue
+      (entries |> List.exists (fun e -> e.pid = me && e.title = "dark tests"))
+      "this process is listed with its title"
+    Expect.isFalse
+      (entries |> List.exists (fun e -> e.pid = 999999))
+      "the dead pid is gone"
+    Expect.isFalse
+      (System.IO.File.Exists(System.IO.Path.Combine(dir, "run", "ps", "999999.json")))
+      "and its file was removed"
+    HostRegistry.setDirectory ""
+    System.IO.Directory.Delete(dir, true)
+  }
+
+
 let tests =
   testSequenced (
     testList
@@ -1278,5 +1340,7 @@ let tests =
         cancelLetsTheWaitLand
         childrenDieWithTheParent
         awaitWithinTimesOut
-        killCascadesHard ]
+        killCascadesHard
+        capsEndARunaway
+        registryListsAndForgets ]
   )

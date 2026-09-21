@@ -1,0 +1,73 @@
+module Darklang.Cli.Docs.Processes
+
+let content () : String =
+  """# Processes: things run at once, pause, and resume
+
+Every run is a process the runtime owns: it can run beside others, be paused,
+looked at, stopped, and picked up again later. You mostly meet this without
+writing anything.
+
+## Concurrency, without writing anything
+
+Reads run at the same time. Writes keep program order. `await x` waits for a
+value here instead of wherever it is first used.
+
+  let pages = List.map HttpClient.get urls    // ten requests, all in flight
+  print "fetching"                            // a write: happens now, in order
+  let first = await (List.head pages)         // wait for this one, here
+  File.write out first.body                   // in order
+
+A read is a call whose effects are all reads (a file, env, db or package
+read, an HTTP GET or HEAD). Anything else runs in order.
+
+## When you want control
+
+  let h = Exec.spawn (fun () -> File.write log "done")   // start it in the background
+  Exec.await h                                           // wait for it
+  Exec.awaitWithin 500L h                                // ... or give up after 500 ms: None
+  Exec.select [ h1; h2 ]                                 // the first to finish
+  Exec.cancel h                                          // stop it, and its children
+  List.parallelMap items fib                             // CPU-bound work across the cores
+
+A process spawned this way dies with its parent unless `Exec.spawnDetached`.
+Spawning is the `concurrency` effect; a policy can forbid it.
+
+## See what is running
+
+  ps                     every Dark process on this machine, then this one's own tree
+  ps --watch             the same, repainting; up/down, c cancel, k kill, esc
+  ps show <id> [--full]  one process: status, turns, memory, call stack
+  ps cancel <id> | <pid> stop it politely (what it has on the host finishes first)
+  ps kill <id> | <pid>   stop it now (for a process stuck in a call that never returns)
+
+A tight loop cannot freeze a TUI or a server: it gets a slice, then others
+run. In a system monitor a Dark process shows as what it runs: `dark serve
+:9090`, `dark eval`, `dark <daemon>`.
+
+## Pick a run back up
+
+Every `eval` and `run` is recorded (only its effects: what it read, wrote,
+sent and got back), so Ctrl-C does not lose it.
+
+  exec                       the runs kept here, newest first
+  exec resume <id>           carry on where it stopped: the log answers what
+                             already happened, then the run goes live
+  exec fork <id> [--at <n>]  a new run from any point of an old one
+  exec export <id> [<file>]  the run as one file ...
+  exec import <file>         ... taken in on another machine, then `resume`
+
+A resume echoes what the old run printed (dimmed), stops if the log holds
+something it cannot have again (a spawned process, an open stream), and warns
+when a file it read has changed since. The oldest logs go past `trace.keep`
+runs or `trace.maxMb` of log; a suspended run's never.
+
+## Knobs, all optional
+
+  config set exec.workers <n>          worker threads (default: one per core)
+  config set http.requestTimeoutMs <n> a server cancels a handler past this: 504
+  config set exec.maxTurns <n>         stop a process past this many turns
+  config set exec.maxBytes <n>         ... or this many bytes allocated
+
+The design is `docs/processes.md` in the repository; the live half of the
+story is `docs live`.
+"""

@@ -3064,12 +3064,6 @@ type VMState =
     /// `List.map` is parked as a Ply, not preempted; see `docs/processes.md`).
     mutable budget : int64
 
-    /// Set by a builtin body to say this particular call is a read the interpreter may hand back
-    /// as a promise even though the builtin's declared effects are not all reads (an HTTP GET,
-    /// under a builtin that also does POST). Read and cleared by the interpreter right after the
-    /// body returns; one builtin is in flight per VM at a time, so a single slot suffices.
-    mutable readHint : bool
-
     /// Reads this VM's calls handed back as promises that have not landed yet, for `ps`.
     mutable inflight : int
 
@@ -3187,7 +3181,6 @@ type VMState =
       frameToPush = ValueNone
       frameIdCounter = 0L
       budget = -1L
-      readHint = false
       inflight = 0
       pendingNext = Unchecked.defaultof<_>
       pendingFinish = Unchecked.defaultof<_>
@@ -3275,7 +3268,6 @@ type VMState =
     vm.frameToPush <- ValueNone
     vm.frameIdCounter <- 0L
     vm.budget <- -1L
-    vm.readHint <- false
     vm.inflight <- 0
     vm.pendingNext <- Unchecked.defaultof<_>
     vm.pendingApplicable <- Unchecked.defaultof<_>

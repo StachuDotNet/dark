@@ -250,78 +250,128 @@ let private pendingFetches =
 open LibExecution.Builtin.Shortcuts
 
 
+/// One guest-profile request, named for the loop to perform: the shared body of
+/// `httpClientRead` and `httpClientRequest`. `wrapper` is the Dark fn a bad header names.
+let private guestRequest
+  (vm : VMState)
+  (wrapper : unit -> string)
+  (method : string)
+  (uri : string)
+  (reqHeaders : List<Dval>)
+  (body : byte[])
+  : Ply<Dval> =
+  let responseTypeOK = KTCustomType(responseOKType (), [])
+  let responseTypeErr = KTCustomType(responseErrorType (), [])
+  let resultOk = Dval.resultOk responseTypeOK responseTypeErr
+  let resultError = Dval.resultError responseTypeOK responseTypeErr
+  match parseHeaders vm (FQFnName.fqPackage (wrapper ())) reqHeaders with
+  | Error headerError ->
+    Ply(
+      resultError (
+        RequestError.toDT (HostTypes.HttpRequestError.BadHeader headerError)
+      )
+    )
+  | Ok headers ->
+    let op =
+      Host.Operation.HttpRequest(
+        HostTypes.HttpProfile.Guest,
+        method,
+        uri,
+        headers,
+        body
+      )
+    Interpreter.requestHost vm op (fun outcome ->
+      match outcome with
+      | Error failure ->
+        Exception.raiseInternal
+          "http request failed outside the typed error surface"
+          [ "message", failure.message ]
+      | Ok response ->
+        match Host.expectHttp response with
+        | Error err -> Ply(resultError (RequestError.toDT err))
+        | Ok response ->
+          let typ = responseOKType ()
+          let fields =
+            [ ("statusCode", Dval.int (bigint response.statusCode))
+              ("headers", headersToDval response.headers)
+              ("body", Blob.newEphemeral response.body) ]
+          Ply(resultOk (DRecord(typ, typ, [], Map fields))))
+
+let private responseResultType =
+  TypeReference.result
+    (TCustomType(NR.ok (responseOKType ()), []))
+    (TCustomType(NR.ok (responseErrorType ()), []))
+
+
 let fns () : List<BuiltInFn> =
-  [ { name = fn "httpClientRequest" 0
+  [ // A GET or HEAD observes and changes nothing, so it is a read: the interpreter hands it back
+    // in flight and the program runs on until it looks at the response (`docs/processes.md`,
+    // "Reads are concurrent"; `Effects.readsOnly` names this builtin). `Http` stays one word in
+    // the permission language; the split is what lets the table say which calls are reads.
+    { name = fn "httpClientRead" 0
+      typeParams = []
+      parameters =
+        [ Param.make "method" TString "GET or HEAD"
+          Param.make "uri" TString ""
+          Param.make "headers" headersType "" ]
+      returnType = responseResultType
+      description =
+        "A GET or HEAD of <param uri>: a read, so it runs concurrently with what follows and is "
+        + "waited for where the response is first looked at. Any other method is a BadMethod "
+        + "error; `httpClientRequest` is for those."
+      fn =
+        (function
+        | _, vm, _, [| DString method; DString uri; DList(_, reqHeaders) |] ->
+          match method.ToUpperInvariant() with
+          | "GET"
+          | "HEAD" as method ->
+            guestRequest
+              vm
+              PackageRefs.Fn.Stdlib.HttpClient.read
+              method
+              uri
+              reqHeaders
+              [||]
+          | _ ->
+            Ply(
+              Dval.resultError
+                (KTCustomType(responseOKType (), []))
+                (KTCustomType(responseErrorType (), []))
+                (RequestError.toDT HostTypes.HttpRequestError.BadMethod)
+            )
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.Http ]
+      deprecated = NotDeprecated }
+
+
+    { name = fn "httpClientRequest" 0
       typeParams = []
       parameters =
         [ Param.make "method" TString ""
           Param.make "uri" TString ""
           Param.make "headers" headersType ""
           Param.make "body" TBlob "" ]
-      returnType =
-        TypeReference.result
-          (TCustomType(NR.ok (responseOKType ()), []))
-          (TCustomType(NR.ok (responseErrorType ()), []))
+      returnType = responseResultType
       description =
-        "Make blocking HTTP call to <param uri>. Returns a <type Result> where "
-        + "the response is wrapped in {{ Ok }} if a response was successfully "
-        + "received and parsed, and is wrapped in {{ Error }} otherwise"
+        "Make an HTTP call to <param uri>, in program order (a write). Returns a <type Result> "
+        + "where the response is wrapped in {{ Ok }} if a response was successfully received "
+        + "and parsed, and is wrapped in {{ Error }} otherwise"
       fn =
-        let responseTypeOK = KTCustomType(responseOKType (), [])
-        let responseTypeErr = KTCustomType(responseErrorType (), [])
-        let resultOk = Dval.resultOk responseTypeOK responseTypeErr
-        let resultError = Dval.resultError responseTypeOK responseTypeErr
         (function
         | state,
           vm,
           _,
           [| DString method; DString uri; DList(_, reqHeaders); DBlob bodyRef |] ->
-          // A GET or HEAD observes and changes nothing, so the interpreter may hand it back as a
-          // read in flight and run on (`docs/processes.md`, "Reads are concurrent"). `Http` is not
-          // a read effect, since this one builtin also does POST, which must keep its order; the
-          // method decides here, per call.
-          (match method.ToUpperInvariant() with
-           | "GET"
-           | "HEAD" -> vm.readHint <- true
-           | _ -> ())
-          let headers =
-            parseHeaders
+          Blob.withBytes state bodyRef (fun body ->
+            guestRequest
               vm
-              (FQFnName.fqPackage (PackageRefs.Fn.Stdlib.HttpClient.request ()))
+              PackageRefs.Fn.Stdlib.HttpClient.request
+              method
+              uri
               reqHeaders
-          match headers with
-          | Error headerError ->
-            Ply(
-              resultError (
-                RequestError.toDT (HostTypes.HttpRequestError.BadHeader headerError)
-              )
-            )
-          | Ok headers ->
-            Blob.withBytes state bodyRef (fun reqBodyBytes ->
-              let op =
-                Host.Operation.HttpRequest(
-                  HostTypes.HttpProfile.Guest,
-                  method,
-                  uri,
-                  headers,
-                  reqBodyBytes
-                )
-              Interpreter.requestHost vm op (fun outcome ->
-                match outcome with
-                | Error failure ->
-                  Exception.raiseInternal
-                    "http request failed outside the typed error surface"
-                    [ "message", failure.message ]
-                | Ok response ->
-                  match Host.expectHttp response with
-                  | Error err -> Ply(resultError (RequestError.toDT err))
-                  | Ok response ->
-                    let typ = responseOKType ()
-                    let fields =
-                      [ ("statusCode", Dval.int (bigint response.statusCode))
-                        ("headers", headersToDval response.headers)
-                        ("body", Blob.newEphemeral response.body) ]
-                    Ply(resultOk (DRecord(typ, typ, [], Map fields)))))
+              body)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

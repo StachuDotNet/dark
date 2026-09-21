@@ -206,6 +206,180 @@ let fork
   }
 
 
+// ───────── bundles: an execution as one file, for another machine ─────────
+//
+// An execution is its rows: the `executions` row, its `traces` row, and the trace's
+// `trace_fn_calls`. A bundle is those rows as text, blobs base64, so `dark exec export` on one
+// machine and `dark exec import` on another give `resume` the same log to replay. The code the
+// log names (fn hashes) has to be on the other side too; a resume there resolves it from its own
+// store, so a bundle carries no code. Versioned by the first line, for the day the rows change.
+
+module Bundle =
+  let private header = "dark-execution-bundle v1"
+
+  let private b64 (b : byte[]) = System.Convert.ToBase64String b
+  let private unb64 (s : string) = System.Convert.FromBase64String s
+  let private esc (s : string) =
+    s.Replace("\\", "\\\\").Replace("\t", "\\t").Replace("\n", "\\n")
+  let private unesc (s : string) =
+    let sb = System.Text.StringBuilder()
+    let mutable i = 0
+    while i < s.Length do
+      if s[i] = '\\' && i + 1 < s.Length then
+        (match s[i + 1] with
+         | 't' -> sb.Append '\t'
+         | 'n' -> sb.Append '\n'
+         | c -> sb.Append c)
+        |> ignore<System.Text.StringBuilder>
+        i <- i + 2
+      else
+        sb.Append s[i] |> ignore<System.Text.StringBuilder>
+        i <- i + 1
+    sb.ToString()
+
+  /// The bundle text for `id`, or why not.
+  let export (id : System.Guid) : Task<Result<string, string>> =
+    task {
+      match! get id with
+      | None -> return Error "no execution has this id"
+      | Some e ->
+        let! trace =
+          Sql.query
+            "SELECT root_tlid, handler_desc, timestamp, input_name, input_value FROM traces WHERE id = @t"
+          |> Sql.parameters [ "t", Sql.string (string e.traceId) ]
+          |> Sql.executeRowOptionAsync (fun read ->
+            read.int64 "root_tlid",
+            read.string "handler_desc",
+            read.string "timestamp",
+            read.string "input_name",
+            read.bytes "input_value")
+        match trace with
+        | None -> return Error "the execution's trace is gone"
+        | Some(rootTlid, desc, stamp, inputName, inputValue) ->
+          let! calls =
+            Sql.query
+              "SELECT call_id, parent_call_id, kind, fn_hash, lambda_expr_id, args, result,
+                      duration_ms, process_id, seq, ord
+               FROM trace_fn_calls WHERE trace_id = @t ORDER BY seq"
+            |> Sql.parameters [ "t", Sql.string (string e.traceId) ]
+            |> Sql.executeAsync (fun read ->
+              [ read.string "call_id"
+                (read.stringOrNone "parent_call_id" |> Option.defaultValue "")
+                read.string "kind"
+                (read.stringOrNone "fn_hash" |> Option.defaultValue "")
+                (read.stringOrNone "lambda_expr_id" |> Option.defaultValue "")
+                b64 (read.bytes "args")
+                b64 (read.bytes "result")
+                string (read.int64 "duration_ms")
+                read.string "process_id"
+                string (read.int64 "seq")
+                string (read.int64 "ord") ])
+          let lines =
+            [ header
+              String.concat
+                "\t"
+                [ "execution"
+                  string e.id
+                  esc e.handlerDesc
+                  esc e.inputName
+                  b64 (BinarySer.RT.Dval.serialize "executions.input_value" e.input)
+                  string e.traceId
+                  Status.name e.status
+                  (match e.parent with
+                   | Some(pid, ord) -> $"{pid}:{ord}"
+                   | None -> "")
+                  e.created
+                  e.updated ]
+              String.concat
+                "\t"
+                [ "trace"
+                  string rootTlid
+                  esc desc
+                  stamp
+                  esc inputName
+                  b64 inputValue ] ]
+            @ (calls |> List.map (fun cells -> String.concat "\t" ("call" :: cells)))
+          return Ok(String.concat "\n" lines + "\n")
+    }
+
+  /// Store the bundle's rows here, with its ids kept, as a suspended execution `resume` can take
+  /// up. An execution already here with that id is left alone and its id returned.
+  let import (text : string) : Task<Result<System.Guid, string>> =
+    task {
+      let lines = text.Split('\n') |> Array.filter (fun l -> l <> "")
+      if lines.Length < 3 || lines[0] <> header then
+        return Error "not a dark execution bundle"
+      else
+        let exec = lines[1].Split('\t')
+        let trace = lines[2].Split('\t')
+        if exec[0] <> "execution" || trace[0] <> "trace" then
+          return Error "not a dark execution bundle"
+        else
+          let id = System.Guid.Parse exec[1]
+          match! get id with
+          | Some _ -> return Ok id
+          | None ->
+            let traceId = exec[5]
+            let parentId, parentOrd =
+              match exec[7] with
+              | "" -> Sql.dbnull, Sql.dbnull
+              | p ->
+                let parts = p.Split ':'
+                Sql.uuid (System.Guid.Parse parts[0]), Sql.int64 (int64 parts[1])
+            let callRows =
+              lines
+              |> Array.skip 3
+              |> Array.map (fun l -> l.Split('\t'))
+              |> Array.filter (fun c -> c[0] = "call" && c.Length = 12)
+              |> Array.map (fun c ->
+                [ "trace_id", Sql.string traceId
+                  "call_id", Sql.string c[1]
+                  "parent_call_id",
+                  (if c[2] = "" then Sql.dbnull else Sql.string c[2])
+                  "kind", Sql.string c[3]
+                  "fn_hash", (if c[4] = "" then Sql.dbnull else Sql.string c[4])
+                  "lambda_expr_id",
+                  (if c[5] = "" then Sql.dbnull else Sql.string c[5])
+                  "args", Sql.bytes (unb64 c[6])
+                  "result", Sql.bytes (unb64 c[7])
+                  "duration_ms", Sql.int64 (int64 c[8])
+                  "process_id", Sql.string c[9]
+                  "seq", Sql.int64 (int64 c[10])
+                  "ord", Sql.int64 (int64 c[11]) ])
+              |> Array.toList
+            Sql.executeTransactionSync
+              [ "INSERT OR IGNORE INTO traces (id, root_tlid, handler_desc, timestamp, input_name, input_value, account_id)
+                 VALUES (@id, @tlid, @desc, @stamp, @inputName, @input, NULL)",
+                [ [ "id", Sql.string traceId
+                    "tlid", Sql.int64 (int64 trace[1])
+                    "desc", Sql.string (unesc trace[2])
+                    "stamp", Sql.string trace[3]
+                    "inputName", Sql.string (unesc trace[4])
+                    "input", Sql.bytes (unb64 trace[5]) ] ]
+                "INSERT OR IGNORE INTO trace_fn_calls
+                  (trace_id, call_id, parent_call_id, kind, fn_hash, lambda_expr_id, args, result,
+                   duration_ms, process_id, seq, ord)
+                 VALUES (@trace_id, @call_id, @parent_call_id, @kind, @fn_hash, @lambda_expr_id, @args,
+                         @result, @duration_ms, @process_id, @seq, @ord)",
+                callRows
+                "INSERT INTO executions
+                  (id, handler_desc, input_name, input_value, trace_id, status, parent_id, parent_ord, created, updated)
+                 VALUES (@id, @desc, @inputName, @input, @traceId, @status, @parentId, @parentOrd, @created, @updated)",
+                [ [ "id", Sql.uuid id
+                    "desc", Sql.string (unesc exec[2])
+                    "inputName", Sql.string (unesc exec[3])
+                    "input", Sql.bytes (unb64 exec[4])
+                    "traceId", Sql.string traceId
+                    "status", Sql.string (Status.name Suspended)
+                    "parentId", parentId
+                    "parentOrd", parentOrd
+                    "created", Sql.string exec[8]
+                    "updated", Sql.string (now ()) ] ] ]
+            |> ignore<List<int>>
+            return Ok id
+    }
+
+
 /// The run in the foreground of this OS process, so Ctrl-C can suspend it: store what its
 /// tracer has so far and mark it, then leave. Set by the CLI host around a traced run.
 module Foreground =

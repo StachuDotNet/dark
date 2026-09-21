@@ -11,6 +11,13 @@ let content () : String =
 The argument is the fully-qualified name of a function in the package tree, not a
 file. It must be `Stdlib.Http.Request -> Stdlib.Http.Response`.
 
+The server is live: every request runs the newest router that passes its checks,
+and a broken save keeps the previous one serving (`--dev` also reloads an open
+page; `--no-live` pins the version resolved at start). Each request is its own
+process: a slow handler holds up nobody; one past `http.requestTimeoutMs` (30 s
+unset) is cancelled and answers 504; one that raises answers 500 with its error;
+one stopped from `ps cancel` answers 503. `docs live` has the rest.
+
 ## A router
 
 Handlers are values; `routeRequest` dispatches to them by method and path.

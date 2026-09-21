@@ -561,6 +561,127 @@ let private concurrentEphemeralBlobRequests =
   }
 
 
+/// One server, one router whose behaviour depends on the path, driven by raw sockets so the
+/// requests really are concurrent. Returns (status line, body) per request, in request order.
+let private runRequestsAgainst
+  (routerCode : string)
+  (paths : string list)
+  : Task<(string * string) array> =
+  task {
+    let! exeState = executionStateFor pmPT true Map.empty
+    let test =
+      { handlers =
+          [ { version = Http; route = "/"; method = "GET"; code = routerCode } ]
+        request = [||]
+        expectedResponse = [||] }
+    let! handler = buildRouterForTest exeState test
+    let port = allocateFreePort ()
+    let cts = new CancellationTokenSource()
+    let! listener = bindListener port
+    let listenerTask =
+      HttpServer.runListener
+        exeState
+        listener
+        (int64 port)
+        handler
+        HttpServer.defaultMaxBodyBytes
+        false
+        false
+        false
+        cts.Token
+    let oneRequest (path : string) : Task<string * string> =
+      task {
+        let reqBytes =
+          UTF8.toBytes
+            $"GET {path} HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n"
+        use client = new TcpClient()
+        do! client.ConnectAsync("127.0.0.1", port)
+        use stream = client.GetStream()
+        do! stream.WriteAsync(reqBytes, 0, reqBytes.Length)
+        do! stream.FlushAsync()
+        use ms = new System.IO.MemoryStream()
+        let buf = Array.zeroCreate 8192
+        use readCts = new CancellationTokenSource(20_000)
+        let mutable reading = true
+        try
+          while reading do
+            let! n = stream.ReadAsync(buf, 0, buf.Length, readCts.Token)
+            if n = 0 then reading <- false else ms.Write(buf, 0, n)
+        with :? System.OperationCanceledException ->
+          ()
+        let parsed = Http.split (ms.ToArray())
+        return (parsed.status, UTF8.ofBytesUnsafe parsed.body)
+      }
+    try
+      let! results = paths |> List.map oneRequest |> Task.WhenAll
+      return results
+    finally
+      cts.Cancel()
+      try
+        listenerTask.Wait 2000 |> ignore<bool>
+      with _ ->
+        ()
+  }
+
+/// The path decides: `/slow` sleeps, `/boom` raises, anything else answers at once.
+let private pathRouter =
+  """(match request.url with
+      | url when Darklang.Stdlib.String.contains url "/slow" ->
+        let _ = Darklang.Stdlib.Cli.Posix.sleep 800.0
+        Darklang.Stdlib.Http.responseWithText "slow done" 200
+      | url when Darklang.Stdlib.String.contains url "/boom" ->
+        Darklang.Stdlib.Http.responseWithText (Darklang.Stdlib.Int.toString (1 / 0)) 200
+      | _ -> Darklang.Stdlib.Http.responseWithText "fast" 200)"""
+
+// Sequenced: the timeout test lowers the process-wide `requestTimeoutMs` for its own server.
+let private requestsAreProcesses =
+  testSequenced
+  <| testList
+    "requests as processes"
+    [ testTask "a slow handler does not hold up a fast one" {
+        let sw = System.Diagnostics.Stopwatch.StartNew()
+        let! (results : (string * string) array) =
+          runRequestsAgainst pathRouter [ "/slow"; "/fast"; "/fast"; "/fast" ]
+        sw.Stop()
+        Expect.stringContains (fst results[0]) "200" "the slow request completes"
+        Expect.equal (snd results[0]) "slow done" "the slow body"
+        for i in 1..3 do
+          Expect.equal (snd results[i]) "fast" $"fast request {i} answered"
+        // Four requests, one of them 800 ms: sequential would be over 800 ms only if the fast
+        // ones queued behind the slow one; they must not, so the whole batch is about one slow.
+        Expect.isLessThan
+          sw.ElapsedMilliseconds
+          2500L
+          "the batch took about one slow request"
+      }
+      testTask "a handler past the request timeout gets a 504 and is cancelled" {
+        let before = HttpServer.requestTimeoutMs
+        HttpServer.requestTimeoutMs <- 200
+        try
+          let! (results : (string * string) array) =
+            runRequestsAgainst pathRouter [ "/slow"; "/fast" ]
+          Expect.stringContains (fst results[0]) "504" "the slow request timed out"
+          Expect.stringContains
+            (snd results[0])
+            "ran for more than 200 ms"
+            "the body says why"
+          Expect.equal (snd results[1]) "fast" "the fast request was unaffected"
+        finally
+          HttpServer.requestTimeoutMs <- before
+      }
+      testTask
+        "a handler that raises gets a 500 with the error, not a type complaint" {
+        let! (results : (string * string) array) =
+          runRequestsAgainst pathRouter [ "/boom" ]
+        Expect.stringContains (fst results[0]) "500" "a failed handler is a 500"
+        Expect.stringContains
+          (snd results[0])
+          "The handler failed"
+          "the body names the failure"
+        Expect.stringContains (snd results[0]) "divide" "the body carries the error"
+      } ]
+
+
 /// The serve builtin narrows `port`/`maxBodyBytes` (arbitrary-precision `Int`)
 /// to native int64 and range-checks them BEFORE binding, turning what would be
 /// a host `HttpListener`/overflow crash into a Dark `OutOfRange` error. This
@@ -636,4 +757,7 @@ let tests =
       testList testListName tests)
   testList
     "HttpServer"
-    (serveRejectsOutOfRangeArgs :: concurrentEphemeralBlobRequests :: fileTestLists)
+    (serveRejectsOutOfRangeArgs
+     :: concurrentEphemeralBlobRequests
+     :: requestsAreProcesses
+     :: fileTestLists)
