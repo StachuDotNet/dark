@@ -509,10 +509,25 @@ carries the effect log too. The default is `effects`, the level that makes
 every run resumable; it is thin enough to leave on because retention keeps
 the tables bounded: after a store, the oldest traces past `trace.keep` (200
 unset) or `trace.maxMb` (256 unset) of logged args and results go, except one
-a suspended execution still needs. What the log holds is what the effects
-were given and returned: an `Authorization` header, a key file's bytes, an
-env value are in it in the clear; a secret you do not want on disk is one
-to keep out of an effect's arguments, or run with `off`.
+a suspended execution still needs.
+
+Two secrets are taken out of a row before it is written (`Tracing.Redact`),
+and nothing else is. A request header named `authorization`, `cookie`,
+`set-cookie`, `x-api-key` or `proxy-authorization` is stored as
+`[redacted]`, whatever case it was written in: an argument can be redacted
+freely, since a replay serves results, not arguments. An environment read's
+secret IS its result, so the result is not stored at all, and a replay runs
+that one call again for real instead of serving a value it does not have
+(`ReplayAnswer.ReplayLive`, decided by the builtin's name in the row) and
+goes on replaying everything else. So a resumed run reads the environment of
+the machine resuming it, which is also the honest answer on another machine.
+
+Everything else the effects were given and returned is in the log as it is: a
+key file's bytes a run read, a response body, what a run printed. A secret you
+do not want on disk is one to keep out of an effect, or run with
+`DARK_CONFIG_TRACE_DETAIL=off`. Under `on` every call and its values are
+recorded, wrappers included, so the redaction above covers the shipped level
+and not that one; `on` is for live values in development.
 
 ## Executions
 

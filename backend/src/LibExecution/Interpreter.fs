@@ -1214,10 +1214,14 @@ let private invokeBuiltin
 
   // Replay: the log has this call's result, so the effect is not performed. The permission
   // check above still ran; a replay has no more rights than the run it replays.
-  let replayed = if ord >= 0L then exeState.tracing.replayEffect ord else ValueNone
+  let replayed =
+    if ord >= 0L then
+      exeState.tracing.replayEffect ord
+    else
+      Tracing.ReplayAnswer.ReplayOver
 
   match replayed with
-  | ValueSome result ->
+  | Tracing.ReplayAnswer.ReplayServe result ->
     ReplayPolicy.beforeServing vm fn ord allArgs
     finishBuiltin
       exeState
@@ -1230,7 +1234,11 @@ let private invokeBuiltin
       sw
       bodyAllocBefore
       result
-  | ValueNone ->
+  // `ReplayLive`: the log deliberately has no answer for this one (a read whose result was
+  // redacted out of it), so it is performed for real and the replay goes on. `ReplayOver`: the
+  // log ran out, and this process is live from here.
+  | Tracing.ReplayAnswer.ReplayLive
+  | Tracing.ReplayAnswer.ReplayOver ->
 
     // Every builtin's signature is async because some of them have to be -- HTTP, the package store,
     // anything touching disk. Most aren't: `Int64.add` computes and returns.

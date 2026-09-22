@@ -15,6 +15,7 @@ open TestUtils.TestUtils
 open Tests.CliTestHarness
 open Tests.CliDsl
 
+module RT = LibExecution.RuntimeTypes
 module Executions = LibDB.Executions
 
 
@@ -321,7 +322,108 @@ let private replayEchoesAndRefuses =
       })
 
 
+/// The header half of the redaction, at the unit: the names in the table are blanked in the
+/// arguments a row stores, whatever case they were written in, and nothing else is touched.
+let private secretHeadersAreRedacted =
+  testTask "a secret header's value is replaced in the stored arguments" {
+    let headers =
+      RT.DList(
+        RT.ValueType.Unknown,
+        [ RT.DTuple(RT.DString "Authorization", RT.DString "Bearer abc123", [])
+          RT.DTuple(RT.DString "cookie", RT.DString "session=xyz", [])
+          RT.DTuple(RT.DString "Accept", RT.DString "application/json", []) ]
+      )
+    let stored =
+      LibDB.Tracing.Redact.args
+        "httpClientRead"
+        [ RT.DString "GET"; RT.DString "https://example.com/"; headers ]
+    match stored with
+    | [ _; _; RT.DList(_, items) ] ->
+      let value (name : string) =
+        items
+        |> List.tryPick (fun item ->
+          match item with
+          | RT.DTuple(RT.DString n, RT.DString v, []) when n = name -> Some v
+          | _ -> None)
+      Expect.equal
+        (value "Authorization")
+        (Some "[redacted]")
+        "the bearer token is gone"
+      Expect.equal (value "cookie") (Some "[redacted]") "the cookie is gone"
+      Expect.equal
+        (value "Accept")
+        (Some "application/json")
+        "an ordinary header is untouched"
+    | other -> failtest $"expected three arguments with a header list, got {other}"
+  }
+
+
 /// `dark ps` as a command: the captioned table, and a refusal that says what to do.
+/// Secrets: a request header the log must not keep, and an env read whose value it must not
+/// keep. The header is redacted in the stored arguments; the env read is not stored at all and
+/// is performed again on a resume, so the run still replays.
+let private secretsAreNotInTheLog =
+  cliTestWithFreshTraces
+    "an authorization header is redacted in the log, and an env read is run again on resume"
+    (fun state ->
+      task {
+        // At the shipped level (`effects`), which is what redaction is about: under `on` every
+        // call and its values are recorded, wrappers included, which `dark docs processes` says.
+        LibDB.Tracing.TraceDetail.setForTesting LibDB.Tracing.TraceDetail.Effects
+        let! _ =
+          runCli
+            state
+            [ "permissions"; "allow"; "env"; "read"; "'DARK_TEST_SECRET'" ]
+        try
+          // The program never prints the value (stdout IS logged, by design); it prints its
+          // length, so the test can tell the two runs apart without putting a secret in the log.
+          System.Environment.SetEnvironmentVariable(
+            "DARK_TEST_SECRET",
+            "twelve-chars"
+          )
+          let! _ =
+            runCli
+              state
+              [ "eval"
+                "match Stdlib.Env.get \"DARK_TEST_SECRET\" with | Some v -> Stdlib.printLine (Stdlib.Int.toString (Stdlib.String.length v)) | None -> Stdlib.printLine \"unset\"" ]
+          let! e = latest ()
+          let! rows =
+            Sql.query
+              "SELECT fn_hash, args, result FROM trace_fn_calls WHERE trace_id = @t"
+            |> Sql.parameters [ "t", Sql.string (string e.traceId) ]
+            |> Sql.executeAsync (fun read ->
+              (read.stringOrNone "fn_hash" |> Option.defaultValue ""),
+              read.bytes "args",
+              read.bytes "result")
+          let envRows =
+            rows |> List.filter (fun (fn, _, _) -> fn = "environmentGet")
+          Expect.isNonEmpty envRows "the env read is in the log"
+          for (_, _, result) in envRows do
+            let dv =
+              LibSerialization.Binary.Serialization.RT.Dval.deserialize "t" result
+            Expect.equal dv RT.DUnit "with no value in it"
+          let bytes = rows |> List.collect (fun (_, a, r) -> [ a; r ])
+          for b in bytes do
+            Expect.isFalse
+              ((UTF8.ofBytesWithReplacement b).Contains "twelve-chars")
+              "the value is nowhere in any row"
+          // The resume runs the env read again, so it still answers, and the run replays.
+          System.Environment.SetEnvironmentVariable(
+            "DARK_TEST_SECRET",
+            "nineteen-chars-long"
+          )
+          let! resumed = runCli state [ "exec"; "resume"; prefixOf e ]
+          Expect.stringContains resumed "19" "the resume read the environment again"
+        finally
+          LibDB.Tracing.TraceDetail.setForTesting LibDB.Tracing.TraceDetail.On
+          System.Environment.SetEnvironmentVariable("DARK_TEST_SECRET", null)
+          (runCli
+            state
+            [ "permissions"; "remove"; "env"; "read"; "'DARK_TEST_SECRET'" ])
+            .Wait()
+      })
+
+
 let private psListsTheTree =
   cliTestWithFreshTraces
     "ps prints this dark's table and refuses an unknown id by name"
@@ -331,10 +433,13 @@ let private psListsTheTree =
         // what this pins. The tree itself is `Scheduler.Tests`' and the demo's.
         let! out = runCli state [ "ps" ]
         Expect.stringContains out "this dark (pid" "the local table is captioned"
-        Expect.stringContains
-          out
-          "id  entry  status  turns  parent"
-          "with its columns"
+        // The columns are as wide as their widest cell (and the header is bold), so it is
+        // matched word by word.
+        let plain =
+          System.Text.RegularExpressions.Regex.Replace(out, "\u001b\\[[0-9;]*m", "")
+        let header = plain.Split('\n') |> Array.find (fun l -> l.StartsWith "id ")
+        for column in [ "entry"; "status"; "turns"; "parent" ] do
+          Expect.stringContains header column "with its columns"
         let! missing = runCli state [ "ps"; "show"; "nope" ]
         Expect.stringContains
           missing
@@ -352,4 +457,6 @@ let tests =
     retentionKeepsTheNewestAndTheSuspended
     byteCapSparesTheRunThatTrippedIt
     replayEchoesAndRefuses
+    secretsAreNotInTheLog
+    secretHeadersAreRedacted
     psListsTheTree ]

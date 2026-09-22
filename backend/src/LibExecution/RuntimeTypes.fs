@@ -2516,6 +2516,14 @@ module Tracing =
   /// fire storeFnResult, so this is the corresponding exit hook for them.
   type StoreLambdaResult = uuid -> Dval -> unit
 
+  /// What a replay does with an effectful call: hand back what the log recorded, perform it
+  /// for real although the replay is still going (a read whose result was redacted out of the
+  /// log), or go live from here for good (the log ran out).
+  type ReplayAnswer =
+    | ReplayServe of Dval
+    | ReplayLive
+    | ReplayOver
+
   /// Set of callbacks used to trace the interpreter, and other context needed to run code
   type Tracing =
     {
@@ -2536,10 +2544,8 @@ module Tracing =
       /// The ordinal for an effectful builtin call about to be made, per process: the first is 0.
       /// Assigned at the call, not at completion, so a read that lands late keeps its place.
       nextEffect : unit -> int64
-      /// Replay: the recorded result of the effectful call with this ordinal, if the log has
-      /// it; the interpreter then does not perform the call. `ValueNone` once the log runs out,
-      /// and the run goes live from there, still recording.
-      replayEffect : int64 -> Dval voption
+      /// Replay: what to do with the effectful call about to be made at this ordinal.
+      replayEffect : int64 -> ReplayAnswer
       /// The same trace, seen from another process. A recorder keeps one call stack per
       /// process and stamps every event with the process id and a sequence number across
       /// the whole trace, so two processes stepping on two threads write one log whose

@@ -297,7 +297,7 @@ type TracerState =
     /// What a replay answers from: the recorded result of each effectful call, by process and
     /// ordinal. Empty for a fresh run.
     replay :
-      System.Collections.Generic.Dictionary<struct (System.Guid * int64), RT.Dval>
+      System.Collections.Generic.Dictionary<struct (System.Guid * int64), RT.Tracing.ReplayAnswer>
     /// Processes whose replay has ended: the log had no answer for an ordinal they asked for,
     /// so they are live from there and nothing later in the log may be handed to them (a fork
     /// cut by position can leave a later ordinal without its earlier ones).
@@ -427,6 +427,55 @@ let private makeStoreFrameEntry
       stack.Push(partial))
 
 
+/// Secrets out of the log (`docs/processes.md`, "Traces").
+///
+/// The log holds every effectful call's arguments and results, and tracing is on by default, so
+/// a token in a header or an environment variable would sit in `data.db` in the clear. Two
+/// things are taken out before a row is written, and nothing else is: a request header whose
+/// name is in `secretHeaders`, and the value an environment read answered. Arguments can be
+/// redacted freely, since a replay serves results, not arguments. An environment read's secret
+/// IS its result, so the result is not stored and the replay performs that read again for real
+/// (`ReplayAnswer.ReplayLive`, decided by the builtin's name in the row) rather than serving a
+/// value it does not have. File contents and response bodies are stored as they are: a secret
+/// file read into a run is in the log, which `dark docs processes` says.
+module Redact =
+  let secretHeaders : Set<string> =
+    Set.ofList
+      [ "authorization"; "cookie"; "set-cookie"; "x-api-key"; "proxy-authorization" ]
+
+  /// Builtins whose result is a secret the log must not keep. Their rows are written with no
+  /// result, and a replay runs them again instead of serving one.
+  let liveOnReplay : Set<string> =
+    Set.ofList [ "environmentGet"; "environmentGetAll" ]
+
+  let private redactedText = RT.DString "[redacted]"
+
+  /// A header list as the HTTP builtins take it: a list of (name, value) tuples.
+  let private headers (dv : RT.Dval) : RT.Dval =
+    match dv with
+    | RT.DList(vt, items) ->
+      let redactOne (item : RT.Dval) : RT.Dval =
+        match item with
+        | RT.DTuple(RT.DString name, _value, []) when
+          Set.contains (String.toLowercase name) secretHeaders
+          ->
+          RT.DTuple(RT.DString name, redactedText, [])
+        | other -> other
+      RT.DList(vt, List.map redactOne items)
+    | other -> other
+
+  /// The arguments of `builtin` as they should be stored.
+  let args (builtin : string) (args : List<RT.Dval>) : List<RT.Dval> =
+    if builtin.StartsWith "httpClient" || builtin.StartsWith "http" then
+      args |> List.map headers
+    else
+      args
+
+  /// The result of `builtin` as it should be stored.
+  let result (builtin : string) (result : RT.Dval) : RT.Dval =
+    if Set.contains builtin liveOnReplay then RT.DUnit else result
+
+
 /// Fired for both fn frame returns and synchronous builtin calls. We
 /// dispatch on the FQFnName: builtins emit a synchronous event with the
 /// current top of stack as parent; package fn returns pop the matching
@@ -446,8 +495,8 @@ let private makeStoreFnResult
             kind = "builtin"
             fnHash = Some(fnNameToSimpleString name)
             lambdaExprId = None
-            args = NEList.toList args
-            result = result
+            args = Redact.args (fnNameToSimpleString name) (NEList.toList args)
+            result = Redact.result (fnNameToSimpleString name) result
             // No frame-entry counterpart for builtins, so no real duration.
             durationMs = 0L
             processId = pid
@@ -520,13 +569,13 @@ let rec private executionTracingFor
         (fun ord ->
           lock state.sync (fun () ->
             if state.replayEnded.Contains pid then
-              ValueNone
+              RT.Tracing.ReplayOver
             else
               match state.replay.TryGetValue(struct (pid, ord)) with
-              | true, dv -> ValueSome dv
+              | true, answer -> answer
               | false, _ ->
                 state.replayEnded.Add pid |> ignore<bool>
-                ValueNone))
+                RT.Tracing.ReplayOver))
       forProcess = executionTracingFor state level }
 
 
@@ -927,7 +976,7 @@ let createReplayTracer
   (description : string)
   (inputVarName : string)
   (inputDval : RT.Dval)
-  (log : List<System.Guid * int64 * RT.Dval>)
+  (log : List<System.Guid * int64 * RT.Tracing.ReplayAnswer>)
   : T =
   let results = TraceResults.empty ()
   let state = newState ()
@@ -935,16 +984,16 @@ let createReplayTracer
   // A run nobody scheduled recorded under `Guid.Empty`, and a resume nobody schedules asks
   // under it too, through the root hooks below, so those rows answer directly as well as
   // through the matching.
-  for (pid, ord, dv) in log do
+  for (pid, ord, answer) in log do
     if pid = System.Guid.Empty then
-      state.replay[struct (System.Guid.Empty, ord)] <- dv
+      state.replay[struct (System.Guid.Empty, ord)] <- answer
   let rec tracingFor (pid : System.Guid) : RT.Tracing.Tracing =
     lock state.sync (fun () ->
       match unmatched with
       | recorded :: rest ->
         unmatched <- rest
-        for (rpid, ord, dv) in log do
-          if rpid = recorded then state.replay[struct (pid, ord)] <- dv
+        for (rpid, ord, answer) in log do
+          if rpid = recorded then state.replay[struct (pid, ord)] <- answer
       | [] -> ())
     { executionTracingFor state TraceDetail.current pid with
         forProcess = tracingFor }

@@ -18,7 +18,7 @@ let rec noTracing : RT.Tracing.Tracing =
     skipTracing = true
     traceEffects = false
     nextEffect = fun () -> -1L
-    replayEffect = fun _ -> ValueNone
+    replayEffect = fun _ -> RT.Tracing.ReplayOver
     forProcess = fun _ -> noTracing }
 
 let noTestContext : RT.TestContext =

@@ -61,6 +61,13 @@ when a file it read has changed since. The oldest are dropped once there are
 more than `trace.keep` traces (a served request is one) or `trace.maxMb` of
 log; a suspended run's never.
 
+What the log holds: what each effect was given and returned. Secret request
+headers (`authorization`, `cookie`, `set-cookie`, `x-api-key`) are stored as
+`[redacted]`, and an environment read's value is not stored at all (a resume
+reads the environment again). Everything else is in the clear: a key file a run
+read, a response body, what it printed. `DARK_CONFIG_TRACE_DETAIL=off` records
+nothing.
+
 ## Knobs, all optional
 
   config set exec.workers <n>          worker threads (default: one per core)

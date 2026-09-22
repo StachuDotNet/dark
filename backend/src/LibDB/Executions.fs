@@ -192,29 +192,45 @@ let private traceExists (traceId : AT.TraceID.T) : Task<bool> =
     return row.IsSome
   }
 
-/// The effectful calls a trace recorded, as `(process, ordinal, result)`, in completion order.
-/// What a replay tracer answers from.
-let log (traceId : AT.TraceID.T) : Task<List<System.Guid * int64 * RT.Dval>> =
+/// The effectful calls a trace recorded, as `(process, ordinal, answer)`, in completion order.
+/// What a replay tracer answers from. A row whose builtin's result was kept out of the log
+/// (`Tracing.Redact.liveOnReplay`: an environment read, whose result is the secret) answers
+/// `ReplayLive`, so the replay performs that one call again for real and goes on replaying.
+let log
+  (traceId : AT.TraceID.T)
+  : Task<List<System.Guid * int64 * RT.Tracing.ReplayAnswer>> =
   task {
     let! rows =
       Sql.query
-        "SELECT process_id, ord, result FROM trace_fn_calls
+        "SELECT process_id, ord, fn_hash, result FROM trace_fn_calls
          WHERE trace_id = @t AND ord >= 0 ORDER BY seq"
       |> Sql.parameters [ "t", Sql.string (string traceId) ]
       |> Sql.executeAsync (fun read ->
-        read.string "process_id", read.int64 "ord", read.bytes "result")
+        read.string "process_id",
+        read.int64 "ord",
+        (read.stringOrNone "fn_hash" |> Option.defaultValue ""),
+        read.bytes "result")
     return
       rows
-      |> List.choose (fun (pid, ord, bytes) ->
+      |> List.choose (fun (pid, ord, builtin, bytes) ->
         // '' is a run nobody scheduled (a plain `execute`): its process is `Guid.Empty`.
         let g =
           match System.Guid.TryParse pid with
           | true, g -> g
           | _ -> System.Guid.Empty
-        try
-          Some(g, ord, BinarySer.RT.Dval.deserialize "trace_fn_calls.result" bytes)
-        with _ ->
-          None)
+        if Set.contains builtin Tracing.Redact.liveOnReplay then
+          Some(g, ord, RT.Tracing.ReplayLive)
+        else
+          try
+            Some(
+              g,
+              ord,
+              RT.Tracing.ReplayServe(
+                BinarySer.RT.Dval.deserialize "trace_fn_calls.result" bytes
+              )
+            )
+          with _ ->
+            None)
   }
 
 /// A new execution branched from `id`: the same input, a new trace holding the parent's log up to
@@ -509,7 +525,7 @@ module Replay =
   type T =
     {
       execution : Execution
-      log : List<System.Guid * int64 * RT.Dval>
+      log : List<System.Guid * int64 * RT.Tracing.ReplayAnswer>
       /// When the log was recorded (`recordedAt`), for the stale-file warning.
       recordedAt : string
     }
