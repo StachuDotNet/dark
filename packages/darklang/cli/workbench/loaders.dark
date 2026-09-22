@@ -608,18 +608,7 @@ let refreshLiveValues (next: State) : State =
           // is the code's. `dark traces view` has the whole value.
           v.byExpr
           |> Stdlib.Dict.map (fun _ dv ->
-            let text =
-              PrettyPrinter.RuntimeTypes.dvalWith
-                next.branchId
-                { PrettyPrinter.DisplayOptions.default with
-                    width = 60
-                    maxDepth = Stdlib.Option.Option.Some 2 }
-                dv
-
-            let oneLine =
-              text |> Stdlib.String.split "\n" |> Stdlib.List.map Stdlib.String.trim |> Stdlib.String.join " "
-
-            if (Stdlib.String.length oneLine) > 40 then (Stdlib.String.slice oneLine 0 37) ++ "..." else oneLine)
+            PrettyPrinter.RuntimeTypes.dvalOneLine next.branchId 40 dv)
         | None -> Stdlib.Dict.empty
       | _ -> Stdlib.Dict.empty
 

@@ -13,24 +13,7 @@ module Darklang.LanguageTools.LspServer.InlayHints
 
 /// One value on one line, short enough to sit beside the code.
 let renderValue (branchId: Uuid) (dv: LanguageTools.RuntimeTypes.Dval) : String =
-  let text =
-    PrettyPrinter.RuntimeTypes.dvalWith
-      branchId
-      { PrettyPrinter.DisplayOptions.default with
-          width = 60
-          maxDepth = Stdlib.Option.Option.Some 2 }
-      dv
-
-  let oneLine =
-    text
-    |> Stdlib.String.split "\n"
-    |> Stdlib.List.map Stdlib.String.trim
-    |> Stdlib.String.join " "
-
-  if (Stdlib.String.length oneLine) > 60 then
-    (Stdlib.String.slice oneLine 0 57) ++ "..."
-  else
-    oneLine
+  PrettyPrinter.RuntimeTypes.dvalOneLine branchId 60 dv
 
 
 /// The first line at or after <param from> whose text, trimmed, is <param wanted>.

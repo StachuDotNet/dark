@@ -246,7 +246,9 @@ let execute (state: AppState) (args: List<String>) : AppState =
           init = "Darklang.Cli.Ps.Watch.init"
           update = "Darklang.Cli.Ps.Watch.update"
           render = "Darklang.Cli.Ps.Watch.render"
-          every = Stdlib.Option.Option.Some 500L }
+          every = Stdlib.Option.Option.Some 500L
+          keys =
+            Stdlib.Option.Option.Some "up/down move  |  c cancel  |  k kill  |  esc quit" }
     match Apps.Host.openView state.currentBranchId view Stdlib.Option.Option.None with
     | Ok _ -> ()
     | Error e -> Cli.printErr e
@@ -366,4 +368,4 @@ module Watch =
         (if Stdlib.List.isEmpty localRows then Stdlib.Cli.UI.Node.dim "  none"
          else Stdlib.Cli.UI.Node.table localColumns localRows)
         Stdlib.Cli.UI.Node.text ""
-        Stdlib.Cli.UI.Node.dim (if m.note == "" then "up/down move, c cancel, k kill" else m.note) ]
+        Stdlib.Cli.UI.Node.dim m.note ]

@@ -13,33 +13,46 @@ module Darklang.Stdlib.Cli.Daemon
 
 // ── pidfile + log location ──  ~/.darklang/run/<name>.{pid,log}
 
+/// Where pidfiles and logs may go, best first: `~/.darklang/run`, the instance's rundir, then
+/// `/tmp`. A reader takes the first that is already there; a writer takes the first it can
+/// write in, which is what puts one there.
+let runDirCandidates () : List<String> =
+  let home = Stdlib.Option.withDefault (Env.home ()) "/tmp"
+
+  Stdlib.List.flatten
+    [ [ home ++ "/.darklang/run" ]
+      (match Env.get "DARK_CONFIG_RUNDIR" with
+       | Some rundir -> [ rundir ++ "/run" ]
+       | None -> [])
+      [ "/tmp/darklang-run" ] ]
+
 /// Can this process make <param dir> and write in it? Probed with a real write: a directory
 /// another user owns (a `~/.darklang` a root process created first) exists and is not ours.
+/// The probe file is removed again; only the writers ask (`claimPidfile`, `launchDetachedWith`).
 let writableDir (dir: String) : Bool =
   match Posix.mkdirRecursive dir with
   | Error _ -> false
   | Ok _ ->
-    match File.writeText (dir ++ "/.writable") "" with
-    | Ok _ -> true
+    match File.writeText (dir ++ "/.probe") "" with
+    | Ok _ ->
+      let _ = Stdlib.Cli.FileSystem.deleteFile (dir ++ "/.probe")
+      true
     | Error _ -> false
 
-/// Where pidfiles and logs go: `~/.darklang/run`, or when that cannot be written (owned by
-/// someone else, no home), the instance's rundir, then `/tmp`. The same answer for the launcher
-/// that reads a pidfile and the daemon that writes it, since both probe the same way.
-let runDir () : String =
-  let home = Stdlib.Option.withDefault (Env.home ()) "/tmp"
-
-  let candidates =
-    Stdlib.List.flatten
-      [ [ home ++ "/.darklang/run" ]
-        (match Env.get "DARK_CONFIG_RUNDIR" with
-         | Some rundir -> [ rundir ++ "/run" ]
-         | None -> [])
-        [ "/tmp/darklang-run" ] ]
-
+/// Where a writer puts pidfiles and logs: the first candidate it can write in.
+let runDirForWriting () : String =
+  let candidates = runDirCandidates ()
   match Stdlib.List.findFirst candidates (fun d -> writableDir d) with
   | Some dir -> dir
-  | None -> home ++ "/.darklang/run"
+  | None -> Stdlib.Option.withDefault (Stdlib.List.head candidates) "/tmp/darklang-run"
+
+/// Where a reader looks: the first candidate that exists, so listing a daemon's state never
+/// writes. Falls back to the first candidate, which is where a writer would have put it.
+let runDir () : String =
+  let candidates = runDirCandidates ()
+  match Stdlib.List.findFirst candidates (fun d -> Stdlib.Cli.FileSystem.pathExists d) with
+  | Some dir -> dir
+  | None -> Stdlib.Option.withDefault (Stdlib.List.head candidates) "/tmp/darklang-run"
 
 let pidfilePath (name: String) : String =
   (runDir ()) ++ "/" ++ name ++ ".pid"
@@ -58,7 +71,7 @@ let tailLog (name: String) (n: Int) : List<String> =
 // Record THIS process as the named daemon. The entrypoint calls this on startup, so the pidfile holds
 // the real detached-worker pid, not a transient launcher.
 let claimPidfile (name: String) : Stdlib.Result.Result<Unit, String> =
-  match Posix.mkdirRecursive (runDir ()) with
+  match Posix.mkdirRecursive (runDirForWriting ()) with
   | Error e -> Stdlib.Result.Result.Error e.message
   | Ok _ ->
     let pid = Sys.currentPid ()
@@ -142,7 +155,7 @@ let launcher () : String =
 let launchDetachedWith (name: String) (args: List<String>) : Stdlib.Result.Result<Unit, String> =
   // Create the run dir up front: the shell redirect below (and the pidfile) need it to exist, and
   // `claimPidfile` only mkdirs it from inside the child -- too late for this redirect on a fresh machine.
-  let _ = Posix.mkdirRecursive (runDir ())
+  let _ = Posix.mkdirRecursive (runDirForWriting ())
 
   let quoted =
     args
