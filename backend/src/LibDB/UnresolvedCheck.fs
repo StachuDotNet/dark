@@ -118,7 +118,7 @@ let rec private inExpr (expr : PT.Expr) : List<string> =
 
   | PT.ELambda(_, _, body) -> inExpr body
 
-  | PT.EInfix(_, _, lhs, rhs) -> inExpr lhs @ inExpr rhs
+  | PT.EInfix(_, _, lhs, rhs, _) -> inExpr lhs @ inExpr rhs
 
   | PT.ERecord(_, typeName, typeArgs, fields) ->
     fromNR typeName

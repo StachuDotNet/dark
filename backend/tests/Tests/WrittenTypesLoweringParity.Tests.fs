@@ -75,7 +75,7 @@ let rec private kidsE (e : PT.Expr) : List<PT.Expr> =
   | PT.ETuple(_, a, b, rest) -> a :: b :: rest
   | PT.EApply(_, f, _, args) -> f :: NEList.toList args
   | PT.ELambda(_, _, body) -> [ body ]
-  | PT.EInfix(_, _, l, r) -> [ l; r ]
+  | PT.EInfix(_, _, l, r, _) -> [ l; r ]
   | PT.ERecord(_, _, _, fields) -> List.map snd fields
   | PT.ERecordFieldAccess(_, r, _) -> [ r ]
   | PT.ERecordUpdate(_, r, ups) -> r :: (NEList.toList ups |> List.map snd)

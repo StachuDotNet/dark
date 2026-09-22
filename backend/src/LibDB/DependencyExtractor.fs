@@ -255,7 +255,15 @@ let private extract (roots : List<Work>) : List<Dependency> =
 
       | PT.ELambda(_, _, body) -> work.Push(Expr body)
 
-      | PT.EInfix(_, _, lhs, rhs) ->
+      | PT.EInfix(_, _, lhs, rhs, implFn) ->
+        // An operator that resolved to one of your implementations depends on it, exactly as a
+        // written-out call does: that edge is how a newer implementation is offered to you.
+        match implFn with
+        | Some r ->
+          dependencies <-
+            { hash = r.name; itemKind = PT.ItemKind.Fn; location = r.location }
+            :: dependencies
+        | None -> ()
         work.Push(Expr rhs)
         work.Push(Expr lhs)
 

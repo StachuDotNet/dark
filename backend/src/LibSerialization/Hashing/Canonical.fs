@@ -522,11 +522,23 @@ let writeExpr (mode : HashRefMode) (w : BinaryWriter) (expr : PT.Expr) =
     writeExpr mode w first
     writeExpr mode w second
     Common.List.write w (writeExpr mode) rest
-  | PT.EInfix(_id, op, left, right) ->
+  | PT.EInfix(_id, op, left, right, implFn) ->
     w.Write 29uy
     ExprS.Infix.write w op
     writeExpr mode w left
     writeExpr mode w right
+    // The implementation the save chose for this operator is part of what it means, and it is
+    // hashed as the fn reference it is, SCC name-ref and all.
+    match implFn with
+    | None -> w.Write(0uy)
+    | Some r ->
+      match isSccRef mode r.location r.name with
+      | Some fqn ->
+        w.Write(2uy)
+        Common.String.write w fqn
+      | None ->
+        w.Write(1uy)
+        PTC.FQFnName.Package.write w (resolveHash mode r.location r.name)
   | PT.EDict(_id, pairs) ->
     w.Write 30uy
     Common.List.write

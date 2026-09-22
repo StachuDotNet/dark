@@ -735,7 +735,8 @@ module Expr =
         let id = gid ()
         let! arg1 = toPT context arg1
         let! arg2 = toPT context arg2
-        return PT.EInfix(id, Infix.toPT infixOp, arg1, arg2)
+        // No implementation yet: the parser has no types. The save resolves it.
+        return PT.EInfix(id, Infix.toPT infixOp, arg1, arg2, None)
       | WT.EStatement(_, first, next) ->
         let! first = toPT context first
         let! next = toPT context next

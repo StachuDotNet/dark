@@ -566,12 +566,19 @@ module Expr =
       write w first
       write w second
       List.write w write rest
-    | EInfix(id, op, left, right) ->
+    | EInfix(id, op, left, right, implFn) ->
       w.Write 29uy
       w.Write id
       Infix.write w op
       write w left
       write w right
+      // The implementation the save chose for this operator: v3 and later.
+      Option.write
+        w
+        (fun w (r : ResolvedName<FQFnName.Package>) ->
+          FQFnName.Package.write w r.name
+          Option.write w PackageLocation.write r.location)
+        implFn
     | EDict(id, pairs) ->
       w.Write 30uy
       w.Write id
@@ -750,7 +757,12 @@ module Expr =
       let op = Infix.read r
       let left = read r
       let right = read r
-      EInfix(id, op, left, right)
+      let implFn =
+        Option.read r (fun r ->
+          let name = FQFnName.Package.read r
+          let location = Option.read r PackageLocation.read
+          { name = name; location = location })
+      EInfix(id, op, left, right, implFn)
     | 30uy ->
       let id = r.ReadUInt64()
       let pairs =

@@ -286,7 +286,16 @@ type Expr =
 
 
   // function calls
-  | EInfix of ID * Infix * Expr * Expr
+  /// `a + b`. `implFn` is what a trait-method name carries: the fn the implementation chosen
+  /// when this was SAVED names for the operator's method, so the operator goes on meaning what
+  /// it meant. `None` for the operators that are no trait method, and where the operand type is
+  /// only known at run time.
+  | EInfix of
+    ID *
+    Infix *
+    Expr *
+    Expr *
+    implFn: Stdlib.Option.Option<ResolvedName<FQFnName.Package>>
 
   | ELambda of ID * List<LetPattern> * Expr
 
@@ -323,7 +332,7 @@ module Expr =
     | EString(id, _)
     | ELet(id, _, _, _)
     | EIf(id, _, _, _)
-    | EInfix(id, _, _, _)
+    | EInfix(id, _, _, _, _)
     | ELambda(id, _, _)
     | ERecordFieldAccess(id, _, _)
     | EVariable(id, _)

@@ -454,7 +454,16 @@ type Expr =
   | ELambda of id * pats : NEList<LetPattern> * body : Expr
 
   /// Calls upon an infix function
-  | EInfix of id * Infix * lhs : Expr * rhs : Expr
+  /// `a + b`. `implFn` is the same thing `TraitMethod` carries: the fn the implementation
+  /// chosen when this was SAVED names for the operator's method, so `+` on a type of yours goes
+  /// on meaning what it meant. `None` for the operators that are not trait methods (`++`, the
+  /// bitwise ones, `&&`), and for an operand type only known at run time.
+  | EInfix of
+    id *
+    Infix *
+    lhs : Expr *
+    rhs : Expr *
+    implFn : Option<ResolvedName<FQFnName.Package>>
 
 
   // -- References to custom types and data --
@@ -613,7 +622,7 @@ module Expr =
     | EValue(id, _)
     | ELet(id, _, _, _)
     | EIf(id, _, _, _)
-    | EInfix(id, _, _, _)
+    | EInfix(id, _, _, _, _)
     | ELambda(id, _, _)
     | EFnName(id, _)
     | EVariable(id, _)

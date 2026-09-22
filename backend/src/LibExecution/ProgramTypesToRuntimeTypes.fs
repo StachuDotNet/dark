@@ -200,12 +200,20 @@ module InfixFnName =
   /// What an operator calls: the stdlib trait method for arithmetic and
   /// comparison, the polymorphic builtin for the rest (and for every operator
   /// while the package refs are not generated yet).
-  let toRT (name : PT.InfixFnName) : RT.FQFnName.FQFnName =
+  /// The operator's trait method, carrying the implementation the save chose for it. Without
+  /// one (an operand type only known at run time, or an operator that is no trait method) it is
+  /// the same name it always was, resolved at the call.
+  let toRT
+    (implFn : Option<PT.ResolvedName<PT.FQFnName.Package>>)
+    (name : PT.InfixFnName)
+    : RT.FQFnName.FQFnName =
     match NumericTraits.ofInfix name with
     | Some(traitHash, methodName) ->
-      // An operator still written as infix in the stored item: nothing chose an
-      // implementation for it, so it dispatches at run time.
-      RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, None)
+      RT.FQFnName.TraitMethod(
+        RT.Hash traitHash,
+        methodName,
+        implFn |> Option.map (fun r -> FQFnName.Package.toRT r.name)
+      )
     | None -> RT.FQFnName.Builtin(toFnName name)
 
 
@@ -852,7 +860,8 @@ module Expr =
             PT.EApply(id, PT.ELambda(id, pats, body), [], NEList.ofList lhs [])
 
           // `1 |> (+) 1`
-          | PT.EPipeInfix(id, infix, rhs) -> PT.EInfix(id, infix, lhs, rhs)
+          // A pipeline's operator is not resolved at save time; it lowers as it always did.
+          | PT.EPipeInfix(id, infix, rhs) -> PT.EInfix(id, infix, lhs, rhs, None)
 
           // `1 |> Json.serialize<Int64>`
           | PT.EPipeFnCall(id, fnName, typeArgs, args) ->
@@ -869,7 +878,7 @@ module Expr =
 
         toRT symbols rc currentFnName (PT.EPipe(id, newLHS, parts))
 
-    | PT.EInfix(_, PT.BinOp op, left, right) ->
+    | PT.EInfix(_, PT.BinOp op, left, right, _) ->
       let left = toRT symbols rc currentFnName left
       let right = toRT symbols left.registerCount currentFnName right
 
@@ -888,7 +897,7 @@ module Expr =
 
     // `a != b` is `not (a == b)`: `Eq` has one method, so a type's own equality
     // serves both operators, and `not` pushes down to SQL like the rest.
-    | PT.EInfix(id, PT.InfixFnCall PT.ComparisonNotEquals, left, right) when
+    | PT.EInfix(id, PT.InfixFnCall PT.ComparisonNotEquals, left, right, implFn) when
       Option.isSome (NumericTraits.ofInfix PT.ComparisonEquals)
       ->
       let equal =
@@ -896,7 +905,7 @@ module Expr =
           symbols
           rc
           currentFnName
-          (PT.EInfix(id, PT.InfixFnCall PT.ComparisonEquals, left, right))
+          (PT.EInfix(id, PT.InfixFnCall PT.ComparisonEquals, left, right, implFn))
       let notRc = equal.registerCount
       let resultReg = notRc + 1
       { registerCount = resultReg + 1
@@ -915,7 +924,7 @@ module Expr =
               RT.Apply(resultReg, notRc, [], NEList.singleton equal.resultIn) ]
         resultIn = resultReg }
 
-    | PT.EInfix(_, PT.InfixFnCall infix, left, right) ->
+    | PT.EInfix(_, PT.InfixFnCall infix, left, right, implFn) ->
       let left = toRT symbols rc currentFnName left
       let right = toRT symbols left.registerCount currentFnName right
 
@@ -923,7 +932,7 @@ module Expr =
         RT.LoadVal(
           right.registerCount,
           RT.AppNamedFn
-            { name = InfixFnName.toRT infix
+            { name = InfixFnName.toRT implFn infix
               typeSymbolTable = RT.TST.empty
               typeArgs = []
               access = None

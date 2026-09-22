@@ -961,7 +961,7 @@ and internal inferExpr (state : State) (env : Env) (expr : Expr) : StaticType =
       |> List.collect (fun (pattern, typ) -> checkLetPattern state typ pattern)
     let bodyType = inferExpr state (addBindings state None env bindings) body
     TFn(parameters, bodyType)
-  | EInfix(nodeId, infix, lhs, rhs) ->
+  | EInfix(nodeId, infix, lhs, rhs, _) ->
     inferInfix state env nodeId false infix lhs rhs
   | ERecord(nodeId, name, typeArgs, fields) ->
     inferRecordConstruction state env nodeId name typeArgs fields

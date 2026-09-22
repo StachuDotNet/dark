@@ -940,8 +940,13 @@ module Expr =
 
 
       // function calls
-      | PT.EInfix(id, infix, lhs, rhs) ->
-        "EInfix", [ DInt64(int64 id); Infix.toDT infix; toDT lhs; toDT rhs ]
+      | PT.EInfix(id, infix, lhs, rhs, implFn) ->
+        let implFn =
+          implFn
+          |> Option.map (ResolvedName.toDT (Hash.knownType ()) FQFnName.Package.toDT)
+          |> Dval.option (ResolvedName.knownType (Hash.knownType ()))
+
+        "EInfix", [ DInt64(int64 id); Infix.toDT infix; toDT lhs; toDT rhs; implFn ]
 
       | PT.ELambda(id, pats, body) ->
         let variables =
@@ -1120,8 +1125,17 @@ module Expr =
       PT.EPipe(uint64 id, fromDT expr, List.map (PipeExpr.fromDT fromDT) pipeExprs)
 
     // function calls
-    | DEnum(_, _, [], "EInfix", [ DInt64 id; infix; lhs; rhs ]) ->
-      PT.EInfix(uint64 id, Infix.fromDT infix, fromDT lhs, fromDT rhs)
+    | DEnum(_, _, [], "EInfix", [ DInt64 id; infix; lhs; rhs; implFn ]) ->
+      PT.EInfix(
+        uint64 id,
+        Infix.fromDT infix,
+        fromDT lhs,
+        fromDT rhs,
+        (match implFn with
+         | DEnum(_, _, _, "Some", [ r ]) ->
+           Some(ResolvedName.fromDT FQFnName.Package.fromDT r)
+         | _ -> None)
+      )
 
     | DEnum(_, _, [], "ELambda", [ DInt64 id; DList(_vtTODO, pats); body ]) ->
       let pats =

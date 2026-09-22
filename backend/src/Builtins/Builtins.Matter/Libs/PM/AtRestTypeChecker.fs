@@ -17,6 +17,7 @@ module NR = LibExecution.RuntimeTypes.NameResolution
 module PackageRefs = LibExecution.PackageRefs
 module PT = LibExecution.ProgramTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
+module PTAst = LibExecution.ProgramTypesAst
 module Dependencies = LibDB.DependencyExtractor
 
 
@@ -286,16 +287,31 @@ let resolveTraitCalls
   (ops : List<PT.PackageOp>)
   : Ply<List<PT.PackageOp>> =
   uply {
-    let mentionsTraitCall =
+    // A fn with no trait call and no operator has nothing to resolve, and the checker is not
+    // cheap; an ordinary save pays nothing. An operator is a trait method too, so the cheap
+    // test is "does this fn mention a trait, or any infix at all".
+    let rec hasInfix (expr : PT.Expr) : bool =
+      match expr with
+      | PT.EInfix _ -> true
+      | PT.EPipe(_, first, parts) ->
+        hasInfix first
+        || parts
+           |> List.exists (fun p ->
+             match p with
+             | PT.EPipeInfix _ -> true
+             | _ -> false)
+        || (PTAst.subExprs expr |> List.exists hasInfix)
+      | _ -> PTAst.subExprs expr |> List.exists hasInfix
+    let worthChecking =
       ops
       |> List.exists (fun op ->
         match op with
         | PT.PackageOp.AddFn fn ->
-          Dependencies.extractFromFn fn
-          |> List.exists (fun d -> d.itemKind = PT.ItemKind.Trait)
+          hasInfix fn.body
+          || (Dependencies.extractFromFn fn
+              |> List.exists (fun d -> d.itemKind = PT.ItemKind.Trait))
         | _ -> false)
-    if not mentionsTraitCall then
-      // Nothing to resolve, and the checker is not cheap: an ordinary save pays nothing.
+    if not worthChecking then
       return ops
     else
       let _, candidates = candidateItems ops

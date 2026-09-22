@@ -363,13 +363,15 @@ module ProgramTypes =
                             id,
                             InfixFnCall(ComparisonNotEquals),
                             EInt64(id, 5L),
-                            EInt64(id, 6L)
+                            EInt64(id, 6L),
+                            None
                           ),
                           EInfix(
                             id,
                             InfixFnCall(ArithmeticPlus),
                             EInt64(id, 5L),
-                            EInt64(id, 2L)
+                            EInt64(id, 2L),
+                            None
                           ),
                           Some(
                             ELambda(
@@ -379,7 +381,8 @@ module ProgramTypes =
                                 id,
                                 InfixFnCall(ArithmeticPlus),
                                 EVariable(id, "y"),
-                                EArg(id, 0)
+                                EArg(id, 0),
+                                None
                               )
                             )
                           )
@@ -403,12 +406,14 @@ module ProgramTypes =
                                 ),
                                 [],
                                 NEList.doubleton (EInt64(id, 6L)) (EInt64(id, 2L))
-                              )
+                              ),
+                              None
                             ),
                             EList(
                               id,
                               [ EInt64(id, 5L); EInt64(id, 6L); EInt64(id, 7L) ]
-                            )
+                            ),
+                            None
                           )
                         )
                       ),
@@ -431,7 +436,8 @@ module ProgramTypes =
                                      id,
                                      InfixFnCall(ArithmeticPlus),
                                      EInt64(id, 2L),
-                                     EVariable(id, "y")
+                                     EVariable(id, "y"),
+                                     None
                                    )
                                  )
                                  EPipeInfix(
@@ -528,7 +534,8 @@ module ProgramTypes =
                                       id,
                                       InfixFnCall(ArithmeticPlus),
                                       EInt64(id, 6L),
-                                      EVariable(id, "var")
+                                      EVariable(id, "var"),
+                                      None
                                     ) }
                                 { pat = MPFloat(id, Positive, "5", "6")
                                   whenCondition = None
@@ -585,7 +592,8 @@ module ProgramTypes =
                                       id,
                                       BinOp(BinOpAnd),
                                       EBool(id, true),
-                                      EBool(id, false)
+                                      EBool(id, false),
+                                      None
                                     ),
                                     ELet(
                                       id,

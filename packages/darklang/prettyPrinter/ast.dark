@@ -197,7 +197,7 @@ let expr (ctx: PrettyPrinter.ProgramTypes.Context) (depth: Int) (e: LanguageTool
       (Stdlib.List.map pats (fun p -> letPattern p)) |> Stdlib.String.join " "
     Stdlib.List.append (here "Lambda" ps) (child body)
 
-  | EInfix(_, op, lhs, rhs) ->
+  | EInfix(_, op, lhs, rhs, _) ->
     let opStr = PrettyPrinter.ProgramTypes.infix op
     Stdlib.List.flatten [ here "Infix" opStr, child lhs, child rhs ]
 

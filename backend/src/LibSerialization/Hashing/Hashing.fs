@@ -202,7 +202,8 @@ module Hashing =
       PT.EEnum(id, typeName, typeArgs, caseName, List.map r fields)
     | PT.ETuple(id, first, second, rest) ->
       PT.ETuple(id, r first, r second, List.map r rest)
-    | PT.EInfix(id, op, left, right) -> PT.EInfix(id, op, r left, r right)
+    | PT.EInfix(id, op, left, right, implFn) ->
+      PT.EInfix(id, op, r left, r right, implFn)
     | PT.EDict(id, pairs) -> PT.EDict(id, List.map (fun (k, ex) -> (k, r ex)) pairs)
     | PT.EStatement(id, first, next) -> PT.EStatement(id, r first, r next)
     | PT.EPipe(id, expr, pipes) ->

@@ -1163,7 +1163,8 @@ let private unitTests =
             nodeId,
             PT.InfixFnCall operation,
             PT.EArg(nodeId + 1UL, 0),
-            PT.EArg(nodeId + 2UL, 0)
+            PT.EArg(nodeId + 2UL, 0),
+            None
           )
         let environment = numericEnvironment ()
 
@@ -1205,7 +1206,8 @@ let private unitTests =
             nodeId,
             PT.InfixFnCall operation,
             PT.EArg(nodeId + 1UL, 0),
-            PT.EArg(nodeId + 2UL, 0)
+            PT.EArg(nodeId + 2UL, 0),
+            None
           )
 
         let bitwise =
@@ -1514,7 +1516,8 @@ let private unitTests =
                 303UL,
                 PT.InfixFnCall PT.ComparisonEquals,
                 PT.EVariable(304UL, "n"),
-                PT.EInt(305UL, 0I)
+                PT.EInt(305UL, 0I),
+                None
               ),
               PT.EInt(306UL, 0I),
               Some(
@@ -1527,7 +1530,8 @@ let private unitTests =
                       309UL,
                       PT.InfixFnCall PT.ArithmeticMinus,
                       PT.EVariable(310UL, "n"),
-                      PT.EVariable(311UL, "step")
+                      PT.EVariable(311UL, "step"),
+                      None
                     ))
                     (PT.EVariable(318UL, "step"))
                 )
@@ -1593,7 +1597,8 @@ let private unitTests =
               332UL,
               PT.InfixFnCall PT.ArithmeticPlus,
               PT.EVariable(333UL, "f"),
-              PT.EVariable(334UL, "x")
+              PT.EVariable(334UL, "x"),
+              None
             )
           )
         let body =

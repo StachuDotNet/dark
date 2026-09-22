@@ -400,10 +400,10 @@ and private reResolveExpr
       let! body = reResolveExpr contextModules pm body
       return PT.ELambda(id, pats, body)
 
-    | PT.EInfix(id, infix, lhs, rhs) ->
+    | PT.EInfix(id, infix, lhs, rhs, implFn) ->
       let! lhs = reResolveExpr contextModules pm lhs
       let! rhs = reResolveExpr contextModules pm rhs
-      return PT.EInfix(id, infix, lhs, rhs)
+      return PT.EInfix(id, infix, lhs, rhs, implFn)
 
     | PT.ERecord(id, nr, typeArgs, fields) ->
       let! nr = reResolveTypeName contextModules pm.findType nr

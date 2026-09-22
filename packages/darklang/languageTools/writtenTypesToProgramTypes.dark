@@ -1051,7 +1051,15 @@ module Expr =
       let unresolvedNames =
         Stdlib.List.flatten [ lefstUnresolvedNames, rightUnresolvedNames ]
 
-      (ProgramTypes.Expr.EInfix(gid (), infix, left, right), unresolvedNames)
+      (ProgramTypes.Expr.EInfix(
+        gid (),
+        infix,
+        left,
+        right,
+        // The parser has no types; the save resolves it.
+        Stdlib.Option.Option.None
+      ),
+       unresolvedNames)
 
     | ELambda(_, pats, body, _, _) ->
       // Same clean-argMap treatment as the EPipeLambda case above.

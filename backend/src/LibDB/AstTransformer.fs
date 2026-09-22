@@ -80,6 +80,19 @@ let private transformNameResolution
 /// The implementation the save chose for the trait-method call at this node, written onto its
 /// name. Nothing else can be pinned, and a node the save had no answer for is left alone: a
 /// call whose self type is only known at run time stays a run-time lookup.
+/// A reference the save wrote, moved through a hash mapping like every other one.
+let private movedRef
+  (mapping : HashMapping)
+  (r : PT.ResolvedName<PT.FQFnName.Package>)
+  : PT.ResolvedName<PT.FQFnName.Package> =
+  { r with
+      name = replaceHash mapping r.location r.name
+      location =
+        r.location
+        |> Option.map (fun loc ->
+          Map.tryFind loc mapping.byLocationRename |> Option.defaultValue loc) }
+
+
 let private pinAt
   (mapping : HashMapping)
   (nodeId : id)
@@ -109,15 +122,7 @@ let private transformFnName
     // The implementation this call was resolved to moves like any other fn reference: it is
     // usually a fn being saved in the same batch, whose placeholder hash stabilizes here, and
     // it carries a location, so a rename reaches it too.
-    let implFn =
-      implFn
-      |> Option.map (fun r ->
-        { r with
-            name = replaceHash mapping r.location r.name
-            location =
-              r.location
-              |> Option.map (fun loc ->
-                Map.tryFind loc mapping.byLocationRename |> Option.defaultValue loc) })
+    let implFn = implFn |> Option.map (movedRef mapping)
     let asTrait : PT.NameResolution<PT.FQTraitName.FQTraitName> =
       { originalName = nr.originalName
         resolved = Ok { name = PT.FQTraitName.Package traitHash; location = loc } }
@@ -320,8 +325,18 @@ and private transformExpr (mapping : HashMapping) (expr : PT.Expr) : PT.Expr =
 
   | PT.ELambda(id, pats, body) -> PT.ELambda(id, pats, transformExpr mapping body)
 
-  | PT.EInfix(id, infix, lhs, rhs) ->
-    PT.EInfix(id, infix, transformExpr mapping lhs, transformExpr mapping rhs)
+  | PT.EInfix(id, infix, lhs, rhs, implFn) ->
+    PT.EInfix(
+      id,
+      infix,
+      transformExpr mapping lhs,
+      transformExpr mapping rhs,
+      // Either the save's answer for this node, or the one already there, moved like any
+      // other reference.
+      (match Map.tryFind id mapping.pins with
+       | Some pinned -> Some pinned
+       | None -> implFn |> Option.map (movedRef mapping))
+    )
 
   | PT.ERecord(id, nr, typeArgs, fields) ->
     PT.ERecord(

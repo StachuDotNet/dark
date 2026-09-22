@@ -748,7 +748,7 @@ let infixPower (i: LanguageTools.ProgramTypes.Infix) : (Int * Bool) =
 /// wrong by bracketing every operand unconditionally.
 let exprPower (e: LanguageTools.ProgramTypes.Expr) : Int =
   match e with
-  | EInfix(_, op, _, _) ->
+  | EInfix(_, op, _, _, _) ->
     let (p, _) = infixPower op
     p
   | EIf(_, _, _, _) -> 0
@@ -784,9 +784,9 @@ let infixOperandNeedsParens
 /// Does printing `e` leave a bitwise-or bare in a match-arm body?
 let hasBareBitwiseOr (e: LanguageTools.ProgramTypes.Expr) : Bool =
   match e with
-  | EInfix(_, InfixFnCall BitwiseOr, _, _) -> true
+  | EInfix(_, InfixFnCall BitwiseOr, _, _, _) -> true
 
-  | EInfix(_, op, left, right) ->
+  | EInfix(_, op, left, right, _) ->
     let (power, rightAssoc) = infixPower op
 
     let bareSide (operand: LanguageTools.ProgramTypes.Expr) (isRight: Bool) : Bool =
@@ -962,7 +962,7 @@ let exprDoc (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : Stdlib.Pretty.
   // Parenthesise only where precedence or associativity requires it. The old printer wrapped both
   // operands unconditionally, which turned `n * (factorial n - 1L)` into `(n) * ((factorial n) - (1L))`
   // and meant printing its own output kept adding brackets.
-  | EInfix(_id, infixOp, left, right) ->
+  | EInfix(_id, infixOp, left, right, _) ->
     let (power, rightAssoc) = infixPower infixOp
 
     let side (e: LanguageTools.ProgramTypes.Expr) (isRight: Bool) : Stdlib.Pretty.Doc =
