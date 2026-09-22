@@ -33,6 +33,13 @@ interleaved pairs, median paired difference) and `scripts/perf/gate`. Kept here 
   onto a worker costs about 9 us in Debug (10,000 spawns of a trivial program in 90 ms,
   including the placement scan and the `Wake`).
 
+## 2026-09-22: the budget again, after the review pass
+
+9.82 MB to 9.90 MB, measured the same way (the CI-built binary, a reloaded store, three runs).
+The 0.08 MB is startup again: a larger package set (`processes`/`executions` and their help, the
+redaction table, one more field on a view) and the config read that now also carries the two
+trace keys. Nothing per step, per spawn or per event moved.
+
 ## 2026-09-21: the scheduler's fixed cost, and the budget
 
 The published `steady` budget goes from 9.74 MB to 9.82 MB with the scheduler. Measured against the
