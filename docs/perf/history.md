@@ -326,3 +326,17 @@ and the per-binding recursive CTE in `draftRepoints`.
   against a CLI built by `scripts/build/build-release-cli-exes.sh` (what CI measures) and
   9.9 to 10.0 MB against the one `scripts/dev/build --optimize --test` leaves behind. Same
   tree, same seed; the two build paths do not produce the same binary. Measure the first.
+
+## 2026-09-22, saving the implementation with the call
+
+Storing the implementation a trait call resolved to (`FQFnName.TraitMethod`'s third field, and
+the same on `EInfix`) takes trait dispatch out of the reference workload entirely:
+`traitDispatches` reads 0 where it used to count every call. It costs about 1% of allocation
+instead, and the cost is at LOAD, not at call: each call site carries a resolved reference with
+its location, so every item that calls a trait method deserializes a little more.
+
+Measured on the reference workload: debug 9.6 MB against a 9.46 MB budget, published 9.8 MB
+against 9.74 MB, both inside the 3% tolerance, so the gate passes and the budget is unchanged.
+Do not "fix" this by dropping the location from the stored reference: it is what makes the pin an
+ordinary dependency edge, which is what lets propagation offer a newer implementation and `pin`
+refuse it.

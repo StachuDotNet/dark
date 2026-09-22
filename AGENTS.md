@@ -340,6 +340,18 @@ enum; `!=` lowers to `boolNot (Eq.equals a b)`. `Zero.zero`/`One.one` dispatch f
 explicit type arg or the caller's bound, so a call to the impl fn clears the trait's
 type args first.
 
+**A trait call stores the implementation it resolved to.** `FQFnName.TraitMethod` carries
+`implFn`, the fn the chosen implementation names for that method, as a located reference;
+`EInfix` carries the same for an operator. It is written by `resolveTraitCalls`
+(`Builtins.Matter/Libs/PM/AtRestTypeChecker.fs`), which runs inside `addAuthored` BEFORE
+`stabilizeHashes`, since the choice is part of what the item is: the at-rest checker says which
+implementations apply at each call node (`Proof.resolutions`, keyed by the node the name is at),
+and the store says which is newer. It is hashed with the item and becomes an ordinary fn
+dependency edge, so propagation, `pin` and `follow` treat a newer implementation like any other
+update. `None` where the self type is not knowable at save time (a call inside a bounded generic,
+an operator in a pipeline); those resolve at run time as before, which is what the selection
+path in `Interpreter.fs` is still for.
+
 **Every switch over item kinds has five arms now.** Types, values, fns, traits, impls.
 A new listing, codec, or CLI command that handles three of them silently drops the
 other two; `ls`, `tree`, `search`, completion, the workbench, the relay browser and

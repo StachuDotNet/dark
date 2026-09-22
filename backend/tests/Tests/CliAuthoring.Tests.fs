@@ -277,7 +277,9 @@ let traitsAreAuthoredListedAndDisambiguated =
         do!
           shows
             state
-            [ "trait"; "Tests.Tr.Describe"; "<'a> = let describe (v: 'a) : String" ]
+            [ "trait"
+              "Tests.Tr.Describe"
+              "<'a> =\n  let describe (v: 'a) : String\n  let short (v: 'a) : String" ]
             "Created trait: Tests.Tr.Describe"
             "trait authors a trait item"
         do!
@@ -285,7 +287,7 @@ let traitsAreAuthoredListedAndDisambiguated =
             state
             [ "impl"
               "Tests.Tr"
-              "Describe for Point = let describe (p: Point) : String = \"tr\"" ]
+              "Describe for Point =\n  let describe (p: Point) : String = \"tr\"\n  let short (p: Point) : String = \"t\"" ]
             "Created implementation: Tests.Tr.Point.Describe"
             "impl authors an implementation at <module>.<Type>.<Trait>"
         do!
@@ -301,13 +303,41 @@ let traitsAreAuthoredListedAndDisambiguated =
             "Tests.Tr.Point.Describe"
             "impls lists it"
 
+        // A saved caller stores the implementation it resolved to, so it keeps running that
+        // one however the store moves afterwards. This is the whole point of the pin, and the
+        // rival below is what would otherwise change it underneath.
+        do!
+          run
+            state
+            [ "fn"
+              "Tests.Tr.callsIt"
+              "() : String = Tests.Tr.Describe.describe (Tests.Tr.Point { x = 1L; y = 2L })" ]
+        do!
+          evals
+            state
+            "Tests.Tr.callsIt ()"
+            "tr"
+            "the saved caller runs what it resolved to"
+        do!
+          shows
+            state
+            [ "deps"; "uses"; "Tests.Tr.callsIt" ]
+            "Tests.Tr.Point.Describe.describe"
+            "and depends on that implementation's fn, like any other call"
+
         // A rival, from another module, for the same type.
         do!
           run
             state
             [ "impl"
               "Tests.TrOther"
-              "Tests.Tr.Describe for Tests.Tr.Point = let describe (p: Tests.Tr.Point) : String = \"other\"" ]
+              "Tests.Tr.Describe for Tests.Tr.Point =\n  let describe (p: Tests.Tr.Point) : String = \"other\"\n  let short (p: Tests.Tr.Point) : String = \"o\"" ]
+        do!
+          evals
+            state
+            "Tests.Tr.callsIt ()"
+            "tr"
+            "the saved caller is untouched by an implementation written after it"
         // The call does not stop: the rival was written later, so it is the one that runs.
         do!
           evals
@@ -327,6 +357,22 @@ let traitsAreAuthoredListedAndDisambiguated =
             [ "constraints"; "--kind"; "rival-implementations" ]
             "a call runs Tests.TrOther.Point.Describe, written later"
             "naming the one that runs"
+
+        // Editing the implementation's OTHER method leaves this caller alone. This is why the
+        // call pins the method's fn rather than the implementation item: an unrelated edit to
+        // the same implementation is not a change to what this call does.
+        do!
+          run
+            state
+            [ "impl"
+              "Tests.Tr"
+              "Describe for Point =\n  let describe (p: Point) : String = \"tr\"\n  let short (p: Point) : String = \"edited\"" ]
+        do!
+          evals
+            state
+            "Tests.Tr.callsIt ()"
+            "tr"
+            "an edit to another method of the implementation does not reach this call"
 
         // Deprecating one takes it out of dispatch and clears the finding.
         do!
