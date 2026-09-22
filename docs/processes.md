@@ -28,7 +28,8 @@ state's concurrent caches.
 `LibExecution/Scheduler.fs`:
 
 - `Process`: `vm`, `exeState`, `entry` (the function it was spawned on, or
-  `EntryExpr`), `parent`, `started`, `status`, `slices` (how many times the
+  `EntryExpr`), `parent`, `started`, `status`, `instructionsTaken` (what its
+  slices have spent of the budget, the `instructions` column in `ps`), `slices` (how many times the
   budget was refilled), the completion F# callers await, and the park state.
 - `Status`: `Runnable | Parked of Parked | Done of Dval | Failed of rte * stack`.
 - `Parked`: what a parked process waits for, for `ps`. `OnHost op` (a host

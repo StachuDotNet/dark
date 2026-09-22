@@ -61,7 +61,7 @@ let row (branchId: Uuid) (depth: Int) (p: Stdlib.Exec.Summary) : List<String> =
   [ idPrefix p.id
     $"{indent}{entryText branchId p.entry}"
     statusText branchId p.status
-    Stdlib.Int64.toString p.slices
+    Stdlib.Int64.toString p.instructionsTaken
     parent ]
 
 
@@ -135,7 +135,7 @@ let machineEntries () : List<(Int * List<String>)> =
        m.command ]))
 
 val machineColumns = [ "pid", "process", "branch", "started", "command" ]
-val localColumns = [ "id", "entry", "status", "turns", "parent" ]
+val localColumns = [ "id", "entry", "status", "instructions", "parent" ]
 
 let machineRows () : List<List<String>> =
   machineEntries () |> Stdlib.List.map (fun (_, cells) -> cells)
@@ -166,16 +166,16 @@ let printShowWith (branchId: Uuid) (prefix: String) (full: Bool) : Unit =
       let s = detail.summary
       let id = if full then Stdlib.Uuid.toString s.id else idPrefix s.id
       Stdlib.printLine $"{id}  {entryText branchId s.entry}"
-      Stdlib.printLine $"  status    {statusText branchId s.status}"
-      Stdlib.printLine $"  started   {startedAgoText s.started}"
-      Stdlib.printLine $"  turns     {Stdlib.Int64.toString s.slices}"
-      Stdlib.printLine $"  memory    {Cli.Text.bytes (Stdlib.Int.fromInt64 s.allocated)} allocated"
+      Stdlib.printLine $"  status        {statusText branchId s.status}"
+      Stdlib.printLine $"  started       {startedAgoText s.started}"
+      Stdlib.printLine $"  instructions  {Stdlib.Int64.toString s.instructionsTaken}"
+      Stdlib.printLine $"  memory        {Cli.Text.bytes (Stdlib.Int.fromInt64 s.allocated)} allocated"
       if s.inflight > 0L then
-        Stdlib.printLine $"  inflight  {Stdlib.Int64.toString s.inflight} reads"
+        Stdlib.printLine $"  inflight      {Stdlib.Int64.toString s.inflight} reads"
       else
         ()
       match s.parent with
-      | Some pid -> Stdlib.printLine $"  parent    {if full then Stdlib.Uuid.toString pid else idPrefix pid}"
+      | Some pid -> Stdlib.printLine $"  parent        {if full then Stdlib.Uuid.toString pid else idPrefix pid}"
       | None -> ()
       match detail.frames with
       | [] -> ()

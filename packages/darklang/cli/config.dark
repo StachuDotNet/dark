@@ -55,7 +55,7 @@ let isStoreKey (key: String) : Bool =
 let checkValue (key: String) (value: String) : Stdlib.Option.Option<String> =
   let numeric =
     [ "exec.workers"
-      "exec.maxTurns"
+      "exec.maxInstructions"
       "exec.maxBytes"
       "http.requestTimeoutMs"
       "trace.keep"
@@ -133,7 +133,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       "  live.autopush            - Every save commits and pushes to the relay (on/off; default: off)"
       "  exec.workers             - Scheduler worker threads (default: one per core)"
       "  exec.policy              - Expert: a Dark fn picking the next process (default: round robin)"
-      "  exec.maxTurns            - Expert: stop a process past this many turns (default: none)"
+      "  exec.maxInstructions     - Expert: stop a process past this many instructions (default: none)"
       "  exec.maxBytes            - Expert: stop a process past this many bytes allocated (default: none)"
       "  http.requestTimeoutMs    - serve cancels a handler past this and answers 504 (default: 30000; 0 = none)"
       "  trace.keep               - How many traces to keep (a served request is one; default: 200; 0 = all)"
@@ -185,7 +185,7 @@ let complete (_state: Cli.AppState) (args: List<String>) : List<Cli.Completion.C
       "live.autopush"
       "exec.workers"
       "exec.policy"
-      "exec.maxTurns"
+      "exec.maxInstructions"
       "exec.maxBytes"
       "trace.keep"
       "trace.maxMb"

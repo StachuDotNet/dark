@@ -1289,11 +1289,12 @@ Stdlib.Exec.await h"""
 
 let private capsEndARunaway =
   testTask
-    "a process over exec.maxTurns ends with the reason; ps shows what it allocated" {
+    "a process over exec.maxInstructions ends with the reason; ps shows what it ran" {
     let! state = executionStateFor pmPT false Map.empty
     let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
-    let before = Scheduler.maxTurns
-    Scheduler.maxTurns <- 3L
+    let before = Scheduler.maxInstructions
+    // Three slices' worth, so the cap is crossed after three refills.
+    Scheduler.maxInstructions <- 3L * Scheduler.defaultQuantum
     try
       let! (loop : Scheduler.Process) =
         spawn
@@ -1306,12 +1307,19 @@ let private capsEndARunaway =
       match result with
       | Ok dv -> failtest $"the runaway finished: {dv}"
       | Error(rte, _) ->
-        Expect.stringContains (string rte) "over 3 turns" "the reason names the cap"
-      Expect.equal loop.slices 3L "it got its three turns"
+        Expect.stringContains
+          (string rte)
+          "over 30000 instructions"
+          "the reason names the cap"
+      Expect.equal loop.slices 3L "it got its three slices"
       let summary = s.SummaryOf loop
+      Expect.isGreaterThanOrEqual
+        summary.instructionsTaken
+        (3L * Scheduler.defaultQuantum)
+        "and the instructions it ran are counted"
       Expect.isGreaterThan summary.allocated 0L "allocation was accounted per slice"
     finally
-      Scheduler.maxTurns <- before
+      Scheduler.maxInstructions <- before
   }
 
 

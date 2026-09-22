@@ -92,7 +92,7 @@ let summaryToDT (p : Scheduler.ProcessSummary) : Dval =
       "status", statusToDT p.status
       "parent", Dval.option KTUuid (p.parent |> Option.map DUuid)
       "started", DDateTime(LibExecution.DarkDateTime.fromDateTime p.started)
-      "slices", DInt64 p.slices
+      "instructionsTaken", DInt64 p.instructionsTaken
       "allocated", DInt64 p.allocated
       "inflight", DInt64(int64 p.inflight) ]
 

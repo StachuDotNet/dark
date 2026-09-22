@@ -74,8 +74,11 @@ type Process =
     parent : Option<ProcessId>
     started : System.DateTime
     mutable status : Status
-    /// Slices run so far: how many times the budget was refilled.
+    /// Slices run so far: how many times the budget was refilled. Internal; `ps` shows the
+    /// instructions, which is the number that means something to a person.
     mutable slices : int64
+    /// Instructions this process has run, summed over its slices (the budget it spent).
+    mutable instructionsTaken : int64
     /// Bytes this process allocated on its scheduler's thread, summed over its slices.
     mutable allocated : int64
     /// Why the process was asked to stop (`Kill`), or null; the next step finishes it with
@@ -117,7 +120,8 @@ type ProcessSummary =
     status : Status
     parent : Option<ProcessId>
     started : System.DateTime
-    slices : int64
+    /// Instructions run so far (`ps`'s `instructions` column).
+    instructionsTaken : int64
     /// Bytes allocated on its scheduler's thread, summed over its slices.
     allocated : int64
     /// Reads the process handed back as promises that have not landed.
@@ -139,10 +143,11 @@ let storePollMs = 200
 /// (`exec.workers` in the store's config; `Cli.fs` reads it).
 let mutable defaultWorkers : int = max 1 System.Environment.ProcessorCount
 
-/// Per-process caps, expert settings (`exec.maxTurns`, `exec.maxBytes`); 0 is no cap. A process
-/// over either is finished with a plain reason before its next slice, the way a cancel ends it,
-/// so a runaway loop or an allocation storm cannot take the box; `ps` shows what each has used.
-let mutable maxTurns : int64 = 0L
+/// Per-process caps, expert settings (`exec.maxInstructions`, `exec.maxBytes`); 0 is no cap. A
+/// process over either is finished with a plain reason before its next slice, the way a cancel
+/// ends it, so a runaway loop or an allocation storm cannot take the box; `ps` shows what each
+/// has used.
+let mutable maxInstructions : int64 = 0L
 let mutable maxBytes : int64 = 0L
 
 
@@ -314,6 +319,7 @@ type Scheduler(quantum : int64) =
         started = System.DateTime.UtcNow
         status = Runnable
         slices = 0L
+        instructionsTaken = 0L
         allocated = 0L
         stopReason = null
         stopHard = false
@@ -623,8 +629,8 @@ type Scheduler(quantum : int64) =
     // reason, before its slice.
     if isNull p.stopReason then
       p.stopReason <-
-        if maxTurns > 0L && p.slices >= maxTurns then
-          $"over {maxTurns} turns (exec.maxTurns)"
+        if maxInstructions > 0L && p.instructionsTaken >= maxInstructions then
+          $"over {maxInstructions} instructions (exec.maxInstructions)"
         elif maxBytes > 0L && p.allocated >= maxBytes then
           $"over {maxBytes} bytes allocated (exec.maxBytes)"
         else
@@ -661,6 +667,9 @@ type Scheduler(quantum : int64) =
           p.slices <- p.slices + 1L
           let allocBefore = System.GC.GetAllocatedBytesForCurrentThread()
           let outcome = Interpreter.executeSync p.exeState p.vm
+          // What the slice actually spent: the budget counts down per instruction, and a
+          // process that waits or finishes leaves the rest of it.
+          p.instructionsTaken <- p.instructionsTaken + (quantum - p.vm.budget)
           p.allocated <-
             p.allocated
             + (System.GC.GetAllocatedBytesForCurrentThread() - allocBefore)
@@ -863,7 +872,7 @@ type Scheduler(quantum : int64) =
       status = p.status
       parent = p.parent
       started = p.started
-      slices = p.slices
+      instructionsTaken = p.instructionsTaken
       allocated = p.allocated
       inflight =
         (match p.status with

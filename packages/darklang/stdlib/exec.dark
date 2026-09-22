@@ -52,9 +52,9 @@ type Summary =
     /// The process that spawned this one, if any (an `eval` expression's is the CLI's).
     parent: Stdlib.Option.Option<Uuid>
     started: DateTime
-    /// How many slices of the instruction budget it has used.
-    slices: Int64
-    /// Bytes it has allocated, summed over its slices.
+    /// How many instructions it has run.
+    instructionsTaken: Int64
+    /// Bytes it has allocated.
     allocated: Int64
     /// Reads it started that have not landed yet.
     inflight: Int64 }

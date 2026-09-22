@@ -438,7 +438,7 @@ let private psListsTheTree =
         let plain =
           System.Text.RegularExpressions.Regex.Replace(out, "\u001b\\[[0-9;]*m", "")
         let header = plain.Split('\n') |> Array.find (fun l -> l.StartsWith "id ")
-        for column in [ "entry"; "status"; "turns"; "parent" ] do
+        for column in [ "entry"; "status"; "instructions"; "parent" ] do
           Expect.stringContains header column "with its columns"
         let! missing = runCli state [ "ps"; "show"; "nope" ]
         Expect.stringContains

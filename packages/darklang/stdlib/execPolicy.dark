@@ -26,9 +26,9 @@ let youngestFirst (runnable: List<Summary>) : Stdlib.Option.Option<Uuid> =
   Stdlib.List.last runnable |> Stdlib.Option.map (fun p -> p.id)
 
 
-/// Whatever has used the fewest slices so far: new work before long-running work.
+/// Whatever has run the fewest instructions so far: new work before long-running work.
 let leastRunFirst (runnable: List<Summary>) : Stdlib.Option.Option<Uuid> =
   runnable
-  |> Stdlib.List.sortBy (fun p -> p.slices)
+  |> Stdlib.List.sortBy (fun p -> p.instructionsTaken)
   |> Stdlib.List.head
   |> Stdlib.Option.map (fun p -> p.id)

@@ -167,7 +167,7 @@ let private startupSettings () : Map<string, string> =
       [ "entry_point"
         "exec.workers"
         "exec.policy"
-        "exec.maxTurns"
+        "exec.maxInstructions"
         "exec.maxBytes"
         "trace.keep"
         "trace.maxMb" ])
@@ -267,7 +267,7 @@ let execute
           | true, n when n >= 0L -> n
           | _ -> 0L
         | None -> 0L
-      LibExecution.Scheduler.maxTurns <- cap "exec.maxTurns"
+      LibExecution.Scheduler.maxInstructions <- cap "exec.maxInstructions"
       LibExecution.Scheduler.maxBytes <- cap "exec.maxBytes"
       LibDB.Tracing.TraceRetention.configure
         (Map.tryFind "trace.keep" settings)
