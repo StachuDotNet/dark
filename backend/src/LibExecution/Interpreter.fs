@@ -1067,10 +1067,7 @@ module ReplayPolicy =
       [ "cliSpawnProcess"
         "cliProcessIO"
         "cliTerminateProcess"
-        "httpClientStream"
-        // A spawned Dark process is a handle too: the log holds the handle, not the process.
-        "execSpawn"
-        "execSpawnDetached" ]
+        "httpClientStream" ]
 
   /// When the run being resumed was recorded; set by the host that armed the resume, so a
   /// file read can be compared against it. None when nothing is resuming.

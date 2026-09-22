@@ -56,7 +56,7 @@ sent and got back), so Ctrl-C does not lose it.
   exec import <file>         ... taken in on another machine, then `resume`
 
 A resume echoes what the old run printed (dimmed), stops if the log holds
-something it cannot have again (a spawned process, an open stream), and warns
+something it cannot have again (an OS subprocess, an open stream), and warns
 when a file it read has changed since. The oldest are dropped once there are
 more than `trace.keep` traces (a served request is one) or `trace.maxMb` of
 log; a suspended run's never.

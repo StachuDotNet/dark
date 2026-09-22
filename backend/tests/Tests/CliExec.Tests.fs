@@ -322,6 +322,28 @@ let private replayEchoesAndRefuses =
       })
 
 
+/// A run that spawned a Dark process resumes like any other: the spawn is performed again, and
+/// the new child replays the recorded child's own log, so the value it made comes back the same.
+let private spawnedChildReplays =
+  cliTestWithFreshTraces
+    "a resumed run spawns again, and the child replays its own effects"
+    (fun state ->
+      task {
+        let program =
+          "let h = Stdlib.Exec.spawn (fun () -> Stdlib.Uuid.toString (Stdlib.Uuid.generate ()))\nStdlib.Exec.await h"
+        let! first = runCli state [ "eval"; program ]
+        let child = first.Split('\n') |> Array.last
+        Expect.isTrue (child.Length > 30) $"the child made a uuid: {child}"
+        let! e = latest ()
+        let! resumed = runCli state [ "exec"; "resume"; prefixOf e ]
+        let again = resumed.Split('\n') |> Array.last
+        Expect.equal
+          again
+          child
+          "the child's uuid came from the log, not from a fresh roll"
+      })
+
+
 /// The header half of the redaction, at the unit: the names in the table are blanked in the
 /// arguments a row stores, whatever case they were written in, and nothing else is touched.
 let private secretHeadersAreRedacted =
@@ -458,5 +480,6 @@ let tests =
     byteCapSparesTheRunThatTrippedIt
     replayEchoesAndRefuses
     secretsAreNotInTheLog
+    spawnedChildReplays
     secretHeadersAreRedacted
     psListsTheTree ]

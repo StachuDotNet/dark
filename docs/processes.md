@@ -551,10 +551,23 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   tracer (`Tracing.createReplayTracer`). Every effectful call whose
   `(process, ordinal)` the log has is answered from it, and not performed: a
   replayed `printLine` is echoed dimmed, so the person resuming sees where
-  the run had got to without the world seeing it twice. A logged call the
-  log cannot stand in for (an `Exec.spawn`, an OS subprocess, an open HTTP
-  stream: a live handle the old process owned) stops the resume at that
-  step, naming it, and leaves the run as it was (its status and its log). A logged file read whose file has changed
+  the run had got to without the world seeing it twice. Three kinds of call
+  are not answered from the log:
+
+  - A handle the old process owned and this one cannot have (an OS
+    subprocess, an open HTTP stream) stops the resume at that step, naming
+    it, and leaves the run as it was (its status and its log).
+  - `Exec.spawn` (and `spawnDetached`, `cancel`, `kill`) is performed again:
+    serving the old handle would name a process nothing answers to, so the
+    resume really spawns, and the new child replays the recorded child's own
+    rows through the matching below. A run that spawned resumes like any
+    other, children included.
+  - An environment read has no result in the log (it is the secret that is
+    kept out of it), so it is read again from the environment of the machine
+    resuming the run.
+
+  Either of the last two performs the call and goes on replaying everything
+  else (`ReplayAnswer.ReplayLive`). A logged file read whose file has changed
   since the run was recorded warns and continues on what it read then. The
   first ordinal a process asks for that the log lacks ends that process's
   replay for good, so nothing later in the log can be handed to it after a
@@ -562,8 +575,9 @@ branched from. `dark exec` lists them; `exec show`, `exec resume`, `exec fork
   trace ends up as the replayed prefix plus what ran after. The recorded
   process ids are the recorded run's; a resumed run's processes are matched
   to them in the order they first appear in the log, which is the order a
-  script's expressions start in. A run nobody scheduled (a plain `execute`,
-  as in the test harness) records and replays under one process id.
+  script's expressions start in, and the order a parent spawns its children.
+  A run nobody scheduled (a plain `execute`, as in the test harness) records
+  and replays under one process id.
 - `fork`: a new execution with the same input, a new trace holding the
   parent's rows with `seq` below the position (the whole log with no
   `--at`), suspended; resume it and it diverges where the log ends. Cutting
