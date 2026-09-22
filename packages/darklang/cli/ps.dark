@@ -270,15 +270,17 @@ let complete (_state: AppState) (args: List<String>) : List<Completion.Completio
 
 
 let help (_state: AppState) : String =
-  [ "Usage: ps                       what is running: other Dark processes on this machine,"
+  [ "Usage: processes               what is running: other Dark processes on this machine,"
     "                                then this instance's own, as a tree (a process under the"
     "                                one that spawned it)"
-    "       ps --watch               the same, repainted every half second; up/down move,"
+    "       processes --watch        the same, repainted every half second; up/down move,"
     "                                c cancels the row, k kills it, esc quits"
-    "       ps show <id> [--full]    one process: status, turns, memory, call stack"
-    "       ps cancel <id> | <pid>   stop it at its next turn; what it has on the host finishes"
-    "       ps kill <id> | <pid>     stop it now, for a process stuck in a call that never returns"
+    "       processes show <id>      one process: status, instructions, memory, call stack"
+    "                                (`--full` for the whole id)"
+    "       processes cancel <id>    stop it at its next turn; what it has on the host finishes"
+    "       processes kill <id>      stop it now, for a process stuck in a call that never returns"
     ""
+    "`ps` is the short name for all of these, and an id can be a pid from the first table."
     "Both stops take the process's children with it unless they were spawned detached."
     "`dark docs processes` has the rest." ]
   |> Stdlib.String.join "\n"

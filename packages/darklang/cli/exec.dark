@@ -202,13 +202,14 @@ let complete (_state: AppState) (args: List<String>) : List<Completion.Completio
 
 
 let help (_state: AppState) : String =
-  [ "Usage: exec [list]"
-    "       exec show <id-prefix>"
-    "       exec resume <id-prefix>"
-    "       exec fork <id-prefix> [--at <position>]"
-    "       exec export <id-prefix> [<file>]"
-    "       exec import <file>"
+  [ "Usage: executions [list]"
+    "       executions show <id-prefix>"
+    "       executions resume <id-prefix>"
+    "       executions fork <id-prefix> [--at <position>]"
+    "       executions export <id-prefix> [<file>]"
+    "       executions import <file>"
     ""
+    "`exec` is the short name for all of these."
     "The runs this instance has kept: every `eval` and `run`, with the log of what each did to"
     "the world (`dark docs processes` says how long they are kept)."
     "A run stopped with Ctrl-C is suspended; `resume` runs it again, answering every"
