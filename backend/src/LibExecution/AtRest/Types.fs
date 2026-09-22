@@ -61,9 +61,18 @@ type internal TypeScheme =
 
 type Proof =
   internal
-    { inferredType : StaticType
+    {
+      inferredType : StaticType
       scheme : TypeScheme
-      dependencies : Set<Dependency> }
+      dependencies : Set<Dependency>
+      /// Which implementations each trait-method call could be, by the node its name is at,
+      /// once the self type is known: the method, and every implementation that applies.
+      ///
+      /// The SAVE stores the choice with the call, so the call goes on meaning what it meant
+      /// when it was written. A node missing here had no knowable self type (a call inside a
+      /// bounded generic), and stays a run-time lookup.
+      resolutions : Map<id, string * List<Hash>>
+    }
 
 type DiagnosticCode =
   | TypeMismatch
@@ -563,6 +572,7 @@ type Verdict =
 module Proof =
   let inferredType (proof : Proof) : StaticType = proof.inferredType
   let dependencies (proof : Proof) : Set<Dependency> = proof.dependencies
+  let resolutions (proof : Proof) : Map<id, string * List<Hash>> = proof.resolutions
 
 
 // --------------------

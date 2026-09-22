@@ -53,6 +53,62 @@ module Hash =
     | _ -> Exception.raiseInternal "Invalid Hash" []
 
 
+module PackageLocation =
+  let typeName () =
+    FQTypeName.fqPackage (
+      PackageRefs.Type.LanguageTools.ProgramTypes.packageLocation ()
+    )
+  let knownType () = KTCustomType(typeName (), [])
+
+  let toDT (loc : PT.PackageLocation) : Dval =
+    let fields =
+      [ "owner", DString loc.owner
+        "modules", DList(VT.string, List.map DString loc.modules)
+        "name", DString loc.name ]
+    DRecord(typeName (), typeName (), [], Map fields)
+
+  let fromDT (d : Dval) : PT.PackageLocation =
+    match d with
+    | DRecord(_, _, _, fields) ->
+      { owner = C2DT.ownerField fields
+        modules = C2DT.modulesField fields
+        name = C2DT.nameField fields }
+    | _ -> Exception.raiseInternal "Invalid PackageLocation" []
+
+
+module ResolvedName =
+  let typeName () =
+    FQTypeName.fqPackage (
+      PackageRefs.Type.LanguageTools.ProgramTypes.resolvedName ()
+    )
+  let knownType (nameValueType : KnownType) : KnownType =
+    KTCustomType(typeName (), [ VT.known nameValueType ])
+
+  let toDT
+    (nameValueType : KnownType)
+    (f : 'p -> Dval)
+    (r : PT.ResolvedName<'p>)
+    : Dval =
+    let name = f r.name
+    let location =
+      C2DT.Option.toDT PackageLocation.toDT (PackageLocation.knownType ()) r.location
+    DRecord(
+      typeName (),
+      typeName (),
+      [ VT.known nameValueType ],
+      Map [ "name", name; "location", location ]
+    )
+
+  let fromDT (f : Dval -> 'a) (d : Dval) : PT.ResolvedName<'a> =
+    match d with
+    | DRecord(_, _, _, fields) ->
+      let name = fields |> D.field "name" |> f
+      let location =
+        fields |> D.field "location" |> C2DT.Option.fromDT PackageLocation.fromDT
+      { name = name; location = location }
+    | _ -> Exception.raiseInternal "Invalid ResolvedName" []
+
+
 module FQTypeName =
   let typeName () =
     FQTypeName.fqPackage (
@@ -140,16 +196,28 @@ module FQFnName =
       match u with
       | PT.FQFnName.Builtin u -> "Builtin", [ Builtin.toDT u ]
       | PT.FQFnName.Package u -> "Package", [ Package.toDT u ]
-      | PT.FQFnName.TraitMethod(t, m) ->
-        "TraitMethod", [ FQTraitName.Package.toDT t; DString m ]
+      | PT.FQFnName.TraitMethod(t, m, implFn) ->
+        "TraitMethod",
+        [ FQTraitName.Package.toDT t
+          DString m
+          implFn
+          |> Option.map (ResolvedName.toDT (Hash.knownType ()) Package.toDT)
+          |> Dval.option (ResolvedName.knownType (Hash.knownType ())) ]
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : PT.FQFnName.FQFnName =
     match d with
     | DEnum(_, _, [], "Builtin", [ u ]) -> PT.FQFnName.Builtin(Builtin.fromDT u)
     | DEnum(_, _, [], "Package", [ u ]) -> PT.FQFnName.Package(Package.fromDT u)
-    | DEnum(_, _, [], "TraitMethod", [ t; DString m ]) ->
-      PT.FQFnName.TraitMethod(FQTraitName.Package.fromDT t, m)
+    | DEnum(_, _, [], "TraitMethod", [ t; DString m; implFn ]) ->
+      PT.FQFnName.TraitMethod(
+        FQTraitName.Package.fromDT t,
+        m,
+        (match implFn with
+         | DEnum(_, _, _, "Some", [ r ]) ->
+           Some(ResolvedName.fromDT Package.fromDT r)
+         | _ -> None)
+      )
     | _ -> Exception.raiseInternal "Invalid FQFnName" []
 
 
@@ -217,62 +285,6 @@ module NameResolutionError =
     | DEnum(_, _, [], "InvalidName", []) -> PT.NameResolutionError.InvalidName
     | _ -> Exception.raiseInternal "Invalid NameResolutionError" []
 
-
-
-module PackageLocation =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.packageLocation ()
-    )
-  let knownType () = KTCustomType(typeName (), [])
-
-  let toDT (loc : PT.PackageLocation) : Dval =
-    let fields =
-      [ "owner", DString loc.owner
-        "modules", DList(VT.string, List.map DString loc.modules)
-        "name", DString loc.name ]
-    DRecord(typeName (), typeName (), [], Map fields)
-
-  let fromDT (d : Dval) : PT.PackageLocation =
-    match d with
-    | DRecord(_, _, _, fields) ->
-      { owner = C2DT.ownerField fields
-        modules = C2DT.modulesField fields
-        name = C2DT.nameField fields }
-    | _ -> Exception.raiseInternal "Invalid PackageLocation" []
-
-
-module ResolvedName =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.resolvedName ()
-    )
-  let knownType (nameValueType : KnownType) : KnownType =
-    KTCustomType(typeName (), [ VT.known nameValueType ])
-
-  let toDT
-    (nameValueType : KnownType)
-    (f : 'p -> Dval)
-    (r : PT.ResolvedName<'p>)
-    : Dval =
-    let name = f r.name
-    let location =
-      C2DT.Option.toDT PackageLocation.toDT (PackageLocation.knownType ()) r.location
-    DRecord(
-      typeName (),
-      typeName (),
-      [ VT.known nameValueType ],
-      Map [ "name", name; "location", location ]
-    )
-
-  let fromDT (f : Dval -> 'a) (d : Dval) : PT.ResolvedName<'a> =
-    match d with
-    | DRecord(_, _, _, fields) ->
-      let name = fields |> D.field "name" |> f
-      let location =
-        fields |> D.field "location" |> C2DT.Option.fromDT PackageLocation.fromDT
-      { name = name; location = location }
-    | _ -> Exception.raiseInternal "Invalid ResolvedName" []
 
 
 module NameResolution =

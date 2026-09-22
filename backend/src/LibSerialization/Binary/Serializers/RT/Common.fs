@@ -86,10 +86,11 @@ module FQFnName =
     | FQFnName.Package h ->
       w.Write 1uy
       Hash.write w h
-    | FQFnName.TraitMethod(t, m) ->
+    | FQFnName.TraitMethod(t, m, implFn) ->
       w.Write 2uy
       Hash.write w t
       String.write w m
+      Option.write w Hash.write implFn
 
   let read (r : BinaryReader) : FQFnName.FQFnName =
     match r.ReadByte() with
@@ -103,7 +104,8 @@ module FQFnName =
     | 2uy ->
       let t = Hash.read r
       let m = String.read r
-      FQFnName.TraitMethod(t, m)
+      let implFn = Option.read r Hash.read
+      FQFnName.TraitMethod(t, m, implFn)
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 
 

@@ -35,6 +35,13 @@ type internal State(environment : TypeEnvironment) =
     []
   // The bounds the item being checked declares on its own (rigid) type params.
   let mutable declaredBounds : List<Bound> = []
+  // Which implementations a trait-method call could be, once the self type is known: the node
+  // the call's name is at, the method, and every implementation that applies. The SAVE turns
+  // this into the one implementation stored with the call, which is why it is a list here and
+  // not a choice: ordering two implementations of one type is the store's question (which op is
+  // newer), not the checker's.
+  let resolutions =
+    System.Collections.Generic.Dictionary<id, struct (string * List<Hash>)>()
 
   member _.Environment = environment
   member _.Constraints
@@ -51,6 +58,20 @@ type internal State(environment : TypeEnvironment) =
       method_ : Option<string>
     ) : unit =
     constraints <- (nodeId, trait_, typ, method_) :: constraints
+  /// The implementations that apply to the call at <param nodeId>, for the save to choose from.
+  member _.RecordResolution
+    (
+      nodeId : Option<id>,
+      method_ : string,
+      impls : List<Hash>
+    ) : unit =
+    match nodeId with
+    | Some nodeId when not (List.isEmpty impls) ->
+      resolutions[nodeId] <- struct (method_, impls)
+    | _ -> ()
+
+  member _.Resolutions = resolutions
+
   member _.Diagnostics = diagnostics
   member _.Blockers = blockers
   member _.Dependencies = dependencies

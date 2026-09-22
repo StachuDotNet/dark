@@ -450,7 +450,10 @@ let private buildSeedMapping
     byLocationRename =
       sourceLocations
       |> List.filter (fun loc -> loc <> sourceLocation)
-      |> List.fold (fun m loc -> Map.add loc sourceLocation m) Map.empty }
+      |> List.fold (fun m loc -> Map.add loc sourceLocation m) Map.empty
+    // Propagation moves hashes; it never re-resolves a trait call. A dependent that follows a
+    // newer implementation does it through the ordinary fn edge, which `byHash` above covers.
+    pins = Map.empty }
 
 
 /// Compute new hashes for source + all transitive dependents using SCC-aware

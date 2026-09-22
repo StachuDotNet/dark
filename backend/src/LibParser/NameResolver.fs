@@ -302,7 +302,10 @@ let private resolveTraitMethod
                 { originalName = NEList.toList given
                   resolved =
                     Ok
-                      { name = PT.FQFnName.TraitMethod(traitHash, methodName)
+                      { name =
+                          // Unresolved: the parser has no types, so which implementation runs
+                          // is decided when the item is saved (`Traits.resolve`).
+                          PT.FQFnName.TraitMethod(traitHash, methodName, None)
                         location = loc } }
           | _ -> return None
   }

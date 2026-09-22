@@ -238,10 +238,19 @@ let private extract (roots : List<Work>) : List<Dependency> =
         // `Show.show` depends on the trait: editing the trait repoints every
         // caller, which is what makes a changed method signature visible.
         match nr.resolved with
-        | Ok { name = PT.FQFnName.TraitMethod(traitHash, _); location = loc } ->
+        | Ok { name = PT.FQFnName.TraitMethod(traitHash, _, implFn); location = loc } ->
           dependencies <-
             { hash = traitHash; itemKind = PT.ItemKind.Trait; location = loc }
             :: dependencies
+          // And on the implementation it was resolved to, which is an ordinary fn edge: that
+          // is what makes a newer implementation an ordinary repoint, offered by `propagate`
+          // and refusable by `pin`, rather than something that changes under the call.
+          match implFn with
+          | Some r ->
+            dependencies <-
+              { hash = r.name; itemKind = PT.ItemKind.Fn; location = r.location }
+              :: dependencies
+          | None -> ()
         | _ -> ()
 
       | PT.ELambda(_, _, body) -> work.Push(Expr body)

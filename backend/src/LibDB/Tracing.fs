@@ -201,7 +201,7 @@ let private fnNameToSimpleString (name : RT.FQFnName.FQFnName) : string =
   | RT.FQFnName.Builtin b ->
     if b.version = 0 then b.name else $"{b.name}_v{b.version}"
   | RT.FQFnName.Package(RT.Hash h) -> FnNameCache.resolve h
-  | RT.FQFnName.TraitMethod(RT.Hash t, m) -> $"{FnNameCache.resolve t}.{m}"
+  | RT.FQFnName.TraitMethod(RT.Hash t, m, _) -> $"{FnNameCache.resolve t}.{m}"
 
 
 /// Completed call event ready to emit to trace_fn_calls.

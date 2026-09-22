@@ -45,6 +45,26 @@ type BranchId = Branching.BranchId
 /// Fully-Qualified Type Name
 ///
 /// Used to reference a type defined in a Package or by a User
+type PackageLocation =
+  // CLEANUP this doesn't really account for when you're referring to a root 'owner'
+  { owner : string
+    modules : List<string>
+    name : string }
+
+
+/// A successfully resolved name and (where applicable) the package
+/// location that resolved it.
+///
+/// `location` is the matched fully-qualified location after `namesToTry`
+///   expansion — `Some` for resolved package items, `None` for builtins
+///   (and for resolved package items where no location was captured).
+///   Carrying it alongside the resolved hash lets downstream consumers
+///   skip a post-hoc lookup: dep-edge inserts, propagation rewrites
+///   (AstTransformer's byLocation substitution), SCC hash substitution
+///   (Canonical), and deferred refresh after a package moves.
+type ResolvedName<'a> = { name : 'a; location : Option<PackageLocation> }
+
+
 module FQTypeName =
   type Package = Hash
 
@@ -112,11 +132,28 @@ module FQFnName =
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
-    /// A trait method, named by the trait and the method: `Show.show`. The impl
-    /// is found at runtime from the self argument's type (or the caller's type
-    /// args), so this names a dispatch, not a body. See `TraitMethod` in
-    /// RuntimeTypes for the lookup order.
-    | TraitMethod of trait_ : FQTraitName.Package * method_ : string
+    /// A trait method, named by the trait and the method: `Show.show`.
+    ///
+    /// `implFn` is the fn the chosen implementation names for this method, recorded when the
+    /// item was SAVED. Stored code means one thing forever: an implementation that arrives
+    /// later does not change what this call runs; it arrives as an ordinary update, through
+    /// propagation, like any other fn this item calls.
+    ///
+    /// It carries its location like every other reference, so a rename moves it and the
+    /// dependency edge it produces reads like any other.
+    ///
+    /// The fn rather than the `TraitImpl` item, for three reasons: it is what actually runs
+    /// and what traces record; propagation, dependency edges and `pin`/`follow` already work
+    /// on fns, so a newer implementation is an ordinary repoint; and editing an implementation's
+    /// OTHER method leaves this call alone, which pinning the impl item would not.
+    ///
+    /// `None` where the implementation is not knowable at save time: inside
+    /// `let display<'a: Show> (v: 'a) = Show.show v` it depends on the caller's type argument,
+    /// so the lookup stays at run time. See `TraitMethod` in RuntimeTypes for that order.
+    | TraitMethod of
+      trait_ : FQTraitName.Package *
+      method_ : string *
+      implFn : Option<ResolvedName<Package>>
 
   let assertFnName (name : string) : unit =
     assertRe $"Fn name must match" fnNamePattern name
@@ -131,13 +168,6 @@ module FQFnName =
   let package (h : string) : Package = Hash h
 
   let fqPackage (h : string) : FQFnName = Package(Hash h)
-
-
-type PackageLocation =
-  // CLEANUP this doesn't really account for when you're referring to a root 'owner'
-  { owner : string
-    modules : List<string>
-    name : string }
 
 
 // In ProgramTypes, names (FnNames, TypeNames, ValueNames) have already been
@@ -161,18 +191,6 @@ type PackageLocation =
 type NameResolutionError =
   | NotFound
   | InvalidName
-
-/// A successfully resolved name and (where applicable) the package
-/// location that resolved it.
-///
-/// `location` is the matched fully-qualified location after `namesToTry`
-///   expansion — `Some` for resolved package items, `None` for builtins
-///   (and for resolved package items where no location was captured).
-///   Carrying it alongside the resolved hash lets downstream consumers
-///   skip a post-hoc lookup: dep-edge inserts, propagation rewrites
-///   (AstTransformer's byLocation substitution), SCC hash substitution
-///   (Canonical), and deferred refresh after a package moves.
-type ResolvedName<'a> = { name : 'a; location : Option<PackageLocation> }
 
 /// `originalName` is the user-typed name (a list of qualifiers).
 /// `resolved` is the resolved name (or the resolution error). The Ok

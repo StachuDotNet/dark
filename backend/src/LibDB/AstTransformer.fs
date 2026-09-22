@@ -23,12 +23,25 @@ module PackageItem = LibDB.PackageItem
 /// `byLocationRename` updates the stored location on refs when a source item
 /// moved names but kept the same content hash.
 type HashMapping =
-  { byLocation : Map<PT.PackageLocation, Hash>
+  {
+    byLocation : Map<PT.PackageLocation, Hash>
     byHash : Map<Hash, Hash>
-    byLocationRename : Map<PT.PackageLocation, PT.PackageLocation> }
+    byLocationRename : Map<PT.PackageLocation, PT.PackageLocation>
+
+    /// The implementation each trait-method call resolved to, by the node its name is at.
+    ///
+    /// Filled by the SAVE, from what the at-rest checker proved about the item
+    /// (`Traits.resolveInOps`), so a call goes on running the implementation it was written
+    /// against. Empty everywhere else, which leaves every name as it was: propagation and
+    /// SCC stabilization rewrite hashes, they do not re-resolve anything.
+    pins : Map<id, PT.ResolvedName<PT.FQFnName.Package>>
+  }
 
 let emptyMapping : HashMapping =
-  { byLocation = Map.empty; byHash = Map.empty; byLocationRename = Map.empty }
+  { byLocation = Map.empty
+    byHash = Map.empty
+    byLocationRename = Map.empty
+    pins = Map.empty }
 
 let private replaceHash
   (mapping : HashMapping)
@@ -64,6 +77,26 @@ let private transformNameResolution
     | None -> nr
   | Error _ -> nr
 
+/// The implementation the save chose for the trait-method call at this node, written onto its
+/// name. Nothing else can be pinned, and a node the save had no answer for is left alone: a
+/// call whose self type is only known at run time stays a run-time lookup.
+let private pinAt
+  (mapping : HashMapping)
+  (nodeId : id)
+  (nr : PT.NameResolution<PT.FQFnName.FQFnName>)
+  : PT.NameResolution<PT.FQFnName.FQFnName> =
+  match Map.tryFind nodeId mapping.pins, nr.resolved with
+  | Some implFn,
+    Ok({ name = PT.FQFnName.TraitMethod(traitHash, methodName, _) } as r) ->
+    let implFn : PT.ResolvedName<PT.FQFnName.Package> = implFn
+    { nr with
+        resolved =
+          Ok
+            { r with
+                name = PT.FQFnName.TraitMethod(traitHash, methodName, Some implFn) } }
+  | _ -> nr
+
+
 /// A fn name in an expression. A trait method names the trait, so its hash moves
 /// with the trait's; a package fn moves through the fn mapping.
 let private transformFnName
@@ -71,7 +104,20 @@ let private transformFnName
   (nr : PT.NameResolution<PT.FQFnName.FQFnName>)
   : PT.NameResolution<PT.FQFnName.FQFnName> =
   match nr.resolved with
-  | Ok { name = PT.FQFnName.TraitMethod(traitHash, methodName); location = loc } ->
+  | Ok { name = PT.FQFnName.TraitMethod(traitHash, methodName, implFn)
+         location = loc } ->
+    // The implementation this call was resolved to moves like any other fn reference: it is
+    // usually a fn being saved in the same batch, whose placeholder hash stabilizes here, and
+    // it carries a location, so a rename reaches it too.
+    let implFn =
+      implFn
+      |> Option.map (fun r ->
+        { r with
+            name = replaceHash mapping r.location r.name
+            location =
+              r.location
+              |> Option.map (fun loc ->
+                Map.tryFind loc mapping.byLocationRename |> Option.defaultValue loc) })
     let asTrait : PT.NameResolution<PT.FQTraitName.FQTraitName> =
       { originalName = nr.originalName
         resolved = Ok { name = PT.FQTraitName.Package traitHash; location = loc } }
@@ -86,7 +132,7 @@ let private transformFnName
       { nr with
           resolved =
             Ok
-              { name = PT.FQFnName.TraitMethod(newHash, methodName)
+              { name = PT.FQFnName.TraitMethod(newHash, methodName, implFn)
                 location = newLoc } }
     | Error _ -> nr
   | _ ->
@@ -269,7 +315,8 @@ and private transformExpr (mapping : HashMapping) (expr : PT.Expr) : PT.Expr =
       args |> NEList.map (transformExpr mapping)
     )
 
-  | PT.EFnName(id, nr) -> PT.EFnName(id, transformFnName mapping nr)
+  | PT.EFnName(id, nr) ->
+    PT.EFnName(id, transformFnName mapping nr |> pinAt mapping id)
 
   | PT.ELambda(id, pats, body) -> PT.ELambda(id, pats, transformExpr mapping body)
 

@@ -280,7 +280,7 @@ module FQFnName =
       FQFnName.Builtin.fullForReference b
     | Package p ->
       FQFnName.Package.fullForReference ctx p
-    | TraitMethod(traitHash, method) ->
+    | TraitMethod(traitHash, method, _) ->
       $"{FQTypeName.Package.fullForReference ctx traitHash}.{method}"
 
 
@@ -329,8 +329,10 @@ module NameResolution =
         match r.location with
         | Some loc -> packageNameWithContext ctx loc.owner loc.modules loc.name
         | None -> Darklang.LanguageTools.ProgramTypes.hashToString hash
-      | TraitMethod(traitHash, method) ->
-        // The location is the TRAIT's; the method is a field of it.
+      | TraitMethod(traitHash, method, _) ->
+        // The location is the TRAIT's; the method is a field of it. Which implementation it
+        // resolved to is not printed: the source said `Show.show`, and that is still what it
+        // means; `dark view --resolved` is where a hash belongs.
         match r.location with
         | Some loc -> (packageNameWithContext ctx loc.owner loc.modules loc.name) ++ "." ++ method
         | None -> (Darklang.LanguageTools.ProgramTypes.hashToString traitHash) ++ "." ++ method

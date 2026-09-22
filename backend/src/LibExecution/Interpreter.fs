@@ -1228,7 +1228,7 @@ let private tryFastOpDirect
     // `a + b` on two values of one builtin numeric type: the impl the dispatch would pick
     // is the type's own wrapper over the same F# operator, so answer it here. An `Int` pair
     // takes the same table the builtin used to; the rest take `evalNumeric`.
-    | FQFnName.TraitMethod(Hash traitHash, methodName) ->
+    | FQFnName.TraitMethod(Hash traitHash, methodName, _) ->
       match argRegs.tail with
       | [ secondReg ] when FastOps.isEquals traitHash methodName ->
         // A builtin type's equality is not overridable; only a record or an enum
@@ -2476,7 +2476,37 @@ let private applyInstruction
       // and `callPackage` behind them: same five steps, different parameter and outcome types.
       // Unifying them needs `BuiltInParam` and `PackageFn.Parameter` to share an interface.
       match applicable.name with
-      | FQFnName.TraitMethod(traitHash, methodName) ->
+      // The save chose an implementation and stored the fn it named, so there is nothing to
+      // pick: call it exactly as a direct call would. This is the ordinary case for a call
+      // whose self type was known when it was written, which is nearly all of them.
+      | FQFnName.TraitMethod(_, _, Some implFn) ->
+        let implCtx =
+          { ctx with
+              // The type args named the TRAIT's params (the self type first); the impl fn
+              // has its own, inferred from the arguments.
+              typeArgs = []
+              applicable =
+                { applicable with name = FQFnName.Package implFn; typeArgs = [] } }
+        let call : Ply<PackageOutcome> =
+          match Ply.trySync (exeState.fns.package implFn) with
+          | ValueSome(Some fn) -> callPackage exeState vm currentFrame implCtx fn
+          | ValueSome None ->
+            RTE.FnNotFound(FQFnName.Package implFn) |> raiseRTE vm.threadID
+          | ValueNone ->
+            uply {
+              match! exeState.fns.package implFn with
+              | Some fn -> return! callPackage exeState vm currentFrame implCtx fn
+              | None ->
+                return
+                  RTE.FnNotFound(FQFnName.Package implFn) |> raiseRTE vm.threadID
+            }
+        match Ply.trySync call with
+        | ValueSome(PartiallyApplied dv)
+        | ValueSome(Completed dv) -> registers[putResultIn] <- dv
+        | ValueSome(PushFrame frame) -> vm.frameToPush <- ValueSome frame
+        | ValueNone -> outcome <- AwaitPackage(call, putResultIn)
+
+      | FQFnName.TraitMethod(traitHash, methodName, None) ->
         // Pick the impl, then call its fn exactly as a direct call would: the impl
         // fn is what runs, what traces record, and what carries the ceiling.
         //

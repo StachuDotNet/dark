@@ -15,12 +15,17 @@ module E = TestValues.Expressions
 /// What `+` lowers to: `Stdlib.Add.add` (the builtin only while the refs are
 /// not generated, which a test run never is).
 let private plus : RT.FQFnName.FQFnName =
-  RT.FQFnName.TraitMethod(RT.Hash(PackageRefs.Trait.Stdlib.Traits.add ()), "add")
+  RT.FQFnName.TraitMethod(
+    RT.Hash(PackageRefs.Trait.Stdlib.Traits.add ()),
+    "add",
+    None
+  )
 
 let private times : RT.FQFnName.FQFnName =
   RT.FQFnName.TraitMethod(
     RT.Hash(PackageRefs.Trait.Stdlib.Traits.mul ()),
-    "multiply"
+    "multiply",
+    None
   )
 module PM = TestValues.PM
 

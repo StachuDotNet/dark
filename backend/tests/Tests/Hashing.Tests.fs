@@ -300,7 +300,9 @@ let private fnHashTests =
       test "a TraitMethod call hashes by trait hash and method name" {
         let call (traitHash : string) (m : string) : PT.Expr =
           let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
-            PT.NameResolution.ok (PT.FQFnName.TraitMethod(PT.Hash traitHash, m))
+            PT.NameResolution.ok (
+              PT.FQFnName.TraitMethod(PT.Hash traitHash, m, None)
+            )
           PT.EApply(gid (), PT.EFnName(gid (), nr), [], NEList.singleton (eVar "x"))
         let h1 = h [ "x" ] (call "trait-show" "show")
         let h2 = h [ "x" ] (call "trait-show" "describe")

@@ -163,10 +163,23 @@ let writeFQFnName
     | None ->
       w.Write(1uy)
       PTC.FQFnName.Package.write w (resolveHash mode loc p)
-  | PT.FQFnName.TraitMethod(t, m) ->
+  | PT.FQFnName.TraitMethod(t, m, implFn) ->
     w.Write(3uy)
     writeFQTraitName mode w loc (PT.FQTraitName.Package t)
     Common.String.write w m
+    // The chosen implementation is part of what this call MEANS, so it is hashed, and it is
+    // hashed as the fn reference it is: an implementation inside this item's own SCC writes as
+    // a name ref, like any other reference to something being saved in the same batch.
+    match implFn with
+    | None -> w.Write(0uy)
+    | Some r ->
+      match isSccRef mode r.location r.name with
+      | Some fqn ->
+        w.Write(2uy)
+        Common.String.write w fqn
+      | None ->
+        w.Write(1uy)
+        PTC.FQFnName.Package.write w (resolveHash mode r.location r.name)
 
 
 /// Write FQValueName, resolving deps and checking SCC substitution

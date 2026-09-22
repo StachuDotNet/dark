@@ -401,7 +401,14 @@ module FnName =
                       resolved =
                         Stdlib.Result.Result.Ok(
                           ProgramTypes.ResolvedName
-                            { name = ProgramTypes.FQFnName.FQFnName.TraitMethod(traitHash, methodName)
+                            { name =
+                                // No implementation yet: the parser has no types, and the save
+                                // chooses (see `Traits.resolve` on the F# side).
+                                ProgramTypes.FQFnName.FQFnName.TraitMethod(
+                                  traitHash,
+                                  methodName,
+                                  Stdlib.Option.Option.None
+                                )
                               location = resolved.location }) })
               else
                 Stdlib.Option.Option.None

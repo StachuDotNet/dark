@@ -2297,7 +2297,7 @@ let private traitTests =
       [],
       NEList.singleton arg
     )
-  let showMethod = PT.FQFnName.TraitMethod(showHash, "show")
+  let showMethod = PT.FQFnName.TraitMethod(showHash, "show", None)
 
   testList
     "traits"

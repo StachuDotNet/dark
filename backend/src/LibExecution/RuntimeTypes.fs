@@ -104,12 +104,18 @@ module FQFnName =
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
-    /// A trait method: the trait and the method name. Applying one resolves the
-    /// impl at call time, in this order: explicit type args, the self argument's
-    /// ValueType head, the caller's TypeSymbolTable binding for the self param.
-    /// The impl (`TraitImpl`) names a fn per method; that fn is what actually runs
-    /// (and what traces record).
-    | TraitMethod of trait_ : FQTraitName.Package * method_ : string
+    /// A trait method: the trait, the method name, and the fn the chosen implementation names
+    /// for it, when the save was able to choose.
+    ///
+    /// With an `implFn`, that is what runs: no lookup, and no implementation stored later can
+    /// change it. Without one (a call inside a polymorphic fn, where the implementation depends
+    /// on the caller's type argument), applying it resolves at call time, in this order:
+    /// explicit type args, the self argument's ValueType head, the caller's TypeSymbolTable
+    /// binding for the self param.
+    | TraitMethod of
+      trait_ : FQTraitName.Package *
+      method_ : string *
+      implFn : Option<Package>
 
   let assertBuiltinFnName (name : string) : unit =
     assertRe $"Fn name must match" builtinNamePattern name

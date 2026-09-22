@@ -58,12 +58,17 @@ module FQFnName =
       ->
       match NumericTraits.ofNegate () with
       | Some(traitHash, methodName) ->
-        RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName)
+        RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, None)
       | None -> RT.FQFnName.Builtin { name = name; version = 0 }
     | PT.FQFnName.Builtin s -> RT.FQFnName.Builtin(Builtin.toRT s)
     | PT.FQFnName.Package p -> RT.FQFnName.Package(Package.toRT p)
-    | PT.FQFnName.TraitMethod(t, m) ->
-      RT.FQFnName.TraitMethod(FQTypeName.Package.toRT t, m)
+    | PT.FQFnName.TraitMethod(t, m, implFn) ->
+      // The runtime needs the fn, not where it is named.
+      RT.FQFnName.TraitMethod(
+        FQTypeName.Package.toRT t,
+        m,
+        implFn |> Option.map (fun r -> Package.toRT r.name)
+      )
 
 
 module NameResolutionError =
@@ -198,7 +203,9 @@ module InfixFnName =
   let toRT (name : PT.InfixFnName) : RT.FQFnName.FQFnName =
     match NumericTraits.ofInfix name with
     | Some(traitHash, methodName) ->
-      RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName)
+      // An operator still written as infix in the stored item: nothing chose an
+      // implementation for it, so it dispatches at run time.
+      RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, None)
     | None -> RT.FQFnName.Builtin(toFnName name)
 
 

@@ -2,6 +2,26 @@ module Darklang.LanguageTools.ProgramTypes
 
 
 /// Used to name where type/function/etc lives, eg a User module, or a Package module.
+type PackageLocation =
+  { owner: String
+    modules: List<String>
+    name: String }
+
+
+/// A successfully resolved name and (where applicable) the package
+/// location that resolved it.
+///
+/// `location` is the matched fully-qualified location after `namesToTry`
+/// expansion — `Some` for resolved package items, `None` for builtins
+/// (and for resolved package items where no location was captured).
+/// Carrying it alongside the resolved hash lets downstream consumers
+/// skip a post-hoc lookup: dep-edge inserts, propagation rewrites,
+/// SCC hash substitution, and deferred refresh after a package moves.
+type ResolvedName<'a> =
+  { name: 'a
+    location: Stdlib.Option.Option<PackageLocation> }
+
+
 module FQTypeName =
   type Package = Hash
   type FQTypeName = Package of Package
@@ -26,33 +46,20 @@ module FQFnName =
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
-    /// A trait method: the trait and the method name (`Show.show`). Names a
-    /// dispatch, not a body; the impl is found from the self type.
-    | TraitMethod of trait_: FQTraitName.Package * method_: String
-
-
-type PackageLocation =
-  { owner: String
-    modules: List<String>
-    name: String }
+    /// A trait method: the trait, the method name (`Show.show`), and the fn the
+    /// implementation chosen when this was SAVED names for that method, if one was
+    /// chosen. With it, that fn is what runs, and a newer implementation reaches
+    /// this call through propagation like any other update. Without it (a call in a
+    /// polymorphic fn), the implementation is found from the self type at run time.
+    | TraitMethod of
+      trait_: FQTraitName.Package *
+      method_: String *
+      implFn: Stdlib.Option.Option<ResolvedName<Package>>
 
 
 type NameResolutionError =
   | NotFound
   | InvalidName
-
-/// A successfully resolved name and (where applicable) the package
-/// location that resolved it.
-///
-/// `location` is the matched fully-qualified location after `namesToTry`
-/// expansion — `Some` for resolved package items, `None` for builtins
-/// (and for resolved package items where no location was captured).
-/// Carrying it alongside the resolved hash lets downstream consumers
-/// skip a post-hoc lookup: dep-edge inserts, propagation rewrites,
-/// SCC hash substitution, and deferred refresh after a package moves.
-type ResolvedName<'a> =
-  { name: 'a
-    location: Stdlib.Option.Option<PackageLocation> }
 
 /// `originalName` is the user-typed name (a list of qualifiers).
 /// `resolved` is the resolved name (or the resolution error). The Ok

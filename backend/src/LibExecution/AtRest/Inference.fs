@@ -267,14 +267,14 @@ let private instantiateFunction
   | None ->
     state.Block(UnresolvedFunctionName, nodeId, Unresolved name.originalName)
     state.FreshTainted nodeId
-  | Some(FQFnName.TraitMethod(traitHash, methodName)) ->
+  | Some(FQFnName.TraitMethod(traitHash, methodName, _)) ->
     state.AddDependency(TraitDependency traitHash)
     match traitMethodSignature state nodeId traitHash methodName with
     | None ->
       state.Block(
         MissingFunctionSignature,
         nodeId,
-        FunctionUnavailable(FQFnName.TraitMethod(traitHash, methodName))
+        FunctionUnavailable(FQFnName.TraitMethod(traitHash, methodName, None))
       )
       state.FreshTainted nodeId
     | Some signature ->

@@ -739,7 +739,17 @@ module ProgramTypes =
         gid (),
         EFnName(
           gid (),
-          NameResolution.ok (FQFnName.TraitMethod(Hash "trait-show", "show"))
+          NameResolution.ok (
+            // With an implementation chosen, which is what a saved call carries.
+            FQFnName.TraitMethod(
+              Hash "trait-show",
+              "show",
+              Some
+                { name = Hash "impl-show-fn"
+                  location =
+                    Some { owner = "Tests"; modules = [ "Show" ]; name = "show" } }
+            )
+          )
         ),
         [],
         NEList.singleton (EArg(gid (), 0))

@@ -194,6 +194,10 @@ and private dischargeOne
           TraitNeeded(trait_, method_)
         )
       | [ entry ] ->
+        // What the call resolves to, for the save to store with it.
+        match method_ with
+        | Some m -> state.RecordResolution(nodeId, m, [ entry.source ])
+        | None -> ()
         // A conditional impl owes its own bounds at the type it matched: bind
         // its params by unifying its self type with the concrete one, then owe
         // each bound at the param's type.
@@ -210,13 +214,16 @@ and private dischargeOne
             | Ok { name = FQTraitName.Package boundTrait }, Some paramType ->
               state.AddConstraint(nodeId, boundTrait, paramType, None)
             | _ -> ()
-      | _ ->
-        // Two impls of this trait for this type. Which one runs is a runtime question, settled by
-        // the stamp of the op that added each (`LibExecution.Traits.select`), and both have the
-        // trait's signature, so the constraint is discharged either way. A conditional impl's own
-        // bounds are skipped here rather than owed against a rival that may not be the one that
-        // runs; `dark constraints` reports the pair.
-        ()
+      | several ->
+        // Two impls of this trait for this type. Both have the trait's signature, so the
+        // constraint is discharged either way, and WHICH one is the store's question: the save
+        // picks the newer, by the same rule the runtime would (`LibExecution.Lww`). A
+        // conditional impl's own bounds are skipped rather than owed against an implementation
+        // that may not be the one chosen; `dark constraints` reports the pair.
+        match method_ with
+        | Some m ->
+          state.RecordResolution(nodeId, m, several |> List.map (fun e -> e.source))
+        | None -> ()
 
 /// `x.m` where `x` has no field `m`: the one visible impl, of any trait, with a
 /// method `m` for `x`'s head types the access as that method with `x` consumed.
@@ -415,7 +422,19 @@ let private finish
     Checked
       { inferredType = inferredType
         scheme = scheme
-        dependencies = state.Dependencies }
+        dependencies = state.Dependencies
+        resolutions =
+          state.Resolutions
+          |> Seq.map (fun kv ->
+            let struct (method_, impls) = kv.Value
+            kv.Key, (method_, impls))
+          |> Map.ofSeq }
+
+/// What a proof says each trait-method call resolves to: the node its name is at, the method,
+/// and every implementation that applies. `Proof` is internal to the checker, so this is how the
+/// save reads the answer out (`Builtins.Matter.Libs.PM.AtRestTypeChecker.resolveTraitCalls`).
+let resolutionsOf (proof : Proof) : Map<id, string * List<Hash>> =
+  Proof.resolutions proof
 
 let checkExpression (environment : TypeEnvironment) (expr : Expr) : Verdict =
   guardingStack (Some(Expr.toID expr)) (fun () ->
