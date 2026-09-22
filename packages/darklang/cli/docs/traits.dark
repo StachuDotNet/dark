@@ -87,8 +87,9 @@ one `impl`.
   has the operator table.
 
 ## Two implementations for one type
-  An implementation is visible where its name is bound (main, or your branch).
-  Two visible ones for one trait and type is an ambiguity: the call says so,
+  An implementation is visible to dispatch on the whole branch it is bound on,
+  whatever module it was written in; modules do not open, and a call anywhere
+  finds it. Two visible ones for one trait and type is an ambiguity: the call says so,
   `dark constraints` keeps it as a finding, and deprecating one resolves it
   (a deprecated implementation is not dispatched to). Two traits with the same
   methods and shapes are one trait, whatever they are named.
