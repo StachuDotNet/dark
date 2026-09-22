@@ -254,7 +254,11 @@ type ImplCandidate =
   { trait_: FQTraitName.Package
     self: TypeReference
     methods: Dict<String, Hash>
-    source: Hash }
+    source: Hash
+    /// When the op that added this implementation was written. Two implementations of
+    /// one trait for one type are ordered by it: the newer one runs. Empty for an
+    /// implementation that never came from an op, and then neither one wins.
+    stamp: String }
 
 type Dval =
   | DUnit

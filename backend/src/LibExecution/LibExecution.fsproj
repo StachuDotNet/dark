@@ -21,6 +21,7 @@
     <ProjectReference Include="../Prelude/Prelude.fsproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Lww.fs" />
     <Compile Include="DarkDateTime.fs" />
     <Compile Include="Branching.fs" />
     <Compile Include="PackageRefs.fs" />

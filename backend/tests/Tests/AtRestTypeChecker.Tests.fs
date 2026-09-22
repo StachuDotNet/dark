@@ -2212,8 +2212,9 @@ let private unitTests =
 
 
 /// Traits in the checker: bounds on callees, `Trait.method` calls, receiver calls,
-/// and how the visible impls decide between Checked, MissingImpl, AmbiguousImpl,
-/// UnboundTypeParameter and the ConstrainedType blocker.
+/// and how the visible impls decide between Checked, MissingImpl,
+/// UnboundTypeParameter and the ConstrainedType blocker. Two implementations for one type are
+/// not among them: the call picks the newer, so the caller checks clean.
 let private traitTests =
   // `trait Show<'a> = let show (value: 'a) : String`
   let showHash = PT.Hash "trait-show"
@@ -2426,7 +2427,11 @@ let private traitTests =
         |> expectChecked
       }
 
-      test "two impls for one self type is AmbiguousImpl" {
+      // Which of two implementations runs is decided at the call, by which op is newer
+      // (`LibExecution.Traits.select`), and both carry the trait's signature. So the checker has
+      // nothing to say here: the bound is satisfied either way, and the pair is reported as a
+      // `rival-implementations` finding instead of an error on the caller.
+      test "two impls for one self type is not the caller's problem" {
         let environment =
           withPointImpl
           |> Checker.TypeEnvironment.addImpl (
@@ -2437,7 +2442,7 @@ let private traitTests =
           PT.TString
           (call describeName (PT.EVariable(12UL, "value")))
         |> CheckerApi.checkPackageFunction environment
-        |> expectDiagnostic Checker.AmbiguousImpl
+        |> expectChecked
       }
 
       test "a blanket impl covers any self type but loses to a specific one" {

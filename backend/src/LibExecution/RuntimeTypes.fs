@@ -2380,6 +2380,11 @@ type ImplCandidate =
     methods : Map<string, FQFnName.Package>
     /// The impl item the candidate is, for messages
     source : Hash
+    /// When the op that introduced this impl was written, as an `origin_ts` string. Two impls of
+    /// one trait for one type are ordered by it: the newer one runs. Empty when the impl came from
+    /// somewhere other than the op log (a script's own impls, an in-memory package manager), and
+    /// then it cannot win, so a call that finds only unstamped rivals still errors.
+    stamp : string
   }
 
 

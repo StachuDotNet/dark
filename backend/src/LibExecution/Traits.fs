@@ -131,6 +131,8 @@ let rec private argsAgree (t : TypeReference) (vt : ValueType) : bool =
 type Selection =
   | Selected of ImplCandidate
   | NoImpl
+  /// Rivals with no way to order them: every one of them came from outside the op log, so nothing
+  /// says which was written later. The call reports them instead of picking.
   | Ambiguous of List<ImplCandidate>
 
 /// The candidate for a self type, if exactly one applies.
@@ -154,4 +156,15 @@ let select (candidates : List<ImplCandidate>) (self : KnownType) : Selection =
     with
     | [ one ] -> Selected one
     | [] -> NoImpl
-    | still -> Ambiguous still
+    | still ->
+      // Two impls for one type: the one written later runs, by the stamp of the op that added it
+      // and the same rule the op-fold uses for two bindings of one name. Both stay in the store,
+      // the loser is reported as a rival in `dark constraints`, and deprecating one settles it.
+      let stamped =
+        still
+        |> List.map (fun c ->
+          let (Hash h) = c.source
+          (c, c.stamp, h))
+      match Lww.winnerOf stamped with
+      | Some winner -> Selected winner
+      | None -> Ambiguous still

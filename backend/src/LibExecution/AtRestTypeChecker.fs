@@ -211,13 +211,12 @@ and private dischargeOne
               state.AddConstraint(nodeId, boundTrait, paramType, None)
             | _ -> ()
       | _ ->
-        state.Error(
-          AmbiguousImpl,
-          nodeId,
-          None,
-          Some concrete,
-          TraitNeeded(trait_, method_)
-        )
+        // Two impls of this trait for this type. Which one runs is a runtime question, settled by
+        // the stamp of the op that added each (`LibExecution.Traits.select`), and both have the
+        // trait's signature, so the constraint is discharged either way. A conditional impl's own
+        // bounds are skipped here rather than owed against a rival that may not be the one that
+        // runs; `dark constraints` reports the pair.
+        ()
 
 /// `x.m` where `x` has no field `m`: the one visible impl, of any trait, with a
 /// method `m` for `x`'s head types the access as that method with `x` consumed.
@@ -240,9 +239,8 @@ let private receiverMethodType
           match all |> List.filter (fun e -> headOfImplSelf e.self = Some head) with
           | [] -> all |> List.filter (fun e -> headOfImplSelf e.self = None)
           | specific -> specific
-    match candidates with
-    | [] -> None
-    | [ entry ] ->
+    // The method's type from ONE impl: its trait's signature, with the receiver as the self type.
+    let typeOfMethod (entry : ImplEntry) : Option<StaticType> =
       match Map.tryFind entry.trait_ state.Environment.traits with
       | Some trait_ ->
         trait_.methods
@@ -269,15 +267,25 @@ let private receiverMethodType
           else
             None)
       | None -> None
+
+    match candidates with
+    | [] -> None
+    | [ entry ] -> typeOfMethod entry
     | several ->
-      state.Error(
-        AmbiguousImpl,
-        Some nodeId,
-        None,
-        Some receiverType,
-        TraitNeeded(several.Head.trait_, Some methodName)
-      )
-      None
+      // Rivals of ONE trait have one signature, so `x.m` types the same whichever the runtime
+      // picks. Rivals across DIFFERENT traits are the real ambiguity: `m` means two things, and
+      // nothing at the call says which.
+      match several |> List.map (fun e -> e.trait_) |> List.distinct with
+      | [ _ ] -> typeOfMethod several.Head
+      | _ ->
+        state.Error(
+          AmbiguousImpl,
+          Some nodeId,
+          None,
+          Some receiverType,
+          TraitNeeded(several.Head.trait_, Some methodName)
+        )
+        None
 
 let private resolvePendingFieldAccesses (state : State) : unit =
   for nodeId, recordType, fieldName, resultType in state.PendingFieldAccesses do

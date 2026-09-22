@@ -4,7 +4,8 @@ module Darklang.Cli.Packages.Impls
 // dispatch sees them.
 //
 // Reads the same candidates the interpreter does (`Trait.impls`), so what this
-// lists is what a call can reach.
+// lists is what a call can reach. Two implementations for one type are both bound and only
+// the newer one runs, so the older is marked rather than silently listed alongside it.
 
 let describeSelf (branchId: Uuid) (self: LanguageTools.RuntimeTypes.TypeReference) : String =
   PrettyPrinter.RuntimeTypes.typeReference branchId self
@@ -60,8 +61,29 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
             | [] -> LanguageTools.ProgramTypes.hashToShort c.source
           let methods =
             c.methods |> Stdlib.Dict.keys |> Stdlib.String.join ", "
+          let selfStr = describeSelf state.currentBranchId c.self
+          let cHash = LanguageTools.ProgramTypes.hashToString c.source
+
+          // Another implementation for the same type, written later, is the one a call runs. Say so
+          // here: this list is what dispatch can reach, and half of it being unreachable is the kind
+          // of thing you want to find out from the listing rather than from a value you did not expect.
+          let outranked =
+            candidates
+            |> Stdlib.List.any (fun d ->
+              let dHash = LanguageTools.ProgramTypes.hashToString d.source
+
+              (dHash != cHash)
+              && (describeSelf state.currentBranchId d.self == selfStr)
+              && (SCM.Conflicts.beats d.stamp dHash c.stamp cHash))
+
+          let note =
+            if outranked then
+              Stdlib.Cli.UI.Colors.dimText "  not used; a newer implementation for this type runs"
+            else
+              ""
+
           Stdlib.printLine
-            $"impl {traitPath} for {describeSelf state.currentBranchId c.self}    ({methods})  {Stdlib.Cli.UI.Colors.dimText sourceName}")
+            $"impl {traitPath} for {selfStr}    ({methods})  {Stdlib.Cli.UI.Colors.dimText sourceName}{note}")
       state
   | _ ->
     Stdlib.printLine "Usage: impls <trait-path>"

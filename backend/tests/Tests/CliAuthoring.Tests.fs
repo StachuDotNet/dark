@@ -308,19 +308,25 @@ let traitsAreAuthoredListedAndDisambiguated =
             [ "impl"
               "Tests.TrOther"
               "Tests.Tr.Describe for Tests.Tr.Point = let describe (p: Tests.Tr.Point) : String = \"other\"" ]
+        // The call does not stop: the rival was written later, so it is the one that runs.
+        do!
+          evals
+            state
+            "Tests.Tr.Describe.describe (Tests.Tr.Point { x = 1L; y = 2L })"
+            "other"
+            "the newer implementation runs"
         do!
           shows
             state
-            [ "eval"
-              "Tests.Tr.Describe.describe (Tests.Tr.Point { x = 1L; y = 2L })" ]
-            "More than one implementation of"
-            "a call cannot choose between two implementations"
-        do!
-          shows
-            state
-            [ "constraints"; "--kind"; "ambiguous-implementation" ]
+            [ "constraints"; "--kind"; "rival-implementations" ]
             "Tests.TrOther.Point.Describe"
-            "and constraints has it as a standing finding"
+            "and constraints records the pair"
+        do!
+          shows
+            state
+            [ "constraints"; "--kind"; "rival-implementations" ]
+            "a call runs Tests.TrOther.Point.Describe, written later"
+            "naming the one that runs"
 
         // Deprecating one takes it out of dispatch and clears the finding.
         do!
@@ -341,7 +347,7 @@ let traitsAreAuthoredListedAndDisambiguated =
         do!
           lacks
             state
-            [ "constraints"; "--kind"; "ambiguous-implementation" ]
+            [ "constraints"; "--kind"; "rival-implementations" ]
             "Tests.TrOther.Point.Describe"
             "and the finding is gone"
 

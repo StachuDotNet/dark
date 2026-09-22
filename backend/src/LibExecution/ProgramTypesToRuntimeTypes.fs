@@ -1476,7 +1476,10 @@ module ImplCandidate =
               | Ok { name = PT.FQFnName.Package h } -> Some(m, Hash.toRT h)
               | _ -> None)
             |> Map.ofList
-          source = Hash.toRT i.hash }
+          source = Hash.toRT i.hash
+          // The stamp is not in the item: it is the op's, and the store fills it in
+          // (`LibDB.PackageManager`). An impl that never came from an op keeps "".
+          stamp = "" }
     | Error _ -> None
 
   /// Every impl of a trait the package manager can see and still names.

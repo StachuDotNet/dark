@@ -19,7 +19,6 @@
     <Compile Include="OriginTs.fs" />
     <Compile Include="Sqlite.fs" />
     <Compile Include="PreparedBatch.fs" />
-    <Compile Include="Lww.fs" />
     <Compile Include="Config.fs" />
     <Compile Include="PackageLocation.fs" />
     <Compile Include="Caching.fs" />

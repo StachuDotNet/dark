@@ -746,6 +746,19 @@ let getDeprecationSetsFor (branchId : PT.BranchId) : Task<DeprecationSets> =
 /// The implementations currently deprecated, by hash. A deprecated implementation is
 /// not a dispatch candidate: deprecating one of two rivals is how the ambiguity
 /// finding says to resolve it, so it has to take the rival out of the running.
+/// When each impl was added, by the stamp of its `AddTraitImpl` op. Selection orders two impls of
+/// one trait for one type by it (`LibExecution.Lww`), so the same call picks the same impl on every
+/// instance. An impl whose row predates the column answers "", and unstamped rivals are reported
+/// rather than picked.
+let getTraitImplStamps () : Task<Map<string, string>> =
+  task {
+    let! rows =
+      Sql.query "SELECT hash, origin_ts FROM package_trait_impls"
+      |> Sql.executeAsync (fun read -> (read.string "hash", read.string "origin_ts"))
+    return Map.ofList rows
+  }
+
+
 let getDeprecatedTraitImplHashes () : Task<Set<string>> =
   task {
     let! rows =

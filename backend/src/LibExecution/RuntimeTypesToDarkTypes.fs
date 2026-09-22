@@ -375,7 +375,8 @@ module ImplCandidate =
         [ "trait_", FQTraitName.Package.toDT c.trait_
           "self", TypeReference.toDT c.self
           "methods", methods
-          "source", Hash.toDT c.source ]
+          "source", Hash.toDT c.source
+          "stamp", DString c.stamp ]
     )
 
 

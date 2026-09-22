@@ -39,18 +39,18 @@ type Kind =
   /// Only an override qualifies (see `SCM.PackageOps.supersededOverrides`).
   | DecisionSuperseded
 
-  /// Two visible implementations of one trait for one type. Legal to store (there is
-  /// no coherence rule, by design: D5), but every call that would dispatch between them
-  /// is an error until one is deprecated. Standing, like the others, because
-  /// the second implementation usually arrives by sync while nobody is looking.
-  | AmbiguousImplementation
+  /// Two visible implementations of one trait for one type. Legal to store, and a call runs the
+  /// newer of them: the same last-writer-wins rule that settles two bindings of one name, so every
+  /// instance runs the same one. This says so, because the loser is still there and the second
+  /// implementation usually arrives by sync while nobody is looking. Deprecate one to settle it.
+  | RivalImplementations
 
 let kindToString (k: Kind) : String =
   match k with
   | StaleUsage -> "stale-usage"
   | KindChanged -> "kind-changed"
   | DecisionSuperseded -> "decision-superseded"
-  | AmbiguousImplementation -> "ambiguous-implementation"
+  | RivalImplementations -> "rival-implementations"
 
 /// The other direction, for reading a kind back out of storage or a CLI argument.
 let kindFromString (s: String) : Stdlib.Option.Option<Kind> =
@@ -58,7 +58,7 @@ let kindFromString (s: String) : Stdlib.Option.Option<Kind> =
   | "stale-usage" -> Stdlib.Option.Option.Some(Kind.StaleUsage)
   | "kind-changed" -> Stdlib.Option.Option.Some(Kind.KindChanged)
   | "decision-superseded" -> Stdlib.Option.Option.Some(Kind.DecisionSuperseded)
-  | "ambiguous-implementation" -> Stdlib.Option.Option.Some(Kind.AmbiguousImplementation)
+  | "rival-implementations" -> Stdlib.Option.Option.Some(Kind.RivalImplementations)
   | _ -> Stdlib.Option.Option.None
 
 /// The ways a finding of this kind can be RESOLVED, named, most-obvious first.
@@ -78,10 +78,9 @@ let resolutionsFor (k: Kind) : List<String> =
   // does one thing (repoint a usage), and offering a name here that it does not implement would run the
   // repoint instead. Ack it, or override again.
   | DecisionSuperseded -> []
-  // Nothing automatic: choosing which implementation survives is `deprecate` on one of them, its
-  // own verb with its own confirmation; a deprecated implementation is not a dispatch candidate.
-  // Ack it, or pick one.
-  | AmbiguousImplementation -> []
+  // Nothing automatic: the call already runs the newer one, and making that permanent is `deprecate`
+  // on the other, its own verb with its own confirmation. Ack it, or pick.
+  | RivalImplementations -> []
 
 /// Is <param choice> a resolution this kind offers?
 let offersResolution (k: Kind) (choice: String) : Bool =
@@ -101,7 +100,18 @@ let pinSuppresses (k: Kind) : Bool =
   // override you made was later undone, so it must not hide one.
   | DecisionSuperseded -> false
   // Two implementations is not a version question either.
-  | AmbiguousImplementation -> false
+  | RivalImplementations -> false
+
+
+/// Which of two implementations of one trait for one type a call runs.
+type RivalChoice =
+  /// The finding's own implementation (`usage`): it was written later.
+  | Mine
+  /// The other one (`rival`).
+  | Theirs
+  /// Neither: nothing orders them, so the call errors. Only reachable when no op introduced
+  /// either implementation, which means something grafted them in (a script's own).
+  | Neither
 
 
 /// What VARIES between kinds of finding.
@@ -120,9 +130,13 @@ type FindingDetail =
     now: LanguageTools.ProgramTypes.PropagationPolicy *
     by: String
 
-  /// Two implementations of one trait for one type: the type, as printed, and the
-  /// other implementation (`usage` is this one, `dependency` the trait).
-  | Rivals of self: String * rival: LanguageTools.ProgramTypes.PackageLocation
+  /// Two implementations of one trait for one type: the type, as printed, the other
+  /// implementation (`usage` is this one, `dependency` the trait), and which of the two a call
+  /// runs.
+  | Rivals of
+    self: String *
+    rival: LanguageTools.ProgramTypes.PackageLocation *
+    choice: RivalChoice
 
 
 /// One finding: which kind it is, the usage it is about, the dependency involved, and whatever that kind
@@ -319,16 +333,22 @@ let detectSupersededPolicies () : Stdlib.Result.Result<List<Finding>, String> =
           detail = FindingDetail.PolicyReplaced(mine, now, by) }))
 
 
-/// Two visible implementations of one trait for one type, on <param branchId>.
+/// Two visible implementations of one trait for one type, on <param branchId>, and which one a
+/// call runs.
 ///
-/// Reads the same candidates dispatch reads (`Trait.impls`), grouped by the self type
+/// Reads the same candidates a call reads (`Trait.impls`), grouped by the self type
 /// exactly as written: `Show for List<Int>` and `Show for List<'a>` are not rivals (the
 /// specific one wins at the call), two `Show for Point` are. One finding per pair, keyed
 /// on both names and the type, so an ack survives unrelated churn.
 ///
+/// The winner is `SCM.Conflicts.beats` over the two stamps, which is the rule the runtime's own
+/// selection uses (`LibExecution.Traits.select`, through `LibExecution.Lww`). Asking it here rather
+/// than restating it is the point: a finding that named a different winner than the one running
+/// would be worse than no finding.
+///
 /// Every trait the branch can see, one candidate read each: a handful of traits, and
 /// the read is cached per (branch, trait), so `dark status` can afford it.
-let detectAmbiguousImplementations (branchId: Uuid) : List<Finding> =
+let detectRivalImplementations (branchId: Uuid) : List<Finding> =
   let query =
     LanguageTools.ProgramTypes.Search.SearchQuery
       { currentModule = []
@@ -366,15 +386,26 @@ let detectAmbiguousImplementations (branchId: Uuid) : List<Finding> =
               (LanguageTools.PackageManager.TraitImpl.locations branchId h)
           match locOf c.source, locOf d.source with
           | Some mine, Some other ->
+            let cHash = LanguageTools.ProgramTypes.hashToString c.source
+            let dHash = LanguageTools.ProgramTypes.hashToString d.source
+
+            let choice =
+              if c.stamp == "" && d.stamp == "" then
+                RivalChoice.Neither
+              else if SCM.Conflicts.beats c.stamp cHash d.stamp dHash then
+                RivalChoice.Mine
+              else
+                RivalChoice.Theirs
+
             Stdlib.Option.Option.Some(
               Finding
-                { kind = Kind.AmbiguousImplementation
+                { kind = Kind.RivalImplementations
                   id = findingId mine t.location $"{selfStr}|{fqnOf other}"
                   usage = mine
                   usageKind = LanguageTools.ProgramTypes.ItemKind.TraitImpl
                   dependency = t.location
                   dependencyKind = LanguageTools.ProgramTypes.ItemKind.Trait
-                  detail = FindingDetail.Rivals(selfStr, other) })
+                  detail = FindingDetail.Rivals(selfStr, other, choice) })
           | _, _ -> Stdlib.Option.Option.None
         else
           Stdlib.Option.Option.None))
@@ -465,7 +496,7 @@ let detectAll () : Detection =
             detectOutdatedUsagesOn (PackageOps.currentBranch ())
             decisions
             policies
-            detectAmbiguousImplementations (PackageOps.currentBranch ()) ]
+            detectRivalImplementations (PackageOps.currentBranch ()) ]
       blocked = Stdlib.List.append decisionsBlocked policiesBlocked }
 
 
@@ -522,7 +553,7 @@ let ack
       | StaleUsage -> $"stale use of {fqnOf s.dependency}"
       | KindChanged -> $"{fqnOf s.dependency} is a different kind of item now"
       | DecisionSuperseded -> $"decision on {fqnOf s.usage} superseded"
-      | AmbiguousImplementation -> $"{fqnOf s.usage} is one of two implementations of {fqnOf s.dependency}"
+      | RivalImplementations -> $"{fqnOf s.usage} is one of two implementations of {fqnOf s.dependency}"
 
   let op =
     LanguageTools.ProgramTypes.PackageOp.Decision(

@@ -358,8 +358,13 @@ not what runs.
 
 **An impl is a candidate only while a name binds it on the branch asked and it is not
 deprecated** (`ImplCandidate` liveness, then `Queries.getDeprecatedTraitImplHashes` in the
-store's candidate provider). Two live implementations of one trait for one type are the
-`ambiguous-implementation` finding in `dark constraints`; deprecating one is how it resolves. Dispatch is memoised on the package manager
+store's candidate provider). Two live implementations of one trait for one type do not error:
+the one whose `AddTraitImpl` op is newer runs. The stamp rides on `package_trait_impls.origin_ts`,
+the candidate carries it, and `Traits.select` asks `LibExecution.Lww` -- the same rule the op-fold
+uses for two bindings of one name, so this must not grow a second copy. The pair is the
+`rival-implementations` finding in `dark constraints` (Dark computes the same winner through
+`SCM.Conflicts.beats`), and deprecating one settles it. A call errors only when NO rival carries a
+stamp, which means nothing came from an op. Dispatch is memoised on the package manager
 (`implSelectionMemo`, keyed by branch, trait, method and self type) under
 `LibDB.Caching.generation`, which every `invalidateAll` bumps; a side-loaded manager
 (`withExtraImpls`, `withExtras`) gets its own memo, and the script host's child state

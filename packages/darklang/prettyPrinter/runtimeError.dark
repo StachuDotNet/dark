@@ -530,9 +530,9 @@ module RuntimeError =
           ES.TraitName trait_
           ES.String " for "
           ES.ValueType self
-          ES.String $" is visible ({Stdlib.Int.toString (Stdlib.List.length candidates)}). `dark impls "
+          ES.String $" is visible ({Stdlib.Int.toString (Stdlib.List.length candidates)}), and nothing says which was written later, so neither one runs. `dark impls "
           ES.ShortTraitName trait_
-          ES.String "` lists them; `dark constraints` has the finding" ]
+          ES.String "` lists them; deprecate one" ]
       | MethodAmbiguous(method_, self, traits) ->
         [ ES.String $"`.{method_}` on a "
           ES.ValueType self

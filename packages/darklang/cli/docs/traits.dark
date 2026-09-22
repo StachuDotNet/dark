@@ -50,7 +50,7 @@ one `impl`.
 
   `'a: ToString` means "any type with a ToString implementation". It is checked
   when the fn is entered, against the caller's actual type, and statically by
-  the checker (`MissingImpl`, `AmbiguousImpl`, `UnboundTypeParameter`).
+  the checker (`MissingImpl`, `UnboundTypeParameter`).
 
 ## Where they live
   A trait is a package item like a type or a fn: `Stdlib.ToString`. An
@@ -81,22 +81,31 @@ one `impl`.
                                  `product seed xs` take a seed so `[]` never asks
 
   Every builtin numeric type implements the operators; String implements Add
-  (`"a" + "b"`) and ToString. `==` compares every value structurally unless its
-  type implements `Eq`; builtin types are never overridden, and `List.sort`,
-  dict keys and the walk inside a container stay structural. `docs operators`
-  has the operator table.
+  (`"a" + "b"`) and ToString. Your own implementation of an operator trait for a
+  builtin numeric type wins the finding and still does not run: two operands of
+  one builtin numeric type are answered without dispatch. `==` compares every
+  value structurally unless its type implements `Eq`; builtin types are never
+  overridden, and `List.sort`, dict keys and the walk inside a container stay
+  structural. `docs operators` has the operator table.
 
 ## Two implementations for one type
   An implementation is visible to dispatch on the whole branch it is bound on,
   whatever module it was written in; modules do not open, and a call anywhere
-  finds it. Two visible ones for one trait and type is an ambiguity: the call says so,
-  `dark constraints` keeps it as a finding, and deprecating one resolves it
-  (a deprecated implementation is not dispatched to). Two traits with the same
-  methods and shapes are one trait, whatever they are named.
+  finds it. Two visible ones for one trait and type is legal, and the call runs
+  the one written later -- the same last-writer-wins rule that settles two
+  writes to one name, so every instance runs the same one. The pair is a
+  `rival-implementations` finding in `dark constraints`: ack it, or deprecate one
+  to settle it (a deprecated implementation is not dispatched to). `dark impls
+  <Trait>` marks the one that is not used. A call errors only when nothing orders
+  the two, which means neither came from an op.
+
+  Two traits with the same methods and shapes are one trait, whatever they are
+  named.
 
 ## Errors
   No implementation of Stdlib.Add for Bool    # write `impl Add for Bool = ...`
-  More than one implementation of ...         # `dark impls <Trait>` lists them
+  More than one implementation of ...         # only when nothing orders them;
+                                              # `dark impls <Trait>` lists them
   Cannot tell which type to dispatch Zero.zero on   # no argument carries the
                                               # type: `Zero.zero<Int64> ()`
   Cannot perform numeric operation on Int64 and Float   # operands must match"""

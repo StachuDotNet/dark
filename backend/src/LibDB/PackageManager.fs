@@ -855,6 +855,17 @@ let ptForBranch (branchId : PT.BranchId) : PT.PackageManager =
 
   withLocationDocs branchId base'
 
+/// The stamp of the op that added an impl, put on the candidate. The item does not carry it (it is
+/// not content), so the store is the only place it can come from; a candidate the store has never
+/// seen keeps "" and cannot win a tie with a stamped rival.
+let private stampedWith
+  (stamps : Map<string, string>)
+  (c : RT.ImplCandidate)
+  : RT.ImplCandidate =
+  let (RT.Hash h) = c.source
+  { c with stamp = stamps |> Map.tryFind h |> Option.defaultValue "" }
+
+
 // TODO: bring back eager loading
 let rt : RT.PackageManager =
   { getType = withCache PMRT.Type.get
@@ -885,11 +896,13 @@ let rt : RT.PackageManager =
                   (ptForBranch branchId)
                   traitHash
               let! deprecated = Queries.getDeprecatedTraitImplHashes ()
+              let! stamps = Queries.getTraitImplStamps ()
               return
                 Some(
                   cs
                   |> List.filter (fun c ->
                     let (RT.Hash h) = c.source in not (Set.contains h deprecated))
+                  |> List.map (stampedWith stamps)
                 )
             })
       fun branchId traitHash ->
@@ -907,11 +920,13 @@ let rt : RT.PackageManager =
                 (ptForBranch branchId)
                 methodName
             let! deprecated = Queries.getDeprecatedTraitImplHashes ()
+            let! stamps = Queries.getTraitImplStamps ()
             return
               Some(
                 cs
                 |> List.filter (fun c ->
                   let (RT.Hash h) = c.source in not (Set.contains h deprecated))
+                |> List.map (stampedWith stamps)
               )
           })
       fun branchId methodName ->

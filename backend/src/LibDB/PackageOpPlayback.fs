@@ -20,6 +20,7 @@ open LibExecution.ProgramTypes
 module PT = LibExecution.ProgramTypes
 module RT = LibExecution.RuntimeTypes
 module PT2RT = LibExecution.ProgramTypesToRuntimeTypes
+module Lww = LibExecution.Lww
 module BS = LibSerialization.Binary.Serialization
 module DE = LibDB.DependencyExtractor
 open LibSerialization.Hashing
@@ -292,9 +293,14 @@ let private applyAddTrait
   }
 
 /// Apply a single AddTraitImpl op to the package_trait_impls table.
+///
+/// `originTs` is the op's own stamp, kept on the row because selection needs to order two impls of
+/// one trait for one type the same way on every instance (`LibExecution.Lww`). Empty when the op has
+/// no stamp: then the impls have no order and a call that finds both says so.
 let private applyAddImpl
   (ctx : Ctx)
   (mayRewriteExisting : bool)
+  (originTs : string)
   (i : PT.TraitImpl.TraitImpl)
   : Task<unit> =
   task {
@@ -317,7 +323,8 @@ let private applyAddImpl
         hash
         [ "pt_def", box (BS.PT.TraitImpl.serialize hashStr i)
           "trait_hash", box traitHash
-          "description", box i.description ]
+          "description", box i.description
+          "origin_ts", box originTs ]
         []
         mayRewriteExisting
         (Hashing.computeImplHash Hashing.Normal i)
@@ -437,7 +444,7 @@ let private applySetNameFrom
     let isStale =
       match curBinding, thisTs with
       // Different hash, both stamped: the LWW rule (incl. the portable higher-hash
-      // tie-break) lives in `LibDB.Lww`, shared with `SCM.Conflicts.incomingWins`;
+      // tie-break) lives in `LibExecution.Lww`, shared with `SCM.Conflicts.incomingWins`;
       // `Tests.Lww` asserts they agree.
       | Some(curHash, Some curTs), Some t when curHash <> itemHashStr ->
         Lww.isStale t itemHashStr curTs curHash
@@ -944,7 +951,10 @@ let private applyOp
     | PT.PackageOp.AddValue value -> do! applyAddValue ctx mayRewriteExisting value
     | PT.PackageOp.AddFn fn -> do! applyAddFn ctx mayRewriteExisting fn
     | PT.PackageOp.AddTrait t -> do! applyAddTrait ctx mayRewriteExisting t
-    | PT.PackageOp.AddTraitImpl i -> do! applyAddImpl ctx mayRewriteExisting i
+    | PT.PackageOp.AddTraitImpl i ->
+      // The op's own time, so two rival impls order the same way wherever they land.
+      let! ts = originTsOf ctx (Hashing.computeOpRowId op)
+      do! applyAddImpl ctx mayRewriteExisting (Option.defaultValue "" ts) i
     | PT.PackageOp.SetName(loc, target, _) ->
       do! applySetNameFrom ctx source op target.hash loc target.kind
     | PT.PackageOp.Unbind(loc, previous) -> do! applyUnbind ctx op loc previous
