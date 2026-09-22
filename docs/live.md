@@ -146,7 +146,8 @@ on a held connection, so that trade is not worth its builtin yet.
 
 `serve --dev` adds the browser half: `GET /__live` is an event stream that holds the
 connection, compares the router's hash every half second to the one the page was served
-from, says `reload` once it moved (`[live] page told to reload` in the log; the wait
+from (the page's own listener says which, `/__live?from=<hash>`, so an edit that lands
+between the response and the connect is still reported), says `reload` once it moved (`[live] page told to reload` in the log; the wait
 itself is not logged as a request), and ends; every HTML response carries a short
 script that listens and reloads. Not for production: one comparison per open tab per
 half second, and a script in every page.

@@ -383,8 +383,11 @@ let private perRequestStateFor
 
 // ───────── serve --dev: the page reloads when the router moves ─────────
 
-let private liveScript =
-  "<script>(function(){var s=new EventSource('/__live');s.onmessage=function(){location.reload()};s.onerror=function(){s.close();setTimeout(function(){location.reload()},1500)}})()</script>"
+/// The listener a page carries, told which version served it (`from`), so a save that lands
+/// between this response and the browser's connect is still reported: the stream compares
+/// against the page's version, not against whatever is current when it connects.
+let private liveScriptFrom (servedBy : string) =
+  $"<script>(function(){{var s=new EventSource('/__live?from={servedBy}');s.onmessage=function(){{location.reload()}};s.onerror=function(){{s.close();setTimeout(function(){{location.reload()}},1500)}}}})()</script>"
 
 /// The router hash a live routing currently hands out, if any.
 let private currentRouterHash
@@ -418,7 +421,13 @@ let private serveLiveEvents
         do! ctx.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length)
         do! ctx.Response.OutputStream.FlushAsync()
       }
-    let! startedOn = currentRouterHash serverState invokerAccess routing
+    // The version the page was served from, when it said (`?from=<hash>`); else the one
+    // current as this stream opens.
+    let! startedOn =
+      match ctx.Request.QueryString["from"] with
+      | null
+      | "" -> currentRouterHash serverState invokerAccess routing
+      | from -> Task.FromResult(Some(Hash from))
     do! write ": live\n\n"
     let mutable waiting = true
     let mutable ticks = 0
@@ -444,10 +453,12 @@ let private serveLiveEvents
 /// failed is exactly the one an edit is about to fix, and a tab stuck on a plain-text error
 /// with no listener would not see the fix.
 let private withLiveScript
+  (servedBy : string)
   (status : int)
   (headers : List<string * string>)
   (body : byte[])
   : List<string * string> * byte[] =
+  let liveScript = liveScriptFrom servedBy
   let contentType =
     headers
     |> List.tryFind (fun (k, _) -> String.equalsCaseInsensitive k "Content-Type")
@@ -567,7 +578,15 @@ let private handleRequest
 
             let respHeaders, body =
               if dev && not alreadyEncoded then
-                withLiveScript response.statusCode respHeaders response.body
+                // The version this page was served from: what its listener compares against.
+                let servedBy =
+                  match resolved with
+                  | Ok(_, handler) ->
+                    match rootOf handler with
+                    | [ Hash h ] -> h
+                    | _ -> ""
+                  | Error _ -> ""
+                withLiveScript servedBy response.statusCode respHeaders response.body
               else
                 respHeaders, response.body
 

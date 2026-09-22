@@ -944,6 +944,60 @@ let private aFixedCalleeIsNotAdoptedThroughItsBrokenDependent =
         | other -> failtest $"expected a diagnostic, got {other}"
       })
 
+/// The `--dev` stream: a page's listener says which version served it, and an edit that lands
+/// after the page was served (even before the stream opened) is reported to it.
+let private devStreamReportsAnEditAfterTheServe =
+  cliTest
+    "a serve --dev page is told to reload for an edit made after it was served"
+    (fun target ->
+      task {
+        let state = executionState target
+        let author = author target
+        do! author "Tests.LiveStream.page" "(): String = \"one\""
+        do!
+          author
+            "Tests.LiveStream.router"
+            "(req: Stdlib.Http.Request): Stdlib.Http.Response = Stdlib.Http.responseWithHtml (Tests.LiveStream.page ()) 200"
+        do!
+          withLiveServer
+            state
+            "Darklang.SCM.Branch.mainBranchId"
+            (locSource [ "LiveStream" ] "router")
+            true
+            (fun port ->
+              task {
+                use client = new System.Net.Http.HttpClient()
+                let! page = client.GetStringAsync($"http://localhost:{port}/")
+                // The page carries its own version, so the edit below is reported even though it
+                // lands before the stream opens.
+                Expect.stringContains
+                  page
+                  "/__live?from="
+                  "the listener says which version"
+                let from =
+                  let marker = "/__live?from="
+                  let start = page.IndexOf marker + marker.Length
+                  page.Substring(start, page.IndexOf("'", start) - start)
+                do! author "Tests.LiveStream.page" "(): String = \"two\""
+                use cts = new CancellationTokenSource(20_000)
+                let! stream =
+                  client.GetStreamAsync(
+                    $"http://localhost:{port}/__live?from={from}",
+                    cts.Token
+                  )
+                use reader = new System.IO.StreamReader(stream)
+                let mutable said = ""
+                while said = "" && not cts.IsCancellationRequested do
+                  let! line = reader.ReadLineAsync()
+                  if line <> null && line.StartsWith "data:" then said <- line
+                Expect.equal
+                  said
+                  "data: reload"
+                  "the stream told the page to reload"
+              })
+      })
+
+
 /// Under `--dev`, a handler that fails at run time answers a page that carries the reload
 /// listener, so the tab recovers when the edit that fixes it lands.
 let private devErrorPageCarriesTheListener =
@@ -1289,6 +1343,7 @@ let tests : List<Test> =
           serveFollowsEditsOnABranch
           aFixedCalleeIsNotAdoptedThroughItsBrokenDependent
           devErrorPageCarriesTheListener
+          devStreamReportsAnEditAfterTheServe
           liveValuesReplayTheLastCall
           observeAndShow ]
     ) ]
