@@ -1,7 +1,7 @@
 module Darklang.Stdlib.Int
 
 // `Int` is the default, arbitrary-precision integer (a bare literal like `1`).
-// The polymorphic operators (`+`, `-`, `<`, ...) work on it directly; this
+// The operators (`+`, `-`, `<`, ...) work on it directly, through its trait implementations below; this
 // module provides the same operations as named functions, plus parse/stringify
 // and conversions to/from the fixed-width integer types.
 //

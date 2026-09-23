@@ -310,6 +310,37 @@ let private fnHashTests =
         Expect.notEqual h1 h2 "method name is meaning"
         Expect.notEqual h1 h3 "trait identity is meaning"
         Expect.equal h1 (h [ "x" ] (call "trait-show" "show")) "deterministic"
+      }
+
+      // The implementation a call resolved to is part of what the call MEANS, so it is part of
+      // the hash: that is what makes a newer implementation an ordinary version move that
+      // propagation can offer, rather than something that changes the same item's behaviour.
+      test "the implementation a call pins is part of its hash" {
+        let call (implFn : Option<string>) : PT.Expr =
+          let pinned =
+            implFn
+            |> Option.map (fun hash ->
+              let loc : PT.PackageLocation =
+                { owner = "Tests"; modules = [ "Show" ]; name = "show" }
+              ({ name = PT.Hash hash; location = Some loc }
+              : PT.ResolvedName<PT.FQFnName.Package>))
+          let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
+            PT.NameResolution.ok (
+              PT.FQFnName.TraitMethod(PT.Hash "trait-show", "show", pinned)
+            )
+          PT.EApply(gid (), PT.EFnName(gid (), nr), [], NEList.singleton (eVar "x"))
+        let unpinned = h [ "x" ] (call None)
+        let onFirst = h [ "x" ] (call (Some "impl-fn-1"))
+        let onSecond = h [ "x" ] (call (Some "impl-fn-2"))
+        Expect.notEqual unpinned onFirst "resolving the call changes what it is"
+        Expect.notEqual
+          onFirst
+          onSecond
+          "and so does resolving it to another implementation"
+        Expect.equal
+          onFirst
+          (h [ "x" ] (call (Some "impl-fn-1")))
+          "the same implementation hashes the same"
       } ]
 
 

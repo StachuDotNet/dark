@@ -136,23 +136,25 @@ module RuntimeError =
   /// suffix pointing the user at the right conversion function. Empty
   /// string otherwise (Unknown, Unit, String, collection/custom types).
   let toStringHint (vt: LanguageTools.RuntimeTypes.ValueType) : String =
+    // One hint for every type that has a ToString implementation, which since traits is
+    // every builtin type: `Stdlib.toString` is the fn to reach for, whatever the type is.
     match vt with
-    | Known KTInt8 -> ". Try wrapping it with `Stdlib.Int8.toString`."
-    | Known KTUInt8 -> ". Try wrapping it with `Stdlib.UInt8.toString`."
-    | Known KTInt16 -> ". Try wrapping it with `Stdlib.Int16.toString`."
-    | Known KTUInt16 -> ". Try wrapping it with `Stdlib.UInt16.toString`."
-    | Known KTInt32 -> ". Try wrapping it with `Stdlib.Int32.toString`."
-    | Known KTUInt32 -> ". Try wrapping it with `Stdlib.UInt32.toString`."
-    | Known KTInt64 -> ". Try wrapping it with `Stdlib.Int64.toString`."
-    | Known KTUInt64 -> ". Try wrapping it with `Stdlib.UInt64.toString`."
-    | Known KTInt128 -> ". Try wrapping it with `Stdlib.Int128.toString`."
-    | Known KTUInt128 -> ". Try wrapping it with `Stdlib.UInt128.toString`."
-    | Known KTInt -> ". Try wrapping it with `Stdlib.Int.toString`."
-    | Known KTFloat -> ". Try wrapping it with `Stdlib.Float.toString`."
-    | Known KTBool -> ". Try wrapping it with `Stdlib.Bool.toString`."
-    | Known KTChar -> ". Try wrapping it with `Stdlib.Char.toString`."
-    | Known KTDateTime -> ". Try wrapping it with `Stdlib.DateTime.toString`."
-    | Known KTUuid -> ". Try wrapping it with `Stdlib.Uuid.toString`."
+    | Known KTInt8
+    | Known KTUInt8
+    | Known KTInt16
+    | Known KTUInt16
+    | Known KTInt32
+    | Known KTUInt32
+    | Known KTInt64
+    | Known KTUInt64
+    | Known KTInt128
+    | Known KTUInt128
+    | Known KTInt
+    | Known KTFloat
+    | Known KTBool
+    | Known KTChar
+    | Known KTDateTime
+    | Known KTUuid -> ". Try wrapping it with `Stdlib.toString`."
     | _ -> ""
 
 

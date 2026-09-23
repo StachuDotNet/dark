@@ -87,7 +87,10 @@ let displayWidth (s: String) : Int =
 
 
 /// Concatenates the two strings by appending <param s2> to <param s1> and returns the joined string.
-let append (s1: String) (s2: String) : String = $"{s1}{s2}"
+///
+/// Names the builtin rather than interpolating, because this is what `"a" + "b"` runs through
+/// (`impl Add for String` below) and the interpreter answers the builtin without a call.
+let append (s1: String) (s2: String) : String = Builtin.stringAppend s1 s2
 
 
 /// Concatenates the two strings by prepending <param s2> to <param s1> and

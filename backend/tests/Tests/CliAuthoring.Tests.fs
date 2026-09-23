@@ -374,7 +374,40 @@ let traitsAreAuthoredListedAndDisambiguated =
             "tr"
             "an edit to another method of the implementation does not reach this call"
 
-        // Deprecating one takes it out of dispatch and clears the finding.
+        // An edit to the implementation this caller DOES use is an ordinary update: the caller
+        // stays on what it resolved to, and `constraints` offers the new version.
+        do!
+          run
+            state
+            [ "impl"
+              "Tests.Tr"
+              "Describe for Point =\n  let describe (p: Point) : String = \"tr2\"\n  let short (p: Point) : String = \"t\"" ]
+        do!
+          evals
+            state
+            "Tests.Tr.callsIt ()"
+            "tr"
+            "the caller stays on the version it was written against"
+        do!
+          shows
+            state
+            [ "constraints" ]
+            "Tests.Tr.callsIt"
+            "and the newer implementation shows up as an outdated usage"
+        // ...which `follow` catches up, which is the whole point of pinning to a fn: a newer
+        // implementation is offered through the machinery that already exists, not forced.
+        do!
+          run
+            state
+            [ "propagate"; "follow"; "Tests.Tr.callsIt"; "catch up on the impl" ]
+        do!
+          evals
+            state
+            "Tests.Tr.callsIt ()"
+            "tr2"
+            "and following moves the caller onto the newer implementation"
+
+        // Deprecating the one that RUNS leaves the other, which then runs.
         do!
           run
             state
