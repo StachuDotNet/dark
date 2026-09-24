@@ -340,3 +340,15 @@ against 9.74 MB, both inside the 3% tolerance, so the gate passes and the budget
 Do not "fix" this by dropping the location from the stored reference: it is what makes the pin an
 ordinary dependency edge, which is what lets propagation offer a newer implementation and `pin`
 refuse it.
+
+## 2026-09-24, the sweep
+
+Making the bitwise operators traits, and giving `Ord` implementations to String, Char and
+DateTime, added about ninety package items that load at startup. The reference workload reads
+9,641,704 bytes in debug against a 9,460,680 budget: 1.9% over, inside the 3% tolerance, with
+1.05% of headroom left before the gate fails. Published is 9.8 MB against 9.74.
+
+That is a load-time cost, not a call-time one: `traitDispatches` still reads 0 on this workload,
+because every call the workload makes was resolved when it was saved. Anyone adding another
+handful of stdlib implementations should expect to re-pin the debug budget rather than to have
+made the interpreter slower.
