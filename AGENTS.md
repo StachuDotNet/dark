@@ -348,6 +348,14 @@ Dark namespace. Write `Stdlib.List.map` or `Darklang.Stdlib.List.map`, never
 `ProgramTypes.Reference.PackageFn hash` works, `ProgramTypes.PackageFn hash` doesn't. In a
 match arm the bare case is fine, since the matched value's type resolves it.
 
+**A `DEnum` carries TWO type names, and the first one lies.** `DEnum(sourceTypeName,
+resolvedTypeName, ...)`: the first is the name the program wrote, the second is what it
+resolved to after aliases. A value built through an alias (`type Option<'t> =
+Stdlib.Option.Option<'t>`, which `backend/testfiles/` declares) puts the ALIAS in the first
+slot, so F# that asks "is this an Option?" by comparing the first name answers no. Compare
+the second. It reproduces only where an alias is in play, so `eval` with a fully qualified
+name says the code is fine while the testfile harness says it is not.
+
 **Cross-module pipes.** Dark parses pipes greedily, so
 `Stdlib.List.length xs |> Stdlib.Int.toString` raises "Pipe: LongIdent". Parenthesize the
 left side.
@@ -396,6 +404,16 @@ be handed a `Context` the callee no longer recognises: `FnParameterNotExpectedTy
 parameter whose type you never touched. Confusingly it reproduces only where the package set is
 rebuilt (the LibExecution testfile harness) and not under `eval`. Call the function instead of
 reaching for the `val` when the result is a custom type.
+
+**`Stdlib.List.push` puts the element at the FRONT.** `pushBack` is the one that appends.
+A fold that builds a list with `push` comes out reversed, and nothing says so until the
+output is read by a person (a generated record's fields in reverse order). Same family:
+`Stdlib.List.unique` sorts, so it destroys first-seen order; dedupe by hand when order
+is the point.
+
+**`Int` literals are bare, `Int64` literals take `L`.** `Stdlib.String.slice s 0 8` is
+right; `slice s 0L 8L` fails at the call with "expects Int, but got Int64". Most stdlib
+fns over positions and counts take `Int`.
 
 **Record update takes no type tag.** `{ state with field = v }` is right.
 `MyType { state with field = v }` looks like F# but parses as function application.
