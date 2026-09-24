@@ -85,6 +85,24 @@ module JsonPath =
 
 
 
+/// Whether this value is a `Stdlib.Option.Option`. JSON carries one as the bare value
+/// or `null`, not as a tagged case: see the note in `serialize`.
+///
+/// The SECOND name, not the first: a `DEnum` carries the name as the program wrote it
+/// and the name it resolved to, and a value built through an alias
+/// (`type Option<'t> = Stdlib.Option.Option<'t>`) writes the alias in the first slot.
+let private isOptionEnum (dv : Dval) : bool =
+  match dv with
+  | DEnum(_, resolvedTypeName, _, _, _) ->
+    resolvedTypeName = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.option ())
+  | _ -> false
+
+let private isNoneValue (dv : Dval) : bool =
+  match dv with
+  | DEnum(_, _, _, "None", []) -> isOptionEnum dv
+  | _ -> false
+
+
 let rec serialize (threadID : ThreadID) (w : Utf8JsonWriter) (dv : Dval) : unit =
   let r = serialize threadID w
   match dv with
@@ -136,6 +154,16 @@ let rec serialize (threadID : ThreadID) (w : Utf8JsonWriter) (dv : Dval) : unit 
         | _ -> (RTE.Jsons.CannotSerializeValue dv) |> RTE.Json |> raiseRTE threadID))
 
   // Enums and Records
+  //
+  // `Option` is the one enum written as the world writes it rather than as Dark spells
+  // it: `Some v` is `v` and `None` is `null`, because every other system says a value
+  // is absent by leaving it out or writing null, and a Dark program that talks to one
+  // should not have to hand-write a codec to be understood. Inside a record a `None`
+  // field is left out entirely, which is what an API expects and what `parse` reads
+  // back as `None`.
+  | DEnum(_, _, _, "Some", [ inner ]) when isOptionEnum dv -> r inner
+  | DEnum(_, _, _, "None", []) when isOptionEnum dv -> w.WriteNullValue()
+
   | DEnum(_, _, _, caseName, fields) ->
     w.writeObject (fun () ->
       w.WritePropertyName caseName
@@ -146,8 +174,11 @@ let rec serialize (threadID : ThreadID) (w : Utf8JsonWriter) (dv : Dval) : unit 
     w.writeObject (fun () ->
       fields
       |> Map.iter (fun fieldName dval ->
-        w.WritePropertyName fieldName
-        r dval))
+        if isNoneValue dval then
+          ()
+        else
+          w.WritePropertyName fieldName
+          r dval))
 
   // Not supported
   | DDB _
@@ -569,6 +600,22 @@ let parse
       |> Ply.List.flatten
       |> Ply.map (TypeChecker.DvalCreator.dict threadID VT.string VT.unknownTODO)
 
+    // `Option` is read the way the world writes it: `null` (or an absent record field,
+    // below) is `None`, anything else is `Some` of that value. The tagged form Dark used
+    // to write (`{"Some":[1]}`) is no longer read; see the note in `serialize`.
+    | TCustomType({ resolved = Ok typeName }, [ inner ]), jsonValueKind when
+      typeName = Dval.optionType ()
+      ->
+      uply {
+        let! innerVT = TypeReference.toVT types tst inner
+        let optionType = Dval.optionType ()
+        if jsonValueKind = JsonValueKind.Null then
+          return DEnum(optionType, optionType, [ innerVT ], "None", [])
+        else
+          let! converted = convert inner pathSoFar j
+          return DEnum(optionType, optionType, [ innerVT ], "Some", [ converted ])
+      }
+
     | TCustomType({ resolved = Ok typeName }, typeArgs), jsonValueKind ->
       uply {
         let! typeArgsVT =
@@ -685,29 +732,48 @@ let parse
               |> NEList.toList
               |> List.map (fun def ->
                 uply {
-                  let correspondingValue =
-                    let matchingFieldDef =
-                      // TODO: allow Option<>al fields to be omitted
-                      enumerated |> List.filter (fun v -> v.Name = def.name)
+                  let typ = Types.substitute decl.typeParams typeArgs def.typ
 
-                    match matchingFieldDef with
-                    | [] ->
+                  let isOptional =
+                    match typ with
+                    | TCustomType({ resolved = Ok n }, [ _ ]) ->
+                      n = Dval.optionType ()
+                    | _ -> false
+
+                  let matchingFieldDef =
+                    enumerated |> List.filter (fun v -> v.Name = def.name)
+
+                  match matchingFieldDef with
+                  // An absent `Option` field is `None`: that is how every other system
+                  // says "not set", and a record that round-trips through `serialize`
+                  // has its `None` fields left out.
+                  | [] when isOptional ->
+                    let! innerVT =
+                      match typ with
+                      | TCustomType(_, [ inner ]) ->
+                        TypeReference.toVT types tst inner
+                      | _ -> Ply VT.unknown
+                    let optionType = Dval.optionType ()
+                    return
+                      (def.name,
+                       DEnum(optionType, optionType, [ innerVT ], "None", []))
+                  | [] ->
+                    return
                       raiseError (
                         ParseError.RecordMissingField(def.name, pathSoFar)
                       )
-                    | [ matchingFieldDef ] -> matchingFieldDef.Value
-                    | _ ->
+                  | [ matchingFieldDef ] ->
+                    let! converted =
+                      convert
+                        typ
+                        (JsonPath.Part.Field def.name :: pathSoFar)
+                        matchingFieldDef.Value
+                    return (def.name, converted)
+                  | _ ->
+                    return
                       raiseError (
                         ParseError.RecordDuplicateField(def.name, pathSoFar)
                       )
-
-                  let typ = Types.substitute decl.typeParams typeArgs def.typ
-                  let! converted =
-                    convert
-                      typ
-                      (JsonPath.Part.Field def.name :: pathSoFar)
-                      correspondingValue
-                  return (def.name, converted)
                 })
               |> Ply.List.flatten
 
