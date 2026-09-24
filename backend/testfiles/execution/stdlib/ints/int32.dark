@@ -2,33 +2,33 @@ Stdlib.Int32.absoluteValue -5l = 5l
 Stdlib.Int32.absoluteValue 5l = 5l
 Stdlib.Int32.absoluteValue (-2147483648l) = -2147483648l
 
-Stdlib.Int32.max 5l 6l = 6l
-Stdlib.Int32.max 10l 1l = 10l
-Stdlib.Int32.max -5l 6l = 6l
-Stdlib.Int32.max -100l -20000l = -100l
-Stdlib.Int32.max 250l -26l = 250l
+Stdlib.max 5l 6l = 6l
+Stdlib.max 10l 1l = 10l
+Stdlib.max -5l 6l = 6l
+Stdlib.max -100l -20000l = -100l
+Stdlib.max 250l -26l = 250l
 
-Stdlib.Int32.min 5l 6l = 5l
-Stdlib.Int32.min 50l -10l = -10l
-Stdlib.Int32.min -5l 6l = -5l
-Stdlib.Int32.min -100l -20000l = -20000l
-Stdlib.Int32.min 250l -26l = -26l
+Stdlib.min 5l 6l = 5l
+Stdlib.min 50l -10l = -10l
+Stdlib.min -5l 6l = -5l
+Stdlib.min -100l -20000l = -20000l
+Stdlib.min 250l -26l = -26l
 
-Stdlib.Int32.clamp -5l -2l 5l = -2l // in bounds
-Stdlib.Int32.clamp -3l -2l 1l = -2l // below min
-Stdlib.Int32.clamp -5l 1l 1l = 1l // at limit
-Stdlib.Int32.clamp 1l 2l 1l = 1l // above max
-Stdlib.Int32.clamp 3l 0l 2l = 2l //  below in
-Stdlib.Int32.clamp -100l 0l 0l = 0l
-Stdlib.Int32.clamp 100l 0l 0l = 0l
-Stdlib.Int32.clamp -100l 0l -1l = -1l
-Stdlib.Int32.clamp 100l 0l -1l = 0l
-Stdlib.Int32.clamp -100l -1l 0l = -1l
-Stdlib.Int32.clamp 100l -1l 0l = 0l
-Stdlib.Int32.clamp -100l 1l 0l = 0l
-Stdlib.Int32.clamp 100l 1l 0l = 1l
-Stdlib.Int32.clamp -2147483647l 250l -26l = -26l
-Stdlib.Int32.clamp 2147483647l 250l -26l = 250l
+Stdlib.clamp -5l -2l 5l = -2l // in bounds
+Stdlib.clamp -3l -2l 1l = -2l // below min
+Stdlib.clamp -5l 1l 1l = 1l // at limit
+Stdlib.clamp 1l 2l 1l = 1l // above max
+Stdlib.clamp 3l 0l 2l = 2l //  below in
+Stdlib.clamp -100l 0l 0l = 0l
+Stdlib.clamp 100l 0l 0l = 0l
+Stdlib.clamp -100l 0l -1l = -1l
+Stdlib.clamp 100l 0l -1l = 0l
+Stdlib.clamp -100l -1l 0l = -1l
+Stdlib.clamp 100l -1l 0l = 0l
+Stdlib.clamp -100l 1l 0l = 0l
+Stdlib.clamp 100l 1l 0l = 1l
+Stdlib.clamp -2147483647l 250l -26l = -26l
+Stdlib.clamp 2147483647l 250l -26l = 250l
 
 Stdlib.Int32.negate -5l = 5l
 Stdlib.Int32.negate 5l = -5l
@@ -158,7 +158,7 @@ Stdlib.Int32.divide (-2147483648l) -1l = -2147483648l
  |> Stdlib.List.unique) = [ 0l, 1l, 2l ]
 
 
-Stdlib.Int32.sum [ 1l, 2l ] = 3l
+Stdlib.sum 0l [ 1l, 2l ] = 3l
 
 // ok
 Stdlib.Int32.parse "0" = Stdlib.Result.Result.Ok 0l

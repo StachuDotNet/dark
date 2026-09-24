@@ -147,7 +147,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine
         (Stdlib.Cli.UI.Colors.error
           ($"Error: '{itemType}' is not a valid item kind. "
-           ++ "Expected fn, type, or value."))
+           + "Expected fn, type, or value."))
 
     state
 

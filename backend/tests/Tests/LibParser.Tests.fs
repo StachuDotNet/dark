@@ -1648,7 +1648,7 @@ let private fuzzTests =
     [ "let f (x: Int64) : Int64 =\n  let y = x + 1L\n  y * 2L"
       "module A.B\ntype T = { a: Int64; b: List<String> }\nlet v = T { a = 1L; b = [] }"
       "match xs with\n| [] -> 0L\n| h :: t -> h + (sum t)\n| _ -> $\"n {h} m\""
-      "[1L, 2L] |> Stdlib.List.map (fun x -> x * 2L) |> (++) \"s\""
+      "[1L, 2L] |> Stdlib.List.map (fun x -> x * 2L) |> (+) \"s\""
       "type E = | A of Int64 * String | B\nlet g () : E = A(1L, \"x\")" ]
   testList
     "fuzz"

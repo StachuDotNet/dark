@@ -20,9 +20,9 @@ module Shapes =
 
   impl<'a: Show> Show for List<'a> =
     let show (xs: List<'a>) : String =
-      "[" ++ (xs |> Stdlib.List.map (fun x -> Show.show x) |> Stdlib.String.join ", ") ++ "]"
+      "[" + (xs |> Stdlib.List.map (fun x -> Show.show x) |> Stdlib.String.join ", ") + "]"
 
-  let display<'a: Show> (v: 'a) : String = "value: " ++ Show.show v
+  let display<'a: Show> (v: 'a) : String = "value: " + Show.show v
 
   let neverCalls<'a: Show> (v: 'a) : String = if false then Show.show v else "never"
 
@@ -173,5 +173,9 @@ module Rendering =
   Stdlib.toString 2.5 = "2.5"
   (7).toString = "7"
   Stdlib.max 3L 9L = 9L
-  Stdlib.min "a" "b" = error "No implementation of Darklang.Stdlib.Ord for String. Write `impl Ord for <type> = ...`, or see `dark impls Ord`"
+  // String, Char and DateTime implement Ord now, so the generics cover them too
+  Stdlib.min "apple" "banana" = "apple"
+  Stdlib.max 'a' 'z' = 'z'
+  // A type with no Ord implementation is what the bound refuses
+  Stdlib.min true false = error "No implementation of Darklang.Stdlib.Ord for Bool. Write `impl Ord for <type> = ...`, or see `dark impls Ord`"
   Stdlib.clamp 15 20 10 = 15

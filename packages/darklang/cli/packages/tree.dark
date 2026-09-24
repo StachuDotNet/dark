@@ -268,16 +268,16 @@ let displayTree
       let (name, entityType, hash) = entry
       let isLast = index == (entitiesCount - 1)
       let treeBranch = if isLast then "└── " else "├── "
-      let fullPrefix = prefix ++ treeBranch
+      let fullPrefix = prefix + treeBranch
 
-      let icon = Display.getIcon entityType ++ " "
+      let icon = Display.getIcon entityType + " "
       let mark =
         if entityType == EntityType.Module then ""
         else Query.deprecationMarker depSets hash
 
       let requirements =
         if entityType == EntityType.Function then
-          "  " ++ Stdlib.Cli.UI.Colors.dimText (Permissions.Command.requirementBadge hash)
+          "  " + Stdlib.Cli.UI.Colors.dimText (Permissions.Command.requirementBadge hash)
         else
           ""
 
@@ -285,7 +285,7 @@ let displayTree
 
       // Recursively display submodules
       if entityType == EntityType.Module && remainingDepth > 1 then
-        let newPrefix = prefix ++ (if isLast then "    " else "│   ")
+        let newPrefix = prefix + (if isLast then "    " else "│   ")
         let newModulePath = Stdlib.List.append modulePath [name]
         let newLocation = PackageLocation.Module newModulePath
         displayTree

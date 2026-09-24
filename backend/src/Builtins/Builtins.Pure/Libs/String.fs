@@ -98,6 +98,25 @@ let fns () : List<BuiltInFn> =
       callEffects = Set.empty
       deprecated = NotDeprecated }
 
+    { name = fn "stringCompare" 0
+      typeParams = []
+      parameters = [ Param.make "a" TString ""; Param.make "b" TString "" ]
+      returnType = TInt64
+      description =
+        "Compares two strings by their code units: negative when <param a> sorts first, zero when they are equal, positive when <param b> sorts first"
+      fn =
+        (function
+        | _, _, _, [| DString a; DString b |] ->
+          // Ordinal, not culture-aware: the same two strings have to order the same way on
+          // every machine, which a culture-aware comparison does not promise.
+          Ply(DInt64(int64 (System.String.CompareOrdinal(a, b))))
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Pure
+      callEffects = Set.empty
+      deprecated = NotDeprecated }
+
+
     { name = fn "stringToList" 0
       typeParams = []
       parameters = [ Param.make "s" TString "" ]

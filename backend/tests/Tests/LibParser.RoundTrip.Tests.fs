@@ -1847,8 +1847,8 @@ let exprs =
       false
     t
       "lambda with notable body 2"
-      "fun (str1, str2) -> str1 ++ str2"
-      "(fun (str1, str2) -> str1 ++ str2)"
+      "fun (str1, str2) -> str1 + str2"
+      "(fun (str1, str2) -> str1 + str2)"
       []
       []
       []
@@ -2407,7 +2407,7 @@ else if c > d then c else if e > f then e else if g > h then g else h"""
     t "fn call, ==" "1L == 2L" "1L == 2L" [] [] [] false
     t "fn call, !=" "1L != 2L" "1L != 2L" [] [] [] false
     t "fn call, ^" "1L ^ 2L" "1L ^ 2L" [] [] [] false
-    t "fn call, ++" "strVar ++ \"str\"" "strVar ++ \"str\"" [] [] [] false
+    t "fn call, +" "strVar + \"str\"" "strVar + \"str\"" [] [] [] false
     t "fn call, &&" "true && false" "true && false" [] [] [] false
     t "fn call, ||" "true || false" "true || false" [] [] [] false
     t "fn call, and short" "and true false" "and true false" [] [] [] true
@@ -2670,8 +2670,8 @@ let valueDeclarations =
 let functionDeclarations =
   [ t
       "function doc comment"
-      "/// Greets a user\nlet greet (name: String): String = \"Hello \" ++ name"
-      "/// Greets a user\nlet greet (name: String): String =\n  \"Hello \" ++ name"
+      "/// Greets a user\nlet greet (name: String): String = \"Hello \" + name"
+      "/// Greets a user\nlet greet (name: String): String =\n  \"Hello \" + name"
       []
       []
       []
@@ -2783,8 +2783,8 @@ let functionDeclarations =
       false
     t
       "fn declaration with indented body"
-      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting ++ name"
-      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting ++ name"
+      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting + name"
+      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting + name"
       []
       []
       []

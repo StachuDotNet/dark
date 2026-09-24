@@ -166,7 +166,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       else
         // Resolve a synthetic item path below the requested module so the
         // module path follows the same rules as `fn`, `type`, and `val`.
-        let locationInput = modulePath ++ ".__module__"
+        let locationInput = modulePath + ".__module__"
         match
           Location.parseRelativeTo
             state.packageData.currentLocation

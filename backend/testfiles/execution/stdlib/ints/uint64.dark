@@ -1,14 +1,14 @@
-Stdlib.UInt64.max 5UL 6UL = 6UL
-Stdlib.UInt64.max 10UL 1UL = 10UL
+Stdlib.max 5UL 6UL = 6UL
+Stdlib.max 10UL 1UL = 10UL
 
-Stdlib.UInt64.min 5UL 6UL = 5UL
-Stdlib.UInt64.min 10UL 10UL = 10UL
-Stdlib.UInt64.min 18446744073709551615UL 0UL = 0UL
+Stdlib.min 5UL 6UL = 5UL
+Stdlib.min 10UL 10UL = 10UL
+Stdlib.min 18446744073709551615UL 0UL = 0UL
 
-Stdlib.UInt64.clamp 1UL 2UL 1UL = 1UL
-Stdlib.UInt64.clamp 3UL 0UL 2UL = 2UL
-Stdlib.UInt64.clamp 100UL 0UL 0UL = 0UL
-Stdlib.UInt64.clamp 100UL 1UL 0UL = 1UL
+Stdlib.clamp 1UL 2UL 1UL = 1UL
+Stdlib.clamp 3UL 0UL 2UL = 2UL
+Stdlib.clamp 100UL 0UL 0UL = 0UL
+Stdlib.clamp 100UL 1UL 0UL = 1UL
 
 Stdlib.UInt64.mod 15UL 5UL = 0UL
 Stdlib.UInt64.mod 15UL 6UL = 3UL
@@ -111,7 +111,7 @@ Stdlib.UInt64.divide 1UL 0UL = error="Cannot divide by 0"
  |> Stdlib.List.map (fun x -> Stdlib.UInt64.random 0UL 2UL)
  |> Stdlib.List.unique) = [ 0UL, 1UL, 2UL ]
 
-Stdlib.UInt64.sum [ 1UL, 2UL ] = 3UL
+Stdlib.sum 0UL [ 1UL, 2UL ] = 3UL
 
 // parses OK
 Stdlib.UInt64.parse "0" = Stdlib.Result.Result.Ok 0UL

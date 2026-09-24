@@ -65,7 +65,6 @@ let private infixOf (t : Token) : WT.Infix option =
   | TStar -> Some(WT.InfixFnCall WT.ArithmeticMultiply)
   | TSlash -> Some(WT.InfixFnCall WT.ArithmeticDivide)
   | TPercent -> Some(WT.InfixFnCall WT.ArithmeticModulo)
-  | TPlusPlus -> Some(WT.InfixFnCall WT.StringConcat)
   | TEqEq -> Some(WT.InfixFnCall WT.ComparisonEquals)
   | TNeq -> Some(WT.InfixFnCall WT.ComparisonNotEquals)
   | TLt -> Some(WT.InfixFnCall WT.ComparisonLessThan)
@@ -1587,8 +1586,7 @@ and infixBindingPower (t : Token) : (int * bool) option =
   | TShr -> Some(7, false)
   | TAt -> Some(8, true)
   | TPlus
-  | TMinus
-  | TPlusPlus -> Some(9, false)
+  | TMinus -> Some(9, false)
   | TStar
   | TSlash
   | TPercent -> Some(10, false)
@@ -2228,6 +2226,16 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       DiagnosticCode.unexpected
       i
       $"'{txt state i}' is reserved but not supported by the expression grammar"
+    (WT.EError(rng state i), i + 1)
+  // `++` was string concatenation before `String` had an `Add` implementation. The token is
+  // still lexed so that this says what to write instead, rather than `+` `+` producing a
+  // baffling error at the second one.
+  | TPlusPlus ->
+    err
+      state
+      DiagnosticCode.unexpected
+      i
+      "'++' is no longer an operator; `+` concatenates Strings"
     (WT.EError(rng state i), i + 1)
   | _ ->
     // `::` parses in PATTERNS only; the expression-side way to prepend is `Stdlib.List.push` (or a

@@ -106,44 +106,6 @@ let sqrt (a: Int32) : Float = Builtin.int32Sqrt a
 let toFloat (a: Int32) : Float = Builtin.int32ToFloat a
 
 
-/// Returns the sum of all the ints in the list
-let sum (lst: List<Int32>) : Int32 =
-  Stdlib.List.fold lst 0l (fun acc x -> add acc x)
-
-
-/// Returns the higher of <param a> and <param b>
-let max (a: Int32) (b: Int32) : Int32 =
-  if greaterThan a b then a else b
-
-
-/// Returns the lower of <param a> and <param b>
-let min (a: Int32) (b: Int32) : Int32 =
-  if lessThan a b then a else b
-
-
-/// If <param value> is within the range given by <param limitA> and <param
-/// limitB>, returns <param value>.
-/// If <param value> is outside the range, returns <param limitA> or <param
-/// limitB>, whichever is closer to <param value>.
-/// <param limitA> and <param limitB> can be provided in any order.
-let clamp (value: Int32) (limitA: Int32) (limitB: Int32) : Int32 =
-  let min =
-    if lessThan limitA limitB then
-      limitA
-    else
-      limitB
-
-  let max =
-    if greaterThan limitA limitB then
-      limitA
-    else
-      limitB
-
-  if lessThan value min then min
-  else if greaterThan value max then max
-  else value
-
-
 /// Parses a <type String> into an <type Int32>, returning {{Ok}} with the
 /// parsed value on success, or {{Error}} with a <type ParseError> ({{BadFormat}}
 /// if the string isn't a valid integer, {{OutOfRange}} if it's outside the
@@ -219,7 +181,6 @@ let shiftLeft (a: Int32) (b: Int32) : Int32 = Builtin.int32ShiftLeft a b
 
 /// Bitwise right shift of an <type Int32> value
 let shiftRight (a: Int32) (b: Int32) : Int32 = Builtin.int32ShiftRight a b
-
 
 
 // The operator traits, over the fns above.

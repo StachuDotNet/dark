@@ -55,7 +55,7 @@ let createImplInline
   // Resolve a synthetic item path below the requested module, so the module
   // path follows the same rules as `fn`, `type` and `module`. `.` means here.
   let locationInput =
-    if modulePath == "." then "__impl__" else modulePath ++ ".__impl__"
+    if modulePath == "." then "__impl__" else modulePath + ".__impl__"
 
   match Location.parseRelativeTo currentLocation locationInput with
   | Ok baseLocation ->

@@ -18,7 +18,7 @@ let content () : String =
   Each is a trait: `+` is `Stdlib.Add`, then Sub, Mul, Div, Mod, Pow, and `-x`
   is `Neg`. Both operands must be the same type: `1 + 2`, `1.0 + 2.0` and
   `1y * 2y` all work; `1L + 2.0` is "Cannot perform numeric operation on Int64
-  and Float". `"a" + "b"` is `"ab"` (String implements Add; `++` still works).
+  and Float". `"a" + "b"` is `"ab"`, since String implements Add.
   A type of your own joins with `impl Add for Vec = ...`.
   `/` is integer division on ints, float division on floats.
   `%` works on all numeric types (the modulus must be > 0).
@@ -44,7 +44,7 @@ let content () : String =
     | A -> (a | b)
 
 ## String
-  ++   concat
+  +    concat
   NO @ operator
 
 ## List
@@ -64,7 +64,7 @@ let content () : String =
     &
     << >>
     @
-    + - ++
+    + -
     * / %
     **
     f a b           (application, tightest)

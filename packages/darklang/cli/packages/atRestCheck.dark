@@ -31,7 +31,7 @@ let issueLine
     LanguageTools.AtRestTypeChecker.issueToStringWith
       (customTypeName branchId)
       issue
-  "  - [" ++ code ++ "] " ++ message
+  "  - [" + code + "] " + message
 
 let sameOrMirrored
   (first: LanguageTools.AtRestTypeChecker.Issue)
@@ -75,7 +75,7 @@ let issueLines
   |> Stdlib.List.map (fun (line, occurrences) ->
     let count = Stdlib.List.length occurrences
     if count == 1 then line
-    else line ++ " (" ++ Stdlib.Int.toString count ++ " occurrences)")
+    else line + " (" + Stdlib.Int.toString count + " occurrences)")
 
 let summary
   (report: LanguageTools.AtRestTypeChecker.Report)
@@ -102,7 +102,7 @@ let printSaveReport
       [ ""
         (Stdlib.Cli.UI.Colors.error
           ("At-rest type check failed "
-           ++ "(saved as WIP; `commit` will refuse it until fixed):")) ]
+           + "(saved as WIP; `commit` will refuse it until fixed):")) ]
       details
     |> Stdlib.printLines
   | Incomplete ->

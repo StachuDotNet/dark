@@ -95,7 +95,7 @@ module RuntimeError =
             //Builtin.debug "prevSegments" prevSegments
             match Stdlib.List.head prevSegments with
             | None -> ""
-            | Some prev -> Stdlib.String.articleFor prev ++ " "
+            | Some prev -> Stdlib.String.articleFor prev + " "
 
           | FunctionName fn -> fnName branchId fn
 
@@ -283,8 +283,8 @@ module RuntimeError =
       let nameStr = Stdlib.String.join originalName "."
 
       match err with
-      | NotFound -> [ES.String (nameStr ++ " not found")]
-      | InvalidName -> [ES.String (nameStr ++ " is not a valid name")]
+      | NotFound -> [ES.String (nameStr + " not found")]
+      | InvalidName -> [ES.String (nameStr + " is not a valid name")]
 
     | TypeNotFound name ->
       [ ES.String "Type "

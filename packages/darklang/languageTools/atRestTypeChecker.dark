@@ -220,7 +220,7 @@ let staticTypeToStringWith
   : String =
   let recurse = staticTypeToStringWith customTypeName
   let wrapped (name: String) (inner: StaticType) : String =
-    name ++ "<" ++ recurse inner ++ ">"
+    name + "<" + recurse inner + ">"
   match typ with
   | TUnit -> "Unit"
   | TBool -> "Bool"
@@ -248,26 +248,26 @@ let staticTypeToStringWith
       Stdlib.List.append
         [ recurse first, recurse second ]
         (Stdlib.List.map rest recurse)
-    "(" ++ Stdlib.String.join parts " * " ++ ")"
-  | TDict(key, value) -> "Dict<" ++ recurse key ++ ", " ++ recurse value ++ ">"
+    "(" + Stdlib.String.join parts " * " + ")"
+  | TDict(key, value) -> "Dict<" + recurse key + ", " + recurse value + ">"
   | TCustom(hash, args) ->
     let name =
       match customTypeName hash with
       | Some name -> name
-      | None -> "type #" ++ LanguageTools.ProgramTypes.hashToShort hash
+      | None -> "type #" + LanguageTools.ProgramTypes.hashToShort hash
     if Stdlib.List.isEmpty args then name
     else
       name
-      ++ "<"
-      ++ Stdlib.String.join (Stdlib.List.map args recurse) ", "
-      ++ ">"
+      + "<"
+      + Stdlib.String.join (Stdlib.List.map args recurse) ", "
+      + ">"
   | TFn(parameters, returnType) ->
     "("
-    ++ Stdlib.String.join (Stdlib.List.map parameters recurse) ", "
-    ++ ") -> "
-    ++ recurse returnType
+    + Stdlib.String.join (Stdlib.List.map parameters recurse) ", "
+    + ") -> "
+    + recurse returnType
   | TDB inner -> wrapped "DB" inner
-  | TRigidVariable name -> "'" ++ name
+  | TRigidVariable name -> "'" + name
   | TInferenceVariable _ -> "_"
 
 let staticTypeToString (typ: StaticType) : String =
@@ -391,15 +391,15 @@ let untrustedBuiltinToString (reason: UntrustedBuiltin) : String =
   match reason with
   | ResultTypeUnconstrained ->
     "its declared result contains type variables no parameter constrains, "
-    ++ "so its real result type is only known at runtime"
+    + "so its real result type is only known at runtime"
   | UnwrapArgumentUnknown ->
     "the argument's type is not statically known to be an Option or a Result"
   | OperatorNotFullyApplied ->
     "it is an operator: apply it to all its arguments, use the operator syntax, "
-    ++ "or wrap it in a lambda"
+    + "or wrap it in a lambda"
   | ExplicitTypeArgumentsRequired ->
     "its result type cannot be inferred from its value parameters, "
-    ++ "so the call has to give explicit type arguments"
+    + "so the call has to give explicit type arguments"
 
 
 /// Turn an issue's structured context into a sentence.
@@ -484,14 +484,14 @@ let contextToStringWith
       $"Expected {noun}, but {Stdlib.Int64.toString actual} {verb} given explicitly"
     | _ ->
       $"This type declaration expects {noun}, "
-      ++ $"but {Stdlib.Int64.toString actual} {verb} provided"
+      + $"but {Stdlib.Int64.toString actual} {verb} provided"
   | NamedArity(ident, expected, actual) ->
     let noun =
       if expected == 1L then "1 field" else $"{Stdlib.Int64.toString expected} fields"
     let verb = if actual == 1L then "was" else "were"
 
     $"Case '{ident}' expects {noun}, "
-    ++ $"but {Stdlib.Int64.toString actual} {verb} provided"
+    + $"but {Stdlib.Int64.toString actual} {verb} provided"
   | TypeArity(hash, expected, actual) ->
     let noun =
       if expected == 1L then "1 type argument"
@@ -499,7 +499,7 @@ let contextToStringWith
     let verb = if actual == 1L then "was" else "were"
 
     $"{typeName hash} expects {noun}, "
-    ++ $"but {Stdlib.Int64.toString actual} {verb} provided"
+    + $"but {Stdlib.Int64.toString actual} {verb} provided"
   | ArgumentIndex index ->
     $"There is no argument at index {Stdlib.Int64.toString index}"
   | UncoveredPattern witness ->
@@ -523,7 +523,7 @@ let contextToStringWith
   | AliasCycleReferenced -> "A referenced type alias contains a cycle"
   | DeclarationTooDeep ->
     "This declaration is nested too deeply for the checker to walk; "
-    ++ "it was not checked"
+    + "it was not checked"
   | UnaryMinusOperandNotSignedNumeric ->
     "Unary minus requires a signed integer or Float operand"
   | CheckerUnavailable detail -> $"The at-rest checker could not run: {detail}"
@@ -561,12 +561,12 @@ let issueToStringWith
       match issue.actual with
       | Some actual ->
         ": expected "
-        ++ staticTypeToStringWith customTypeName expected
-        ++ ", got "
-        ++ staticTypeToStringWith customTypeName actual
+        + staticTypeToStringWith customTypeName expected
+        + ", got "
+        + staticTypeToStringWith customTypeName actual
       | None -> ""
     | None -> ""
-  (contextToStringWith customTypeName issue.code issue.context) ++ detail
+  (contextToStringWith customTypeName issue.code issue.context) + detail
 
 let issueToString (issue: Issue) : String =
   issueToStringWith (fun _ -> Stdlib.Option.Option.None) issue

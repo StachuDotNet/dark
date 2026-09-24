@@ -11,7 +11,7 @@ let indent (s: String) : String =
   |> Stdlib.List.map (fun line ->
     match line with
     | "" -> ""
-    | line -> "  " ++ line)
+    | line -> "  " + line)
   |> Stdlib.String.join "\n"
 
 let indentByLevel (level: Int) (s: String) : String =
@@ -22,7 +22,7 @@ let indentByLevel (level: Int) (s: String) : String =
   |> Stdlib.List.map (fun line ->
     match line with
     | "" -> ""
-    | line -> indentStr ++ line)
+    | line -> indentStr + line)
   |> Stdlib.String.join "\n"
 
 let sign (s: LanguageTools.Sign) : String =
@@ -183,7 +183,7 @@ let shortenName
 
     match remaining with
     | [] -> name
-    | segments -> (Stdlib.String.join segments ".") ++ "." ++ name
+    | segments -> (Stdlib.String.join segments ".") + "." + name
 
 
 /// How to paint the pieces of a rendered value.

@@ -49,7 +49,7 @@ let addAuthored
 
   if Stdlib.Bool.not (Stdlib.List.isEmpty duplicates) then
     Stdlib.Result.Result.Error(
-      "Declared more than once: " ++ (Stdlib.String.join duplicates ", "))
+      "Declared more than once: " + (Stdlib.String.join duplicates ", "))
   else
     let stabilizedOps =
       ops

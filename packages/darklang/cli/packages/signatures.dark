@@ -115,7 +115,7 @@ let groupByModule
 
 
 let trimRoot (root: String) (key: String) : String =
-  let prefix = root ++ "."
+  let prefix = root + "."
   if key == root then "(root)"
   else if Stdlib.String.startsWith key prefix then
     Stdlib.String.dropFirst key (Stdlib.String.length prefix)
@@ -210,7 +210,7 @@ let executeFiltered
       let lower = Stdlib.String.toLowercase needle
       let hits =
         fun loc ->
-          let pathStr = (Stdlib.String.toLowercase (moduleKey loc)) ++ "." ++ (Stdlib.String.toLowercase loc.name)
+          let pathStr = (Stdlib.String.toLowercase (moduleKey loc)) + "." + (Stdlib.String.toLowercase loc.name)
           Stdlib.String.contains pathStr lower
       LanguageTools.ProgramTypes.Search.SearchResults
         { submodules = unfiltered.submodules

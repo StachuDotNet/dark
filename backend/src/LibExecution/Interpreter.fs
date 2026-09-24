@@ -2449,7 +2449,7 @@ let private applyInstruction
 
     // An `Int` operator called directly, taken before any of the call machinery: no `ApplyContext`,
     // no builtin-table lookup, no `ArgSeq`. `tryFastOp` further down catches the same operators
-    // arriving through an elided package wrapper -- `Stdlib.Int.max` never reaches here.
+    // arriving through an elided package wrapper -- `Stdlib.List.length` never reaches here.
     //
     // A function, not a `let mutable` here: the rest of this body has `uply` blocks in it, and a
     // mutable a continuation captures becomes a heap ref cell allocated on every `Apply`, taken

@@ -106,44 +106,6 @@ let sqrt (a: Int16) : Float = Builtin.int16Sqrt a
 let toFloat (a: Int16) : Float = Builtin.int16ToFloat a
 
 
-/// Returns the sum of all the ints in the list
-let sum (lst: List<Int16>) : Int16 =
-  Stdlib.List.fold lst 0s (fun acc x -> add acc x)
-
-
-/// Returns the higher of <param a> and <param b>
-let max (a: Int16) (b: Int16) : Int16 =
-  if (Stdlib.Int16.greaterThan a b) then a else b
-
-
-/// Returns the lower of <param a> and <param b>
-let min (a: Int16) (b: Int16) : Int16 =
-  if (Stdlib.Int16.lessThan a b) then a else b
-
-
-/// If <param value> is within the range given by <param limitA> and <param
-/// limitB>, returns <param value>.
-/// If <param value> is outside the range, returns <param limitA> or <param
-/// limitB>, whichever is closer to <param value>.
-/// <param limitA> and <param limitB> can be provided in any order.
-let clamp (value: Int16) (limitA: Int16) (limitB: Int16) : Int16 =
-  let min =
-    if (Stdlib.Int16.lessThan limitA limitB) then
-      limitA
-    else
-      limitB
-
-  let max =
-    if (Stdlib.Int16.greaterThan limitA limitB) then
-      limitA
-    else
-      limitB
-
-  if (Stdlib.Int16.lessThan value min) then min
-  else if (Stdlib.Int16.greaterThan value max) then max
-  else value
-
-
 /// Parses a <type String> into an <type Int16>, returning {{Ok}} with the
 /// parsed value on success, or {{Error}} with a <type ParseError> ({{BadFormat}}
 /// if the string isn't a valid integer, {{OutOfRange}} if it's outside the
@@ -221,7 +183,6 @@ let shiftLeft (a: Int16) (b: Int16) : Int16 = Builtin.int16ShiftLeft a b
 
 /// Bitwise right shift of an <type Int16> value
 let shiftRight (a: Int16) (b: Int16) : Int16 = Builtin.int16ShiftRight a b
-
 
 
 // The operator traits, over the fns above.

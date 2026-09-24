@@ -99,7 +99,7 @@ gate_first_day() {
   want "first run reports a clean tree" "^(clean:|draft:)" status
 
   # 2. Author something and run it. The thing the language is for.
-  want "authoring a fn"    "Created function: FirstDay\.Hello\.greet" fn /FirstDay.Hello.greet '(name: String) : String = "hi " ++ name'
+  want "authoring a fn"    "Created function: FirstDay\.Hello\.greet" fn /FirstDay.Hello.greet '(name: String) : String = "hi " + name'
   want "and running it"    "hi world"        eval 'FirstDay.Hello.greet "world"'
   want "status sees it"    "^draft: 1 item"  status
 
@@ -121,9 +121,9 @@ gate_first_day() {
 
   # 6. A real divergence: both sides move one name, merge records a conflict.
   dark branch create clash >/dev/null 2>&1 || true
-  dark --branch clash fn /FirstDay.Hello.greet '(name: String) : String = "yo " ++ name' >/dev/null 2>&1 || true
+  dark --branch clash fn /FirstDay.Hello.greet '(name: String) : String = "yo " + name' >/dev/null 2>&1 || true
   dark --branch clash commit "yo" -y >/dev/null 2>&1 || true
-  dark --branch main fn /FirstDay.Hello.greet '(name: String) : String = "hey " ++ name' >/dev/null 2>&1 || true
+  dark --branch main fn /FirstDay.Hello.greet '(name: String) : String = "hey " + name' >/dev/null 2>&1 || true
   want "merge records a conflict" "[0-9]+ conflict" --branch clash merge clash -y
   want "conflicts --json lists it" '"pending":[1-9]' --branch main conflicts --json
 
@@ -136,7 +136,7 @@ gate_first_day() {
   CID=$(dark --branch main conflicts --json 2>/dev/null | grep -oE '"id":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
   dark --branch main conflicts override "$CID" B >/dev/null 2>&1 || true
   want "the override holds"      "yo "        --branch main eval 'FirstDay.Hello.greet "x"'
-  dark --branch main fn /FirstDay.Hello.greet '(name: String) : String = "later " ++ name' >/dev/null 2>&1 || true
+  dark --branch main fn /FirstDay.Hello.greet '(name: String) : String = "later " + name' >/dev/null 2>&1 || true
   want "a later edit wins"       "later "     --branch main eval 'FirstDay.Hello.greet "x"'
   wantnot "and your own change of mind is not reported" "overrode this|decision-superseded" --branch main constraints
 

@@ -56,44 +56,6 @@ let sqrt (a: UInt128) : Float = Builtin.uint128Sqrt a
 let toFloat (a: UInt128) : Float = Builtin.uint128ToFloat a
 
 
-/// Returns the sum of all the ints in the list
-let sum (lst: List<UInt128>) : UInt128 =
-  Stdlib.List.fold lst 0Z (fun acc x -> add acc x)
-
-
-/// Returns the higher of <param a> and <param b>
-let max (a: UInt128) (b: UInt128) : UInt128 =
-  if (Stdlib.UInt128.greaterThan a b) then a else b
-
-
-/// Returns the lower of <param a> and <param b>
-let min (a: UInt128) (b: UInt128) : UInt128 =
-  if (Stdlib.UInt128.lessThan a b) then a else b
-
-
-/// If <param value> is within the range given by <param limitA> and <param
-/// limitB>, returns <param value>.
-/// If <param value> is outside the range, returns <param limitA> or <param
-/// limitB>, whichever is closer to <param value>.
-/// <param limitA> and <param limitB> can be provided in any order.
-let clamp (value: UInt128) (limitA: UInt128) (limitB: UInt128) : UInt128 =
-  let min =
-    if (Stdlib.UInt128.lessThan limitA limitB) then
-      limitA
-    else
-      limitB
-
-  let max =
-    if (Stdlib.UInt128.greaterThan limitA limitB) then
-      limitA
-    else
-      limitB
-
-  if (Stdlib.UInt128.lessThan value min) then min
-  else if (Stdlib.UInt128.greaterThan value max) then max
-  else value
-
-
 /// Stringify <param uint128>
 let toString (uint128: UInt128) : String = Builtin.uint128ToString uint128
 
@@ -151,7 +113,6 @@ let shiftLeft (a: UInt128) (b: UInt128) : UInt128 =
 /// Bitwise right shift of a <type UInt128> value
 let shiftRight (a: UInt128) (b: UInt128) : UInt128 =
   Builtin.uint128ShiftRight a b
-
 
 
 // The operator traits, over the fns above.

@@ -170,7 +170,7 @@ module Registry =
     let aliasSuffix =
       match handler.aliases with
       | [] -> ""
-      | aliases -> "\n\nAliases: " ++ (Stdlib.String.join aliases ", ")
+      | aliases -> "\n\nAliases: " + (Stdlib.String.join aliases ", ")
 
     let body = helpFn state
 
@@ -195,7 +195,7 @@ module Registry =
       else
         $"{handler.description}\n{body}"
 
-    Stdlib.printLine (summarised ++ aliasSuffix)
+    Stdlib.printLine (summarised + aliasSuffix)
     state
 
   // Command groups organized by category (shared between compact and detailed views)
@@ -296,7 +296,7 @@ module Registry =
     let header =
       "Workflow: fn <name> → run <name> → status → commit\nhelp <command> for details. AI agents: docs for-ai"
 
-    header ++ "\n\n" ++ groupsText
+    header + "\n\n" + groupsText
 
 
   /// Identifies what a completion request depends on, *ignoring* the partial token the user is mid-way
@@ -310,7 +310,7 @@ module Registry =
     if parsed.isCompletingCommand then
       // Command-name completion reads `state.commandOptionsCache`, which is already built once at startup,
       // so there's nothing expensive to key on. One constant bucket.
-      "cmd\u0000" ++ loc
+      "cmd\u0000" + loc
     else
       let completedArgs =
         match Stdlib.List.last parsed.args with
@@ -512,7 +512,7 @@ module Registry =
       let canonical = (findCommandIn commands cmd).name
       let withFirst =
         match Stdlib.List.head args with
-        | Some first -> canonical ++ " " ++ first
+        | Some first -> canonical + " " + first
         | None -> canonical
       (Stdlib.List.member promptsForInput canonical)
       || (Stdlib.List.member promptsForInput withFirst)

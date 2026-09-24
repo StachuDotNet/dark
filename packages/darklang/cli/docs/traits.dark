@@ -45,7 +45,7 @@ one `impl`.
   implementation must fit under it.
 
 ## Bound a type parameter
-  let describe<'a: ToString> (v: 'a) : String = "value: " ++ v.toString
+  let describe<'a: ToString> (v: 'a) : String = "value: " + v.toString
   let biggest<'a: Ord + ToString> (xs: List<'a>) : String = ...
 
   `'a: ToString` means "any type with a ToString implementation". It is checked

@@ -98,14 +98,14 @@ let renderSegments (width: Int) (segments: List<Segment>) : String =
 
         let next =
           if start > col then
-            out ++ (Stdlib.String.repeat " " (start - col)) ++ clipped
+            out + (Stdlib.String.repeat " " (start - col)) + clipped
           else
-            out ++ clipped
+            out + clipped
 
         (next, start + used))
 
   // A reset at the end so a colour left open by the last segment can't bleed into whatever follows.
-  text ++ "\u001b[0m"
+  text + "\u001b[0m"
 
 
 /// Paint one row's spans, in order.
@@ -154,8 +154,8 @@ let composeRow (width: Int) (rowSpans: List<Layout.Span>) : String =
 /// Spans are bucketed by row in one pass. Doing it the obvious way (filter the whole span list once per row)
 /// is quadratic, and a full-screen frame has enough of both to make that hurt.
 let compose (width: Int) (height: Int) (spans: List<Layout.Span>) : List<String> =
-  let w = Stdlib.Int.max 1 width
-  let h = Stdlib.Int.max 0 height
+  let w = Stdlib.max 1 width
+  let h = Stdlib.max 0 height
 
   if h == 0 then
     []

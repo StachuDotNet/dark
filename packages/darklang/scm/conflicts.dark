@@ -164,7 +164,7 @@ let conflictId
   (hashes: List<String>)
   : String =
   let sorted = Stdlib.List.sort hashes
-  let material = $"{owner}/{modules}/{name}|" ++ (Stdlib.String.join sorted ",")
+  let material = $"{owner}/{modules}/{name}|" + (Stdlib.String.join sorted ",")
   let digest = Stdlib.Blob.toHex (Stdlib.Crypto.sha256 (Stdlib.String.toBlob material))
   Stdlib.String.toLowercase (Stdlib.String.first digest 8)
 
@@ -432,8 +432,8 @@ let localBindingsFor (names: List<String>) : List<Binding> =
                 previous
          FROM locations
          WHERE unlisted_at IS NULL AND name IN ("
-        ++ (inPlaceholders chunk)
-        ++ ")"
+        + (inPlaceholders chunk)
+        + ")"
 
       Stdlib.Sqlite.rowsP (localDb ()) sql chunk bindingFromRow)
     |> Stdlib.List.flatten

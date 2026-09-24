@@ -30,7 +30,7 @@ return annotations:
   [1, 2, 3]
 
 ## Strings
-  "hello" ++ " world"    # concat
+  "hello" + " world"     # concat
   $"value: {x}"          # interpolation
 
 ## Lambda

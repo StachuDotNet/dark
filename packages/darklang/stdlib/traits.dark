@@ -82,8 +82,10 @@ trait Ord<'a> =
   let greaterThanOrEqualTo (a: 'a) (b: 'a) : Bool
 
 
-// Written once over `Ord`, for any type with an impl: the per-type
-// `Stdlib.Int64.max` and friends stay, these are the generic ones.
+// Written once over `Ord`, for any type with an implementation. These replaced the per-type
+// copies (`Stdlib.Int64.max` and eleven siblings, the same again for `min`, `clamp` and `sum`),
+// which is what a trait is for. `Stdlib.Float.clamp` survives under its own name because it is
+// a different function: it returns a Result and refuses a NaN limit.
 
 /// The larger of two values of any type with an `Ord` impl
 let max<'a: Ord> (a: 'a) (b: 'a) : 'a = if a > b then a else b

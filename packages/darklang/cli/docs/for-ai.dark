@@ -75,7 +75,7 @@ never against what you typed.
 - Never write `PACKAGE.` in source or search; it is internal notation.
 - Lists use commas: `[1, 2]`; chars use single quotes: `'a'`.
 - `|>` passes its left value as the first argument. Parenthesize a complex left side.
-- Strings concatenate with `++`. Interpolation does not coerce non-strings.
+- Strings concatenate with `+`. Interpolation does not coerce non-strings.
 - Bare integers are arbitrary-precision `Int`; numeric operands must have one type.
 - Local values use `let max = 6` without annotations; package values use `val`.
 - Record construction is `State { count = 0 }`; update is `{ state with count = 1 }`.
@@ -233,8 +233,8 @@ Rules:
   double quotes; "a" is not 'a')
 - Tuples destructure inline in `let` and in lambda params:
   `let (a, b) = pair`, `fun (name, done) -> ...`
-- String concat: ++ (not @)
-- String interpolation: $"x = {expr}; total = {a ++ b}" -- does NOT auto-coerce
+- String concat: + (not @)
+- String interpolation: $"x = {expr}; total = {a + b}" -- does NOT auto-coerce
   non-strings; wrap with Stdlib.Int.toString / Stdlib.Float.toString
 - Operators are traits: `+ - * / % **` and `-x` are Add Sub Mul Div Mod Pow
   Neg, `< <= > >=` are Ord, `==`/`!=` are Eq (structural unless implemented).

@@ -2,33 +2,33 @@ Stdlib.Int64.absoluteValue -5L = 5L
 Stdlib.Int64.absoluteValue 5L = 5L
 Stdlib.Int64.absoluteValue (-9223372036854775808L) = -9223372036854775808L
 
-Stdlib.Int64.max 5L 6L = 6L
-Stdlib.Int64.max 10L 1L = 10L
-Stdlib.Int64.max -5L 6L = 6L
-Stdlib.Int64.max -100L -20000L = -100L
-Stdlib.Int64.max 250L -26L = 250L
+Stdlib.max 5L 6L = 6L
+Stdlib.max 10L 1L = 10L
+Stdlib.max -5L 6L = 6L
+Stdlib.max -100L -20000L = -100L
+Stdlib.max 250L -26L = 250L
 
-Stdlib.Int64.min 5L 6L = 5L
-Stdlib.Int64.min 50L -10L = -10L
-Stdlib.Int64.min -5L 6L = -5L
-Stdlib.Int64.min -100L -20000L = -20000L
-Stdlib.Int64.min 250L -26L = -26L
+Stdlib.min 5L 6L = 5L
+Stdlib.min 50L -10L = -10L
+Stdlib.min -5L 6L = -5L
+Stdlib.min -100L -20000L = -20000L
+Stdlib.min 250L -26L = -26L
 
-Stdlib.Int64.clamp -5L -2L 5L = -2L // in bounds
-Stdlib.Int64.clamp -3L -2L 1L = -2L // below min
-Stdlib.Int64.clamp -5L 1L 1L = 1L // at limit
-Stdlib.Int64.clamp 1L 2L 1L = 1L // above max
-Stdlib.Int64.clamp 3L 0L 2L = 2L //  below in
-Stdlib.Int64.clamp -100L 0L 0L = 0L
-Stdlib.Int64.clamp 100L 0L 0L = 0L
-Stdlib.Int64.clamp -100L 0L -1L = -1L
-Stdlib.Int64.clamp 100L 0L -1L = 0L
-Stdlib.Int64.clamp -100L -1L 0L = -1L
-Stdlib.Int64.clamp 100L -1L 0L = 0L
-Stdlib.Int64.clamp -100L 1L 0L = 0L
-Stdlib.Int64.clamp 100L 1L 0L = 1L
-Stdlib.Int64.clamp -2147483647L 250L -26L = -26L
-Stdlib.Int64.clamp 2147483647L 250L -26L = 250L
+Stdlib.clamp -5L -2L 5L = -2L // in bounds
+Stdlib.clamp -3L -2L 1L = -2L // below min
+Stdlib.clamp -5L 1L 1L = 1L // at limit
+Stdlib.clamp 1L 2L 1L = 1L // above max
+Stdlib.clamp 3L 0L 2L = 2L //  below in
+Stdlib.clamp -100L 0L 0L = 0L
+Stdlib.clamp 100L 0L 0L = 0L
+Stdlib.clamp -100L 0L -1L = -1L
+Stdlib.clamp 100L 0L -1L = 0L
+Stdlib.clamp -100L -1L 0L = -1L
+Stdlib.clamp 100L -1L 0L = 0L
+Stdlib.clamp -100L 1L 0L = 0L
+Stdlib.clamp 100L 1L 0L = 1L
+Stdlib.clamp -2147483647L 250L -26L = -26L
+Stdlib.clamp 2147483647L 250L -26L = 250L
 
 Stdlib.Int64.negate -5L = 5L
 Stdlib.Int64.negate 5L = -5L
@@ -232,7 +232,7 @@ Stdlib.Int64.divide (-9223372036854775808L) -1L = -9223372036854775808L
  |> Stdlib.List.map (fun x -> Stdlib.Int64.random 0L 2L)
  |> Stdlib.List.unique) = [ 0L, 1L, 2L ]
 
-Stdlib.Int64.sum [ 1L, 2L ] = 3L
+Stdlib.sum 0L [ 1L, 2L ] = 3L
 
 
 // parses ok

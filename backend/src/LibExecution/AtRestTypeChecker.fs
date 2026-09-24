@@ -228,6 +228,11 @@ and private dischargeOne
 /// `x.m` where `x` has no field `m`: the one visible impl, of any trait, with a
 /// method `m` for `x`'s head types the access as that method with `x` consumed.
 /// Mirrors the runtime's receiver call.
+///
+/// TODO: a record that GAINS a field named like a method of a trait it implements silently
+/// changes what `x.m` means, since a field always wins. Worth a warning here when the checker
+/// grows a warning severity: today it has only "blocks the commit" and "incomplete", and a
+/// shadowed method is neither.
 let private receiverMethodType
   (state : State)
   (nodeId : id)

@@ -170,8 +170,8 @@ let closeOverDepFqns (names: List<String>) : List<String> =
                Stdlib.Sqlite.textField row "n")
             with
             | (Some o, Some m, Some n) ->
-              let mid = if m == "" then "" else m ++ "."
-              Stdlib.Option.Option.Some(o ++ "." ++ mid ++ n)
+              let mid = if m == "" then "" else m + "."
+              Stdlib.Option.Option.Some(o + "." + mid + n)
             | _ -> Stdlib.Option.Option.None))
       |> Stdlib.List.flatten
     Stdlib.List.unique (Stdlib.List.append acc next)

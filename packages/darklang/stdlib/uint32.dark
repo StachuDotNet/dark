@@ -70,44 +70,6 @@ let sqrt (a: UInt32) : Float = Builtin.uint32Sqrt a
 let toFloat (a: UInt32) : Float = Builtin.uint32ToFloat a
 
 
-/// Returns the sum of all the ints in the list
-let sum (lst: List<UInt32>) : UInt32 =
-  Stdlib.List.fold lst 0ul (fun acc x -> Stdlib.UInt32.add acc x)
-
-
-/// Returns the higher of <param a> and <param b>
-let max (a: UInt32) (b: UInt32) : UInt32 =
-  if (Stdlib.UInt32.greaterThan a b) then a else b
-
-
-/// Returns the lower of <param a> and <param b>
-let min (a: UInt32) (b: UInt32) : UInt32 =
-  if (Stdlib.UInt32.lessThan a b) then a else b
-
-
-/// If <param value> is within the range given by <param limitA> and <param
-/// limitB>, returns <param value>.
-/// If <param value> is outside the range, returns <param limitA> or <param
-/// limitB>, whichever is closer to <param value>.
-/// <param limitA> and <param limitB> can be provided in any order.
-let clamp (value: UInt32) (limitA: UInt32) (limitB: UInt32) : UInt32 =
-  let min =
-    if (Stdlib.UInt32.lessThan limitA limitB) then
-      limitA
-    else
-      limitB
-
-  let max =
-    if (Stdlib.UInt32.greaterThan limitA limitB) then
-      limitA
-    else
-      limitB
-
-  if (Stdlib.UInt32.lessThan value min) then min
-  else if (Stdlib.UInt32.greaterThan value max) then max
-  else value
-
-
 /// Parses a <type String> into a <type UInt32>, returning {{Ok}} with the
 /// parsed value on success, or {{Error}} with a <type ParseError> ({{BadFormat}}
 /// if the string isn't a valid integer, {{OutOfRange}} if it's outside the
@@ -187,7 +149,6 @@ let shiftLeft (a: UInt32) (b: UInt32) : UInt32 = Builtin.uint32ShiftLeft a b
 
 /// Bitwise right shift of a <type UInt32> value
 let shiftRight (a: UInt32) (b: UInt32) : UInt32 = Builtin.uint32ShiftRight a b
-
 
 
 // The operator traits, over the fns above.

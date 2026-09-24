@@ -95,3 +95,11 @@ let toCodepoint (c: Char) : Stdlib.Option.Option<Int> = Builtin.charToCodepoint 
 
 impl ToString for Char =
   let toString = Stdlib.Char.toString
+
+
+/// `a < b` on Chars, by codepoint, which is what the four comparisons below already do.
+impl Ord for Char =
+  let lessThan = Stdlib.Char.isLessThan
+  let lessThanOrEqualTo = Stdlib.Char.isLessThanOrEqualTo
+  let greaterThan = Stdlib.Char.isGreaterThan
+  let greaterThanOrEqualTo = Stdlib.Char.isGreaterThanOrEqualTo

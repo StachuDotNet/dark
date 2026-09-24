@@ -390,7 +390,7 @@ let unstageRepoint
 let collapse () : Stdlib.Result.Result<Int, String> =
   rewriteBy (fun draft ->
     let nameKey (loc: LanguageTools.ProgramTypes.PackageLocation) : String =
-      loc.owner ++ "|" ++ (Stdlib.String.join loc.modules ".") ++ "|" ++ loc.name
+      loc.owner + "|" + (Stdlib.String.join loc.modules ".") + "|" + loc.name
 
     // The naming to KEEP for each name: the one that WROTE the row the name currently has.
     //

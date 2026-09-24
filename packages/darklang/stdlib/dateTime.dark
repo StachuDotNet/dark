@@ -138,3 +138,11 @@ let subtractMs (d1: DateTime) (d2: DateTime) : Int =
 
 impl ToString for DateTime =
   let toString = Stdlib.DateTime.toString
+
+
+/// `d1 < d2` on DateTimes, which is what the four comparisons above already do.
+impl Ord for DateTime =
+  let lessThan = Stdlib.DateTime.lessThan
+  let lessThanOrEqualTo = Stdlib.DateTime.lessThanOrEqualTo
+  let greaterThan = Stdlib.DateTime.greaterThan
+  let greaterThanOrEqualTo = Stdlib.DateTime.greaterThanOrEqualTo

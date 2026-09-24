@@ -9,7 +9,7 @@ val batchDisplayCap = 3
 
 // Operator symbols aren't function names, so a literal search for one finds
 // nothing useful. Map each to the keyword that surfaces its named operation —
-// `search %` -> `mod`, `search ++` -> string concat, `search &&` -> `Bool.and`,
+// `search %` -> `mod`, `search &&` -> `Bool.and`,
 // `search /` -> `divide` (handy given Float math has no infix). Returns None for
 // an ordinary query, which searches unchanged.
 let operatorAlias (query: String) : Stdlib.Option.Option<String> =
@@ -35,7 +35,6 @@ let operatorAlias (query: String) : Stdlib.Option.Option<String> =
   | "!=" -> Stdlib.Option.Option.Some "notEquals"
   | "&&" -> Stdlib.Option.Option.Some "and"
   | "||" -> Stdlib.Option.Option.Some "or"
-  | "++" -> Stdlib.Option.Option.Some "append"
   | _ -> Stdlib.Option.Option.None
 
 
@@ -118,19 +117,19 @@ let docBlock (desc: String) (indent: String) : String =
   else
     let lines = Stdlib.String.splitOnNewline desc
     lines
-    |> Stdlib.List.map (fun line -> Stdlib.Cli.UI.Colors.dimText (indent ++ line))
+    |> Stdlib.List.map (fun line -> Stdlib.Cli.UI.Colors.dimText (indent + line))
     |> Stdlib.String.join "\n"
 
 
 let withDoc (headline: String) (desc: String) : String =
   let doc = docBlock desc "  "
-  if Stdlib.String.isEmpty doc then headline else headline ++ "\n" ++ doc
+  if Stdlib.String.isEmpty doc then headline else headline + "\n" + doc
 
 
 // A rendered result line, with its doc comment appended only under --with-docs.
 // The trailing blank line separates multi-line doc entries.
 let withOptionalDoc (withDocs: Bool) (headline: String) (desc: String) : String =
-  if withDocs then (withDoc headline desc) ++ "\n" else headline
+  if withDocs then (withDoc headline desc) + "\n" else headline
 
 
 let overflowNote (total: Int) (shown: Int) : Unit =

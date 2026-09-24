@@ -121,23 +121,23 @@ Stdlib.Float.lessThanOrEqualTo 0.1 0.1 = true
 
 Stdlib.Float.lessThan 0.2 0.1 = false
 
-Stdlib.Float.max Builtin.testInfinity 1.0 = Builtin.testInfinity
-Stdlib.Float.max Builtin.testNegativeInfinity 1.0 = 1.0
-Stdlib.Float.max -10.0 1.0 = 1.0
-Stdlib.Float.max 10.0 Builtin.testNan = Builtin.testNan
-Stdlib.Float.max 10.0 1.0 = 10.0
-Stdlib.Float.max 0.0 0.00 = 0.0
-Stdlib.Float.max -2147483647.8 -00000000.000 = 0.0
-Stdlib.Float.max 2147483647.0 00000000.000 = 2147483647.0
+Stdlib.max Builtin.testInfinity 1.0 = Builtin.testInfinity
+Stdlib.max Builtin.testNegativeInfinity 1.0 = 1.0
+Stdlib.max -10.0 1.0 = 1.0
+Stdlib.max 10.0 Builtin.testNan = Builtin.testNan
+Stdlib.max 10.0 1.0 = 10.0
+Stdlib.max 0.0 0.00 = 0.0
+Stdlib.max -2147483647.8 -00000000.000 = 0.0
+Stdlib.max 2147483647.0 00000000.000 = 2147483647.0
 
-Stdlib.Float.min Builtin.testInfinity 1.0 = 1.0
-Stdlib.Float.min Builtin.testNegativeInfinity 1.0 = Builtin.testNegativeInfinity
-Stdlib.Float.min -10.0 1.0 = -10.0
-Stdlib.Float.min 10.0 Builtin.testNan = Builtin.testNan
-Stdlib.Float.min 10.0 1.0 = 1.0
-Stdlib.Float.min 0.0 0.00 = 0.0
-Stdlib.Float.min -2147483647.8 -00000000.000 = -2147483647.8
-Stdlib.Float.min 2147483647.0 00000000.000 = 0.0
+Stdlib.min Builtin.testInfinity 1.0 = 1.0
+Stdlib.min Builtin.testNegativeInfinity 1.0 = Builtin.testNegativeInfinity
+Stdlib.min -10.0 1.0 = -10.0
+Stdlib.min 10.0 Builtin.testNan = Builtin.testNan
+Stdlib.min 10.0 1.0 = 1.0
+Stdlib.min 0.0 0.00 = 0.0
+Stdlib.min -2147483647.8 -00000000.000 = -2147483647.8
+Stdlib.min 2147483647.0 00000000.000 = 0.0
 
 Stdlib.Float.multiply 26.0 0.5 = 13.0
 
@@ -192,7 +192,7 @@ Stdlib.Float.sqrt 0.0 = 0.0
 
 Stdlib.Float.subtract 1.0 0.2 = 0.8
 
-Stdlib.Float.sum [ 1.0, 0.2 ] = 1.2
+Stdlib.sum 0.0 [ 1.0, 0.2 ] = 1.2
 
 Builtin.testNan == Builtin.testNan = false
 

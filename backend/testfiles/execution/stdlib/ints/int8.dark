@@ -2,29 +2,29 @@ Stdlib.Int8.absoluteValue -5y = 5y
 Stdlib.Int8.absoluteValue 5y = 5y
 
 Stdlib.Int8.absoluteValue -128y = -128y
-Stdlib.Int8.max 5y 6y = 6y
-Stdlib.Int8.max 10y 1y = 10y
-Stdlib.Int8.max -5y 6y = 6y
-Stdlib.Int8.max 127y -128y = 127y
+Stdlib.max 5y 6y = 6y
+Stdlib.max 10y 1y = 10y
+Stdlib.max -5y 6y = 6y
+Stdlib.max 127y -128y = 127y
 
-Stdlib.Int8.min 5y 6y = 5y
-Stdlib.Int8.min 50y -10y = -10y
-Stdlib.Int8.min -5y 6y = -5y
-Stdlib.Int8.min 127y -128y = -128y
+Stdlib.min 5y 6y = 5y
+Stdlib.min 50y -10y = -10y
+Stdlib.min -5y 6y = -5y
+Stdlib.min 127y -128y = -128y
 
 
-Stdlib.Int8.clamp -5y -2y 5y = -2y
-Stdlib.Int8.clamp -3y -2y 1y = -2y
-Stdlib.Int8.clamp -5y 1y 1y = 1y
-Stdlib.Int8.clamp 1y 2y 1y = 1y
-Stdlib.Int8.clamp 3y 0y 2y = 2y
-Stdlib.Int8.clamp -100y 0y 0y = 0y
-Stdlib.Int8.clamp 100y 0y 0y = 0y
-Stdlib.Int8.clamp -100y 0y -1y = -1y
-Stdlib.Int8.clamp 100y 0y -1y = 0y
-Stdlib.Int8.clamp -100y -1y 0y = -1y
-Stdlib.Int8.clamp -100y 1y 0y = 0y
-Stdlib.Int8.clamp 100y 1y 0y = 1y
+Stdlib.clamp -5y -2y 5y = -2y
+Stdlib.clamp -3y -2y 1y = -2y
+Stdlib.clamp -5y 1y 1y = 1y
+Stdlib.clamp 1y 2y 1y = 1y
+Stdlib.clamp 3y 0y 2y = 2y
+Stdlib.clamp -100y 0y 0y = 0y
+Stdlib.clamp 100y 0y 0y = 0y
+Stdlib.clamp -100y 0y -1y = -1y
+Stdlib.clamp 100y 0y -1y = 0y
+Stdlib.clamp -100y -1y 0y = -1y
+Stdlib.clamp -100y 1y 0y = 0y
+Stdlib.clamp 100y 1y 0y = 1y
 
 Stdlib.Int8.negate -5y = 5y
 Stdlib.Int8.negate 5y = -5y

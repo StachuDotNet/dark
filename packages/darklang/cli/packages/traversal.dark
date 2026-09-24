@@ -295,14 +295,14 @@ let completePartialPath
             )
             |> Stdlib.List.filter (fun s -> Stdlib.Bool.not (Stdlib.String.isEmpty s))
             |> Stdlib.String.join separator
-          pathStr ++ separator
+          pathStr + separator
 
       // Add prefix to both display and value
       completionItems
       |> Stdlib.List.map (fun item ->
         Cli.Completion.CompletionItem
           { display = item.display
-            value = prefix ++ item.value })
+            value = prefix + item.value })
 
   | _ ->
     // Last segment is Root, Here, or Up - no fuzzy completion
