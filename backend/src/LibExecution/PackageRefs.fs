@@ -574,6 +574,10 @@ module Trait =
       let bitNot = p [] "BitNot"
       let shl = p [] "Shl"
       let shr = p [] "Shr"
+      // Not an operator, but in the same set for the same reason: `x.toString` is a method call
+      // nothing names, and the checker needs the trait in hand to say "this type needs a
+      // ToString implementation" rather than "no such field".
+      let toString = p [] "ToString"
       let all () =
         [ add ()
           sub ()
@@ -589,7 +593,8 @@ module Trait =
           bitXor ()
           bitNot ()
           shl ()
-          shr () ]
+          shr ()
+          toString () ]
 
 
 module Fn =

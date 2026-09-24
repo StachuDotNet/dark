@@ -25,9 +25,9 @@ Stdlib.Int64.add 5L 3L = 8L
 // dispatch so the message is the operator's, not the impl fn's
 5L + true = error="Cannot perform numeric operation on Int64 and Bool"
 1L + 2.0 = error="Cannot perform numeric operation on Int64 and Float"
-// String has an Add and nothing else
+// String implements Add but no other arithmetic trait
 "a" + "b" = "ab"
-"a" - "b" = error="No implementation of Darklang.Stdlib.Sub for String. Write `impl Sub for <type> = ...`, or see `dark impls Sub`"
+"a" - "b" = error="String has no implementation of Darklang.Stdlib.Sub. Write `impl Sub for String = ...`, or run `dark impls Sub` to see which types do"
 
 // Integer +,-,* overflow wraps around (two's complement)
 127y + 1y = -128y
@@ -51,7 +51,7 @@ Stdlib.Int64.add 5L 3L = 8L
 2y ** 3y = 8y
 3uy ** 3uy = 27uy
 2l ** 10l = 1024l
-2Q ** 3Q = error="No implementation of Darklang.Stdlib.Pow for Int128. Write `impl Pow for <type> = ...`, or see `dark impls Pow`"
+2Q ** 3Q = error="Int128 has no implementation of Darklang.Stdlib.Pow. Write `impl Pow for Int128 = ...`, or run `dark impls Pow` to see which types do"
 // unary `-` works on every signed integer type and Float
 -(Stdlib.Int8.add 2y 3y) = -5y
 -(Stdlib.Float.add 1.0 1.5) = -2.5
@@ -105,9 +105,9 @@ Stdlib.Int64.add 5L 3L = 8L
 ~(Stdlib.Int64.add 2L 3L) = -6L
 
 // bitwise operators are traits like every other operator, so a Float says what is missing
-1.0 & 2.0 = error="No implementation of Darklang.Stdlib.BitAnd for Float. Write `impl BitAnd for <type> = ...`, or see `dark impls BitAnd`"
-1.0 << 2.0 = error="No implementation of Darklang.Stdlib.Shl for Float. Write `impl Shl for <type> = ...`, or see `dark impls Shl`"
-~1.0 = error="No implementation of Darklang.Stdlib.BitNot for Float. Write `impl BitNot for <type> = ...`, or see `dark impls BitNot`"
+1.0 & 2.0 = error="Float has no implementation of Darklang.Stdlib.BitAnd. Write `impl BitAnd for Float = ...`, or run `dark impls BitAnd` to see which types do"
+1.0 << 2.0 = error="Float has no implementation of Darklang.Stdlib.Shl. Write `impl Shl for Float = ...`, or run `dark impls Shl` to see which types do"
+~1.0 = error="Float has no implementation of Darklang.Stdlib.BitNot. Write `impl BitNot for Float = ...`, or run `dark impls BitNot` to see which types do"
 
 // mixed widths are a type error, exactly as for the arithmetic operators
 1L & 2y = error="Cannot perform numeric operation on Int64 and Int8"

@@ -343,16 +343,24 @@ let resolveTraitCalls
 
         // The winner among the implementations that apply, and the fn it names for the method.
         let! stamps = LibDB.Queries.getTraitImplStamps ()
+        // A deprecated implementation is not a candidate at run time, so it must not be one
+        // here either: `dark constraints` tells you to deprecate one of two rivals, and pinning
+        // the one you just retired would make that advice a trap.
+        let! deprecated = LibDB.Queries.getDeprecatedTraitImplHashes ()
         let implFnFor
           (method_ : string)
           (implHashes : List<PT.Hash>)
           : Ply<Option<PT.ResolvedName<PT.FQFnName.Package>>> =
           uply {
+            let implHashes =
+              implHashes
+              |> List.filter (fun (PT.Hash h) -> not (Set.contains h deprecated))
             // One implementation is not an ordering question: it is the answer. Several are,
             // and an unstamped pair has no answer, so the call is left to resolve at run time
             // and `dark constraints` reports the pair.
             let winner =
               match implHashes with
+              | [] -> None
               | [ only ] -> Some only
               | several ->
                 several
@@ -909,7 +917,7 @@ let fns (_pm : PT.PackageManager) : List<BuiltInFn> =
           )
         )
       description =
-        "Writes the implementation each trait-method call resolves to onto the call, so a saved item goes on running what it was written against. Ops it cannot resolve come back unchanged."
+        "Records, on each trait-method call in these declarations, which implementation it resolved to, so a saved item goes on running the implementation it was written against. Anything it cannot resolve comes back unchanged, to be resolved when it runs."
       fn =
         (function
         | exeState, _, _, [| DList(vt, ops) |] ->
@@ -923,10 +931,13 @@ let fns (_pm : PT.PackageManager) : List<BuiltInFn> =
                 let branchPm = LibDB.PackageManager.ptForBranch exeState.branchId
                 let! resolved = resolveTraitCalls branchPm exeState.builtins decoded
                 return DList(vt, resolved |> List.map PT2DT.PackageOp.toDT)
-            with _ ->
+            with ex ->
               // Resolution is an improvement on what is stored, never a gate on storing it:
-              // a batch this cannot make sense of is saved exactly as it arrived, and its
-              // trait calls resolve at run time as they did before.
+              // a batch this cannot make sense of is saved as it arrived. Said out loud, because
+              // the symptom otherwise is only that operators got slower.
+              System.Console.Error.WriteLine
+                $"note: could not resolve trait calls in this save ({ex.Message}); they will \
+                   resolve when they run"
               return DList(vt, ops)
           }
         | _ -> incorrectArgs ())

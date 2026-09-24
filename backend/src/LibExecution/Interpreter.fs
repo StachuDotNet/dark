@@ -1227,7 +1227,7 @@ let private tryFastOpDirect
     | FQFnName.Builtin b -> tryFastOpOn threadID registers b argRegs
     // `a + b` on two values of one builtin numeric type: the impl the dispatch would pick
     // is the type's own wrapper over the same F# operator, so answer it here. An `Int` pair
-    // takes the same table the builtin used to; the rest take `evalNumeric`.
+    // takes the `Int` table; the rest take `evalNumeric`.
     | FQFnName.TraitMethod(Hash traitHash, methodName, _) ->
       match argRegs.tail with
       | [ secondReg ] when FastOps.isEquals traitHash methodName ->
@@ -2510,9 +2510,9 @@ let private applyInstruction
         // Pick the impl, then call its fn exactly as a direct call would: the impl
         // fn is what runs, what traces record, and what carries the ceiling.
         //
-        // An operator over two values of different types says so up front, as the
-        // builtin it replaced did ("Cannot perform numeric operation on Int64 and
-        // Float"), instead of dispatching on the left operand and failing inside the
+        // An operator over two values of different types says so up front ("Cannot perform
+        // numeric operation on Int64 and Float"), instead of dispatching on the left operand
+        // and failing inside the
         // impl fn's parameter check. Matching pairs of a builtin numeric type never
         // reach here (the fast path answers them), so this costs a dispatch only.
         let (Hash traitHashStr) = traitHash
@@ -2523,8 +2523,13 @@ let private applyInstruction
            | [ secondReg ] ->
              let left = Dval.toValueType registers[newArgRegs.head]
              let right = Dval.toValueType registers[secondReg]
+             // Heads, not whole types: selection matches on the head, so `xs < []` (a
+             // `List<Int>` against a `List<Unknown>`) is a pair an implementation for `List<'a>`
+             // can take, and comparing the types whole called it a mismatch.
              match left, right with
-             | ValueType.Known _, ValueType.Known _ when left <> right ->
+             | ValueType.Known l, ValueType.Known r when
+               Traits.headOfKnownType l <> Traits.headOfKnownType r
+               ->
                RTE.NumericOperationOnIncompatibleTypes(left, right)
                |> raiseRTE vm.threadID
              | _ -> ()
@@ -2600,17 +2605,29 @@ let private applyInstruction
             )
           | [ a ], [] ->
             Ply(Completed(structuralEquals vm.threadID a registers[newArgRegs.head]))
-          | _ ->
-            // `Eq.equals` partially applied to nothing, or over-applied: let the
-            // ordinary arity errors speak.
-            Ply(
-              Completed(
-                structuralEquals
-                  vm.threadID
-                  registers[newArgRegs.head]
-                  registers[newArgRegs.head]
+          | argsSoFar, rest ->
+            // One argument so far, so this is `Eq.equals x` waiting for the second: hand back the
+            // partial application, as any two-parameter fn would. Over-applied (three arguments or
+            // more) raises, also as any fn would.
+            let all = argsSoFar @ (rest |> List.map (fun r -> registers[r]))
+            let all = registers[newArgRegs.head] :: all
+            if List.length all < 2 then
+              Ply(
+                PartiallyApplied(
+                  DApplicable(
+                    AppNamedFn
+                      { applicable with
+                          typeArgs = []
+                          access = captureAccess ctx
+                          argsSoFar = all
+                          typeSymbolTable = tst }
+                  )
+                )
               )
-            )
+            else
+              RTE.Applications.TooManyArgsForFn(applicable.name, 2, List.length all)
+              |> RTE.Apply
+              |> raiseRTE vm.threadID
         let call : Ply<PackageOutcome> =
           match remembered with
           | ValueSome implFn when isEquals && implFn = structuralEqualsSentinel ->

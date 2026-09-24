@@ -53,16 +53,15 @@ let line (f: SCM.Constraints.Finding) : String =
   | (RivalImplementations, Rivals(self, rival, choice)) ->
     let r = SCM.Constraints.fqnOf rival
 
-    let what =
-      match choice with
-      | Mine ->
-        $"and {r} both implement {d} for {self}; a call runs this one, written later"
-      | Theirs ->
-        $"and {r} both implement {d} for {self}; a call runs {r}, written later"
-      | Neither ->
-        $"and {r} both implement {d} for {self}, and nothing says which came later; a call cannot choose"
-
-    $"  #{f.id}  {u}\n         {what}. Deprecate one to settle it (`dark deprecate impl <name>`), or ack it"
+    // Both names on the line, then what runs, then the exact command to retire the other: the
+    // reader's next action is a paste, so the thing to paste is spelled out.
+    match choice with
+    | Mine ->
+      $"  #{f.id}  {u}\n         and {r} both implement {d} for {self}. Calls run {u}, the later of the two.\n         Make it permanent: `dark deprecate impl {r}`. Leave it: `dark ack #{f.id}`"
+    | Theirs ->
+      $"  #{f.id}  {u}\n         and {r} both implement {d} for {self}. Calls run {r}, the later of the two.\n         Make it permanent: `dark deprecate impl {u}`. Leave it: `dark ack #{f.id}`"
+    | Neither ->
+      $"  #{f.id}  {u}\n         and {r} both implement {d} for {self}, and neither came from a commit, so no call can choose.\n         Save one of them again, or `dark deprecate impl {r}`"
   | (_, _) -> $"  #{f.id}  {u}"
 
 
@@ -440,10 +439,10 @@ let help (_state: AppState) : String =
     "                   later ordinary edit. Ack it, or override again"
     "                   with `dark conflicts override`."
     "    rival-implementations"
-    "                   two visible implementations of one trait for one"
-    "                   type. A call runs the one written later; this says"
-    "                   which, and that the other is there. Deprecate one"
-    "                   (`dark impls <Trait>` lists them), or ack it."
+    "                   two implementations of one trait for one type."
+    "                   Calls use the later one; this says which, so the"
+    "                   other does not surprise you. Retire one with"
+    "                   `dark deprecate impl`, or ack it."
     ""
     "  dark constraints                     what's outstanding"
     "  dark constraints --kind <kind>       just one kind"

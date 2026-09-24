@@ -551,9 +551,9 @@ let charAt (str: String) (index: Int) : Option.Option<Char> =
   str |> String.toList |> List.getAt index
 
 
-/// Compares two strings by code unit: negative when <param a> sorts first, zero when they
-/// are equal, positive when <param b> does. Ordinal rather than culture-aware, so two
-/// machines order the same pair the same way.
+/// Orders two strings: negative when <param a> sorts first, 0 when they are equal, positive
+/// when <param b> does. Only the sign is meaningful. Ordinal rather than language-aware, so
+/// two machines order the same pair the same way.
 let compare (a: String) (b: String) : Int64 = Builtin.stringCompare a b
 
 

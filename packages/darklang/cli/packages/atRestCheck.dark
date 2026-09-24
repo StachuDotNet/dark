@@ -4,15 +4,23 @@ module Darklang.Cli.Packages.AtRestCheck
 let checkBranch (branchId: Uuid) : LanguageTools.AtRestTypeChecker.Report =
   Builtin.atRestCheckBranch branchId
 
+/// The name behind a hash in a diagnostic. Types and traits both appear in them -- "no
+/// implementation of X for Y" names a trait and a type -- and a hash in a message a person reads
+/// is no help, so both are looked up.
 let customTypeName
   (branchId: Uuid)
   (hash: LanguageTools.ProgramTypes.Hash)
   : Stdlib.Option.Option<String> =
-  LanguageTools.PackageManager.pickLocation
-    LanguageTools.PackageManager.PickContext.empty
-    (LanguageTools.PackageManager.Type.locations branchId hash)
-  |> Stdlib.Option.map
-       PrettyPrinter.ProgramTypes.PackageLocation.packageLocation
+  let nameAt (locations: List<LanguageTools.ProgramTypes.PackageLocation>) =
+    LanguageTools.PackageManager.pickLocation
+      LanguageTools.PackageManager.PickContext.empty
+      locations
+    |> Stdlib.Option.map
+         PrettyPrinter.ProgramTypes.PackageLocation.packageLocation
+
+  match nameAt (LanguageTools.PackageManager.Type.locations branchId hash) with
+  | Some name -> Stdlib.Option.Option.Some name
+  | None -> nameAt (LanguageTools.PackageManager.Trait.locations branchId hash)
 
 let staticType
   (branchId: Uuid)

@@ -518,42 +518,46 @@ module RuntimeError =
     | Trait err ->
       match err with
       | MissingImpl(trait_, self) ->
-        [ ES.String "No implementation of "
+        // The type is in hand, so the fix-it names it: `impl Add for <type>` made the reader
+        // work out that `<type>` meant the String they had just used.
+        [ ES.ValueType self
+          ES.String " has no implementation of "
           ES.TraitName trait_
-          ES.String " for "
-          ES.ValueType self
           ES.String ". Write `impl "
           ES.ShortTraitName trait_
-          ES.String " for <type> = ...`, or see `dark impls "
+          ES.String " for "
+          ES.ValueType self
+          ES.String " = ...`, or run `dark impls "
           ES.ShortTraitName trait_
-          ES.String "`" ]
+          ES.String "` to see which types do" ]
       | DispatchAmbiguous(trait_, self, candidates) ->
-        [ ES.String "More than one implementation of "
+        [ ES.String (Stdlib.Int.toString (Stdlib.List.length candidates))
+          ES.String " implementations of "
           ES.TraitName trait_
           ES.String " for "
           ES.ValueType self
-          ES.String $" is visible ({Stdlib.Int.toString (Stdlib.List.length candidates)}), and nothing says which was written later, so neither one runs. `dark impls "
+          ES.String " exist, and there is no record of which came first, so none is used. `dark impls "
           ES.ShortTraitName trait_
-          ES.String "` lists them; deprecate one" ]
+          ES.String "` lists them; `dark deprecate impl <name>` retires one" ]
       | MethodAmbiguous(method_, self, traits) ->
-        [ ES.String $"`.{method_}` on a "
-          ES.ValueType self
-          ES.String " is ambiguous: "
+        // No article in front of the type: "on a Int64" was what the old wording produced.
+        [ ES.ValueType self
+          ES.String $" has more than one `{method_}`: "
           ES.String (Stdlib.Int.toString (Stdlib.List.length traits))
-          ES.String $" traits have a method named {method_}. Call it as `Trait.{method_} value`" ]
+          ES.String $" traits declare it. Say which one you mean, as `SomeTrait.{method_} value`" ]
       | SelfTypeUnknown(trait_, method_) ->
-        [ ES.String "Cannot tell which type to dispatch "
+        [ ES.ShortTraitName trait_
+          ES.String $".{method_} has no argument to read a type from, so it cannot tell which "
+          ES.String "type you mean. Name it: `"
           ES.ShortTraitName trait_
-          ES.String $".{method_} on. Pass the type explicitly: `"
-          ES.ShortTraitName trait_
-          ES.String $".{method_}<Type> ...`" ]
+          ES.String $".{method_}<Int64> ...`" ]
       | NoSuchMethod(trait_, method_) ->
         [ ES.TraitName trait_
           ES.String $" has no method named {method_}" ]
       | TraitNotFound trait_ ->
         [ ES.String "Trait "
           ES.TraitName trait_
-          ES.String " is not in the package manager" ]
+          ES.String " is not on this branch" ]
 
     | CLI err ->
       match err with

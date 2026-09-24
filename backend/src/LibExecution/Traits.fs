@@ -137,34 +137,35 @@ type Selection =
 
 /// The candidate for a self type, if exactly one applies.
 let select (candidates : List<ImplCandidate>) (self : KnownType) : Selection =
+  let blanket () =
+    candidates |> List.filter (fun c -> headOfTypeReference c.self = Some Head.Any)
+
+  // An implementation applies when its head matches AND its type arguments do: `Show for
+  // Option<Int>` must not answer `Show.show (Some "x")`. A blanket `for 'a` is the fallback,
+  // whether nothing specific matched the head or nothing specific fit the arguments.
   let head = headOfKnownType self
-  let specific =
-    candidates |> List.filter (fun c -> headOfTypeReference c.self = Some head)
   let matching =
-    match specific with
-    | [] ->
-      candidates |> List.filter (fun c -> headOfTypeReference c.self = Some Head.Any)
-    | _ -> specific
+    match
+      candidates
+      |> List.filter (fun c ->
+        headOfTypeReference c.self = Some head
+        && argsAgree c.self (ValueType.Known self))
+    with
+    | [] -> blanket ()
+    | fitting -> fitting
+
   match matching with
   | [] -> NoImpl
   | [ one ] -> Selected one
   | several ->
-    // Same head more than once: let the type arguments decide (`Option<Int>` vs
-    // `Option<String>`). Still several is a real ambiguity, reported as such.
-    match
-      several |> List.filter (fun c -> argsAgree c.self (ValueType.Known self))
-    with
-    | [ one ] -> Selected one
-    | [] -> NoImpl
-    | still ->
-      // Two impls for one type: the one written later runs, by the stamp of the op that added it
-      // and the same rule the op-fold uses for two bindings of one name. Both stay in the store,
-      // the loser is reported as a rival in `dark constraints`, and deprecating one settles it.
-      let stamped =
-        still
-        |> List.map (fun c ->
-          let (Hash h) = c.source
-          (c, c.stamp, h))
-      match Lww.winnerOf stamped with
-      | Some winner -> Selected winner
-      | None -> Ambiguous still
+    // Two implementations for one type: the one written later runs, by the stamp of the op that
+    // added it and the rule the op-fold uses for two bindings of one name. Both stay in the
+    // store; `dark constraints` reports the pair, and deprecating one settles it.
+    let stamped =
+      several
+      |> List.map (fun c ->
+        let (Hash h) = c.source
+        (c, c.stamp, h))
+    match Lww.winnerOf stamped with
+    | Some winner -> Selected winner
+    | None -> Ambiguous several

@@ -54,7 +54,7 @@ let content () : String =
 
 ## Pipe
   value |> fn
-  (complex expr) |> fn   # parens needed
+  (complex expr) |> fn   // parens needed
 
 ## Precedence
   Loosest to tightest. `**` and `@` nest right; everything else groups left.

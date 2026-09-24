@@ -132,7 +132,7 @@ module PT =
 
   module PackageValue =
     let serialize id value = makeSerializer PT.PackageValue.write id value
-    let deserialize id data = makeDeserializer PT.PackageValue.read id data
+    let deserialize id data = makeDeserializerV PT.PackageValue.read id data
 
   module PackageFn =
     let serialize id value = makeSerializer PT.PackageFn.write id value
@@ -144,7 +144,7 @@ module PT =
 
   module TraitImpl =
     let serialize id value = makeSerializer PT.Trait.TraitImpl.write id value
-    let deserialize id data = makeDeserializer PT.Trait.TraitImpl.read id data
+    let deserialize id data = makeDeserializerV PT.Trait.TraitImpl.read id data
 
   module PackageOp =
     let serialize id value = makeSerializer PT.PackageOp.write id value

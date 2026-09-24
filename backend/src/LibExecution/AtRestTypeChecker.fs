@@ -299,6 +299,22 @@ let private receiverMethodType
         )
         None
 
+/// A trait with a method of this name, if the item can see one. What makes `p.toString` on a type
+/// with no implementation answerable: the field is missing, and the trait is what wants filling in.
+let private traitWithMethod
+  (state : State)
+  (methodName : string)
+  : Option<FQTraitName.Package> =
+  state.Environment.traits
+  |> Map.toList
+  |> List.tryPick (fun (hash, trait_) ->
+    if
+      trait_.methods |> NEList.toList |> List.exists (fun m -> m.name = methodName)
+    then
+      Some hash
+    else
+      None)
+
 let private resolvePendingFieldAccesses (state : State) : unit =
   for nodeId, recordType, fieldName, resultType in state.PendingFieldAccesses do
     let recordType = normalizeAliases state (Some nodeId) Set.empty recordType
@@ -329,13 +345,27 @@ let private resolvePendingFieldAccesses (state : State) : unit =
           unify state (Some nodeId) RecordFieldAccess fieldType resultType
         | None ->
           if not (asReceiverCall ()) then
-            state.Error(
-              UnknownRecordField,
-              Some nodeId,
-              None,
-              Some recordType,
-              Identifier fieldName
-            )
+            // `p.toString` on a type with no `ToString` implementation is a field access that
+            // failed, and saying only "no such field" sends someone looking for a typo. If some
+            // trait has a method of that name, the answer is an implementation, so say which
+            // trait wants one.
+            match traitWithMethod state fieldName with
+            | Some traitHash ->
+              state.Error(
+                MissingImpl,
+                Some nodeId,
+                None,
+                Some recordType,
+                TraitNeeded(traitHash, Some fieldName)
+              )
+            | None ->
+              state.Error(
+                UnknownRecordField,
+                Some nodeId,
+                None,
+                Some recordType,
+                Identifier fieldName
+              )
       | TypeDeclaration.Enum _
       | TypeDeclaration.Alias _ ->
         if not (asReceiverCall ()) then

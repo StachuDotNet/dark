@@ -142,10 +142,8 @@ module FQFnName =
     /// It carries its location like every other reference, so a rename moves it and the
     /// dependency edge it produces reads like any other.
     ///
-    /// The fn rather than the `TraitImpl` item, for three reasons: it is what actually runs
-    /// and what traces record; propagation, dependency edges and `pin`/`follow` already work
-    /// on fns, so a newer implementation is an ordinary repoint; and editing an implementation's
-    /// OTHER method leaves this call alone, which pinning the impl item would not.
+    /// The fn, not the `TraitImpl` item: it is what runs and what traces record, and editing the
+    /// implementation's OTHER method then leaves this call alone.
     ///
     /// `None` where the implementation is not knowable at save time: inside
     /// `let display<'a: Show> (v: 'a) = Show.show v` it depends on the caller's type argument,
@@ -456,8 +454,8 @@ type Expr =
   /// Calls upon an infix function
   /// `a + b`. `implFn` is the same thing `TraitMethod` carries: the fn the implementation
   /// chosen when this was SAVED names for the operator's method, so `+` on a type of yours goes
-  /// on meaning what it meant. `None` for the operators that are not trait methods (`++`, the
-  /// bitwise ones, `&&`), and for an operand type only known at run time.
+  /// on meaning what it meant. `None` for `&&` and `||`, which are not trait methods; for `==`
+  /// and `!=`, which always resolve at the call; and for an operand type only known at run time.
   | EInfix of
     id *
     Infix *

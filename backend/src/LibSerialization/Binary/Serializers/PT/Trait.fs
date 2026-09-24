@@ -90,7 +90,7 @@ module TraitImpl =
       i.methods
     String.write w i.description
 
-  let read (r : BinaryReader) : TraitImpl.TraitImpl =
+  let read (version : uint32) (r : BinaryReader) : TraitImpl.TraitImpl =
     let hash = Hash.read r
     let trait_ = NameResolution.read FQTraitName.read r
     let traitTypeArgs =
@@ -103,7 +103,7 @@ module TraitImpl =
     let methods =
       LibSerialization.Binary.Serializers.Common.List.read r (fun r ->
         let m = String.read r
-        let nr = NameResolution.read FQFnName.read r
+        let nr = NameResolution.read (FQFnName.read version) r
         (m, nr))
     let description = String.read r
     { hash = hash

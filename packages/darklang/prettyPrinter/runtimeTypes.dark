@@ -268,7 +268,16 @@ let fnName
   match t with
   | Builtin b -> FQFnName.builtIn b
   | Package p -> FQFnName.package branchId p
-  | TraitMethod(traitHash, method, _) -> $"{FQTypeName.package branchId traitHash}.{method}"
+  // A trait's hash is not a type's, so it needs the trait's own locations: without this a trait
+  // method prints as a 64-character hash, which it did in arity errors and partial applications.
+  | TraitMethod(traitHash, method, _) ->
+    let traitName =
+      resolvePackageHash
+        LanguageTools.PackageManager.PickContext.empty
+        (LanguageTools.PackageManager.Trait.locations branchId (ptHash traitHash))
+        traitHash
+
+    $"{traitName}.{method}"
 
 
 

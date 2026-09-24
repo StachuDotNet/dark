@@ -44,15 +44,14 @@ let listMember = 16
 let dictSetStrict = 17
 let strIsEmpty = 18
 let listIsEmpty = 19
-/// `Mul.multiply`; only reached as a trait method, since `*` never lowered to a builtin the
-/// `Int` table knew.
+/// `Mul.multiply`; only reached as a trait method.
 let multiply = 20
 /// `Neg.negate`, one argument; `evalNegate` handles it.
 let negate = 21
 /// The bitwise operators. They have no arms in `eval`, `evalNumeric` or `evalNegate`, which
 /// decline them, so a bitwise call dispatches like any other trait method. They are in the
 /// TABLE because that is what tells the interpreter an operator is an operator: it is how
-/// `1L & 2y` still says "Cannot perform numeric operation on Int64 and Int8" rather than
+/// `1L & 2y` says "Cannot perform numeric operation on Int64 and Int8" rather than
 /// failing inside the implementation's parameter check.
 let bitAnd = 22
 let bitOr = 23

@@ -150,7 +150,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 
 
 let help (_state: Cli.AppState) : String =
-  [ "Take a fn/type/value off the shelf (sugar for deprecate --kind obsolete)."
+  [ "Take a fn/type/value/trait/impl off the shelf (sugar for deprecate --kind obsolete)."
     ""
     "Usage: delete <fn|type|value|trait|impl> <name-or-hash> [options]"
     ""

@@ -2531,11 +2531,21 @@ let private traitTests =
         |> expectChecked
       }
 
-      test "a receiver call with no impl stays UnknownRecordField" {
+      // `p.show` on a type with no implementation is a field access that failed, but the answer
+      // is an implementation, not a typo: when a visible trait declares a method of that name,
+      // the diagnostic names the trait. Only a name no trait declares stays UnknownRecordField.
+      test "a receiver call with no impl names the trait that wants one" {
         oneArgFn
           otherType
           PT.TString
           (PT.ERecordFieldAccess(16UL, PT.EVariable(12UL, "value"), "show"))
+        |> CheckerApi.checkPackageFunction withPointImpl
+        |> expectDiagnostic Checker.MissingImpl
+
+        oneArgFn
+          otherType
+          PT.TString
+          (PT.ERecordFieldAccess(16UL, PT.EVariable(12UL, "value"), "noTraitHasThis"))
         |> CheckerApi.checkPackageFunction withPointImpl
         |> expectDiagnostic Checker.UnknownRecordField
       }

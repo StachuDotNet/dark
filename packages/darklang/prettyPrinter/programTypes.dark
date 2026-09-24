@@ -1596,9 +1596,9 @@ let packageTrait
   $"{docComment}trait {namePart}{typeParamPart} =\n{PrettyPrinter.indent methods}"
 
 
-/// `impl<'a: Show> Show<Args> for List<'a> =` then `let m = Fn` per method: an impl
-/// prints as aliases of the fns it names, which round-trips whether the fns were
-/// written in the block or aliased.
+/// `impl<'a: Show> Show<Args> for List<'a> =`, then each method: the declaration itself when the
+/// method's fn was written in the block, and `let m = Some.Fn` when it names one that already
+/// existed. Both round-trip.
 let packageImpl
   (ctx: Context)
   (i: LanguageTools.ProgramTypes.TraitImpl.TraitImpl)
@@ -1618,20 +1618,30 @@ let packageImpl
     match Darklang.LanguageTools.PackageManager.pickLocation (Context.toPickContext ctx) (LanguageTools.PackageManager.TraitImpl.locations ctx.branchId i.hash) with
     | Some l -> Stdlib.List.flatten [ [ l.owner ], l.modules, [ l.name ] ]
     | None -> []
+  // A method whose fn lives under the impl's own path was WRITTEN here, so it prints as the
+  // declaration the author wrote. Printing the alias line for those gave `let d = d`, which says
+  // nothing and does not parse back. A method that names a fn elsewhere prints as that alias.
   let methods =
     i.methods
     |> Stdlib.List.map (fun (name, fn) ->
-      let target =
-        match fn.resolved with
-        | Ok r ->
-          (match r.location with
-           | Some loc ->
-             if (Stdlib.List.append [ loc.owner ] loc.modules) == implPath then loc.name
-             else NameResolution.fnName { ctx with currentModule = [] } fn
-           | None -> NameResolution.fnName ctx fn)
-        | Error _ -> NameResolution.fnName ctx fn
-      $"let {name} = {target}")
-    |> Stdlib.String.join "\n"
+      match fn.resolved with
+      | Ok r ->
+        let declaredHere =
+          match r.location with
+          | Some loc -> (Stdlib.List.append [ loc.owner ] loc.modules) == implPath
+          | None -> false
+
+        if declaredHere then
+          match r.name with
+          | Package hash ->
+            (match LanguageTools.PackageManager.Function.get hash with
+             | Some f -> packageFn ctx f
+             | None -> $"let {name} = {NameResolution.fnName ctx fn}")
+          | _ -> $"let {name} = {NameResolution.fnName ctx fn}"
+        else
+          $"let {name} = {NameResolution.fnName { ctx with currentModule = [] } fn}"
+      | Error _ -> $"let {name} = <unresolved: {NameResolution.fnName ctx fn}>")
+    |> Stdlib.String.join "\n\n"
   let docComment = formatDocComment i.description
   $"{docComment}impl{typeParamPart} {traitPart} for {typeReference ctx i.self} =\n{PrettyPrinter.indent methods}"
 

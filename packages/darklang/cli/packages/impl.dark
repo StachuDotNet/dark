@@ -25,7 +25,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
         "  impl <module> -    (read from stdin)"
         ""
         "Examples:"
-        "  impl . \"Show for Point = let show (p: Point) : String = $\\\"({p.x}, {p.y})\\\"\""
+        "  impl . \"ToString for Point = let toString (p: Point) : String = Stdlib.toString p.x\""
         "  impl /Acme \"Add for Vec = let add (a: Vec) (b: Vec) : Vec = Vec { x = a.x + b.x; y = a.y + b.y }\""
         ""
         "  # Several methods via stdin (run from shell, not the REPL):"
@@ -127,7 +127,7 @@ let createImplInline
             (Stdlib.Cli.UI.Colors.error "Expected exactly one impl declaration")
             ""
             "Example:"
-            "  impl . \"Show for Point = let show (p: Point) : String = ...\""
+            "  impl . \"ToString for Point = let toString (p: Point) : String = ...\""
             ""
           ] |> Stdlib.printLines
           { state with exitCode = 1 }
@@ -136,7 +136,7 @@ let createImplInline
         (Stdlib.Cli.UI.Colors.error "Failed to parse the implementation")
         ""
         "Example:"
-        "  impl . \"Show for Point = let show (p: Point) : String = ...\""
+        "  impl . \"ToString for Point = let toString (p: Point) : String = ...\""
         ""
       ] |> Stdlib.printLines
       { state with exitCode = 1 }
@@ -160,7 +160,7 @@ let help (_state: Cli.AppState) : String =
     "gives Vec a `+`. `impls <trait>` lists what exists; see `docs traits`."
     ""
     "Examples:"
-    "  impl . \"Show for Point = let show (p: Point) : String = $\\\"({p.x}, {p.y})\\\"\""
+    "  impl . \"ToString for Point = let toString (p: Point) : String = Stdlib.toString p.x\""
     "  impl /Acme \"Add for Vec = let add (a: Vec) (b: Vec) : Vec = Vec { x = a.x + b.x; y = a.y + b.y }\""
     "  impl . \"Show for Int64 = let show = Stdlib.Int64.toString\""
     ""

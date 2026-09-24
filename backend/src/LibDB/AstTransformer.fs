@@ -31,9 +31,9 @@ type HashMapping =
     /// The implementation each trait-method call resolved to, by the node its name is at.
     ///
     /// Filled by the SAVE, from what the at-rest checker proved about the item
-    /// (`Traits.resolveInOps`), so a call goes on running the implementation it was written
-    /// against. Empty everywhere else, which leaves every name as it was: propagation and
-    /// SCC stabilization rewrite hashes, they do not re-resolve anything.
+    /// (`resolveTraitCalls`), so a call goes on running the implementation it was written
+    /// against. Empty everywhere else: propagation and SCC stabilization rewrite hashes, they do
+    /// not re-resolve anything.
     pins : Map<id, PT.ResolvedName<PT.FQFnName.Package>>
   }
 

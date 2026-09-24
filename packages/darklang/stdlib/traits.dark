@@ -8,7 +8,7 @@ module Darklang.Stdlib
 //     let add (a: Vec) (b: Vec) : Vec = Vec { x = a.x + b.x; y = a.y + b.y }
 //
 // The interpreter answers two operands of one builtin numeric type without
-// looking the impl up, so the operators cost what they did before traits.
+// looking the impl up.
 
 
 /// `a + b`
@@ -36,7 +36,7 @@ trait Mod<'a> =
   let modulo (a: 'a) (b: 'a) : 'a
 
 
-/// `a ^ b`
+/// `a ** b`
 trait Pow<'a> =
   let power (``base``: 'a) (exponent: 'a) : 'a
 
@@ -84,7 +84,7 @@ trait BitOr<'a> =
   let bitOr (a: 'a) (b: 'a) : 'a
 
 
-/// `a ^^^ b`, exclusive or
+/// `a ^ b`, exclusive or
 trait BitXor<'a> =
   let bitXor (a: 'a) (b: 'a) : 'a
 
@@ -94,7 +94,7 @@ trait BitNot<'a> =
   let bitNot (a: 'a) : 'a
 
 
-/// `a << b`. The shift count is the same type as the value, as it was before traits.
+/// `a << b`. The shift count is the same type as the value.
 trait Shl<'a> =
   let shiftLeft (a: 'a) (b: 'a) : 'a
 
@@ -112,10 +112,8 @@ trait Ord<'a> =
   let greaterThanOrEqualTo (a: 'a) (b: 'a) : Bool
 
 
-// Written once over `Ord`, for any type with an implementation. These replaced the per-type
-// copies (`Stdlib.Int64.max` and eleven siblings, the same again for `min`, `clamp` and `sum`),
-// which is what a trait is for. `Stdlib.Float.clamp` survives under its own name because it is
-// a different function: it returns a Result and refuses a NaN limit.
+// Written once over `Ord`, for any type with an implementation. `Stdlib.Float.clamp` is a
+// different function under a similar name: it returns a Result and refuses a NaN limit.
 
 /// The larger of two values of any type with an `Ord` impl
 let max<'a: Ord> (a: 'a) (b: 'a) : 'a = if a > b then a else b

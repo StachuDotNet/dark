@@ -1103,7 +1103,8 @@ let collectInfixFnNameHoverInfoAtPos
   match i with
   | ArithmeticPlus ->
     let thingAtPosition =
-      CursorPosition.ThingAtPosition.Operator("Arithmetic plus")
+      CursorPosition.ThingAtPosition.Operator(
+        "Add (`+`): numbers add, Strings concatenate")
 
     (hoverInfoForThingAtPosition ctx thingAtPosition range)
     |> Stdlib.Option.Option.Some

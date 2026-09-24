@@ -224,18 +224,23 @@ module FQFnName =
           Option.write w PackageLocation.write r.location)
         implFn
 
-  let read (r : BinaryReader) : FQFnName.FQFnName =
+  let read (version : uint32) (r : BinaryReader) : FQFnName.FQFnName =
     match r.ReadByte() with
     | 0uy -> FQFnName.Builtin(Builtin.read r)
     | 1uy -> FQFnName.Package(Package.read r)
     | 2uy ->
       let t = FQTraitName.Package.read r
       let m = String.read r
+      // v3 and later carry the implementation the save resolved the call to; a v2 blob wrote the
+      // trait and the method and stopped.
       let implFn =
-        Option.read r (fun r ->
-          let name = Package.read r
-          let location = Option.read r PackageLocation.read
-          { name = name; location = location })
+        if version >= 3u then
+          Option.read r (fun r ->
+            let name = Package.read r
+            let location = Option.read r PackageLocation.read
+            { name = name; location = location })
+        else
+          None
       FQFnName.TraitMethod(t, m, implFn)
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 

@@ -41,7 +41,7 @@ let write (w : BinaryWriter) (p : PackageFn.PackageFn) : unit =
 
 let read (version : uint32) (r : BinaryReader) : PackageFn.PackageFn =
   let hash = Hash.read r
-  let body = LibSerialization.Binary.Serializers.PT.Expr.Expr.read r
+  let body = LibSerialization.Binary.Serializers.PT.Expr.Expr.read version r
   let typeParams = LibSerialization.Binary.Serializers.Common.List.read r String.read
   let parameters = NEList.read Parameter.read r
   let returnType = TypeReference.read r

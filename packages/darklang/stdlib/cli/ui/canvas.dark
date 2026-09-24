@@ -82,7 +82,7 @@ let renderSegments (width: Int) (segments: List<Segment>) : String =
       if seg.col >= width then
         acc
       else
-        // Inlined rather than `Int.max`, for the reason given in `composeRow` below: it is a call,
+        // Inlined rather than `Stdlib.max`, for the reason given in `composeRow` below: it is a call,
         // and this runs once per segment. Same for the gap -- segments usually butt up against the
         // one before, so the ordinary case is a `repeat` that returns "" and an append that adds
         // nothing. Both are skipped when there is no gap to fill.
@@ -140,7 +140,7 @@ let composeRow (width: Int) (rowSpans: List<Layout.Span>) : String =
         if e > rightmost then e else rightmost
 
       // While the row is still in order, the last column seen is the highest one, so this needs no
-      // `max` -- and `Int.max` is a package call, which at one per span is not free.
+      // `max` -- and `Stdlib.max` is a package call, which at one per span is not free.
       (nextPlaced, orderedSoFar && (span.col >= lastCol), span.col, nextRightmost))
 
   let sorted =

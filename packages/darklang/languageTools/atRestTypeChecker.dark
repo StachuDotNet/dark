@@ -340,7 +340,7 @@ let nameRefToStringWith
 let siteToString (site: Site) : String =
   match site with
   | LambdaReturnValue -> "the lambda's return value"
-  | ImplMethodSignatureSite -> "the implementation's method fn against the trait's signature"
+  | ImplMethodSignatureSite -> "this method, checked against the trait's signature"
   | FunctionReturnValue -> "the function's return value"
   | ValueBody -> "the value's body"
   | Expression -> "this expression"
@@ -431,7 +431,7 @@ let contextToStringWith
     | [] -> "The name is unresolved"
     | parts -> $"'{Stdlib.String.join parts "."}' is unresolved"
   | TypeUnavailable hash -> $"{typeName hash} is not available to the checker"
-  | TraitUnavailable hash -> $"the trait {typeName hash} is not available to the checker"
+  | TraitUnavailable hash -> $"The trait {typeName hash} is not available to the checker"
   | ImplMethod(traitHash, method, detail) ->
     let traitName =
       match customTypeName traitHash with
@@ -535,10 +535,10 @@ let contextToStringWith
     match code with
     | MissingImpl ->
       match method with
-      | Some m -> $"No implementation of {traitName} for this type, which `{traitName}.{m}` needs"
-      | None -> $"No implementation of {traitName} for this type, which the bound `{traitName}` needs"
+      | Some m -> $"No implementation of {traitName} for this type, so `{traitName}.{m}` cannot run on it"
+      | None -> $"No implementation of {traitName} for this type, and this function requires one (`'a: {traitName}`)"
     | UnboundTypeParameter ->
-      $"This type parameter is used as a {traitName} but the function does not declare `: {traitName}` on it"
+      $"This type parameter needs a {traitName} implementation, but the function does not declare `'a: {traitName}`"
     | AmbiguousImpl ->
       match method with
       | Some m -> $"More than one implementation offers `{m}` for this type; name the trait, as `{traitName}.{m} value`"

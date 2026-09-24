@@ -303,8 +303,8 @@ let private resolveTraitMethod
                   resolved =
                     Ok
                       { name =
-                          // Unresolved: the parser has no types, so which implementation runs
-                          // is decided when the item is saved (`Traits.resolve`).
+                          // The parser has no types, so which implementation runs is decided
+                          // when the item is saved (`resolveTraitCalls`).
                           PT.FQFnName.TraitMethod(traitHash, methodName, None)
                         location = loc } }
           | _ -> return None

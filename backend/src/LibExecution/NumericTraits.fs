@@ -2,9 +2,9 @@
 ///
 /// `a + b` is `Stdlib.Add.add a b`: the lowering emits the trait method, the checker
 /// asks for an `Add` impl of the operand type, and the query compiler pushes it down
-/// as the SQL operator the old polymorphic builtin carried. The trait hashes come from
+/// as its SQL operator. The trait hashes come from
 /// `PackageRefs`, so a tree whose refs are not generated yet (CI before the first
-/// reload) lowers to the polymorphic builtin exactly as before.
+/// reload) lowers to the polymorphic builtin.
 module LibExecution.NumericTraits
 
 open Prelude
@@ -12,11 +12,10 @@ open ProgramTypes
 
 module Traits = PackageRefs.Trait.Stdlib.Traits
 
-/// The trait and method an operator is. Every operator is one now, bitwise included, so
-/// "integer-only" is not a rule the checker carries any more: it is the set of types with a
-/// `BitAnd` implementation. `==` is `Eq.equals`, with a structural fallback for a type that
-/// has no implementation (so every value stays comparable, and the builtin types are never
-/// overridden).
+/// The trait and method an operator is. Every operator is one, bitwise included: "integer-only"
+/// is the set of types with a `BitAnd` implementation. `==` is `Eq.equals`, with a structural
+/// fallback for a type that has no implementation, so every value stays comparable and the
+/// builtin types are never overridden.
 let ofInfix (op : InfixFnName) : Option<string * string> =
   let some (hash : string) (methodName : string) =
     if hash = "" then None else Some(hash, methodName)
@@ -39,13 +38,12 @@ let ofInfix (op : InfixFnName) : Option<string * string> =
   | BitwiseXor -> some (Traits.bitXor ()) "bitXor"
   | ShiftLeft -> some (Traits.shl ()) "shiftLeft"
   | ShiftRight -> some (Traits.shr ()) "shiftRight"
-  // `++` is gone from the language; the case survives to decode ops stored before that, and
-  // those lower to the string-append builtin exactly as they used to.
+  // `++` is not in the language; the case exists to decode ops stored before it went, and
+  // lowers to the string-append builtin.
   | StringConcat -> None
 
-/// Unary minus on a non-literal (`-x`): `Neg.negate`, or None while the refs are
-/// not generated. The parser stores `Builtin.negate` in the PT, so this is a
-/// lowering-time swap and no hash moves.
+/// Unary minus on a non-literal (`-x`): `Neg.negate`, or None while the refs are not
+/// generated. The parser stores `Builtin.negate` in the PT; this is the lowering-time swap.
 let ofNegate () : Option<string * string> =
   let hash = Traits.neg ()
   if hash = "" then None else Some(hash, "negate")

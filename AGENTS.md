@@ -322,7 +322,7 @@ op log directly.
 ## Traits
 
 A trait is a package item (`PT.Trait`: type params, bounds, method signatures with
-optional ceilings); an impl is a package item (`PT.Impl`: the trait, its type args,
+optional ceilings); an impl is a package item (`PT.TraitImpl`: the trait, its type args,
 the self type, own params and bounds, methods as `(name, fn)` pairs). Two ops,
 `AddTrait` and `AddTraitImpl`; two tables, `package_traits` and `package_trait_impls(trait_hash)`;
 `FQTraitName` for references; binary format v3. The parser lowers `trait`/`impl` in
@@ -349,10 +349,10 @@ implementations apply at each call node (`Proof.resolutions`, keyed by the node 
 and the store says which is newer. It is hashed with the item and becomes an ordinary fn
 dependency edge, so propagation, `pin` and `follow` treat a newer implementation like any other
 update. `None` where the self type is not knowable at save time (a call inside a bounded generic,
-an operator in a pipeline); those resolve at run time as before, which is what the selection
-path in `Interpreter.fs` is still for.
+an operator in a pipeline); those resolve at run time, which is what the selection
+path in `Interpreter.fs` is for.
 
-**Every switch over item kinds has five arms now.** Types, values, fns, traits, impls.
+**Every switch over item kinds has five arms.** Types, values, fns, traits, impls.
 A new listing, codec, or CLI command that handles three of them silently drops the
 other two; `ls`, `tree`, `search`, completion, the workbench, the relay browser and
 the LSP all had to learn them, and the names-only search builtins return six lists.

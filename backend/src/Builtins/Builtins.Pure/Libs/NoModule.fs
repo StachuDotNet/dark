@@ -106,9 +106,9 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "a" varA ""; Param.make "b" varB "" ]
       returnType = varA
       description =
-        "Adds two values of the same type: numbers, or Strings, which concatenate. Fixed-width integer "
-        + "overflow wraps around; the arbitrary-precision Int grows instead of "
-        + "overflowing; float arithmetic follows IEEE (overflow to infinity)."
+        "Adds two values of the same type. Strings concatenate. For numbers: fixed-width "
+        + "integer overflow wraps around, the arbitrary-precision Int grows instead of "
+        + "overflowing, and float arithmetic follows IEEE (overflow to infinity)."
       fn =
         (function
         | _, _, _, [| DInt8 a; DInt8 b |] -> Ply(DInt8(a + b))

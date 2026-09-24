@@ -57,10 +57,10 @@ module Shapes =
   (Shapes.Point { x = 1; y = 2 }).x = 1
 
   // No impl: at the method call for a direct call
-  Shapes.Show.show 3.5 = error "No implementation of Shapes.Show for Float. Write `impl Show for <type> = ...`, or see `dark impls Show`"
+  Shapes.Show.show 3.5 = error "Float has no implementation of Shapes.Show. Write `impl Show for Float = ...`, or run `dark impls Show` to see which types do"
 
   // No impl: at the CALL of a bounded fn, before its body runs
-  Shapes.neverCalls 3.5 = error "No implementation of Shapes.Show for Float. Write `impl Show for <type> = ...`, or see `dark impls Show`"
+  Shapes.neverCalls 3.5 = error "Float has no implementation of Shapes.Show. Write `impl Show for Float = ...`, or run `dark impls Show` to see which types do"
   Shapes.neverCalls 5 = "never"
 
 
@@ -80,7 +80,7 @@ module Multi =
   Multi.sum 1.5 2.5 3.0 = 7.0
   Multi.sum (Multi.Vec { dx = 1; dy = 1 }) (Multi.Vec { dx = 2; dy = 2 }) (Multi.Vec { dx = 3; dy = 3 }) = Multi.Vec { dx = 6; dy = 6 }
   Multi.sum "a" "b" "c" = "abc"
-  Multi.sum true false true = error "No implementation of Darklang.Stdlib.Add for Bool. Write `impl Add for <type> = ...`, or see `dark impls Add`"
+  Multi.sum true false true = error "Bool has no implementation of Darklang.Stdlib.Add. Write `impl Add for Bool = ...`, or run `dark impls Add` to see which types do"
 
   // Worth knowing: a trait declared here with the same shape as `Stdlib.Add`
   // IS `Stdlib.Add` (content addressing), so `impl Add for Int` next to it
@@ -114,12 +114,12 @@ module Ambiguity =
   Ambiguity.Label.describe 1 = "labelled"
 
   // A receiver call cannot pick between two traits with the same method name
-  (1).describe = error "`.describe` on a Int is ambiguous: 2 traits have a method named describe. Call it as `Trait.describe value`"
+  (1).describe = error "Int has more than one `describe`: 2 traits declare it. Say which one you mean, as `SomeTrait.describe value`"
 
 
 module Equality =
   // `==` is `Eq.equals`. A type with an impl says what equal means; everything
-  // else, builtin types included, compares structurally as before.
+  // else, builtin types included, compares structurally.
   type User = { id: Int64; name: String }
   type Plain = { n: Int64 }
 
@@ -146,7 +146,7 @@ module Identities =
   // no argument to read the type from.
   Stdlib.Zero.zero<Int64> () = 0L
   Stdlib.One.one<Float> () = 1.0
-  Stdlib.Zero.zero () = error "Cannot tell which type to dispatch Zero.zero on. Pass the type explicitly: `Zero.zero<Type> ...`"
+  Stdlib.Zero.zero () = error "Zero.zero has no argument to read a type from, so it cannot tell which type you mean. Name it: `Zero.zero<Int64> ...`"
 
   let zeroOf<'a: Stdlib.Zero + Stdlib.Add> (x: 'a) : 'a = Stdlib.Zero.zero () + x
   Identities.zeroOf 5L = 5L
@@ -173,9 +173,9 @@ module Rendering =
   Stdlib.toString 2.5 = "2.5"
   (7).toString = "7"
   Stdlib.max 3L 9L = 9L
-  // String, Char and DateTime implement Ord now, so the generics cover them too
+  // String, Char and DateTime implement Ord, so the generics cover them too
   Stdlib.min "apple" "banana" = "apple"
   Stdlib.max 'a' 'z' = 'z'
   // A type with no Ord implementation is what the bound refuses
-  Stdlib.min true false = error "No implementation of Darklang.Stdlib.Ord for Bool. Write `impl Ord for <type> = ...`, or see `dark impls Ord`"
+  Stdlib.min true false = error "Bool has no implementation of Darklang.Stdlib.Ord. Write `impl Ord for Bool = ...`, or run `dark impls Ord` to see which types do"
   Stdlib.clamp 15 20 10 = 15

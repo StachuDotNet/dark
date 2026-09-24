@@ -103,7 +103,7 @@ let fns () : List<BuiltInFn> =
       parameters = [ Param.make "a" TString ""; Param.make "b" TString "" ]
       returnType = TInt64
       description =
-        "Compares two strings by their code units: negative when <param a> sorts first, zero when they are equal, positive when <param b> sorts first"
+        "Orders two strings: a negative number when <param a> sorts first, 0 when they are equal, a positive number when <param b> sorts first. Compares raw UTF-16 units rather than language-aware collation, so every machine orders the same pair the same way. Only the sign is meaningful."
       fn =
         (function
         | _, _, _, [| DString a; DString b |] ->

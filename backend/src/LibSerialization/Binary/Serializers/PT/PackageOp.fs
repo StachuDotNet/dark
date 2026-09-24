@@ -222,7 +222,7 @@ let read (version : uint32) (r : BinaryReader) : PackageOp =
     let typ = LibSerialization.Binary.Serializers.PT.PackageType.read version r
     PackageOp.AddType typ
   | 1uy ->
-    let value = LibSerialization.Binary.Serializers.PT.PackageValue.read r
+    let value = LibSerialization.Binary.Serializers.PT.PackageValue.read version r
     PackageOp.AddValue value
   | 2uy ->
     let fn = LibSerialization.Binary.Serializers.PT.PackageFn.read version r
@@ -230,7 +230,7 @@ let read (version : uint32) (r : BinaryReader) : PackageOp =
   | 15uy -> PackageOp.AddTrait(LibSerialization.Binary.Serializers.PT.Trait.read r)
   | 16uy ->
     PackageOp.AddTraitImpl(
-      LibSerialization.Binary.Serializers.PT.Trait.TraitImpl.read r
+      LibSerialization.Binary.Serializers.PT.Trait.TraitImpl.read version r
     )
   | 3uy ->
     let location = PackageLocation.read r

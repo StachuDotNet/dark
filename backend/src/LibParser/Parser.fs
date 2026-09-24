@@ -2227,15 +2227,14 @@ and parsePrimary (state : ParserState) (i : int) : WT.Expr * int =
       i
       $"'{txt state i}' is reserved but not supported by the expression grammar"
     (WT.EError(rng state i), i + 1)
-  // `++` was string concatenation before `String` had an `Add` implementation. The token is
-  // still lexed so that this says what to write instead, rather than `+` `+` producing a
-  // baffling error at the second one.
+  // `++` is still lexed so this can say what to write instead; without the token, `+` `+`
+  // errors at the second one, which reads as nonsense.
   | TPlusPlus ->
     err
       state
       DiagnosticCode.unexpected
       i
-      "'++' is no longer an operator; `+` concatenates Strings"
+      "'++' is not an operator; use '+' to join Strings"
     (WT.EError(rng state i), i + 1)
   | _ ->
     // `::` parses in PATTERNS only; the expression-side way to prepend is `Stdlib.List.push` (or a

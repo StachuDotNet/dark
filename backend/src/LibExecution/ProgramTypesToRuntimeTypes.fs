@@ -208,9 +208,6 @@ module InfixFnName =
   /// What an operator calls: the stdlib trait method for arithmetic and
   /// comparison, the polymorphic builtin for the rest (and for every operator
   /// while the package refs are not generated yet).
-  /// The operator's trait method, carrying the implementation the save chose for it. Without
-  /// one (an operand type only known at run time, or an operator that is no trait method) it is
-  /// the same name it always was, resolved at the call.
   let toRT
     (implFn : Option<PT.ResolvedName<PT.FQFnName.Package>>)
     (name : PT.InfixFnName)
@@ -868,7 +865,7 @@ module Expr =
             PT.EApply(id, PT.ELambda(id, pats, body), [], NEList.ofList lhs [])
 
           // `1 |> (+) 1`
-          // A pipeline's operator is not resolved at save time; it lowers as it always did.
+          // A pipeline's operator is not resolved at save time.
           | PT.EPipeInfix(id, infix, rhs) -> PT.EInfix(id, infix, lhs, rhs, None)
 
           // `1 |> Json.serialize<Int64>`

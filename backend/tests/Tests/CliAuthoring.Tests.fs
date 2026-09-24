@@ -287,14 +287,14 @@ let traitsAreAuthoredListedAndDisambiguated =
             state
             [ "impl"
               "Tests.Tr"
-              "Describe for Point =\n  let describe (p: Point) : String = \"tr\"\n  let short (p: Point) : String = \"t\"" ]
+              "Describe for Point =\n  let describe (p: Point) : String = \"alpha\"\n  let short (p: Point) : String = \"t\"" ]
             "Created implementation: Tests.Tr.Point.Describe"
             "impl authors an implementation at <module>.<Type>.<Trait>"
         do!
           evals
             state
             "Tests.Tr.Describe.describe (Tests.Tr.Point { x = 1L; y = 2L })"
-            "tr"
+            "alpha"
             "the implementation dispatches"
         do!
           shows
@@ -316,7 +316,7 @@ let traitsAreAuthoredListedAndDisambiguated =
           evals
             state
             "Tests.Tr.callsIt ()"
-            "tr"
+            "alpha"
             "the saved caller runs what it resolved to"
         do!
           shows
@@ -331,19 +331,19 @@ let traitsAreAuthoredListedAndDisambiguated =
             state
             [ "impl"
               "Tests.TrOther"
-              "Tests.Tr.Describe for Tests.Tr.Point =\n  let describe (p: Tests.Tr.Point) : String = \"other\"\n  let short (p: Tests.Tr.Point) : String = \"o\"" ]
+              "Tests.Tr.Describe for Tests.Tr.Point =\n  let describe (p: Tests.Tr.Point) : String = \"beta\"\n  let short (p: Tests.Tr.Point) : String = \"o\"" ]
         do!
           evals
             state
             "Tests.Tr.callsIt ()"
-            "tr"
+            "alpha"
             "the saved caller is untouched by an implementation written after it"
         // The call does not stop: the rival was written later, so it is the one that runs.
         do!
           evals
             state
             "Tests.Tr.Describe.describe (Tests.Tr.Point { x = 1L; y = 2L })"
-            "other"
+            "beta"
             "the newer implementation runs"
         do!
           shows
@@ -355,7 +355,7 @@ let traitsAreAuthoredListedAndDisambiguated =
           shows
             state
             [ "constraints"; "--kind"; "rival-implementations" ]
-            "a call runs Tests.TrOther.Point.Describe, written later"
+            "Calls run Tests.TrOther.Point.Describe, the later of the two"
             "naming the one that runs"
 
         // Editing the implementation's OTHER method leaves this caller alone. This is why the
@@ -366,12 +366,12 @@ let traitsAreAuthoredListedAndDisambiguated =
             state
             [ "impl"
               "Tests.Tr"
-              "Describe for Point =\n  let describe (p: Point) : String = \"tr\"\n  let short (p: Point) : String = \"edited\"" ]
+              "Describe for Point =\n  let describe (p: Point) : String = \"alpha\"\n  let short (p: Point) : String = \"edited\"" ]
         do!
           evals
             state
             "Tests.Tr.callsIt ()"
-            "tr"
+            "alpha"
             "an edit to another method of the implementation does not reach this call"
 
         // An edit to the implementation this caller DOES use is an ordinary update: the caller
@@ -381,12 +381,12 @@ let traitsAreAuthoredListedAndDisambiguated =
             state
             [ "impl"
               "Tests.Tr"
-              "Describe for Point =\n  let describe (p: Point) : String = \"tr2\"\n  let short (p: Point) : String = \"t\"" ]
+              "Describe for Point =\n  let describe (p: Point) : String = \"gamma\"\n  let short (p: Point) : String = \"t\"" ]
         do!
           evals
             state
             "Tests.Tr.callsIt ()"
-            "tr"
+            "alpha"
             "the caller stays on the version it was written against"
         do!
           shows
@@ -404,7 +404,7 @@ let traitsAreAuthoredListedAndDisambiguated =
           evals
             state
             "Tests.Tr.callsIt ()"
-            "tr2"
+            "gamma"
             "and following moves the caller onto the newer implementation"
 
         // Deprecating the one that RUNS leaves the other, which then runs.
@@ -421,7 +421,9 @@ let traitsAreAuthoredListedAndDisambiguated =
           evals
             state
             "Tests.Tr.Describe.describe (Tests.Tr.Point { x = 1L; y = 2L })"
-            "tr"
+            // The surviving implementation was edited above, so a fresh call runs its current
+            // version. Only a SAVED caller stays on what it resolved to.
+            "gamma"
             "the surviving implementation dispatches again"
         do!
           lacks

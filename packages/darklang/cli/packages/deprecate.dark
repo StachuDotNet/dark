@@ -147,7 +147,7 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
       Stdlib.printLine
         (Stdlib.Cli.UI.Colors.error
           ($"Error: '{itemType}' is not a valid item kind. "
-           + "Expected fn, type, or value."))
+           + "Expected fn, type, value, trait, or impl."))
 
     state
 
@@ -361,7 +361,7 @@ let undeprecateHelp (_state: Cli.AppState) : String =
   |> Stdlib.String.join "\n"
 
 let help (_state: Cli.AppState) : String =
-  [ "Mark a function, type, or value as deprecated."
+  [ "Mark a function, type, value, trait or implementation as deprecated."
     ""
     "Usage: deprecate <fn|type|value|trait|impl> <name-or-hash> --kind <k> [options]"
     ""

@@ -58,7 +58,9 @@ let incomingWins
 /// Two impls of one trait for one type are chosen this way (`LibExecution.Traits.select`), so the same
 /// call means the same thing on every instance that holds both.
 let winnerOf (candidates : List<'a * string * string>) : Option<'a> =
-  if candidates |> List.forall (fun (_, ts, _) -> ts = "") then
+  if List.isEmpty candidates then
+    None
+  elif candidates |> List.forall (fun (_, ts, _) -> ts = "") then
     None
   else
     candidates
