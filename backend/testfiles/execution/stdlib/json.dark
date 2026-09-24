@@ -7,6 +7,15 @@
 
 type Person = { Name: String; Age: Int64 }
 
+/// A record with an optional field, written through the alias below, which is how a
+/// person spells it and what made `parse` call an absent key a missing field.
+type Note = { Body: String; Author: Option<String> }
+
+/// The same, through an alias with no type arguments of its own.
+type MaybeInt = Option<Int64>
+
+type Counted = { N: MaybeInt }
+
 type Result<'ok, 'err> = Stdlib.Result.Result<'ok, 'err>
 type Option<'t> = Stdlib.Option.Option<'t>
 
@@ -1104,6 +1113,36 @@ module Tuples =
       "Can't parse JSON `\"one\"` as type `Int64` at path: `root[1]`"
 
 
+module Record =
+  // A `None` field is left out when writing, and an absent or null key reads back as
+  // `None`. The field's type here is spelled through an alias, which is the shape that
+  // used to be read as required.
+  Stdlib.Json.serialize<Note> (Note { Body = "hi"; Author = Option.None }) = "{\"Body\":\"hi\"}"
+
+  Stdlib.Json.serialize<Note> (Note { Body = "hi"; Author = Option.Some "ada" }) = "{\"Author\":\"ada\",\"Body\":\"hi\"}"
+
+  Stdlib.Json.parse<Note> "{\"Body\":\"hi\"}" = Result.Ok(
+    Note { Body = "hi"; Author = Option.None }
+  )
+
+  Stdlib.Json.parse<Note> "{\"Body\":\"hi\",\"Author\":null}" = Result.Ok(
+    Note { Body = "hi"; Author = Option.None }
+  )
+
+  Stdlib.Json.parse<Note> "{\"Body\":\"hi\",\"Author\":\"ada\"}" = Result.Ok(
+    Note { Body = "hi"; Author = Option.Some "ada" }
+  )
+
+  // An alias that carries no type argument of its own resolves the same way.
+  Stdlib.Json.parse<Counted> "{}" = Result.Ok(Counted { N = Option.None })
+
+  Stdlib.Json.parse<Counted> "{\"N\":3}" = Result.Ok(Counted { N = Option.Some 3L })
+
+  // A field that is NOT optional is still required.
+  (Stdlib.Json.parse<Note> "{\"Author\":\"ada\"}") |> err = Result.Error
+    "Can't parse JSON because `Body` field is not provided at path: `root`"
+
+
 module Option =
   // An Option is carried the way every other system carries "maybe a value": the bare
   // value, or null. Not `{"Some":[1]}`, which only Dark could read.
@@ -1114,6 +1153,14 @@ module Option =
 
   Stdlib.Json.serialize<Option<String>> (Option.Some "a") = "\"a\""
   Stdlib.Json.parse<Option<String>> "\"a\"" = Result.Ok(Option.Some "a")
+
+  // One layer is all this encoding carries: `Some None` and `None` are both `null`, and
+  // so is `Some ()`. Pinned as known-lossy; see the note in `serialize`.
+  Stdlib.Json.serialize<Option<Option<Int64>>> (Option.Some Option.None) = "null"
+
+  Stdlib.Json.parse<Option<Option<Int64>>> "null" = Result.Ok Option.None
+
+  Stdlib.Json.serialize<Option<Unit>> (Option.Some()) = "null"
 
   Stdlib.Json.serialize<List<Option<Int64>>> [ Option.Some 1L, Option.None ] = "[1,null]"
   Stdlib.Json.parse<List<Option<Int64>>> "[1,null]" = Result.Ok(

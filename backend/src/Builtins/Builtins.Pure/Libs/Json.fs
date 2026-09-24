@@ -97,6 +97,7 @@ let private isOptionEnum (dv : Dval) : bool =
     resolvedTypeName = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.option ())
   | _ -> false
 
+/// A `None`, which a record leaves out rather than writing.
 let private isNoneValue (dv : Dval) : bool =
   match dv with
   | DEnum(_, _, _, "None", []) -> isOptionEnum dv
@@ -160,7 +161,14 @@ let rec serialize (threadID : ThreadID) (w : Utf8JsonWriter) (dv : Dval) : unit 
   // is absent by leaving it out or writing null, and a Dark program that talks to one
   // should not have to hand-write a codec to be understood. Inside a record a `None`
   // field is left out entirely, which is what an API expects and what `parse` reads
-  // back as `None`.
+  // back as `None`. The tagged form is not read at all: `{"Some":[1]}` parses as an
+  // object, not as `Some 1`.
+  //
+  // The cost, and it is unavoidable in this encoding: one layer of `Option` is all JSON
+  // can carry. `Some None` and `None` are both `null`, and so are `Some ()` and `None`,
+  // so `parse` reads any of them back as `None`. Every language that writes an optional
+  // as bare-or-null has the same hole. `testfiles/execution/stdlib/json.dark` pins it as
+  // known-lossy rather than leaving it to be discovered.
   | DEnum(_, _, _, "Some", [ inner ]) when isOptionEnum dv -> r inner
   | DEnum(_, _, _, "None", []) when isOptionEnum dv -> w.WriteNullValue()
 
@@ -734,11 +742,18 @@ let parse
                 uply {
                   let typ = Types.substitute decl.typeParams typeArgs def.typ
 
-                  let isOptional =
-                    match typ with
-                    | TCustomType({ resolved = Ok n }, [ _ ]) ->
+                  // What the field's type IS, not how it is spelled: `type Maybe<'t> =
+                  // Stdlib.Option.Option<'t>` resolves to the alias's own name, and
+                  // asking the spelling would call an optional field required.
+                  let! unwrapped = TypeReference.unwrapAlias types typ
+
+                  let optionInner =
+                    match unwrapped with
+                    | TCustomType({ resolved = Ok n }, [ inner ]) when
                       n = Dval.optionType ()
-                    | _ -> false
+                      ->
+                      Some inner
+                    | _ -> None
 
                   let matchingFieldDef =
                     enumerated |> List.filter (fun v -> v.Name = def.name)
@@ -747,12 +762,8 @@ let parse
                   // An absent `Option` field is `None`: that is how every other system
                   // says "not set", and a record that round-trips through `serialize`
                   // has its `None` fields left out.
-                  | [] when isOptional ->
-                    let! innerVT =
-                      match typ with
-                      | TCustomType(_, [ inner ]) ->
-                        TypeReference.toVT types tst inner
-                      | _ -> Ply VT.unknown
+                  | [] when Option.isSome optionInner ->
+                    let! innerVT = TypeReference.toVT types tst optionInner.Value
                     let optionType = Dval.optionType ()
                     return
                       (def.name,
