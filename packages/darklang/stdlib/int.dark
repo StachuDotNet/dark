@@ -230,3 +230,27 @@ impl Zero for Int =
 
 impl One for Int =
   let one () : Int = 1
+
+
+impl BitAnd for Int =
+  let bitAnd = Stdlib.Int.bitwiseAnd
+
+
+impl BitOr for Int =
+  let bitOr = Stdlib.Int.bitwiseOr
+
+
+impl BitXor for Int =
+  let bitXor = Stdlib.Int.bitwiseXor
+
+
+impl BitNot for Int =
+  let bitNot = Stdlib.Int.bitwiseNot
+
+
+impl Shl for Int =
+  let shiftLeft = Stdlib.Int.shiftLeft
+
+
+impl Shr for Int =
+  let shiftRight = Stdlib.Int.shiftRight

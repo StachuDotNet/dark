@@ -30,9 +30,11 @@ let content () : String =
   Integer overflow (+ - * / ** and unary -) raises a runtime error.
   Float arithmetic follows IEEE (overflow -> infinity).
 
-## Bitwise (all int types, NOT Float)
+## Bitwise (every integer type; Float has no implementation)
   & | ^ << >>   and unary ~x
   `&` and, `|` or, `^` xor, `<<`/`>>` shift, `~x` NOT (two's complement).
+  Traits like the rest: `&` is `BitAnd`, `|` `BitOr`, `^` `BitXor`, `~` `BitNot`,
+  `<<` `Shl`, `>>` `Shr`, so your own type can implement them.
   Both operands must be the same integer type, including the shift count:
   `1L << 4L`, not `1L << 4`.
   Fixed-width results wrap. `Int` is arbitrary-precision, so a shift count

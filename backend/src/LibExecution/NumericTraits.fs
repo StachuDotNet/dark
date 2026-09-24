@@ -12,10 +12,11 @@ open ProgramTypes
 
 module Traits = PackageRefs.Trait.Stdlib.Traits
 
-/// The trait and method an operator is, when it is one. Bitwise operators and `++`
-/// stay on their builtins: bitwise is integer-only by nature. `==` is `Eq.equals`,
-/// with a structural fallback for a type that has no implementation (so every
-/// value stays comparable, and the builtin types are never overridden).
+/// The trait and method an operator is. Every operator is one now, bitwise included, so
+/// "integer-only" is not a rule the checker carries any more: it is the set of types with a
+/// `BitAnd` implementation. `==` is `Eq.equals`, with a structural fallback for a type that
+/// has no implementation (so every value stays comparable, and the builtin types are never
+/// overridden).
 let ofInfix (op : InfixFnName) : Option<string * string> =
   let some (hash : string) (methodName : string) =
     if hash = "" then None else Some(hash, methodName)
@@ -33,11 +34,13 @@ let ofInfix (op : InfixFnName) : Option<string * string> =
   // `==` is `Eq.equals`; `!=` is `not (Eq.equals a b)`, lowered as two calls.
   | ComparisonEquals -> some (Traits.eq ()) "equals"
   | ComparisonNotEquals -> None
-  | BitwiseAnd
-  | BitwiseOr
-  | BitwiseXor
-  | ShiftLeft
-  | ShiftRight
+  | BitwiseAnd -> some (Traits.bitAnd ()) "bitAnd"
+  | BitwiseOr -> some (Traits.bitOr ()) "bitOr"
+  | BitwiseXor -> some (Traits.bitXor ()) "bitXor"
+  | ShiftLeft -> some (Traits.shl ()) "shiftLeft"
+  | ShiftRight -> some (Traits.shr ()) "shiftRight"
+  // `++` is gone from the language; the case survives to decode ops stored before that, and
+  // those lower to the string-append builtin exactly as they used to.
   | StringConcat -> None
 
 /// Unary minus on a non-literal (`-x`): `Neg.negate`, or None while the refs are
@@ -46,6 +49,11 @@ let ofInfix (op : InfixFnName) : Option<string * string> =
 let ofNegate () : Option<string * string> =
   let hash = Traits.neg ()
   if hash = "" then None else Some(hash, "negate")
+
+/// `~x`, the same way: the parser stores `Builtin.bitwiseNot` and this is the swap.
+let ofBitwiseNot () : Option<string * string> =
+  let hash = Traits.bitNot ()
+  if hash = "" then None else Some(hash, "bitNot")
 
 /// Every operator that is a trait method, with its trait and method, under the
 /// refs as they are now.
@@ -60,7 +68,12 @@ let private all () : List<InfixFnName * (string * string)> =
     ComparisonLessThanOrEqual
     ComparisonGreaterThan
     ComparisonGreaterThanOrEqual
-    ComparisonEquals ]
+    ComparisonEquals
+    BitwiseAnd
+    BitwiseOr
+    BitwiseXor
+    ShiftLeft
+    ShiftRight ]
   |> List.choose (fun op -> ofInfix op |> Option.map (fun t -> (op, t)))
 
 /// The operator a trait method is, when it is one. Generation-checked because the

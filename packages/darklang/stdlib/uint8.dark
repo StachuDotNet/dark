@@ -193,3 +193,27 @@ impl Zero for UInt8 =
 
 impl One for UInt8 =
   let one () : UInt8 = 1uy
+
+
+impl BitAnd for UInt8 =
+  let bitAnd = Stdlib.UInt8.bitwiseAnd
+
+
+impl BitOr for UInt8 =
+  let bitOr = Stdlib.UInt8.bitwiseOr
+
+
+impl BitXor for UInt8 =
+  let bitXor = Stdlib.UInt8.bitwiseXor
+
+
+impl BitNot for UInt8 =
+  let bitNot = Stdlib.UInt8.bitwiseNot
+
+
+impl Shl for UInt8 =
+  let shiftLeft = Stdlib.UInt8.shiftLeft
+
+
+impl Shr for UInt8 =
+  let shiftRight = Stdlib.UInt8.shiftRight

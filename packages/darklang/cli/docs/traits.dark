@@ -74,6 +74,8 @@ one `impl`.
 
 ## The stdlib traits
   Add Sub Mul Div Mod Pow Neg    the operators `+ - * / % **` and `-x`
+  BitAnd BitOr BitXor BitNot     `& | ^` and `~x`
+  Shl Shr                        `<<` and `>>`
   Ord                            `< <= > >=`; also `Stdlib.max`, `min`, `clamp`
   Eq                             `==` and `!=`; structural unless implemented
   ToString                       `x.toString`, `Stdlib.toString x`

@@ -557,8 +557,7 @@ module Trait =
   module Stdlib =
     let private p addl = p ("Stdlib" :: addl)
 
-    /// The traits the arithmetic and comparison operators lower to
-    /// (`NumericTraits.fs`, `FastOps.traitTag`).
+    /// The traits the operators lower to (`NumericTraits.fs`, `FastOps.traitTag`).
     module Traits =
       let add = p [] "Add"
       let sub = p [] "Sub"
@@ -569,8 +568,28 @@ module Trait =
       let neg = p [] "Neg"
       let ord = p [] "Ord"
       let eq = p [] "Eq"
+      let bitAnd = p [] "BitAnd"
+      let bitOr = p [] "BitOr"
+      let bitXor = p [] "BitXor"
+      let bitNot = p [] "BitNot"
+      let shl = p [] "Shl"
+      let shr = p [] "Shr"
       let all () =
-        [ add (); sub (); mul (); div (); mod' (); pow (); neg (); ord (); eq () ]
+        [ add ()
+          sub ()
+          mul ()
+          div ()
+          mod' ()
+          pow ()
+          neg ()
+          ord ()
+          eq ()
+          bitAnd ()
+          bitOr ()
+          bitXor ()
+          bitNot ()
+          shl ()
+          shr () ]
 
 
 module Fn =

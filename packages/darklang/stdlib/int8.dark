@@ -230,3 +230,27 @@ impl Zero for Int8 =
 
 impl One for Int8 =
   let one () : Int8 = 1y
+
+
+impl BitAnd for Int8 =
+  let bitAnd = Stdlib.Int8.bitwiseAnd
+
+
+impl BitOr for Int8 =
+  let bitOr = Stdlib.Int8.bitwiseOr
+
+
+impl BitXor for Int8 =
+  let bitXor = Stdlib.Int8.bitwiseXor
+
+
+impl BitNot for Int8 =
+  let bitNot = Stdlib.Int8.bitwiseNot
+
+
+impl Shl for Int8 =
+  let shiftLeft = Stdlib.Int8.shiftLeft
+
+
+impl Shr for Int8 =
+  let shiftRight = Stdlib.Int8.shiftRight

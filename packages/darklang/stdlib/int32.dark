@@ -230,3 +230,27 @@ impl Zero for Int32 =
 
 impl One for Int32 =
   let one () : Int32 = 1l
+
+
+impl BitAnd for Int32 =
+  let bitAnd = Stdlib.Int32.bitwiseAnd
+
+
+impl BitOr for Int32 =
+  let bitOr = Stdlib.Int32.bitwiseOr
+
+
+impl BitXor for Int32 =
+  let bitXor = Stdlib.Int32.bitwiseXor
+
+
+impl BitNot for Int32 =
+  let bitNot = Stdlib.Int32.bitwiseNot
+
+
+impl Shl for Int32 =
+  let shiftLeft = Stdlib.Int32.shiftLeft
+
+
+impl Shr for Int32 =
+  let shiftRight = Stdlib.Int32.shiftRight

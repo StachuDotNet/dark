@@ -49,6 +49,17 @@ let listIsEmpty = 19
 let multiply = 20
 /// `Neg.negate`, one argument; `evalNegate` handles it.
 let negate = 21
+/// The bitwise operators. They have no arms in `eval`, `evalNumeric` or `evalNegate`, which
+/// decline them, so a bitwise call dispatches like any other trait method. They are in the
+/// TABLE because that is what tells the interpreter an operator is an operator: it is how
+/// `1L & 2y` still says "Cannot perform numeric operation on Int64 and Int8" rather than
+/// failing inside the implementation's parameter check.
+let bitAnd = 22
+let bitOr = 23
+let bitXor = 24
+let bitNot = 25
+let shiftLeft = 26
+let shiftRight = 27
 
 /// `-x` on a signed builtin numeric; anything else declines and dispatches.
 let evalNegate (a : Dval) : Dval voption =
@@ -511,6 +522,12 @@ let traitTag (traitHash : string) (methodName : string) : int voption =
       put (PackageRefs.Trait.Stdlib.Traits.mul ()) "multiply" multiply
       put (PackageRefs.Trait.Stdlib.Traits.neg ()) "negate" negate
       put (PackageRefs.Trait.Stdlib.Traits.eq ()) "equals" equals
+      put (PackageRefs.Trait.Stdlib.Traits.bitAnd ()) "bitAnd" bitAnd
+      put (PackageRefs.Trait.Stdlib.Traits.bitOr ()) "bitOr" bitOr
+      put (PackageRefs.Trait.Stdlib.Traits.bitXor ()) "bitXor" bitXor
+      put (PackageRefs.Trait.Stdlib.Traits.bitNot ()) "bitNot" bitNot
+      put (PackageRefs.Trait.Stdlib.Traits.shl ()) "shiftLeft" shiftLeft
+      put (PackageRefs.Trait.Stdlib.Traits.shr ()) "shiftRight" shiftRight
       put (PackageRefs.Trait.Stdlib.Traits.ord ()) "lessThan" lessThan
       put
         (PackageRefs.Trait.Stdlib.Traits.ord ())

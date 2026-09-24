@@ -60,6 +60,14 @@ module FQFnName =
       | Some(traitHash, methodName) ->
         RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, None)
       | None -> RT.FQFnName.Builtin { name = name; version = 0 }
+    // `~x` the same way: stored as `Builtin.bitwiseNot`, run as `BitNot.bitNot`.
+    | PT.FQFnName.Builtin { name = name; version = 0 } when
+      name = PT.InfixFnName.bitwiseNotBuiltinName
+      ->
+      match NumericTraits.ofBitwiseNot () with
+      | Some(traitHash, methodName) ->
+        RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, None)
+      | None -> RT.FQFnName.Builtin { name = name; version = 0 }
     | PT.FQFnName.Builtin s -> RT.FQFnName.Builtin(Builtin.toRT s)
     | PT.FQFnName.Package p -> RT.FQFnName.Package(Package.toRT p)
     | PT.FQFnName.TraitMethod(t, m, implFn) ->

@@ -194,3 +194,27 @@ impl Zero for UInt64 =
 
 impl One for UInt64 =
   let one () : UInt64 = 1UL
+
+
+impl BitAnd for UInt64 =
+  let bitAnd = Stdlib.UInt64.bitwiseAnd
+
+
+impl BitOr for UInt64 =
+  let bitOr = Stdlib.UInt64.bitwiseOr
+
+
+impl BitXor for UInt64 =
+  let bitXor = Stdlib.UInt64.bitwiseXor
+
+
+impl BitNot for UInt64 =
+  let bitNot = Stdlib.UInt64.bitwiseNot
+
+
+impl Shl for UInt64 =
+  let shiftLeft = Stdlib.UInt64.shiftLeft
+
+
+impl Shr for UInt64 =
+  let shiftRight = Stdlib.UInt64.shiftRight

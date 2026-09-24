@@ -74,6 +74,36 @@ trait Eq<'a> =
   let equals (a: 'a) (b: 'a) : Bool
 
 
+/// `a & b`
+trait BitAnd<'a> =
+  let bitAnd (a: 'a) (b: 'a) : 'a
+
+
+/// `a | b`
+trait BitOr<'a> =
+  let bitOr (a: 'a) (b: 'a) : 'a
+
+
+/// `a ^^^ b`, exclusive or
+trait BitXor<'a> =
+  let bitXor (a: 'a) (b: 'a) : 'a
+
+
+/// `~a`, every bit flipped
+trait BitNot<'a> =
+  let bitNot (a: 'a) : 'a
+
+
+/// `a << b`. The shift count is the same type as the value, as it was before traits.
+trait Shl<'a> =
+  let shiftLeft (a: 'a) (b: 'a) : 'a
+
+
+/// `a >> b`
+trait Shr<'a> =
+  let shiftRight (a: 'a) (b: 'a) : 'a
+
+
 /// `<`, `<=`, `>`, `>=`
 trait Ord<'a> =
   let lessThan (a: 'a) (b: 'a) : Bool

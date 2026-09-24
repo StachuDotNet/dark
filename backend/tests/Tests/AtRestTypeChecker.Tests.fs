@@ -1200,7 +1200,7 @@ let private unitTests =
         |> expectChecked
       }
 
-      test "bitwise operators reject Float operands but take every integer" {
+      test "bitwise operators are trait methods, not a numeric-type rule" {
         let infix nodeId operation =
           PT.EInfix(
             nodeId,
@@ -1217,19 +1217,17 @@ let private unitTests =
         |> List.iteri (fun i operation ->
           let nodeId = 400UL + (uint64 i * 10UL)
 
-          // no bit pattern to operate on
+          // A bitwise operator is a trait method like every other operator, so Float is not a
+          // special rule in the checker any more: it is a type with no implementation. (The
+          // environment here has no implementations at all, so every operand type says so; the
+          // real ones come from the store, and the language testfile covers the integers.)
           oneArgFn PT.TFloat PT.TFloat (infix nodeId operation)
           |> CheckerApi.checkPackageFunction Checker.TypeEnvironment.empty
-          |> expectDiagnostic Checker.InvalidInfixOperand
+          |> expectDiagnostic Checker.MissingImpl
 
-          // unlike `**`, the 128-bit types are in the domain
           oneArgFn PT.TInt128 PT.TInt128 (infix (nodeId + 3UL) operation)
           |> CheckerApi.checkPackageFunction Checker.TypeEnvironment.empty
-          |> expectChecked
-
-          oneArgFn PT.TInt64 PT.TInt64 (infix (nodeId + 6UL) operation)
-          |> CheckerApi.checkPackageFunction Checker.TypeEnvironment.empty
-          |> expectChecked)
+          |> expectDiagnostic Checker.MissingImpl)
       }
 
       test "pipeline power is the trait too; the by-name builtin keeps its table" {

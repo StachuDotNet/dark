@@ -195,3 +195,27 @@ impl Zero for UInt16 =
 
 impl One for UInt16 =
   let one () : UInt16 = 1us
+
+
+impl BitAnd for UInt16 =
+  let bitAnd = Stdlib.UInt16.bitwiseAnd
+
+
+impl BitOr for UInt16 =
+  let bitOr = Stdlib.UInt16.bitwiseOr
+
+
+impl BitXor for UInt16 =
+  let bitXor = Stdlib.UInt16.bitwiseXor
+
+
+impl BitNot for UInt16 =
+  let bitNot = Stdlib.UInt16.bitwiseNot
+
+
+impl Shl for UInt16 =
+  let shiftLeft = Stdlib.UInt16.shiftLeft
+
+
+impl Shr for UInt16 =
+  let shiftRight = Stdlib.UInt16.shiftRight

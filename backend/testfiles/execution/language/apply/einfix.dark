@@ -104,10 +104,10 @@ Stdlib.Int64.add 5L 3L = 8L
 ~(-1) = 0
 ~(Stdlib.Int64.add 2L 3L) = -6L
 
-// bitwise operators reject Float
-1.0 & 2.0 = error="Cannot perform numeric operation on Float and Float"
-1.0 << 2.0 = error="Cannot perform numeric operation on Float and Float"
-~1.0 = error="Cannot perform numeric operation on Float and Float"
+// bitwise operators are traits like every other operator, so a Float says what is missing
+1.0 & 2.0 = error="No implementation of Darklang.Stdlib.BitAnd for Float. Write `impl BitAnd for <type> = ...`, or see `dark impls BitAnd`"
+1.0 << 2.0 = error="No implementation of Darklang.Stdlib.Shl for Float. Write `impl Shl for <type> = ...`, or see `dark impls Shl`"
+~1.0 = error="No implementation of Darklang.Stdlib.BitNot for Float. Write `impl BitNot for <type> = ...`, or see `dark impls BitNot`"
 
 // mixed widths are a type error, exactly as for the arithmetic operators
 1L & 2y = error="Cannot perform numeric operation on Int64 and Int8"

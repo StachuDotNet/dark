@@ -232,3 +232,27 @@ impl Zero for Int16 =
 
 impl One for Int16 =
   let one () : Int16 = 1s
+
+
+impl BitAnd for Int16 =
+  let bitAnd = Stdlib.Int16.bitwiseAnd
+
+
+impl BitOr for Int16 =
+  let bitOr = Stdlib.Int16.bitwiseOr
+
+
+impl BitXor for Int16 =
+  let bitXor = Stdlib.Int16.bitwiseXor
+
+
+impl BitNot for Int16 =
+  let bitNot = Stdlib.Int16.bitwiseNot
+
+
+impl Shl for Int16 =
+  let shiftLeft = Stdlib.Int16.shiftLeft
+
+
+impl Shr for Int16 =
+  let shiftRight = Stdlib.Int16.shiftRight

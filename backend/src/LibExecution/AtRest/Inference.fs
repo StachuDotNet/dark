@@ -33,7 +33,9 @@ let private isNumeric (typ : StaticType) : bool =
   | TFloat -> true
   | _ -> false
 
-/// Bitwise operators are defined only for integer operands.
+/// Bitwise operators are defined only for integer operands. Only consulted for a call written
+/// as the polymorphic builtin, or on a tree whose package refs are not generated yet; through
+/// the operator syntax `1.0 & 2.0` is an ordinary missing `BitAnd` implementation.
 let private isBitwise (operation : InfixFnName) : bool =
   match operation with
   | BitwiseAnd

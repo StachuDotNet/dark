@@ -154,3 +154,27 @@ impl Zero for UInt128 =
 
 impl One for UInt128 =
   let one () : UInt128 = 1Z
+
+
+impl BitAnd for UInt128 =
+  let bitAnd = Stdlib.UInt128.bitwiseAnd
+
+
+impl BitOr for UInt128 =
+  let bitOr = Stdlib.UInt128.bitwiseOr
+
+
+impl BitXor for UInt128 =
+  let bitXor = Stdlib.UInt128.bitwiseXor
+
+
+impl BitNot for UInt128 =
+  let bitNot = Stdlib.UInt128.bitwiseNot
+
+
+impl Shl for UInt128 =
+  let shiftLeft = Stdlib.UInt128.shiftLeft
+
+
+impl Shr for UInt128 =
+  let shiftRight = Stdlib.UInt128.shiftRight
