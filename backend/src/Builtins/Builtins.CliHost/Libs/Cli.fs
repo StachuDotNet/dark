@@ -667,6 +667,11 @@ let private printCallStack
 /// deep VM failure hits the same net; the expression runs under the host's
 /// configured deny-by-default policy, and a denial is reported with its call stack
 /// so the CLI can offer to allow and retry.
+///
+/// `printStack` is the terminal caller's: `eval` prints the stack because a person is
+/// reading the failure right then. A caller inside another command (`generate`, a
+/// propagation cascade) gets the error back and reports it in its own words, rather
+/// than a raw stack landing in the middle of that command's output.
 let private evaluateGuest
   (exeState : RT.ExecutionState)
   (accountID : Option<System.Guid>)
@@ -674,6 +679,7 @@ let private evaluateGuest
   (expression : string)
   (allowHarmful : bool)
   (asOwn : List<RT.Hash>)
+  (printStack : bool)
   (resultError : Dval -> Dval)
   (onValue : RT.ExecutionState -> Dval -> Ply<Dval>)
   : Ply<Dval> =
@@ -724,9 +730,8 @@ let private evaluateGuest
                   )
               | other ->
                 // Only when the stack names a function: see `hasReadableFrames`.
-                if hasReadableFrames callStack && csString <> "" then
-                  print
-                    $"Error when executing expression. Call-stack:\n{csString}\n"
+                if printStack && hasReadableFrames callStack && csString <> "" then
+                  print $"the expression raised. Call-stack:\n{csString}\n"
                 return resultError (ExecutionError.toDT other)
           | Error pe ->
             return resultError (ExecutionError.toDT (ExecutionError.Parse pe))
@@ -1003,6 +1008,7 @@ let fns () : List<BuiltInFn> =
             expression
             allowHarmful
             []
+            true
             resultError
             (fun exeState result ->
               uply {
@@ -1092,6 +1098,7 @@ let fns () : List<BuiltInFn> =
             expression
             allowHarmful
             asOwn
+            false
             resultError
             (fun _ result ->
               Ply(TypeChecker.DvalCreator.Result.ok threadID okType errType result))

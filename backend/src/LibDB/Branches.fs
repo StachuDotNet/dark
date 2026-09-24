@@ -458,7 +458,8 @@ let storeDeltaBlobsStamped
 let storeDeltaOps (branchId : PT.BranchId) (ops : List<PT.PackageOp>) : Task<int64> =
   storeDeltaOpsStamped branchId (ops |> List.map (fun op -> (op, OriginTs.next ())))
 
-/// `storeDeltaOps` for ops with a known provenance: 'propagation' or 'resolution'.
+/// `storeDeltaOps` for ops whose provenance the caller names: 'op' for what a person
+/// authored, 'propagation' for what followed an edit, 'resolution' for a settled conflict.
 let storeDeltaOpsFrom
   (source : string)
   (branchId : PT.BranchId)

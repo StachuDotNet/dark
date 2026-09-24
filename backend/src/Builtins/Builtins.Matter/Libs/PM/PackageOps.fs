@@ -51,6 +51,20 @@ let private opRecords (records : List<Dval>) : List<string * string * string> =
 
 
 // TODO: review/reconsider the accessibility of these fns
+/// The ops a Dark caller handed over, or a reason. Unlike ops off the wire, these were
+/// built in this process a moment ago, so one that will not decode is a bug here rather
+/// than a peer on a newer build: inserting the rest and reporting success would stage
+/// less than the caller produced and call it done.
+let private decodeOps (ops : List<Dval>) : Result<List<PT.PackageOp>, string> =
+  let decoded = ops |> List.choose (fun dv -> PT2DT.PackageOp.fromDT dv)
+  let asked = List.length ops
+  let read = List.length decoded
+  if read = asked then
+    Ok decoded
+  else
+    Error $"{asked - read} of {asked} ops could not be read back; none were added"
+
+
 /// Add package ops to a branch, uncommitted, marking their bindings as <param source>:
 /// `"op"` for what a person authored, `"propagation"` for what followed an edit. One body
 /// for both builtins below, because the branch-versus-main split, the value evaluation
@@ -126,7 +140,7 @@ let private addOps
             LibDB.PackageManager.setBranchOverlay all
           else
             LibDB.PackageManager.forgetBranch branchId
-          return resultOk (Dval.int (bigint (int n)))
+          return resultOk (Dval.int (bigint n))
 
       else
         // Stabilize before inserting. Raw ops carry provisional hashes, so their SetName
@@ -309,8 +323,10 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [| DUuid branchId; DList(_vtTODO, ops) |] ->
-          let ops = ops |> List.choose PT2DT.PackageOp.fromDT
-          addOps pm exeState vm "op" (PT.BranchId.Id branchId) ops
+          match decodeOps ops with
+          | Error message ->
+            Ply(Dval.resultError KTInt KTString (Dval.string message))
+          | Ok ops -> addOps pm exeState vm "op" (PT.BranchId.Id branchId) ops
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure
@@ -330,12 +346,16 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       returnType = TypeReference.result TInt TString
       description =
         "Add package ops a generator produced while following an edit to <param branchId>, "
-        + "uncommitted, with their bindings marked as propagation. Returns the number inserted."
+        + "uncommitted, with their bindings marked as followed rather than typed. Returns "
+        + "the number inserted."
       fn =
         (function
         | exeState, vm, _, [| DUuid branchId; DList(_vtTODO, ops) |] ->
-          let ops = ops |> List.choose PT2DT.PackageOp.fromDT
-          addOps pm exeState vm "propagation" (PT.BranchId.Id branchId) ops
+          match decodeOps ops with
+          | Error message ->
+            Ply(Dval.resultError KTInt KTString (Dval.string message))
+          | Ok ops ->
+            addOps pm exeState vm "propagation" (PT.BranchId.Id branchId) ops
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

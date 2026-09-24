@@ -372,9 +372,6 @@ let insertUntrustedOpsFrom
       return Ok count
   }
 
-let insertUntrustedOps (ops : List<PT.PackageOp>) : Task<Result<int64, string>> =
-  insertUntrustedOpsFrom "op" ops
-
 let draftDeletes : List<string> =
   [ "DELETE FROM locations WHERE source <> 'resolution'
      AND op_id IN (SELECT id FROM package_ops
