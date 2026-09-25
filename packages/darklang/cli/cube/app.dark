@@ -208,6 +208,12 @@ let onChar (s: State) (c: String) : State =
   | "\t" -> { s with style = View.nextStyle s.style }
   | "[" -> resize s (s.n - 1)
   | "]" -> resize s (s.n + 1)
+  // Between solves the digits pick the puzzle. During one they keep their keymap meanings (slices,
+  // hand shifts), since you can't change size mid-solve anyway.
+  | "2" when Stdlib.Bool.not (busy s) -> resize s 2
+  | "3" when Stdlib.Bool.not (busy s) -> resize s 3
+  | "4" when Stdlib.Bool.not (busy s) -> resize s 4
+  | "5" when Stdlib.Bool.not (busy s) -> resize s 5
   | _ ->
     match Keys.action s.n s.depthL s.depthR c with
     | Turn m -> turn s m
@@ -404,7 +410,7 @@ let panel (s: State) (height: Int) : List<String> =
       [ "" ]
       (Stdlib.List.append
         (Keys.card |> Stdlib.List.map dim)
-        [ dim "space scramble  tab view  [ ] size"
+        [ dim "space scramble  tab view  2-5 size"
           dim "arrows orbit  bksp drop  esc quit" ])
 
   let main =
@@ -570,7 +576,7 @@ let help (_state: AppState) : String =
     "Keys (Heise layout): I/K R R', D/E L L', J/F U U', H/G F F', S/L D D', W/O B B',"
     "U/M r r', V/R l l', T/Y x, B/N x', ;/A y y', P/Q z z', ./5 M' M."
     "7/8 and 4/3 shift your right and left hands in and out a layer on big cubes."
-    "Tab changes the view, arrows orbit the 3D one, [ and ] change size, Esc quits." ]
+    "Tab changes the view, arrows orbit, 2-5 (or [ and ]) change size between solves, Esc quits." ]
   |> Stdlib.String.join "\n"
 
 let complete (_state: AppState) (_args: List<String>) : List<Completion.CompletionItem> =

@@ -145,125 +145,143 @@ let cubeQuads (n: Int) (l: Lens) : List<Raster.Quad> =
   |> Stdlib.List.flatten
 
 
-// Qsim: flat U over F, with the L and R stickers that touch them down the sides.
+// The flat views, laid out straight in pixels.
+//
+// Scaling unit-square layouts and letting the scanline round them left the gaps uneven at 5x5: some
+// rows bunched up, and the side strips drifted off the rows they belong to. So these are built on
+// whole cells instead. `u` is one sticker's pitch in pixels and `g` the gap; both are even, so every
+// edge lands on a cell boundary (a cell is two pixel rows) and every gap is the same width.
 
-let rectQuad (idx: Int) (x0: Float) (y0: Float) (x1: Float) (y1: Float) : Raster.Quad =
+val gap = 2
+
+let even (x: Int) : Int = Stdlib.Int.max 2 ((x / 2) * 2)
+
+let rectQuad (idx: Int) (x0: Int) (y0: Int) (x1: Int) (y1: Int) : Raster.Quad =
+  let fx0 = Stdlib.Int.toFloat x0
+  let fy0 = Stdlib.Int.toFloat y0
+  let fx1 = Stdlib.Int.toFloat x1
+  let fy1 = Stdlib.Int.toFloat y1
+
   Raster.Quad
     { idx = idx
       pts =
-        [ Raster.Point { x = x0; y = y0 }
-          Raster.Point { x = x1; y = y0 }
-          Raster.Point { x = x1; y = y1 }
-          Raster.Point { x = x0; y = y1 } ] }
+        [ Raster.Point { x = fx0; y = fy0 }
+          Raster.Point { x = fx1; y = fy0 }
+          Raster.Point { x = fx1; y = fy1 }
+          Raster.Point { x = fx0; y = fy1 } ] }
 
-/// A sticker filling the cell [x0, x1) x [y0, y1), shrunk by the usual gap.
-let stickerRect (idx: Int) (x0: Float) (y0: Float) (x1: Float) (y1: Float) : Raster.Quad =
-  let g = (1.0 - inset) / 2.0
-  rectQuad idx (x0 + g) (y0 + g) (x1 - g) (y1 - g)
-
-/// The gap between U and F, and between a face and a side strip, in sticker widths.
-val qsimSeam = 0.3
-val qsimSide = 0.45
-
-let qsimQuads (n: Int) : List<Raster.Quad> =
-  let nf = Stdlib.Int.toFloat n
+/// A face's body and stickers with its top-left corner at (x, y). The body is n pitches plus one
+/// gap each way, so the stickers get a border of `gap` all round.
+let flatFace (n: Int) (u: Int) (face: Int) (x: Int) (y: Int) : List<Raster.Quad> =
   let nn = n * n
-  let fl (i: Int) : Float = Stdlib.Int.toFloat i
-  // Columns: L strip, U and F, R strip. Rows: U, then F below the seam.
-  let faceX = 1.0 + qsimSide
-  let rightX = faceX + nf + qsimSide
-  let fTop = nf + qsimSeam
-  let bottom = fTop + nf
+  let span = n * u + gap
 
-  let faceCells (face: Int) (top: Float) : List<Raster.Quad> =
+  let stickers =
     Stdlib.List.range 0 (nn - 1)
     |> Stdlib.List.map (fun k ->
-      let x = faceX + fl (k % n)
-      let y = top + fl (k / n)
-      stickerRect (face * nn + k) x y (x + 1.0) (y + 1.0))
+      let sx = x + gap + (k % n) * u
+      let sy = y + gap + (k / n) * u
+      rectQuad (face * nn + k) sx sy (sx + u - gap) (sy + u - gap))
 
-  // One side strip. `beside U row r` and `beside F row r` name the sticker for each cell; the corner
-  // they share is one tall cell straddling the seam.
-  let strip
-    (x: Float)
-    (besideU: Int -> Int)
-    (corner: Int)
-    (besideF: Int -> Int)
-    : List<Raster.Quad> =
+  Stdlib.List.push stickers (rectQuad Raster.body x y (x + span) (y + span))
+
+/// The biggest even pitch whose layout fits, given how many pitches and fixed pixels each axis takes.
+let pitchFor
+  (width: Int)
+  (heightPx: Int)
+  (unitsX: Float)
+  (fixedX: Int)
+  (unitsY: Float)
+  (fixedY: Int)
+  : Int =
+  let byW = Stdlib.Float.floor ((Stdlib.Int.toFloat (width - 2 - fixedX)) / unitsX)
+  let byH = Stdlib.Float.floor ((Stdlib.Int.toFloat (heightPx - 2 - fixedY)) / unitsY)
+  even (Stdlib.Int.min byW byH)
+
+/// Shift quads so a `w` x `h` layout sits in the middle, on an even row.
+let centre (quads: List<Raster.Quad>) (w: Int) (h: Int) (width: Int) (heightPx: Int) : List<Raster.Quad> =
+  let dx = Stdlib.Int.toFloat ((width - w) / 2)
+  // Rounded down to an even pixel row, so cell boundaries stay where the layout put them.
+  let dy = Stdlib.Int.toFloat (((heightPx - h) / 4) * 2)
+
+  quads
+  |> Stdlib.List.map (fun q ->
+    Raster.Quad
+      { idx = q.idx
+        pts = q.pts |> Stdlib.List.map (fun p -> Raster.Point { x = p.x + dx; y = p.y + dy }) })
+
+
+// Qsim: flat U over F, with the L and R stickers that touch them down the sides.
+
+let qsimQuads (n: Int) (width: Int) (heightPx: Int) : List<Raster.Quad> =
+  let nn = n * n
+  // Side gaps and the U/F seam are about half and a third of a pitch; solve for the pitch with
+  // those folded in as fractions of it.
+  let nf = Stdlib.Int.toFloat n
+  let u = pitchFor width heightPx (nf + 2.0 + 1.0) (3 * gap) (2.0 * nf + 0.4) (2 * gap)
+  let side = even (u / 2)
+  let seam = even (u * 2 / 5)
+  let span = n * u + gap
+  let stripW = u + gap
+  let faceX = stripW + side
+  let rightX = faceX + span + side
+  let fTop = span + seam
+  let bottom = fTop + span
+
+  let cell (idx: Int) (x: Int) (top: Int) (bottomEdge: Int) : Raster.Quad =
+    rectQuad idx (x + gap) top (x + u) bottomEdge
+
+  // One side strip: the sticker beside each U row, the shared corner as one tall cell across the
+  // seam, then the sticker beside each F row.
+  let strip (x: Int) (besideU: Int -> Int) (corner: Int) (besideF: Int -> Int) : List<Raster.Quad> =
     let upper =
       if n < 2 then []
       else
         Stdlib.List.range 0 (n - 2)
-        |> Stdlib.List.map (fun r -> stickerRect (besideU r) x (fl r) (x + 1.0) (fl r + 1.0))
+        |> Stdlib.List.map (fun r -> cell (besideU r) x (gap + r * u) (r * u + u))
 
     let lower =
       if n < 2 then []
       else
         Stdlib.List.range 1 (n - 1)
-        |> Stdlib.List.map (fun r -> stickerRect (besideF r) x (fTop + fl r) (x + 1.0) (fTop + fl r + 1.0))
+        |> Stdlib.List.map (fun r -> cell (besideF r) x (fTop + gap + r * u) (fTop + r * u + u))
 
-    let tall = stickerRect corner x (nf - 1.0) (x + 1.0) (fTop + 1.0)
+    let tall = cell corner x (gap + (n - 1) * u) (fTop + u)
 
-    Stdlib.List.flatten
-      [ [ rectQuad Raster.body x 0.0 (x + 1.0) bottom ], upper, [ tall ], lower ]
+    Stdlib.List.flatten [ [ rectQuad Raster.body x 0 (x + stripW) bottom ], upper, [ tall ], lower ]
 
   // L is face 4: its top row runs back to front, its last column is the one against F.
   let left =
-    strip 0.0 (fun r -> 4 * nn + r) (4 * nn + n - 1) (fun r -> 4 * nn + r * n + n - 1)
+    strip 0 (fun r -> 4 * nn + r) (4 * nn + n - 1) (fun r -> 4 * nn + r * n + n - 1)
 
   // R is face 1: its top row runs front to back, so read it backwards; column 0 is against F.
-  let right =
-    strip rightX (fun r -> nn + n - 1 - r) nn (fun r -> nn + r * n)
+  let right = strip rightX (fun r -> nn + n - 1 - r) nn (fun r -> nn + r * n)
 
-  Stdlib.List.flatten
-    [ [ rectQuad Raster.body faceX 0.0 (faceX + nf) nf
-        rectQuad Raster.body faceX fTop (faceX + nf) bottom ]
-      faceCells 0 0.0
-      faceCells 2 fTop
-      left
-      right ]
+  let quads =
+    Stdlib.List.flatten [ flatFace n u 0 faceX 0, flatFace n u 2 faceX fTop, left, right ]
 
-let qsimExtent (n: Int) : (Float * Float) =
+  centre quads (rightX + stripW) bottom width heightPx
+
+
+// Net: U over L F R B over D.
+
+let netQuads (n: Int) (width: Int) (heightPx: Int) : List<Raster.Quad> =
   let nf = Stdlib.Int.toFloat n
-  (2.0 + 2.0 * qsimSide + nf, 2.0 * nf + qsimSeam)
-
-
-// Net: faces as flat squares in sticker units, y already pointing down.
-
-let netQuads (n: Int) : List<Raster.Quad> =
-  let nf = Stdlib.Int.toFloat n
-  let gap = 0.35
-  let nn = n * n
+  let u = pitchFor width heightPx (4.0 * nf + 1.0) (4 * gap) (3.0 * nf + 0.7) (3 * gap)
+  let span = n * u + gap
+  let between = even (u / 3)
+  let step = span + between
   // (column, row) of each face in the U R F D L B order
   let slots = [ (1, 0), (2, 1), (1, 1), (1, 2), (0, 1), (3, 1) ]
-  let half = inset / 2.0
 
-  Stdlib.List.range 0 5
-  |> Stdlib.List.map (fun face ->
-    let (col, row) = Stdlib.Option.withDefault (Stdlib.List.getAt slots face) (0, 0)
-    let ox = (Stdlib.Int.toFloat col) * (nf + gap)
-    let oy = (Stdlib.Int.toFloat row) * (nf + gap)
+  let quads =
+    Stdlib.List.range 0 5
+    |> Stdlib.List.map (fun face ->
+      let (col, row) = Stdlib.Option.withDefault (Stdlib.List.getAt slots face) (0, 0)
+      flatFace n u face (col * step) (row * step))
+    |> Stdlib.List.flatten
 
-    let rect (x0: Float) (y0: Float) (x1: Float) (y1: Float) : List<Raster.Point> =
-      [ Raster.Point { x = x0; y = y0 }
-        Raster.Point { x = x1; y = y0 }
-        Raster.Point { x = x1; y = y1 }
-        Raster.Point { x = x0; y = y1 } ]
-
-    let bodyQuad = Raster.Quad { idx = Raster.body; pts = rect ox oy (ox + nf) (oy + nf) }
-
-    let stickers =
-      Stdlib.List.range 0 (nn - 1)
-      |> Stdlib.List.map (fun k ->
-        let cx = ox + (Stdlib.Int.toFloat (k % n)) + 0.5
-        let cy = oy + (Stdlib.Int.toFloat (k / n)) + 0.5
-
-        Raster.Quad
-          { idx = face * nn + k
-            pts = rect (cx - half) (cy - half) (cx + half) (cy + half) })
-
-    Stdlib.List.push stickers bodyQuad)
-  |> Stdlib.List.flatten
+  centre quads (4 * step - between) (3 * step - between) width heightPx
 
 
 // Fitting unit-screen quads into the terminal.
@@ -302,9 +320,7 @@ let layout (n: Int) (style: Style) (cam: Camera) (width: Int) (height: Int) : Ra
 
   let quads =
     match style with
-    | Qsim ->
-      let (w, h) = qsimExtent n
-      fit (qsimQuads n) (Raster.Point { x = w / 2.0; y = h / 2.0 }) (w * 1.04) (h * 1.04) width heightPx
+    | Qsim -> qsimQuads n width heightPx
     | Perspective ->
       let distance = radius * 4.5
       let extent = 2.0 * radius * distance / (distance - radius)
@@ -312,16 +328,6 @@ let layout (n: Int) (style: Style) (cam: Camera) (width: Int) (height: Int) : Ra
     | Isometric ->
       let extent = 2.0 * radius
       fit (cubeQuads n (lensFor cam 0.0)) (Raster.Point { x = 0.0; y = 0.0 }) extent extent width heightPx
-    | Net ->
-      let span = nf + 0.35
-      let extentX = 4.0 * span
-      let extentY = 3.0 * span
-      fit
-        (netQuads n)
-        (Raster.Point { x = extentX / 2.0 - 0.175; y = extentY / 2.0 - 0.175 })
-        extentX
-        extentY
-        width
-        heightPx
+    | Net -> netQuads n width heightPx
 
   Raster.rasterize width height quads
