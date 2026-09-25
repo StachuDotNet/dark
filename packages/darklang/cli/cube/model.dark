@@ -1,0 +1,278 @@
+/// An N x N x N cube as a flat list of sticker colours, and the moves on it.
+///
+/// Stickers are numbered face by face in the order U R F D L B, each face row by row as you look
+/// straight at it (U with B at the top, D with F at the top, the side faces upright). Colour c is the
+/// face index the sticker started on, so a solved cube is `[0 x N^2, 1 x N^2, ...]`.
+///
+/// Nothing here is a hand-typed table. Every sticker has an integer position and an outward normal
+/// (cubie centres sit on odd/even coordinates from -(N-1) to N-1, step 2, so everything stays in Int),
+/// and a quarter turn of one layer is those vectors rotated and mapped back to indices. `tables`
+/// precomputes the 3N single-layer quarter turns once per size; every move is some of them.
+module Darklang.Cli.Cube.Model
+
+type Axis =
+  | X
+  | Y
+  | Z
+
+type V3 = { x: Int; y: Int; z: Int }
+
+type Sticker = { pos: V3; normal: V3 }
+
+/// A turn of some layers about one axis. `turns` counts clockwise quarter turns seen from the
+/// positive end of the axis (from the right for X, from above for Y, from the front for Z), 1 to 3.
+/// `name` is the notation it was typed as, for display.
+type Move =
+  { axis: Axis
+    layers: List<Int>
+    turns: Int
+    name: String }
+
+/// The single-layer quarter-turn permutations for one size, indexed `axis * n + layer`.
+/// A permutation `p` means `new[i] = old[p[i]]`.
+type Tables = { n: Int; perms: List<List<Int>> }
+
+
+let axisIndex (a: Axis) : Int =
+  match a with
+  | X -> 0
+  | Y -> 1
+  | Z -> 2
+
+let v3 (x: Int) (y: Int) (z: Int) : V3 = V3 { x = x; y = y; z = z }
+
+let coord (v: V3) (a: Axis) : Int =
+  match a with
+  | X -> v.x
+  | Y -> v.y
+  | Z -> v.z
+
+/// One clockwise quarter turn about the positive axis.
+let rotate (a: Axis) (v: V3) : V3 =
+  match a with
+  | X -> v3 v.x v.z (0 - v.y)
+  | Y -> v3 (0 - v.z) v.y v.x
+  | Z -> v3 v.y (0 - v.x) v.z
+
+let rotateTimes (a: Axis) (times: Int) (v: V3) : V3 =
+  if times <= 0 then v else rotateTimes a (times - 1) (rotate a v)
+
+let stickerCount (n: Int) : Int = 6 * n * n
+
+/// The sticker at `index`, for a cube of size `n`.
+let sticker (n: Int) (index: Int) : Sticker =
+  let face = index / (n * n)
+  let within = index % (n * n)
+  let r = within / n
+  let c = within % n
+  let m = n - 1
+  // a runs top to bottom, b left to right, in the face's own view
+  let a = m - 2 * r
+  let b = 2 * c - m
+
+  match face with
+  | 0 -> Sticker { pos = v3 b m (0 - a); normal = v3 0 1 0 }
+  | 1 -> Sticker { pos = v3 m a (0 - b); normal = v3 1 0 0 }
+  | 2 -> Sticker { pos = v3 b a m; normal = v3 0 0 1 }
+  | 3 -> Sticker { pos = v3 b (0 - m) a; normal = v3 0 (0 - 1) 0 }
+  | 4 -> Sticker { pos = v3 (0 - m) a b; normal = v3 (0 - 1) 0 0 }
+  | _ -> Sticker { pos = v3 (0 - b) a (0 - m); normal = v3 0 0 (0 - 1) }
+
+/// The inverse of `sticker`.
+let indexOf (n: Int) (s: Sticker) : Int =
+  let m = n - 1
+  let p = s.pos
+  let nv = s.normal
+
+  let (face, a, b) =
+    if nv.y == 1 then (0, 0 - p.z, p.x)
+    else if nv.x == 1 then (1, p.y, 0 - p.z)
+    else if nv.z == 1 then (2, p.y, p.x)
+    else if nv.y == (0 - 1) then (3, p.z, p.x)
+    else if nv.x == (0 - 1) then (4, p.y, p.z)
+    else (5, p.y, 0 - p.x)
+
+  let r = (m - a) / 2
+  let c = (b + m) / 2
+  face * n * n + r * n + c
+
+/// Which layer along `a` a sticker sits in, 0 at the negative end.
+let layerOf (n: Int) (a: Axis) (s: Sticker) : Int =
+  ((coord s.pos a) + n - 1) / 2
+
+/// The permutation for one clockwise quarter turn of one layer.
+let quarterPerm (n: Int) (a: Axis) (layer: Int) : List<Int> =
+  Stdlib.List.range 0 ((stickerCount n) - 1)
+  |> Stdlib.List.map (fun j ->
+    let s = sticker n j
+
+    if layerOf n a s == layer then
+      // whatever lands at j came from one quarter turn backwards
+      indexOf
+        n
+        (Sticker { pos = rotateTimes a 3 s.pos; normal = rotateTimes a 3 s.normal })
+    else
+      j)
+
+let tables (n: Int) : Tables =
+  let perms =
+    [ Axis.X, Axis.Y, Axis.Z ]
+    |> Stdlib.List.map (fun a ->
+      Stdlib.List.range 0 (n - 1) |> Stdlib.List.map (fun layer -> quarterPerm n a layer))
+    |> Stdlib.List.flatten
+
+  Tables { n = n; perms = perms }
+
+let solved (n: Int) : List<Int> =
+  Stdlib.List.range 0 ((stickerCount n) - 1) |> Stdlib.List.map (fun i -> i / (n * n))
+
+let permute (state: List<Int>) (perm: List<Int>) : List<Int> =
+  perm |> Stdlib.List.map (fun i -> Stdlib.Option.withDefault (Stdlib.List.getAt state i) 0)
+
+let applyTimes (state: List<Int>) (perm: List<Int>) (times: Int) : List<Int> =
+  if times <= 0 then state else applyTimes (permute state perm) perm (times - 1)
+
+let apply (t: Tables) (state: List<Int>) (m: Move) : List<Int> =
+  let turns = ((m.turns % 4) + 4) % 4
+
+  m.layers
+  |> Stdlib.List.fold state (fun acc layer ->
+    match Stdlib.List.getAt t.perms ((axisIndex m.axis) * t.n + layer) with
+    | Some perm -> applyTimes acc perm turns
+    | None -> acc)
+
+let applyAll (t: Tables) (state: List<Int>) (moves: List<Move>) : List<Int> =
+  moves |> Stdlib.List.fold state (fun acc m -> apply t acc m)
+
+/// Every face one colour. Orientation doesn't matter, so a solve still counts after x/y/z.
+/// Written as one list comparison per face because this runs after every turn, and a lambda per
+/// sticker costs real time in the interpreter.
+let isSolved (n: Int) (state: List<Int>) : Bool =
+  let nn = n * n
+
+  Stdlib.List.range 0 5
+  |> Stdlib.List.all (fun face ->
+    let stickers = Stdlib.List.take (Stdlib.List.drop state (face * nn)) nn
+
+    match stickers with
+    | [] -> true
+    | first :: _ -> stickers == Stdlib.List.repeatUnsafe nn first)
+
+/// A move as one permutation, so applying it later is a single pass however many layers and
+/// quarter turns it covers.
+let movePerm (t: Tables) (m: Move) : List<Int> =
+  apply t (Stdlib.List.range 0 ((stickerCount t.n) - 1)) m
+
+
+// Named moves. `depth` counts layers in from the face (1 is the face itself); `width` is how many
+// layers a wide turn takes. Suffix is "" for a quarter turn, "'" for its inverse, "2" for a half turn.
+
+let suffixTurns (suffix: String) : Int =
+  match suffix with
+  | "'" -> 3
+  | "2" -> 2
+  | _ -> 1
+
+let depthPrefix (depth: Int) : String =
+  if depth <= 1 then "" else Stdlib.Int.toString depth
+
+type Face =
+  | U
+  | D
+  | R
+  | L
+  | F
+  | B
+
+let faceLetter (f: Face) : String =
+  match f with
+  | U -> "U"
+  | D -> "D"
+  | R -> "R"
+  | L -> "L"
+  | F -> "F"
+  | B -> "B"
+
+let faceAxis (f: Face) : Axis =
+  match f with
+  | U -> Axis.Y
+  | D -> Axis.Y
+  | R -> Axis.X
+  | L -> Axis.X
+  | F -> Axis.Z
+  | B -> Axis.Z
+
+/// The +axis faces turn with the axis; their opposites turn against it.
+let facePositive (f: Face) : Bool =
+  match f with
+  | U -> true
+  | R -> true
+  | F -> true
+  | _ -> false
+
+/// The layer index `depth` layers in from face `f`.
+let faceLayer (n: Int) (f: Face) (depth: Int) : Int =
+  if facePositive f then n - depth else depth - 1
+
+let faceTurns (f: Face) (suffix: String) : Int =
+  let t = suffixTurns suffix
+  if facePositive f then t else (4 - t) % 4
+
+/// A single layer, `depth` in from the face: R, 2R, 3R...
+let faceMove (n: Int) (f: Face) (depth: Int) (suffix: String) : Move =
+  let d = Stdlib.Int.clamp depth 1 n
+
+  Move
+    { axis = faceAxis f
+      layers = [ faceLayer n f d ]
+      turns = faceTurns f suffix
+      name = (depthPrefix d) ++ (faceLetter f) ++ suffix }
+
+/// The outer `width` layers together: r is Rw is 2 layers, 3Rw is 3.
+let wideMove (n: Int) (f: Face) (width: Int) (suffix: String) : Move =
+  let w = Stdlib.Int.clamp width 1 n
+
+  let name =
+    if w == 2 then Stdlib.String.toLowercase (faceLetter f)
+    else if w == 1 then faceLetter f
+    else (Stdlib.Int.toString w) ++ (faceLetter f) ++ "w"
+
+  Move
+    { axis = faceAxis f
+      layers = Stdlib.List.range 1 w |> Stdlib.List.map (fun d -> faceLayer n f d)
+      turns = faceTurns f suffix
+      name = name ++ suffix }
+
+/// Every inner layer: M follows L, E follows D, S follows F. On a 3x3 that's the one middle layer.
+let sliceMove (n: Int) (letter: String) (suffix: String) : Move =
+  let inner = if n <= 2 then [] else Stdlib.List.range 1 (n - 2)
+  let t = suffixTurns suffix
+
+  let (axis, turns) =
+    match letter with
+    | "M" -> (Axis.X, (4 - t) % 4)
+    | "E" -> (Axis.Y, (4 - t) % 4)
+    | _ -> (Axis.Z, t)
+
+  Move
+    { axis = axis
+      layers = inner
+      turns = turns
+      name = letter ++ suffix }
+
+/// x follows R, y follows U, z follows F.
+let rotation (n: Int) (letter: String) (suffix: String) : Move =
+  let axis =
+    match letter with
+    | "x" -> Axis.X
+    | "y" -> Axis.Y
+    | _ -> Axis.Z
+
+  Move
+    { axis = axis
+      layers = Stdlib.List.range 0 (n - 1)
+      turns = suffixTurns suffix
+      name = letter ++ suffix }
+
+let isRotation (m: Move) (n: Int) : Bool =
+  Stdlib.List.length m.layers == n

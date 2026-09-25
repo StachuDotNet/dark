@@ -93,6 +93,7 @@ module Registry =
       ("sync", "Push then pull against a relay (`sync setup` to get started)", [], Cli.Setup.executeSyncCmd, Cli.Sync.help, Cli.Sync.complete)
       ("ops", "Read this instance's op log", [], Ops.execute, Ops.help, Ops.complete)
       ("apps", "List, install, and manage apps (daemons, foreground, UI)", [], Apps.Command.execute, Apps.Command.help, Apps.Command.complete)
+      ("cube", "A keyboard Rubik's cube simulator and timer (2x2 to 5x5)", [], Cube.App.execute, Cube.App.help, Cube.App.complete)
       ("text-editor", "Demo: a tiny text editor (the outliner's widget surfaced as an app)", [], Apps.Examples.TextEdit.execute, Apps.Examples.TextEdit.help, Apps.Examples.TextEdit.complete)
       ("workbench", "Open the workbench -- a framed, navigable package tree (CLI-UX redesign)", [ "wb" ], Workbench.execute, Workbench.help, Workbench.complete) ]
     |> Stdlib.List.map(
@@ -207,7 +208,7 @@ module Registry =
       ("AI", [ "agent" ])
       ("Security", [ "permissions" ])
       ("Network", [ "devices" ])
-      ("Apps", [ "apps" ])
+      ("Apps", [ "apps", "cube" ])
       ("Utilities", [ "clear", "help", "docs", "quit", "builtins", "export-seed", "views", "workbench" ]) ]
 
   let formatCommandGroup (groupName: String) (commandNames: List<String>) (commands: List<CommandHandler>) : String =
@@ -498,7 +499,7 @@ module Registry =
   /// Full-screen TUIs. Capturing one dumps its alternate-screen escapes into a pane, so the bar
   /// launches it as a page instead. Canonical names; aliases resolve before matching. `apps` is
   /// handled in `takesScreen` because it is a TUI only when bare.
-  val screenCommands = [ "outliner", "text-editor", "review", "views" ]
+  val screenCommands = [ "outliner", "text-editor", "review", "views", "cube" ]
 
   /// Should the workbench run this command line on the real terminal instead of captured?
   /// `-y`/`--yes` is the universal "don't ask", so a line carrying it never needs the handoff.

@@ -1,0 +1,234 @@
+/// The three looks, each a list of quads for `Raster` to fill.
+///
+/// - Perspective: the whole cube in 3D from a camera you can orbit with the arrow keys. The one to
+///   use; it's what JFly's curses sim and the hi-games applet were going for.
+/// - Isometric: the same cube, orthographic, from the classic corner angle. Flatter, steadier.
+/// - Net: all six faces unfolded, U over L F R B over D. For checking a scramble.
+module Darklang.Cli.Cube.View
+
+type Style =
+  | Perspective
+  | Isometric
+  | Net
+
+type Camera = { yaw: Int; pitch: Int }
+
+val defaultCamera = Camera { yaw = 0 - 32; pitch = 30 }
+
+let styleName (s: Style) : String =
+  match s with
+  | Perspective -> "3D"
+  | Isometric -> "iso"
+  | Net -> "net"
+
+let nextStyle (s: Style) : Style =
+  match s with
+  | Perspective -> Style.Isometric
+  | Isometric -> Style.Net
+  | Net -> Style.Perspective
+
+type F3 = { x: Float; y: Float; z: Float }
+
+let f3 (x: Float) (y: Float) (z: Float) : F3 = F3 { x = x; y = y; z = z }
+
+let toF3 (v: Model.V3) : F3 =
+  f3 (Stdlib.Int.toFloat v.x) (Stdlib.Int.toFloat v.y) (Stdlib.Int.toFloat v.z)
+
+let add (a: F3) (b: F3) : F3 = f3 (a.x + b.x) (a.y + b.y) (a.z + b.z)
+let scale (a: F3) (k: Float) : F3 = f3 (a.x * k) (a.y * k) (a.z * k)
+
+/// The two in-plane directions of a face with this normal.
+let planeAxes (normal: Model.V3) : (F3 * F3) =
+  if normal.x != 0 then (f3 0.0 1.0 0.0, f3 0.0 0.0 1.0)
+  else if normal.y != 0 then (f3 1.0 0.0 0.0, f3 0.0 0.0 1.0)
+  else (f3 1.0 0.0 0.0, f3 0.0 1.0 0.0)
+
+/// Corners of a square of half-size `half` centred at `c`, in order around the edge.
+let square (c: F3) (u: F3) (v: F3) (half: Float) : List<F3> =
+  let hu = scale u half
+  let hv = scale v half
+  let nu = scale u (0.0 - half)
+  let nv = scale v (0.0 - half)
+  [ add (add c hu) hv, add (add c hu) nv, add (add c nu) nv, add (add c nu) hv ]
+
+val faceNormals =
+  [ Model.v3 0 1 0
+    Model.v3 1 0 0
+    Model.v3 0 0 1
+    Model.v3 0 (0 - 1) 0
+    Model.v3 (0 - 1) 0 0
+    Model.v3 0 0 (0 - 1) ]
+
+/// How much of each sticker's cell is sticker; the rest shows the body.
+val inset = 0.84
+
+
+// 3D: rotate the world into camera space (yaw about Y, then pitch about X), then project.
+
+type Lens =
+  { sinYaw: Float
+    cosYaw: Float
+    sinPitch: Float
+    cosPitch: Float
+    /// Camera distance along +z; 0 means orthographic.
+    distance: Float }
+
+let lensFor (cam: Camera) (distance: Float) : Lens =
+  Lens
+    { sinYaw = Raster.sinDeg cam.yaw
+      cosYaw = Raster.cosDeg cam.yaw
+      sinPitch = Raster.sinDeg cam.pitch
+      cosPitch = Raster.cosDeg cam.pitch
+      distance = distance }
+
+let toCamera (l: Lens) (p: F3) : F3 =
+  let x1 = p.x * l.cosYaw + p.z * l.sinYaw
+  let z1 = p.z * l.cosYaw - p.x * l.sinYaw
+  let y2 = p.y * l.cosPitch - z1 * l.sinPitch
+  let z2 = p.y * l.sinPitch + z1 * l.cosPitch
+  f3 x1 y2 z2
+
+/// Camera space to the unit screen: x right, y DOWN, before fitting to the terminal.
+let project (l: Lens) (p: F3) : Raster.Point =
+  let c = toCamera l p
+
+  if l.distance == 0.0 then
+    Raster.Point { x = c.x; y = 0.0 - c.y }
+  else
+    let k = l.distance / (l.distance - c.z)
+    Raster.Point { x = c.x * k; y = 0.0 - c.y * k }
+
+/// Faces turned towards the camera. With perspective that's stricter than "normal points at
+/// +z": a face has to point at the eye, which sits a finite distance away.
+let faceVisible (l: Lens) (n: Int) (normal: Model.V3) : Bool =
+  let rn = toCamera l (toF3 normal)
+  let nf = Stdlib.Int.toFloat n
+
+  if l.distance == 0.0 then rn.z > 0.001 else rn.z * l.distance - nf > 0.001
+
+let cubeQuads (n: Int) (l: Lens) : List<Raster.Quad> =
+  let nf = Stdlib.Int.toFloat n
+  let nn = n * n
+
+  Stdlib.List.range 0 5
+  |> Stdlib.List.filter (fun face ->
+    faceVisible l n (Stdlib.Option.withDefault (Stdlib.List.getAt faceNormals face) (Model.v3 0 1 0)))
+  |> Stdlib.List.map (fun face ->
+    let normal = Stdlib.Option.withDefault (Stdlib.List.getAt faceNormals face) (Model.v3 0 1 0)
+    let (u, v) = planeAxes normal
+    let centre = scale (toF3 normal) nf
+
+    let bodyQuad =
+      Raster.Quad
+        { idx = Raster.body
+          pts = square centre u v nf |> Stdlib.List.map (fun p -> project l p) }
+
+    let stickers =
+      Stdlib.List.range (face * nn) (face * nn + nn - 1)
+      |> Stdlib.List.map (fun i ->
+        let s = Model.sticker n i
+        let c = add (toF3 s.pos) (toF3 s.normal)
+
+        Raster.Quad
+          { idx = i
+            pts = square c u v inset |> Stdlib.List.map (fun p -> project l p) })
+
+    Stdlib.List.push stickers bodyQuad)
+  |> Stdlib.List.flatten
+
+
+// Net: faces as flat squares in sticker units, y already pointing down.
+
+let netQuads (n: Int) : List<Raster.Quad> =
+  let nf = Stdlib.Int.toFloat n
+  let gap = 0.35
+  let nn = n * n
+  // (column, row) of each face in the U R F D L B order
+  let slots = [ (1, 0), (2, 1), (1, 1), (1, 2), (0, 1), (3, 1) ]
+  let half = inset / 2.0
+
+  Stdlib.List.range 0 5
+  |> Stdlib.List.map (fun face ->
+    let (col, row) = Stdlib.Option.withDefault (Stdlib.List.getAt slots face) (0, 0)
+    let ox = (Stdlib.Int.toFloat col) * (nf + gap)
+    let oy = (Stdlib.Int.toFloat row) * (nf + gap)
+
+    let rect (x0: Float) (y0: Float) (x1: Float) (y1: Float) : List<Raster.Point> =
+      [ Raster.Point { x = x0; y = y0 }
+        Raster.Point { x = x1; y = y0 }
+        Raster.Point { x = x1; y = y1 }
+        Raster.Point { x = x0; y = y1 } ]
+
+    let bodyQuad = Raster.Quad { idx = Raster.body; pts = rect ox oy (ox + nf) (oy + nf) }
+
+    let stickers =
+      Stdlib.List.range 0 (nn - 1)
+      |> Stdlib.List.map (fun k ->
+        let cx = ox + (Stdlib.Int.toFloat (k % n)) + 0.5
+        let cy = oy + (Stdlib.Int.toFloat (k / n)) + 0.5
+
+        Raster.Quad
+          { idx = face * nn + k
+            pts = rect (cx - half) (cy - half) (cx + half) (cy + half) })
+
+    Stdlib.List.push stickers bodyQuad)
+  |> Stdlib.List.flatten
+
+
+// Fitting unit-screen quads into the terminal.
+
+/// Map points from a box of the given extent (centred on `centre`) into `width` x `heightPx`
+/// pixels, uniformly, with a pixel of margin.
+let fit
+  (quads: List<Raster.Quad>)
+  (centre: Raster.Point)
+  (extentX: Float)
+  (extentY: Float)
+  (width: Int)
+  (heightPx: Int)
+  : List<Raster.Quad> =
+  let w = Stdlib.Int.toFloat (width - 2)
+  let h = Stdlib.Int.toFloat (heightPx - 2)
+  let k = Stdlib.Float.min (w / extentX) (h / extentY)
+  let mx = (Stdlib.Int.toFloat width) / 2.0
+  let my = (Stdlib.Int.toFloat heightPx) / 2.0
+
+  quads
+  |> Stdlib.List.map (fun q ->
+    Raster.Quad
+      { idx = q.idx
+        pts =
+          q.pts
+          |> Stdlib.List.map (fun p ->
+            Raster.Point { x = mx + (p.x - centre.x) * k; y = my + (p.y - centre.y) * k }) })
+
+/// The raster for a style, at a terminal area of `width` columns by `height` rows.
+let layout (n: Int) (style: Style) (cam: Camera) (width: Int) (height: Int) : Raster.Raster =
+  let heightPx = height * 2
+  let nf = Stdlib.Int.toFloat n
+  // The cube's circumscribed radius: the fit that never changes size as you orbit.
+  let radius = nf * 1.7320508
+
+  let quads =
+    match style with
+    | Perspective ->
+      let distance = radius * 4.5
+      let extent = 2.0 * radius * distance / (distance - radius)
+      fit (cubeQuads n (lensFor cam distance)) (Raster.Point { x = 0.0; y = 0.0 }) extent extent width heightPx
+    | Isometric ->
+      let extent = 2.0 * radius
+      let iso = Camera { yaw = 0 - 45; pitch = 35 }
+      fit (cubeQuads n (lensFor iso 0.0)) (Raster.Point { x = 0.0; y = 0.0 }) extent extent width heightPx
+    | Net ->
+      let span = nf + 0.35
+      let extentX = 4.0 * span
+      let extentY = 3.0 * span
+      fit
+        (netQuads n)
+        (Raster.Point { x = extentX / 2.0 - 0.175; y = extentY / 2.0 - 0.175 })
+        extentX
+        extentY
+        width
+        heightPx
+
+  Raster.rasterize width height quads

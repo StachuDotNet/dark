@@ -1,0 +1,503 @@
+/// `dark cube`: a keyboard cube simulator and timer, after hi-games.net.
+///
+/// Space scrambles, 15 seconds of inspection, and the first turn starts the clock. Type the solve
+/// on the Heise keymap (see `Keys`); the moment the cube is solved the clock stops, and the time
+/// goes into the store with your averages.
+///
+/// The loop is its own rather than a `Cli.Component`, for one reason: keys typed while a frame is
+/// painting come back from `readKey` as one burst (its `keyChar` is the whole run), and every
+/// character of that burst has to be applied in order. Folding over the burst here means nothing is
+/// ever dropped, however fast you type; at worst a frame is skipped.
+module Darklang.Cli.Cube.App
+
+type Phase =
+  | Idle
+  | Inspecting
+  | Solving
+  | Done
+
+type State =
+  { n: Int
+    tables: Model.Tables
+    perms: Dict<String, List<Int>>
+    cube: List<Int>
+    phase: Phase
+    scramble: String
+    inspectStart: Int
+    start: Int
+    now: Int
+    /// The clock at the last solve, for Done.
+    finalMs: Int
+    penalty: Stats.Penalty
+    moves: Int
+    /// Set when a solve finishes mid-burst, so the rest of that burst can't touch the solved cube.
+    finishedThisBurst: Bool
+    solves: List<Stats.Solve>
+    depthL: Int
+    depthR: Int
+    style: View.Style
+    camera: View.Camera
+    raster: Raster.Raster
+    rasterKey: String
+    quit: Bool
+    note: String }
+
+val panelWidth = 36
+val minWidth = 64
+val minHeight = 22
+
+let nowMs () : Int = Darklang.Cli.Telemetry.now ()
+
+let emptyRaster () : Raster.Raster = Raster.Raster { width = 0; height = 0; rows = [] }
+
+let fresh (n: Int) (solves: List<Stats.Solve>) (style: View.Style) (camera: View.Camera) : State =
+  State
+    { n = n
+      tables = Model.tables n
+      perms = Stdlib.Dict.fromListOverwritingDuplicates []
+      cube = Model.solved n
+      phase = Phase.Idle
+      scramble = ""
+      inspectStart = 0
+      start = 0
+      now = nowMs ()
+      finalMs = 0
+      penalty = Stats.Penalty.Clean
+      moves = 0
+      finishedThisBurst = false
+      solves = solves
+      depthL = 1
+      depthR = 1
+      style = style
+      camera = camera
+      raster = emptyRaster ()
+      rasterKey = ""
+      quit = false
+      note = "" }
+
+
+// Turning.
+
+/// The move's single permutation, from the cache or computed and cached.
+let permFor (s: State) (m: Model.Move) : (List<Int> * State) =
+  match Stdlib.Dict.get s.perms m.name with
+  | Some p -> (p, s)
+  | None ->
+    let p = Model.movePerm s.tables m
+    (p, { s with perms = Stdlib.Dict.setOverridingDuplicates s.perms m.name p })
+
+let applyMove (s: State) (m: Model.Move) : State =
+  let (perm, s2) = permFor s m
+  { s2 with cube = Model.permute s2.cube perm }
+
+let finish (s: State) : State =
+  let ms = s.now - s.start
+
+  let solve =
+    Stats.Solve
+      { size = s.n
+        ms = ms
+        penalty = s.penalty
+        scramble = s.scramble
+        at = Stdlib.DateTime.toString (Stdlib.DateTime.now ()) }
+
+  let solves = Stdlib.List.push s.solves solve
+  Stats.save solves
+
+  { s with
+      phase = Phase.Done
+      finalMs = ms
+      solves = solves
+      finishedThisBurst = true }
+
+let turn (s: State) (m: Model.Move) : State =
+  if s.finishedThisBurst then
+    s
+  else
+    let isRotation = Model.isRotation m s.n
+
+    // The first real turn out of inspection starts the clock, with the WCA's inspection penalties.
+    let s =
+      if s.phase == Phase.Inspecting && Stdlib.Bool.not isRotation then
+        let inspected = s.now - s.inspectStart
+
+        let penalty =
+          if inspected > 17000 then Stats.Penalty.Dnf
+          else if inspected > 15000 then Stats.Penalty.PlusTwo
+          else Stats.Penalty.Clean
+
+        { s with
+            phase = Phase.Solving
+            start = s.now
+            penalty = penalty
+            moves = 0 }
+      else
+        s
+
+    let s = applyMove s m
+
+    if s.phase == Phase.Solving then
+      let s = if isRotation then s else { s with moves = s.moves + 1 }
+      if Model.isSolved s.n s.cube then finish s else s
+    else
+      s
+
+let scramble (s: State) : State =
+  let moves = Scramble.generate s.n
+  // Scramble from solved, and in one pass per move so a 60-move 5x5 scramble stays quick.
+  let base = { s with cube = Model.solved s.n }
+
+  let scrambled = moves |> Stdlib.List.fold base (fun acc m -> applyMove acc m)
+
+  { scrambled with
+      phase = Phase.Inspecting
+      scramble = Scramble.toString moves
+      inspectStart = s.now
+      moves = 0
+      penalty = Stats.Penalty.Clean
+      note = "" }
+
+let busy (s: State) : Bool =
+  s.phase == Phase.Inspecting || s.phase == Phase.Solving
+
+let resize (s: State) (n: Int) : State =
+  let n = Stdlib.Int.clamp n 2 5
+  if n == s.n || busy s then s else fresh n s.solves s.style s.camera
+
+let dropLast (s: State) : State =
+  if busy s then
+    s
+  else
+    let mine = Stats.forSize s.solves s.n
+
+    match mine with
+    | [] -> s
+    | latest :: _ ->
+      // Solves are newest first, so the first one of this size is the one to go.
+      let (_, kept) =
+        s.solves
+        |> Stdlib.List.fold (false, []) (fun (dropped, acc) sv ->
+          if Stdlib.Bool.not dropped && sv.size == s.n && sv.at == latest.at && sv.ms == latest.ms then
+            (true, acc)
+          else
+            (dropped, Stdlib.List.push acc sv))
+
+      let solves = Stdlib.List.reverse kept
+      Stats.save solves
+      { s with solves = solves; note = "dropped " ++ (Stats.formatSolve latest) }
+
+let shiftHand (s: State) (right: Bool) (delta: Int) : State =
+  let limit = Keys.maxDepth s.n
+
+  if right then
+    { s with depthR = Stdlib.Int.clamp (s.depthR + delta) 1 limit }
+  else
+    { s with depthL = Stdlib.Int.clamp (s.depthL + delta) 1 limit }
+
+/// One character out of a burst.
+let onChar (s: State) (c: String) : State =
+  match c with
+  | " " -> if busy s then s else scramble s
+  | "\t" -> { s with style = View.nextStyle s.style }
+  | "[" -> resize s (s.n - 1)
+  | "]" -> resize s (s.n + 1)
+  | _ ->
+    match Keys.action s.n s.depthL s.depthR c with
+    | Turn m -> turn s m
+    | ShiftRight d -> shiftHand s true d
+    | ShiftLeft d -> shiftHand s false d
+    | NoAction -> s
+
+let orbit (s: State) (dyaw: Int) (dpitch: Int) : State =
+  let cam = s.camera
+
+  { s with
+      camera =
+        View.Camera
+          { yaw = cam.yaw + dyaw
+            pitch = Stdlib.Int.clamp (cam.pitch + dpitch) (0 - 85) 85 }
+      style = if s.style == View.Style.Net then View.Style.Perspective else s.style }
+
+let onKey (s: State) (k: Stdlib.Cli.Stdin.KeyRead.KeyRead) : State =
+  let s = { s with now = nowMs (); finishedThisBurst = false }
+
+  if k.modifiers.ctrl && k.key == Stdlib.Cli.Stdin.Key.Key.C then
+    { s with quit = true }
+  else
+    match k.key with
+    | Escape ->
+      if busy s then { s with phase = Phase.Idle; note = "aborted" } else { s with quit = true }
+    | LeftArrow -> orbit s (0 - 15) 0
+    | RightArrow -> orbit s 15 0
+    | UpArrow -> orbit s 0 15
+    | DownArrow -> orbit s 0 (0 - 15)
+    | Backspace -> dropLast s
+    | Tab -> { s with style = View.nextStyle s.style }
+    | _ ->
+      if k.keyChar == "" then
+        s
+      else
+        Stdlib.String.toList k.keyChar
+        |> Stdlib.List.fold s (fun acc ch -> onChar acc (Stdlib.Char.toString ch))
+
+
+// Drawing.
+
+let pad (text: String) (width: Int) : String =
+  Stdlib.String.padEndToWidth text width
+
+let dim (t: String) : String = "\u001b[2m" ++ t ++ "\u001b[0m"
+let bold (t: String) : String = "\u001b[1m" ++ t ++ "\u001b[0m"
+
+/// Three-by-five block digits for the clock.
+let glyph (c: String) : List<String> =
+  match c with
+  | "0" -> [ "███", "█ █", "█ █", "█ █", "███" ]
+  | "1" -> [ " █ ", "██ ", " █ ", " █ ", "███" ]
+  | "2" -> [ "███", "  █", "███", "█  ", "███" ]
+  | "3" -> [ "███", "  █", "███", "  █", "███" ]
+  | "4" -> [ "█ █", "█ █", "███", "  █", "  █" ]
+  | "5" -> [ "███", "█  ", "███", "  █", "███" ]
+  | "6" -> [ "███", "█  ", "███", "█ █", "███" ]
+  | "7" -> [ "███", "  █", "  █", "  █", "  █" ]
+  | "8" -> [ "███", "█ █", "███", "█ █", "███" ]
+  | "9" -> [ "███", "█ █", "███", "  █", "███" ]
+  | "." -> [ " ", " ", " ", " ", "█" ]
+  | ":" -> [ " ", "█", " ", "█", " " ]
+  | "+" -> [ "   ", " █ ", "███", " █ ", "   " ]
+  | _ -> [ "   ", "   ", "   ", "   ", "   " ]
+
+let bigText (text: String) : List<String> =
+  let glyphs = Stdlib.String.toList text |> Stdlib.List.map (fun c -> glyph (Stdlib.Char.toString c))
+
+  Stdlib.List.range 0 4
+  |> Stdlib.List.map (fun row ->
+    glyphs
+    |> Stdlib.List.map (fun g -> Stdlib.Option.withDefault (Stdlib.List.getAt g row) "")
+    |> Stdlib.String.join " ")
+
+/// What the big clock shows, and the line under it.
+let clock (s: State) : (String * String) =
+  let elapsed = s.now - s.start
+
+  match s.phase with
+  | Idle ->
+    let last =
+      match Stats.forSize s.solves s.n with
+      | latest :: _ -> Stats.formatSolve latest
+      | [] -> "0.00"
+
+    (last, if s.note == "" then "space to scramble" else s.note)
+  | Inspecting ->
+    let left = 15 - (s.now - s.inspectStart) / 1000
+    let shown = if left < 0 then "+2" else Stdlib.Int.toString left
+    (shown, "inspecting - first turn starts the clock")
+  | Solving -> (Stats.formatMs elapsed, "solving")
+  | Done ->
+    let label =
+      match s.penalty with
+      | Clean -> "solved"
+      | PlusTwo -> "solved, +2 for inspection"
+      | Dnf -> "solved, but DNF (inspection over 17s)"
+
+    let shown =
+      match s.penalty with
+      | Clean -> Stats.formatMs s.finalMs
+      | PlusTwo -> (Stats.formatMs (s.finalMs + 2000)) ++ "+"
+      | Dnf -> "DNF"
+
+    (shown, label)
+
+/// Break text into lines no wider than `width`, at spaces.
+let wrap (text: String) (width: Int) : List<String> =
+  let words = Stdlib.String.split text " " |> Stdlib.List.filter (fun w -> w != "")
+
+  let (lines, current) =
+    words
+    |> Stdlib.List.fold ([], "") (fun (acc, cur) w ->
+      if cur == "" then (acc, w)
+      else if (Stdlib.String.length cur) + 1 + (Stdlib.String.length w) > width then (Stdlib.List.push acc cur, w)
+      else (acc, cur ++ " " ++ w))
+
+  let all = if current == "" then lines else Stdlib.List.push lines current
+  Stdlib.List.reverse all
+
+let panel (s: State) (height: Int) : List<String> =
+  let w = panelWidth - 2
+  let mine = Stats.forSize s.solves s.n
+  let (big, status) = clock s
+  let size = Stdlib.Int.toString s.n
+  let hands =
+    if s.n >= 4 then
+      $"  hands L{Stdlib.Int.toString s.depthL} R{Stdlib.Int.toString s.depthR}"
+    else
+      ""
+
+  let header =
+    [ (bold $"{size}x{size}") ++ (dim $"  {View.styleName s.style}{hands}")
+      "" ]
+
+  let clockLines = Stdlib.List.append (bigText big) [ "", status ]
+
+  let tps =
+    if s.phase == Phase.Solving || s.phase == Phase.Done then
+      let ms = if s.phase == Phase.Done then s.finalMs else s.now - s.start
+      let tenths = if ms > 0 then s.moves * 10000 / ms else 0
+
+      [ dim
+          $"moves {Stdlib.Int.toString s.moves}   tps {Stdlib.Int.toString (tenths / 10)}.{Stdlib.Int.toString (tenths % 10)}" ]
+    else
+      []
+
+  let scrambleLines =
+    if s.scramble == "" then [] else Stdlib.List.append [ "" ] (wrap s.scramble w)
+
+  let statLine (label: String) (value: String) : String =
+    (dim (pad label 6)) ++ (pad value 10)
+
+  let stats =
+    [ ""
+      (statLine "best" (Stats.formatOption (Stats.best mine)))
+      ++ (statLine "ao5" (Stats.formatAverage (Stats.averageOf mine 5)))
+      (statLine "mean" (Stats.formatOption (Stats.mean mine)))
+      ++ (statLine "ao12" (Stats.formatAverage (Stats.averageOf mine 12)))
+      dim $"{Stdlib.Int.toString (Stdlib.List.length mine)} solves" ]
+
+  let recent =
+    let times = Stdlib.List.take mine 12 |> Stdlib.List.map Stats.formatSolve
+    if Stdlib.List.isEmpty times then [] else Stdlib.List.append [ "" ] (wrap (Stdlib.String.join times "  ") w)
+
+  let help =
+    Stdlib.List.append
+      [ "" ]
+      (Stdlib.List.append
+        (Keys.card |> Stdlib.List.map dim)
+        [ dim "space scramble   tab style   [ ] size"
+          dim "arrows orbit   bksp drop   esc quit" ])
+
+  let main =
+    [ header, clockLines, tps, scrambleLines, stats, recent ] |> Stdlib.List.flatten
+
+  // Drop the keymap card before anything that matters when the terminal is short.
+  let lines =
+    if (Stdlib.List.length main) + (Stdlib.List.length help) <= height then
+      Stdlib.List.append main help
+    else
+      main
+
+  lines |> Stdlib.List.map (fun l -> " " ++ l)
+
+let cubeArea (size: Stdlib.Cli.Tui.Size) : (Int * Int) =
+  (size.width - panelWidth - 1, size.height)
+
+let styleKey (st: View.Style) : String = View.styleName st
+
+/// Recompute the raster when anything it depends on has changed.
+let withLayout (s: State) (size: Stdlib.Cli.Tui.Size) : State =
+  let (w, h) = cubeArea size
+
+  let key =
+    [ Stdlib.Int.toString s.n
+      styleKey s.style
+      Stdlib.Int.toString s.camera.yaw
+      Stdlib.Int.toString s.camera.pitch
+      Stdlib.Int.toString w
+      Stdlib.Int.toString h ]
+    |> Stdlib.String.join "|"
+
+  if key == s.rasterKey then
+    s
+  else
+    { s with
+        raster = View.layout s.n s.style s.camera w h
+        rasterKey = key }
+
+let render (s: State) (size: Stdlib.Cli.Tui.Size) : Stdlib.Cli.Tui.View =
+  let rows =
+    if size.width < minWidth || size.height < minHeight then
+      [ $"make the terminal at least {Stdlib.Int.toString minWidth}x{Stdlib.Int.toString minHeight} (esc quits)" ]
+    else
+      let cubeRows = Raster.paint s.raster s.cube
+      let panelRows = panel s size.height
+
+      Stdlib.List.range 0 (size.height - 1)
+      |> Stdlib.List.map (fun i ->
+        let left = Stdlib.Option.withDefault (Stdlib.List.getAt cubeRows i) ""
+        let right = Stdlib.Option.withDefault (Stdlib.List.getAt panelRows i) ""
+        left ++ " " ++ right)
+
+  Stdlib.Cli.Tui.View
+    { rows = rows
+      cursor = Stdlib.Cli.Tui.Cursor.Hidden
+      mode = Stdlib.Cli.Tui.ViewMode.Fullscreen }
+
+
+// The loop.
+
+let loop (s: State) (term: Stdlib.Cli.Tui.TerminalSession.State) : State =
+  let k = Stdlib.Cli.Stdin.readKey ()
+  let s = onKey s k
+
+  if s.quit then
+    let _ = Stdlib.Cli.Tui.TerminalSession.stop term
+    s
+  else
+    let size = Stdlib.Cli.Tui.TerminalSession.currentSize ()
+    let s = withLayout s size
+    let term = Stdlib.Cli.Tui.TerminalSession.presentAtSize term size (render s size)
+    loop s term
+
+let run (n: Int) : Int =
+  let size = Stdlib.Cli.Tui.TerminalSession.currentSize ()
+  let s = withLayout (fresh n (Stats.load ()) View.Style.Perspective View.defaultCamera) size
+
+  match Stdlib.Cli.Tui.TerminalSession.startAtSize size (render s size) with
+  | Ok term ->
+    let _ = loop s term
+    0
+  | Error msg ->
+    Stdlib.printLine msg
+    1
+
+
+// The command.
+
+let help (_state: AppState) : String =
+  [ "Usage: cube [2|3|4|5]"
+    "A keyboard Rubik's cube simulator and timer, after hi-games.net."
+    ""
+    "Space scrambles and starts 15s of inspection; your first turn starts the clock, and it"
+    "stops the moment the cube is solved. Times and averages (ao5, ao12) are kept per size."
+    ""
+    "Keys (Heise layout): I/K R R', D/E L L', J/F U U', H/G F F', S/L D D', W/O B B',"
+    "U/M r r', V/R l l', T/Y x, B/N x', ;/A y y', P/Q z z', ./5 M' M."
+    "7/8 and 4/3 shift your right and left hands in and out a layer on big cubes."
+    "Tab changes the view, arrows orbit the 3D one, [ and ] change size, Esc quits." ]
+  |> Stdlib.String.join "\n"
+
+let complete (_state: AppState) (_args: List<String>) : List<Completion.CompletionItem> =
+  [ "2", "3", "4", "5" ]
+  |> Stdlib.List.map (fun s -> Completion.simple s)
+
+let execute (state: AppState) (args: List<String>) : AppState =
+  let size =
+    match args with
+    | [] -> Stdlib.Option.Option.Some 3
+    | [ arg ] ->
+      match Stdlib.Int.parse arg with
+      | Ok n -> if n >= 2 && n <= 5 then Stdlib.Option.Option.Some n else Stdlib.Option.Option.None
+      | Error _ -> Stdlib.Option.Option.None
+    | _ -> Stdlib.Option.Option.None
+
+  match size with
+  | None ->
+    Stdlib.printLine "Usage: cube [2|3|4|5]  (a size from 2x2 to 5x5)"
+    state
+  | Some n ->
+    match Stdlib.Cli.Tui.TerminalSupport.current () with
+    | Available ->
+      let _ = run n
+      state
+    | Unavailable reason ->
+      Stdlib.printLine $"cube needs a terminal: {reason}"
+      state

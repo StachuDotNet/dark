@@ -1,0 +1,103 @@
+/// The Heise keymap, as hi-games.net and csTimer have it.
+///
+/// Fingers rest on J K L and F D S, and each key is a finger pushing one sticker: I pushes the
+/// right face up (R), K pulls it down (R'), J pushes the top to the left (U), F back (U').
+///
+///     I R    K R'     W B    O B'     S D    L D'     D L    E L'
+///     J U    F U'     H F    G F'     ; y    A y'     U r    R l'
+///     M r'   V l      T x    Y x      N x'   B x'     P z    Q z'
+///     . M'   X M'     5 M    6 M      1 S'   0 S      2 E    9 E'
+///     Z d    C u'     , u    / d'
+///
+/// Big cubes add hand shifts: 7/8 move the right hand in/out a layer, 4/3 the left. A shifted hand
+/// turns the layer it's resting on (2R rather than R), and its wide keys take everything out to
+/// one past it.
+module Darklang.Cli.Cube.Keys
+
+type Action =
+  | Turn of Model.Move
+  | ShiftRight of Int
+  | ShiftLeft of Int
+  | NoAction
+
+/// How far in a hand can shift: the middle layer on odd cubes, the inner half on even ones.
+let maxDepth (n: Int) : Int = (n + 1) / 2
+
+let action (n: Int) (depthL: Int) (depthR: Int) (key: String) : Action =
+  let face (f: Model.Face) (suffix: String) : Action =
+    Action.Turn(Model.faceMove n f 1 suffix)
+
+  let right (suffix: String) : Action =
+    Action.Turn(Model.faceMove n Model.Face.R depthR suffix)
+
+  let left (suffix: String) : Action =
+    Action.Turn(Model.faceMove n Model.Face.L depthL suffix)
+
+  let rightWide (suffix: String) : Action =
+    Action.Turn(Model.wideMove n Model.Face.R (depthR + 1) suffix)
+
+  let leftWide (suffix: String) : Action =
+    Action.Turn(Model.wideMove n Model.Face.L (depthL + 1) suffix)
+
+  let wide (f: Model.Face) (suffix: String) : Action =
+    Action.Turn(Model.wideMove n f 2 suffix)
+
+  let slice (letter: String) (suffix: String) : Action =
+    Action.Turn(Model.sliceMove n letter suffix)
+
+  let rot (letter: String) (suffix: String) : Action =
+    Action.Turn(Model.rotation n letter suffix)
+
+  match Stdlib.String.toLowercase key with
+  | "i" -> right ""
+  | "k" -> right "'"
+  | "d" -> left ""
+  | "e" -> left "'"
+  | "j" -> face Model.Face.U ""
+  | "f" -> face Model.Face.U "'"
+  | "h" -> face Model.Face.F ""
+  | "g" -> face Model.Face.F "'"
+  | "s" -> face Model.Face.D ""
+  | "l" -> face Model.Face.D "'"
+  | "w" -> face Model.Face.B ""
+  | "o" -> face Model.Face.B "'"
+  | ";" -> rot "y" ""
+  | "a" -> rot "y" "'"
+  | "t" -> rot "x" ""
+  | "y" -> rot "x" ""
+  | "b" -> rot "x" "'"
+  | "n" -> rot "x" "'"
+  | "p" -> rot "z" ""
+  | "q" -> rot "z" "'"
+  | "u" -> rightWide ""
+  | "m" -> rightWide "'"
+  | "v" -> leftWide ""
+  | "r" -> leftWide "'"
+  | "." -> slice "M" "'"
+  | "x" -> slice "M" "'"
+  | "5" -> slice "M" ""
+  | "6" -> slice "M" ""
+  | "1" -> slice "S" "'"
+  | "0" -> slice "S" ""
+  | "2" -> slice "E" ""
+  | "9" -> slice "E" "'"
+  | "z" -> wide Model.Face.D ""
+  | "/" -> wide Model.Face.D "'"
+  | "," -> wide Model.Face.U ""
+  | "c" -> wide Model.Face.U "'"
+  | "7" -> Action.ShiftRight 1
+  | "8" -> Action.ShiftRight(0 - 1)
+  | "4" -> Action.ShiftLeft 1
+  | "3" -> Action.ShiftLeft(0 - 1)
+  | _ -> Action.NoAction
+
+/// The reference card, for the panel.
+val card =
+  [ "I K  R R'    D E  L L'"
+    "J F  U U'    H G  F F'"
+    "S L  D D'    W O  B B'"
+    "U M  r r'    V R  l l'"
+    "T/Y x  B/N x'  ; A  y y'"
+    "P Q  z z'    . 5  M' M"
+    "7 8  right hand in/out"
+    "4 3  left hand in/out" ]

@@ -1,0 +1,247 @@
+/// Turning sticker polygons into terminal rows.
+///
+/// Every visual style comes down to a list of convex quads in pixel space, each tagged with the
+/// sticker it shows (or `body`, the dark plastic between stickers). One scanline pass turns those into
+/// runs, and a terminal cell holds two pixel rows: the upper half block, coloured top and bottom.
+///
+/// Which sticker a pixel shows depends on the camera and the terminal size, never on the cube, so the
+/// runs are computed once per layout and kept. A frame after a turn is only a colour lookup per run.
+module Darklang.Cli.Cube.Raster
+
+/// Nothing drawn here: the terminal's own background.
+val empty = 0 - 1
+
+/// The cube's body, showing between stickers.
+val body = 0 - 2
+
+type Point = { x: Float; y: Float }
+
+type Quad = { idx: Int; pts: List<Point> }
+
+type Span = { x0: Int; x1: Int; idx: Int }
+
+type Seg = { idx: Int; len: Int }
+
+/// One terminal cell's worth of run: `top` and `bottom` are what the two pixel rows show.
+type Run = { top: Int; bottom: Int; len: Int }
+
+type Raster =
+  { width: Int
+    height: Int
+    rows: List<List<Run>> }
+
+
+// Geometry helpers. Dark has no trig builtins, so sin and cos are short Taylor series; they run a
+// handful of times per camera move, never per frame.
+
+val pi = 3.141592653589793
+
+let radians (degrees: Int) : Float =
+  (Stdlib.Int.toFloat degrees) * pi / 180.0
+
+let sinTaylor (x: Float) : Float =
+  let x2 = x * x
+  x * (1.0 - x2 / 6.0 * (1.0 - x2 / 20.0 * (1.0 - x2 / 42.0 * (1.0 - x2 / 72.0 * (1.0 - x2 / 110.0)))))
+
+/// Sine of an angle in whole degrees, folded into [-90, 90] first so the series stays accurate.
+let sinDeg (degrees: Int) : Float =
+  let d = ((degrees % 360) + 360) % 360
+  let folded = if d > 270 then d - 360 else if d > 90 then 180 - d else d
+  sinTaylor (radians folded)
+
+let cosDeg (degrees: Int) : Float = sinDeg (degrees + 90)
+
+
+// Scanline fill.
+
+let floorF (f: Float) : Int = Stdlib.Float.floor f
+
+/// Where the horizontal line at `y` crosses each edge of a convex polygon.
+let crossings (pts: List<Point>) (y: Float) : List<Float> =
+  let n = Stdlib.List.length pts
+
+  Stdlib.List.range 0 (n - 1)
+  |> Stdlib.List.filterMap (fun i ->
+    let a = Stdlib.Option.withDefault (Stdlib.List.getAt pts i) (Point { x = 0.0; y = 0.0 })
+
+    let b =
+      Stdlib.Option.withDefault (Stdlib.List.getAt pts ((i + 1) % n)) (Point { x = 0.0; y = 0.0 })
+
+    let within = (a.y <= y && y < b.y) || (b.y <= y && y < a.y)
+
+    if within then
+      Stdlib.Option.Option.Some(a.x + (y - a.y) / (b.y - a.y) * (b.x - a.x))
+    else
+      Stdlib.Option.Option.None)
+
+/// The pixel spans of one quad, as (row, span) pairs, clipped to the raster.
+let quadSpans (width: Int) (heightPx: Int) (q: Quad) : List<(Int * Span)> =
+  let ys = q.pts |> Stdlib.List.map (fun p -> p.y)
+  let ymin = Stdlib.Option.withDefault (Stdlib.List.head (Stdlib.List.sort ys)) 0.0
+  let ymax = Stdlib.Option.withDefault (Stdlib.List.last (Stdlib.List.sort ys)) 0.0
+  let r0 = Stdlib.Int.max 0 (floorF ymin)
+  let r1 = Stdlib.Int.min (heightPx - 1) (floorF ymax)
+
+  if r1 < r0 then
+    []
+  else
+    Stdlib.List.range r0 r1
+    |> Stdlib.List.filterMap (fun r ->
+      let xs = crossings q.pts ((Stdlib.Int.toFloat r) + 0.5) |> Stdlib.List.sort
+
+      match xs with
+      | [] -> Stdlib.Option.Option.None
+      | lo :: _ ->
+        let hi = Stdlib.Option.withDefault (Stdlib.List.last xs) lo
+        let x0 = Stdlib.Int.max 0 (floorF (lo + 0.5))
+        let x1 = Stdlib.Int.min width (floorF (hi + 0.5))
+
+        if x1 > x0 then
+          Stdlib.Option.Option.Some((r, Span { x0 = x0; x1 = x1; idx = q.idx }))
+        else
+          Stdlib.Option.Option.None)
+
+/// What covers pixel `p`, given spans sorted by x0 that don't overlap each other. Returns the
+/// covering index (or `fallback`) and the spans still worth looking at for later pixels.
+let coverAt (spans: List<Span>) (p: Int) (fallback: Int) : (Int * List<Span>) =
+  let live = Stdlib.List.dropWhile spans (fun s -> s.x1 <= p)
+
+  match live with
+  | s :: _ -> if s.x0 <= p then (s.idx, live) else (fallback, live)
+  | [] -> (fallback, [])
+
+let sweep
+  (points: List<Int>)
+  (stickers: List<Span>)
+  (bodies: List<Span>)
+  (acc: List<Seg>)
+  : List<Seg> =
+  match points with
+  | p :: rest ->
+    match rest with
+    | q :: _ ->
+      let (bodyIdx, bodies2) = coverAt bodies p empty
+      let (idx, stickers2) = coverAt stickers p bodyIdx
+
+      let acc2 =
+        match acc with
+        | prev :: older ->
+          if prev.idx == idx then
+            Stdlib.List.push older (Seg { idx = idx; len = prev.len + q - p })
+          else
+            Stdlib.List.push acc (Seg { idx = idx; len = q - p })
+        | [] -> [ Seg { idx = idx; len = q - p } ]
+
+      sweep rest stickers2 bodies2 acc2
+    | [] -> Stdlib.List.reverse acc
+  | [] -> Stdlib.List.reverse acc
+
+/// Lay one pixel row out left to right, covering exactly [0, width). Stickers sit on top of the
+/// body; neither overlaps its own kind, so one sweep over the span edges settles every pixel.
+let rowSegs (width: Int) (spans: List<Span>) : List<Seg> =
+  let (bodies, stickers) = Stdlib.List.partition spans (fun s -> s.idx == body)
+  let bodies = Stdlib.List.sortBy bodies (fun s -> s.x0)
+  let stickers = Stdlib.List.sortBy stickers (fun s -> s.x0)
+
+  let points =
+    spans
+    |> Stdlib.List.fold [ 0, width ] (fun acc s -> Stdlib.List.push (Stdlib.List.push acc s.x0) s.x1)
+    |> Stdlib.List.unique
+    |> Stdlib.List.sort
+
+  sweep points stickers bodies []
+
+/// Zip two pixel rows into one row of half-block cells.
+let mergeRows (a: List<Seg>) (b: List<Seg>) (acc: List<Run>) : List<Run> =
+  match a with
+  | [] -> Stdlib.List.reverse acc
+  | sa :: ra ->
+    match b with
+    | [] -> Stdlib.List.reverse acc
+    | sb :: rb ->
+      let len = Stdlib.Int.min sa.len sb.len
+      let na = if sa.len == len then ra else Stdlib.List.push ra (Seg { idx = sa.idx; len = sa.len - len })
+      let nb = if sb.len == len then rb else Stdlib.List.push rb (Seg { idx = sb.idx; len = sb.len - len })
+
+      let acc2 =
+        match acc with
+        | prev :: rest ->
+          if prev.top == sa.idx && prev.bottom == sb.idx then
+            Stdlib.List.push rest (Run { top = sa.idx; bottom = sb.idx; len = prev.len + len })
+          else
+            Stdlib.List.push acc (Run { top = sa.idx; bottom = sb.idx; len = len })
+        | [] -> [ Run { top = sa.idx; bottom = sb.idx; len = len } ]
+
+      mergeRows na nb acc2
+
+/// Rasterize quads into `width` columns by `height` cells (twice that many pixel rows). Body quads
+/// should come before the stickers that sit on them, though the row walk sorts anyway.
+let rasterize (width: Int) (height: Int) (quads: List<Quad>) : Raster =
+  let heightPx = height * 2
+
+  let byRow =
+    quads
+    |> Stdlib.List.fold (Stdlib.Dict.fromListOverwritingDuplicates []) (fun dict q ->
+      quadSpans width heightPx q
+      |> Stdlib.List.fold dict (fun d (r, span) ->
+        let key = Stdlib.Int.toString r
+        let existing = Stdlib.Option.withDefault (Stdlib.Dict.get d key) []
+        Stdlib.Dict.setOverridingDuplicates d key (Stdlib.List.push existing span)))
+
+  let blank = [ Seg { idx = empty; len = width } ]
+
+  let pixelRow (r: Int) : List<Seg> =
+    match Stdlib.Dict.get byRow (Stdlib.Int.toString r) with
+    | Some spans -> rowSegs width spans
+    | None -> blank
+
+  let rows =
+    Stdlib.List.range 0 (height - 1)
+    |> Stdlib.List.map (fun cell -> mergeRows (pixelRow (cell * 2)) (pixelRow (cell * 2 + 1)) [])
+
+  Raster { width = width; height = height; rows = rows }
+
+
+// Painting a raster with a cube's colours. This is the per-frame part, so it stays lean: one lookup
+// per run and a string repeat.
+
+/// Colour for each face index, 256-colour: white, red, green, yellow, orange, blue.
+val palette = [ 231, 196, 40, 226, 208, 27 ]
+
+val bodyColor = 235
+
+/// The 256-colour code a raster index shows, or -1 for the terminal's own background.
+let colorOf (cube: List<Int>) (idx: Int) : Int =
+  if idx == empty then
+    0 - 1
+  else if idx == body then
+    bodyColor
+  else
+    match Stdlib.List.getAt cube idx with
+    | Some face -> Stdlib.Option.withDefault (Stdlib.List.getAt palette face) 0
+    | None -> 0
+
+let fg (c: Int) : String = "\u001b[38;5;" ++ (Stdlib.Int.toString c) ++ "m"
+let bg (c: Int) : String = "\u001b[48;5;" ++ (Stdlib.Int.toString c) ++ "m"
+val reset = "\u001b[0m"
+
+let paintRun (cube: List<Int>) (run: Run) : String =
+  let top = colorOf cube run.top
+  let bottom = colorOf cube run.bottom
+
+  if top == bottom then
+    if top < 0 then
+      reset ++ (Stdlib.String.repeat " " run.len)
+    else
+      reset ++ (bg top) ++ (Stdlib.String.repeat " " run.len)
+  else if top < 0 then
+    reset ++ (fg bottom) ++ (Stdlib.String.repeat "▄" run.len)
+  else if bottom < 0 then
+    reset ++ (fg top) ++ (Stdlib.String.repeat "▀" run.len)
+  else
+    reset ++ (fg top) ++ (bg bottom) ++ (Stdlib.String.repeat "▀" run.len)
+
+let paint (r: Raster) (cube: List<Int>) : List<String> =
+  r.rows
+  |> Stdlib.List.map (fun runs ->
+    (runs |> Stdlib.List.map (fun run -> paintRun cube run) |> Stdlib.String.join "") ++ reset)

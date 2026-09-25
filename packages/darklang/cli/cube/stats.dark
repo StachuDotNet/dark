@@ -1,0 +1,116 @@
+/// Solve times, averages the WCA way, and where they're kept.
+///
+/// ao5 and ao12 drop the single best and single worst and take the mean of the rest (WCA 9f8).
+/// One DNF is the worst and gets dropped; two make the whole average a DNF (9f9).
+module Darklang.Cli.Cube.Stats
+
+type Penalty =
+  | Clean
+  | PlusTwo
+  | Dnf
+
+type Solve =
+  { size: Int
+    ms: Int
+    penalty: Penalty
+    scramble: String
+    at: String }
+
+type Average =
+  | NotEnough
+  | DnfAverage
+  | Mean of Int
+
+/// What a solve counts as, or None for a DNF.
+let effective (s: Solve) : Stdlib.Option.Option<Int> =
+  match s.penalty with
+  | Clean -> Stdlib.Option.Option.Some s.ms
+  | PlusTwo -> Stdlib.Option.Option.Some(s.ms + 2000)
+  | Dnf -> Stdlib.Option.Option.None
+
+/// The trimmed mean of the latest `count`, given newest first.
+let averageOf (solves: List<Solve>) (count: Int) : Average =
+  let latest = Stdlib.List.take solves count
+
+  if Stdlib.List.length latest < count then
+    Average.NotEnough
+  else
+    let times = latest |> Stdlib.List.filterMap effective |> Stdlib.List.sort
+    let dnfs = count - (Stdlib.List.length times)
+
+    if dnfs > 1 then
+      Average.DnfAverage
+    else
+      // Drop the best, and the worst unless a DNF already was the worst.
+      let trimmed = Stdlib.List.drop times 1
+      let kept = if dnfs == 1 then trimmed else Stdlib.List.dropLast trimmed
+      let total = Stdlib.List.fold kept 0 (fun acc t -> acc + t)
+      Average.Mean(total / (count - 2))
+
+let best (solves: List<Solve>) : Stdlib.Option.Option<Int> =
+  solves |> Stdlib.List.filterMap effective |> Stdlib.List.sort |> Stdlib.List.head
+
+/// Plain mean of everything that isn't a DNF.
+let mean (solves: List<Solve>) : Stdlib.Option.Option<Int> =
+  let times = solves |> Stdlib.List.filterMap effective
+
+  match times with
+  | [] -> Stdlib.Option.Option.None
+  | _ ->
+    Stdlib.Option.Option.Some(
+      (Stdlib.List.fold times 0 (fun acc t -> acc + t)) / (Stdlib.List.length times)
+    )
+
+let forSize (solves: List<Solve>) (n: Int) : List<Solve> =
+  solves |> Stdlib.List.filter (fun s -> s.size == n)
+
+/// 12.34, or 1:02.34 past a minute. Truncated, not rounded, as timers do.
+let formatMs (ms: Int) : String =
+  let centis = (ms / 10) % 100
+  let seconds = (ms / 1000) % 60
+  let minutes = ms / 60000
+  let cc = if centis < 10 then "0" ++ (Stdlib.Int.toString centis) else Stdlib.Int.toString centis
+
+  if minutes > 0 then
+    let ss =
+      if seconds < 10 then "0" ++ (Stdlib.Int.toString seconds) else Stdlib.Int.toString seconds
+
+    $"{Stdlib.Int.toString minutes}:{ss}.{cc}"
+  else
+    $"{Stdlib.Int.toString seconds}.{cc}"
+
+let formatSolve (s: Solve) : String =
+  match s.penalty with
+  | Clean -> formatMs s.ms
+  | PlusTwo -> (formatMs (s.ms + 2000)) ++ "+"
+  | Dnf -> "DNF(" ++ (formatMs s.ms) ++ ")"
+
+let formatAverage (a: Average) : String =
+  match a with
+  | NotEnough -> "-"
+  | DnfAverage -> "DNF"
+  | Mean ms -> formatMs ms
+
+let formatOption (o: Stdlib.Option.Option<Int>) : String =
+  match o with
+  | Some ms -> formatMs ms
+  | None -> "-"
+
+
+// Kept in the instance's own store: allowed by the default policy, so no file grant is needed, and
+// it travels with `dark` backups.
+
+val storeKey = "cube.times"
+
+let load () : List<Solve> =
+  let raw = Stdlib.LocalStore.configGet storeKey
+
+  if raw == "" then
+    []
+  else
+    match Stdlib.Json.parse<List<Solve>> raw with
+    | Ok solves -> solves
+    | Error _ -> []
+
+let save (solves: List<Solve>) : Unit =
+  Stdlib.LocalStore.configSet storeKey (Stdlib.Json.serialize<List<Solve>> solves)

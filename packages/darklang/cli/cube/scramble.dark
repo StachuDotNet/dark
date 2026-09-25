@@ -1,0 +1,96 @@
+/// Random-move scrambles, the way csTimer makes them for practice.
+///
+/// Not random-state: a uniformly random state needs a two-phase solver and its tables. Random moves
+/// are indistinguishable for practice once they're long enough, which is what the lengths are for.
+///
+/// The one rule that matters: turns on the same axis commute, so within a run of same-axis turns,
+/// no layer set may repeat. That rules out R R, and R L R, and on big cubes Rw R Rw.
+module Darklang.Cli.Cube.Scramble
+
+type Spec =
+  { face: Model.Face
+    width: Int }
+
+let length (n: Int) : Int =
+  match n with
+  | 2 -> 11
+  | 3 -> 25
+  | 4 -> 40
+  | _ -> 60
+
+/// What a scramble for this size draws from. 2x2 sticks to U R F like the WCA's; 4x4 adds the
+/// wide turns WCA random-move scrambles use; 5x5 has every wide turn.
+let pool (n: Int) : List<Spec> =
+  let outer (faces: List<Model.Face>) : List<Spec> =
+    faces |> Stdlib.List.map (fun f -> Spec { face = f; width = 1 })
+
+  let wide (faces: List<Model.Face>) : List<Spec> =
+    faces |> Stdlib.List.map (fun f -> Spec { face = f; width = 2 })
+
+  let all =
+    [ Model.Face.U, Model.Face.D, Model.Face.R, Model.Face.L, Model.Face.F, Model.Face.B ]
+
+  match n with
+  | 2 -> outer [ Model.Face.U, Model.Face.R, Model.Face.F ]
+  | 3 -> outer all
+  | 4 -> Stdlib.List.append (outer all) (wide [ Model.Face.U, Model.Face.R, Model.Face.F ])
+  | _ -> Stdlib.List.append (outer all) (wide all)
+
+let toMove (n: Int) (s: Spec) (suffix: String) : Model.Move =
+  if s.width == 1 then
+    Model.faceMove n s.face 1 suffix
+  else
+    let m = Model.wideMove n s.face s.width suffix
+    // Standard scramble notation spells wide turns Rw, not r.
+    { m with name = (Model.faceLetter s.face) ++ "w" ++ suffix }
+
+let layerKey (m: Model.Move) : String =
+  m.layers |> Stdlib.List.sort |> Stdlib.List.map Stdlib.Int.toString |> Stdlib.String.join ","
+
+/// `run` holds the moves since the axis last changed, newest first.
+let allowed (run: List<Model.Move>) (candidate: Model.Move) : Bool =
+  match run with
+  | [] -> true
+  | latest :: _ ->
+    if latest.axis != candidate.axis then
+      true
+    else
+      let key = layerKey candidate
+      Stdlib.List.all run (fun m -> layerKey m != key)
+
+let pick (n: Int) (specs: List<Spec>) (run: List<Model.Move>) : Model.Move =
+  let spec =
+    Stdlib.Option.withDefault
+      (Stdlib.List.randomElement specs)
+      (Spec { face = Model.Face.R; width = 1 })
+
+  let suffix =
+    Stdlib.Option.withDefault (Stdlib.List.randomElement [ "", "'", "2" ]) ""
+
+  let m = toMove n spec suffix
+  if allowed run m then m else pick n specs run
+
+let build
+  (n: Int)
+  (specs: List<Spec>)
+  (remaining: Int)
+  (run: List<Model.Move>)
+  (acc: List<Model.Move>)
+  : List<Model.Move> =
+  if remaining <= 0 then
+    Stdlib.List.reverse acc
+  else
+    let m = pick n specs run
+
+    let run2 =
+      match run with
+      | latest :: _ -> if latest.axis == m.axis then Stdlib.List.push run m else [ m ]
+      | [] -> [ m ]
+
+    build n specs (remaining - 1) run2 (Stdlib.List.push acc m)
+
+let generate (n: Int) : List<Model.Move> =
+  build n (pool n) (length n) [] []
+
+let toString (moves: List<Model.Move>) : String =
+  moves |> Stdlib.List.map (fun m -> m.name) |> Stdlib.String.join " "
