@@ -1,12 +1,17 @@
 /// The three looks, each a list of quads for `Raster` to fill.
 ///
-/// - Isometric: the default, and JFly's angle (his curses sim turns the cube 45 degrees and tips it
+/// - Qsim: the default, after qsim/qCube (snk.digibase.ca, 2010). U and F as flat faces, U stacked
+///   on F, with a one-sticker strip of L and of R down each side: the row of L or R that touches U
+///   next to U, the column that touches F next to F, and the shared corner as one tall cell across
+///   the seam. Everything you look at while solving and nothing you don't.
+/// - Isometric: JFly's angle (his curses sim turns the cube 45 degrees and tips it
 ///   about 37): U as a diamond on top, a face down each side, no perspective to distort it.
 /// - Perspective: the same camera with perspective, for a more solid-looking cube.
 /// - Net: all six faces unfolded, U over L F R B over D. For checking a scramble.
 module Darklang.Cli.Cube.View
 
 type Style =
+  | Qsim
   | Isometric
   | Perspective
   | Net
@@ -18,15 +23,17 @@ val defaultCamera = Camera { yaw = 0 - 45; pitch = 37 }
 
 let styleName (s: Style) : String =
   match s with
+  | Qsim -> "qsim"
   | Perspective -> "3D"
   | Isometric -> "iso"
   | Net -> "net"
 
 let nextStyle (s: Style) : Style =
   match s with
+  | Qsim -> Style.Isometric
   | Isometric -> Style.Perspective
   | Perspective -> Style.Net
-  | Net -> Style.Isometric
+  | Net -> Style.Qsim
 
 type F3 = { x: Float; y: Float; z: Float }
 
@@ -138,6 +145,89 @@ let cubeQuads (n: Int) (l: Lens) : List<Raster.Quad> =
   |> Stdlib.List.flatten
 
 
+// Qsim: flat U over F, with the L and R stickers that touch them down the sides.
+
+let rectQuad (idx: Int) (x0: Float) (y0: Float) (x1: Float) (y1: Float) : Raster.Quad =
+  Raster.Quad
+    { idx = idx
+      pts =
+        [ Raster.Point { x = x0; y = y0 }
+          Raster.Point { x = x1; y = y0 }
+          Raster.Point { x = x1; y = y1 }
+          Raster.Point { x = x0; y = y1 } ] }
+
+/// A sticker filling the cell [x0, x1) x [y0, y1), shrunk by the usual gap.
+let stickerRect (idx: Int) (x0: Float) (y0: Float) (x1: Float) (y1: Float) : Raster.Quad =
+  let g = (1.0 - inset) / 2.0
+  rectQuad idx (x0 + g) (y0 + g) (x1 - g) (y1 - g)
+
+/// The gap between U and F, and between a face and a side strip, in sticker widths.
+val qsimSeam = 0.3
+val qsimSide = 0.45
+
+let qsimQuads (n: Int) : List<Raster.Quad> =
+  let nf = Stdlib.Int.toFloat n
+  let nn = n * n
+  let fl (i: Int) : Float = Stdlib.Int.toFloat i
+  // Columns: L strip, U and F, R strip. Rows: U, then F below the seam.
+  let faceX = 1.0 + qsimSide
+  let rightX = faceX + nf + qsimSide
+  let fTop = nf + qsimSeam
+  let bottom = fTop + nf
+
+  let faceCells (face: Int) (top: Float) : List<Raster.Quad> =
+    Stdlib.List.range 0 (nn - 1)
+    |> Stdlib.List.map (fun k ->
+      let x = faceX + fl (k % n)
+      let y = top + fl (k / n)
+      stickerRect (face * nn + k) x y (x + 1.0) (y + 1.0))
+
+  // One side strip. `beside U row r` and `beside F row r` name the sticker for each cell; the corner
+  // they share is one tall cell straddling the seam.
+  let strip
+    (x: Float)
+    (besideU: Int -> Int)
+    (corner: Int)
+    (besideF: Int -> Int)
+    : List<Raster.Quad> =
+    let upper =
+      if n < 2 then []
+      else
+        Stdlib.List.range 0 (n - 2)
+        |> Stdlib.List.map (fun r -> stickerRect (besideU r) x (fl r) (x + 1.0) (fl r + 1.0))
+
+    let lower =
+      if n < 2 then []
+      else
+        Stdlib.List.range 1 (n - 1)
+        |> Stdlib.List.map (fun r -> stickerRect (besideF r) x (fTop + fl r) (x + 1.0) (fTop + fl r + 1.0))
+
+    let tall = stickerRect corner x (nf - 1.0) (x + 1.0) (fTop + 1.0)
+
+    Stdlib.List.flatten
+      [ [ rectQuad Raster.body x 0.0 (x + 1.0) bottom ], upper, [ tall ], lower ]
+
+  // L is face 4: its top row runs back to front, its last column is the one against F.
+  let left =
+    strip 0.0 (fun r -> 4 * nn + r) (4 * nn + n - 1) (fun r -> 4 * nn + r * n + n - 1)
+
+  // R is face 1: its top row runs front to back, so read it backwards; column 0 is against F.
+  let right =
+    strip rightX (fun r -> nn + n - 1 - r) nn (fun r -> nn + r * n)
+
+  Stdlib.List.flatten
+    [ [ rectQuad Raster.body faceX 0.0 (faceX + nf) nf
+        rectQuad Raster.body faceX fTop (faceX + nf) bottom ]
+      faceCells 0 0.0
+      faceCells 2 fTop
+      left
+      right ]
+
+let qsimExtent (n: Int) : (Float * Float) =
+  let nf = Stdlib.Int.toFloat n
+  (2.0 + 2.0 * qsimSide + nf, 2.0 * nf + qsimSeam)
+
+
 // Net: faces as flat squares in sticker units, y already pointing down.
 
 let netQuads (n: Int) : List<Raster.Quad> =
@@ -212,6 +302,9 @@ let layout (n: Int) (style: Style) (cam: Camera) (width: Int) (height: Int) : Ra
 
   let quads =
     match style with
+    | Qsim ->
+      let (w, h) = qsimExtent n
+      fit (qsimQuads n) (Raster.Point { x = w / 2.0; y = h / 2.0 }) (w * 1.04) (h * 1.04) width heightPx
     | Perspective ->
       let distance = radius * 4.5
       let extent = 2.0 * radius * distance / (distance - radius)
