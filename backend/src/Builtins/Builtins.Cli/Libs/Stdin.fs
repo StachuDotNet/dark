@@ -122,7 +122,7 @@ let private readKeyOrPaste
       let mutable timedOut = false
       let waited = Diagnostics.Stopwatch.StartNew()
       // Poll faster while a deadline is running, so a short budget isn't rounded up to 15ms steps.
-      let pollMs = if Option.isSome waitMs then 2 else 15
+      let pollMs = if Option.isSome waitMs then 5 else 15
       while not Console.KeyAvailable && not resized && not timedOut do
         if Resize.takePending () then
           resized <- true

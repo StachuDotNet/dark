@@ -417,15 +417,13 @@ let panel (s: State) (height: Int) : List<String> =
 let cubeArea (size: Stdlib.Cli.Tui.Size) : (Int * Int) =
   (size.width - panelWidth - 1, size.height)
 
-let styleKey (st: View.Style) : String = View.styleName st
-
 /// Recompute the raster when anything it depends on has changed.
 let withLayout (s: State) (size: Stdlib.Cli.Tui.Size) : State =
   let (w, h) = cubeArea size
 
   let key =
     [ Stdlib.Int.toString s.n
-      styleKey s.style
+      View.styleName s.style
       Stdlib.Int.toString s.camera.yaw
       Stdlib.Int.toString s.camera.pitch
       Stdlib.Int.toString w
