@@ -90,14 +90,3 @@ let action (n: Int) (depthL: Int) (depthR: Int) (key: String) : Action =
   | "4" -> Action.ShiftLeft 1
   | "3" -> Action.ShiftLeft(0 - 1)
   | _ -> Action.NoAction
-
-/// The reference card, for the panel.
-val card =
-  [ "I K  R R'    D E  L L'"
-    "J F  U U'    H G  F F'"
-    "S L  D D'    W O  B B'"
-    "U M  r r'    V R  l l'"
-    "T/Y x  B/N x'  ; A  y y'"
-    "P Q  z z'    . 5  M' M"
-    "7 8  right hand in/out"
-    "4 3  left hand in/out" ]

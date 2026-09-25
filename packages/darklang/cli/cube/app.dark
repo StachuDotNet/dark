@@ -318,7 +318,7 @@ let clock (s: State) : (String * String) =
       else if inspected > 15000 then "+2"
       else Stdlib.Int.toString left
 
-    (shown, "inspecting - first turn starts the clock")
+    (shown, "inspecting: first turn starts it")
   | Solving -> (Stats.formatMs elapsed, "solving")
   | Done ->
     let label =
@@ -406,17 +406,14 @@ let panel (s: State) (height: Int) : List<String> =
     if Stdlib.List.isEmpty times then [] else Stdlib.List.append [ "" ] (wrap (Stdlib.String.join times "  ") w)
 
   let help =
-    Stdlib.List.append
-      [ "" ]
-      (Stdlib.List.append
-        (Keys.card |> Stdlib.List.map dim)
-        [ dim "space scramble  tab view  2-5 size"
-          dim "arrows orbit  bksp drop  esc quit" ])
+    [ ""
+      dim "space scramble  tab view  2-5 size"
+      dim "arrows orbit  bksp drop  esc quit" ]
 
   let main =
     [ header, clockLines, tps, scrambleLines, stats, recent ] |> Stdlib.List.flatten
 
-  // Drop the keymap card before anything that matters when the terminal is short.
+  // Drop the controls line before anything that matters when the terminal is short.
   let lines =
     if (Stdlib.List.length main) + (Stdlib.List.length help) <= height then
       Stdlib.List.append main help
