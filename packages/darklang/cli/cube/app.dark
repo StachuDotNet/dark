@@ -478,22 +478,11 @@ let render (s: State) (size: Stdlib.Cli.Tui.Size) : Stdlib.Cli.Tui.View =
       mode = Stdlib.Cli.Tui.ViewMode.Fullscreen }
 
 
-// Size, view and camera carry over between runs.
+// The size carries over between runs.
 
-type Prefs =
-  { size: Int
-    style: String
-    yaw: Int
-    pitch: Int }
+type Prefs = { size: Int }
 
 val prefsKey = "cube.prefs"
-
-let styleFromName (name: String) : View.Style =
-  match name with
-  | "3D" -> View.Style.Perspective
-  | "net" -> View.Style.Net
-  | "iso" -> View.Style.Isometric
-  | _ -> View.Style.Qsim
 
 let loadPrefs () : Stdlib.Option.Option<Prefs> =
   let raw = Stdlib.LocalStore.configGet prefsKey
@@ -506,12 +495,7 @@ let loadPrefs () : Stdlib.Option.Option<Prefs> =
     | Error _ -> Stdlib.Option.Option.None
 
 let savePrefs (s: State) : Unit =
-  let p =
-    Prefs
-      { size = s.n
-        style = View.styleName s.style
-        yaw = s.camera.yaw
-        pitch = s.camera.pitch }
+  let p = Prefs { size = s.n }
 
   Stdlib.LocalStore.configSet prefsKey (Stdlib.Json.serialize<Prefs> p)
 
@@ -546,11 +530,15 @@ let run (requested: Stdlib.Option.Option<Int>) : Int =
   let size = Stdlib.Cli.Tui.TerminalSession.currentSize ()
   let prefs = loadPrefs ()
 
-  let (n, style, camera) =
+  // Only the size carries over. Coming back to an orbited iso view you'd forgotten about is more
+  // confusing than useful, so every run starts on qsim with the camera at JFly's angle.
+  let n =
     match prefs with
-    | Some p ->
-      (p.size, styleFromName p.style, View.Camera { yaw = p.yaw; pitch = p.pitch })
-    | None -> (3, View.Style.Qsim, View.defaultCamera)
+    | Some p -> p.size
+    | None -> 3
+
+  let style = View.Style.Qsim
+  let camera = View.defaultCamera
 
   let n = Stdlib.Option.withDefault requested n
   let s = withPaint (withLayout (fresh (Stdlib.Int.clamp n 2 5) (Stats.load ()) style camera) size)
