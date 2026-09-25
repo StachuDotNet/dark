@@ -207,11 +207,10 @@ let rasterize (width: Int) (height: Int) (quads: List<Quad>) : Raster =
 
 /// Colour for each face index, 256-colour: white, red, green, yellow, black, blue.
 ///
-/// Picked for red-green colourblindness. L is black rather than orange. Red is a true red
-/// (#d70000), and green is a bright mint (#00ff87) rather than a pure green: simulated for
-/// deuteranopia and protanopia, pure green sits about 24 Lab units from this red and mint about 40,
-/// while both stay at least 39 from every other face.
-val palette = [ 231, 160, 48, 226, 16, 27 ]
+/// Tuned by eye for a red-green colourblind solver. L is black rather than orange, since red and
+/// orange are the pair that can't be told apart. Red is a true red (#d70000), and blue is a shade
+/// darker than full (#005fd7).
+val palette = [ 231, 160, 40, 226, 16, 26 ]
 
 /// Mid grey: light enough that black stickers stand out from it, dark enough to outline the cube
 /// against the backdrop.
