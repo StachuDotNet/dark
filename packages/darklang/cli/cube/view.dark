@@ -1,19 +1,20 @@
 /// The three looks, each a list of quads for `Raster` to fill.
 ///
-/// - Perspective: the whole cube in 3D from a camera you can orbit with the arrow keys. The one to
-///   use; it's what JFly's curses sim and the hi-games applet were going for.
-/// - Isometric: the same cube, orthographic, from the classic corner angle. Flatter, steadier.
+/// - Isometric: the default, and JFly's angle (his curses sim turns the cube 45 degrees and tips it
+///   about 37): U as a diamond on top, a face down each side, no perspective to distort it.
+/// - Perspective: the same camera with perspective, for a more solid-looking cube.
 /// - Net: all six faces unfolded, U over L F R B over D. For checking a scramble.
 module Darklang.Cli.Cube.View
 
 type Style =
-  | Perspective
   | Isometric
+  | Perspective
   | Net
 
 type Camera = { yaw: Int; pitch: Int }
 
-val defaultCamera = Camera { yaw = 0 - 32; pitch = 30 }
+/// JFly's angle.
+val defaultCamera = Camera { yaw = 0 - 45; pitch = 37 }
 
 let styleName (s: Style) : String =
   match s with
@@ -23,9 +24,9 @@ let styleName (s: Style) : String =
 
 let nextStyle (s: Style) : Style =
   match s with
-  | Perspective -> Style.Isometric
-  | Isometric -> Style.Net
-  | Net -> Style.Perspective
+  | Isometric -> Style.Perspective
+  | Perspective -> Style.Net
+  | Net -> Style.Isometric
 
 type F3 = { x: Float; y: Float; z: Float }
 
@@ -217,8 +218,7 @@ let layout (n: Int) (style: Style) (cam: Camera) (width: Int) (height: Int) : Ra
       fit (cubeQuads n (lensFor cam distance)) (Raster.Point { x = 0.0; y = 0.0 }) extent extent width heightPx
     | Isometric ->
       let extent = 2.0 * radius
-      let iso = Camera { yaw = 0 - 45; pitch = 35 }
-      fit (cubeQuads n (lensFor iso 0.0)) (Raster.Point { x = 0.0; y = 0.0 }) extent extent width heightPx
+      fit (cubeQuads n (lensFor cam 0.0)) (Raster.Point { x = 0.0; y = 0.0 }) extent extent width heightPx
     | Net ->
       let span = nf + 0.35
       let extentX = 4.0 * span

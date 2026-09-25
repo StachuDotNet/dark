@@ -223,8 +223,8 @@ let orbit (s: State) (dyaw: Int) (dpitch: Int) : State =
         View.Camera
           { yaw = cam.yaw + dyaw
             pitch = Stdlib.Int.clamp (cam.pitch + dpitch) (0 - 85) 85 }
-      // Only the 3D view has a camera, so orbiting from the others switches to it.
-      style = View.Style.Perspective }
+      // Iso and 3D share the camera; the net has none, so orbiting from it goes to iso.
+      style = if s.style == View.Style.Net then View.Style.Isometric else s.style }
 
 let onKey (s: State) (k: Stdlib.Cli.Stdin.KeyRead.KeyRead) : State =
   let s = { s with now = nowMs (); finishedThisBurst = false }
@@ -480,9 +480,9 @@ val prefsKey = "cube.prefs"
 
 let styleFromName (name: String) : View.Style =
   match name with
-  | "iso" -> View.Style.Isometric
+  | "3D" -> View.Style.Perspective
   | "net" -> View.Style.Net
-  | _ -> View.Style.Perspective
+  | _ -> View.Style.Isometric
 
 let loadPrefs () : Stdlib.Option.Option<Prefs> =
   let raw = Stdlib.LocalStore.configGet prefsKey
@@ -539,7 +539,7 @@ let run (requested: Stdlib.Option.Option<Int>) : Int =
     match prefs with
     | Some p ->
       (p.size, styleFromName p.style, View.Camera { yaw = p.yaw; pitch = p.pitch })
-    | None -> (3, View.Style.Perspective, View.defaultCamera)
+    | None -> (3, View.Style.Isometric, View.defaultCamera)
 
   let n = Stdlib.Option.withDefault requested n
   let s = withPaint (withLayout (fresh (Stdlib.Int.clamp n 2 5) (Stats.load ()) style camera) size)
