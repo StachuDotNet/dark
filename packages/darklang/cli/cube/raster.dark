@@ -205,10 +205,14 @@ let rasterize (width: Int) (height: Int) (quads: List<Quad>) : Raster =
 // Painting a raster with a cube's colours. This is the per-frame part, so it stays lean: one lookup
 // per run and a string repeat.
 
-/// Colour for each face index, 256-colour: white, red, green, yellow, orange, blue.
-val palette = [ 231, 196, 40, 226, 208, 27 ]
+/// Colour for each face index, 256-colour: white, red, green, yellow, black, blue.
+///
+/// L is black rather than orange: red and orange are the pair a colourblind solver can't tell
+/// apart, and black against the grey body can't be mistaken for anything.
+val palette = [ 231, 196, 40, 226, 16, 27 ]
 
-val bodyColor = 235
+/// Mid grey, light enough that black stickers stand out from it.
+val bodyColor = 243
 
 /// The 256-colour code a raster index shows, or -1 for the terminal's own background.
 let colorOf (cube: List<Int>) (idx: Int) : Int =
