@@ -39,6 +39,10 @@ type State =
     camera: View.Camera
     raster: Raster.Raster
     rasterKey: String
+    /// The cube as last painted, and the rows that came out, so a clock tick doesn't repaint it.
+    paintedCube: List<Int>
+    paintedKey: String
+    painted: List<String>
     quit: Bool
     note: String }
 
@@ -72,6 +76,9 @@ let fresh (n: Int) (solves: List<Stats.Solve>) (style: View.Style) (camera: View
       camera = camera
       raster = emptyRaster ()
       rasterKey = ""
+      paintedCube = []
+      paintedKey = ""
+      painted = []
       quit = false
       note = "" }
 
@@ -266,6 +273,9 @@ let glyph (c: String) : List<String> =
   | "." -> [ " ", " ", " ", " ", "█" ]
   | ":" -> [ " ", "█", " ", "█", " " ]
   | "+" -> [ "   ", " █ ", "███", " █ ", "   " ]
+  | "D" -> [ "██ ", "█ █", "█ █", "█ █", "██ " ]
+  | "N" -> [ "█  █", "██ █", "█ ██", "█  █", "█  █" ]
+  | "F" -> [ "███", "█  ", "██ ", "█  ", "█  " ]
   | _ -> [ "   ", "   ", "   ", "   ", "   " ]
 
 let bigText (text: String) : List<String> =
@@ -290,8 +300,14 @@ let clock (s: State) : (String * String) =
 
     (last, if s.note == "" then "space to scramble" else s.note)
   | Inspecting ->
-    let left = 15 - (s.now - s.inspectStart) / 1000
-    let shown = if left < 0 then "+2" else Stdlib.Int.toString left
+    let inspected = s.now - s.inspectStart
+    let left = 15 - inspected / 1000
+
+    let shown =
+      if inspected > 17000 then "DNF"
+      else if inspected > 15000 then "+2"
+      else Stdlib.Int.toString left
+
     (shown, "inspecting - first turn starts the clock")
   | Solving -> (Stats.formatMs elapsed, "solving")
   | Done ->
@@ -423,12 +439,22 @@ let withLayout (s: State) (size: Stdlib.Cli.Tui.Size) : State =
         raster = View.layout s.n s.style s.camera w h
         rasterKey = key }
 
+/// Repaint the cube only when it or its layout changed.
+let withPaint (s: State) : State =
+  if s.paintedKey == s.rasterKey && s.paintedCube == s.cube then
+    s
+  else
+    { s with
+        painted = Raster.paint s.raster s.cube
+        paintedCube = s.cube
+        paintedKey = s.rasterKey }
+
 let render (s: State) (size: Stdlib.Cli.Tui.Size) : Stdlib.Cli.Tui.View =
   let rows =
     if size.width < minWidth || size.height < minHeight then
       [ $"make the terminal at least {Stdlib.Int.toString minWidth}x{Stdlib.Int.toString minHeight} (esc quits)" ]
     else
-      let cubeRows = Raster.paint s.raster s.cube
+      let cubeRows = s.painted
       let panelRows = panel s size.height
 
       Stdlib.List.range 0 (size.height - 1)
@@ -482,9 +508,18 @@ let savePrefs (s: State) : Unit =
 
 // The loop.
 
+/// How often the clock repaints while it's running.
+val tickMs = 40
+
 let loop (s: State) (term: Stdlib.Cli.Tui.TerminalSession.State) : State =
-  let k = Stdlib.Cli.Stdin.readKey ()
-  let s = onKey s k
+  // While the clock runs, wake up to repaint it; otherwise sleep until a key.
+  let s =
+    if busy s then
+      match Stdlib.Cli.Stdin.readKeyWithin tickMs with
+      | Some k -> onKey s k
+      | None -> { s with now = nowMs () }
+    else
+      onKey s (Stdlib.Cli.Stdin.readKey ())
 
   if s.quit then
     let _ = Stdlib.Cli.Tui.TerminalSession.stop term
@@ -492,7 +527,7 @@ let loop (s: State) (term: Stdlib.Cli.Tui.TerminalSession.State) : State =
     s
   else
     let size = Stdlib.Cli.Tui.TerminalSession.currentSize ()
-    let s = withLayout s size
+    let s = withPaint (withLayout s size)
     let term = Stdlib.Cli.Tui.TerminalSession.presentAtSize term size (render s size)
     loop s term
 
@@ -508,7 +543,7 @@ let run (requested: Stdlib.Option.Option<Int>) : Int =
     | None -> (3, View.Style.Perspective, View.defaultCamera)
 
   let n = Stdlib.Option.withDefault requested n
-  let s = withLayout (fresh (Stdlib.Int.clamp n 2 5) (Stats.load ()) style camera) size
+  let s = withPaint (withLayout (fresh (Stdlib.Int.clamp n 2 5) (Stats.load ()) style camera) size)
 
   match Stdlib.Cli.Tui.TerminalSession.startAtSize size (render s size) with
   | Ok term ->
