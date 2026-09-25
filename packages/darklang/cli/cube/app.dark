@@ -340,7 +340,8 @@ let wrap (text: String) (width: Int) : List<String> =
   Stdlib.List.reverse all
 
 let panel (s: State) (height: Int) : List<String> =
-  let w = panelWidth - 2
+  // A couple of columns spare: at the full width the last move of a line was getting clipped.
+  let w = panelWidth - 4
   let mine = Stats.forSize s.solves s.n
   let (big, status) = clock s
   let size = Stdlib.Int.toString s.n
