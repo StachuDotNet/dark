@@ -216,11 +216,12 @@ let centre (quads: List<Raster.Quad>) (w: Int) (h: Int) (width: Int) (heightPx: 
 let qsimQuads (n: Int) (width: Int) (heightPx: Int) : List<Raster.Quad> =
   let nn = n * n
   // The strips sit flush against U and F, and F sits flush under U: neighbours share a border,
-  // so every gap in the layout is one sticker gap. The strips are half width. At full width the
-  // top rows read as one five-wide rectangle instead of a face with a side on each edge; narrowed,
-  // they read as L and R seen at an angle, and U and F stay square.
+  // so every gap in the layout is one sticker gap. The strips are two thirds width. At full width
+  // the top rows read as one five-wide rectangle instead of a face with a side on each edge;
+  // narrowed, they read as L and R seen at an angle, and U and F stay square. Half width was too
+  // thin.
   let u = pitchFor width heightPx ((Stdlib.Int.toFloat n) + 1.0) (3 * gap) (2.0 * (Stdlib.Int.toFloat n)) gap
-  let stripSticker = Stdlib.Int.max 1 ((u - gap) / 2)
+  let stripSticker = Stdlib.Int.max 1 ((u - gap) * 2 / 3)
   let span = n * u + gap
   let stripW = stripSticker + 2 * gap
   let faceX = stripW - gap
