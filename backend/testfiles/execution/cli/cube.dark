@@ -1,0 +1,142 @@
+// `dark cube`: the model, scrambles and averages. The view and the loop need a terminal and are
+// driven by hand; everything here is pure.
+//
+// Names are fully qualified: testfiles parse with owner "Tests".
+
+module Moves =
+  let orderOfEveryLayer (n: Int) : Bool =
+    let t = Darklang.Cli.Cube.Model.tables n
+    let start = Stdlib.List.range 0 ((Darklang.Cli.Cube.Model.stickerCount n) - 1)
+
+    t.perms
+    |> Stdlib.List.all (fun p ->
+      let four = Darklang.Cli.Cube.Model.applyTimes start p 4
+      let one = Darklang.Cli.Cube.Model.applyTimes start p 1
+      four == start && one != start)
+
+  // Every single-layer quarter turn has order 4, on every size.
+  (orderOfEveryLayer 2) = true
+  (orderOfEveryLayer 3) = true
+  (orderOfEveryLayer 4) = true
+  (orderOfEveryLayer 5) = true
+
+  // R on a 3x3, as generated independently by notes/gen-cube-perms.py (new[i] = old[p[i]]).
+  (Darklang.Cli.Cube.Model.movePerm
+    (Darklang.Cli.Cube.Model.tables 3)
+    (Darklang.Cli.Cube.Model.faceMove 3 Darklang.Cli.Cube.Model.Face.R 1 "")) = [ 0, 1, 20, 3, 4, 23, 6, 7, 26, 15, 12, 9, 16, 13, 10, 17, 14, 11, 18, 19, 29, 21, 22, 32, 24, 25, 35, 27, 28, 51, 30, 31, 48, 33, 34, 45, 36, 37, 38, 39, 40, 41, 42, 43, 44, 8, 46, 47, 5, 49, 50, 2, 52, 53 ]
+
+  // And M, which follows L.
+  (Darklang.Cli.Cube.Model.movePerm
+    (Darklang.Cli.Cube.Model.tables 3)
+    (Darklang.Cli.Cube.Model.sliceMove 3 "M" "")) = [ 0, 52, 2, 3, 49, 5, 6, 46, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 1, 20, 21, 4, 23, 24, 7, 26, 27, 19, 29, 30, 22, 32, 33, 25, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 34, 47, 48, 31, 50, 51, 28, 53 ]
+
+  let sexy (n: Int) : List<Darklang.Cli.Cube.Model.Move> =
+    [ Darklang.Cli.Cube.Model.faceMove n Darklang.Cli.Cube.Model.Face.R 1 ""
+      Darklang.Cli.Cube.Model.faceMove n Darklang.Cli.Cube.Model.Face.U 1 ""
+      Darklang.Cli.Cube.Model.faceMove n Darklang.Cli.Cube.Model.Face.R 1 "'"
+      Darklang.Cli.Cube.Model.faceMove n Darklang.Cli.Cube.Model.Face.U 1 "'" ]
+
+  let sexyTimes (n: Int) (times: Int) : List<Int> =
+    let t = Darklang.Cli.Cube.Model.tables n
+    let moves = Stdlib.List.range 1 times |> Stdlib.List.map (fun _ -> sexy n) |> Stdlib.List.flatten
+    Darklang.Cli.Cube.Model.applyAll t (Darklang.Cli.Cube.Model.solved n) moves
+
+  // R U R' U' has order 6 on every size.
+  (Darklang.Cli.Cube.Model.isSolved 3 (sexyTimes 3 6)) = true
+  (Darklang.Cli.Cube.Model.isSolved 3 (sexyTimes 3 5)) = false
+  (Darklang.Cli.Cube.Model.isSolved 5 (sexyTimes 5 6)) = true
+  (Darklang.Cli.Cube.Model.isSolved 4 (sexyTimes 4 3)) = false
+
+  // A whole-cube rotation leaves it solved: every face is still one colour.
+  (Darklang.Cli.Cube.Model.isSolved
+    4
+    (Darklang.Cli.Cube.Model.apply
+      (Darklang.Cli.Cube.Model.tables 4)
+      (Darklang.Cli.Cube.Model.solved 4)
+      (Darklang.Cli.Cube.Model.rotation 4 "x" ""))) = true
+
+  // Wide r is R plus M' on a 3x3.
+  (let t = Darklang.Cli.Cube.Model.tables 3
+   let s = Darklang.Cli.Cube.Model.solved 3
+   let wide = Darklang.Cli.Cube.Model.apply t s (Darklang.Cli.Cube.Model.wideMove 3 Darklang.Cli.Cube.Model.Face.R 2 "")
+   let parts =
+     Darklang.Cli.Cube.Model.applyAll
+       t
+       s
+       [ Darklang.Cli.Cube.Model.faceMove 3 Darklang.Cli.Cube.Model.Face.R 1 ""
+         Darklang.Cli.Cube.Model.sliceMove 3 "M" "'" ]
+   wide == parts) = true
+
+  (Darklang.Cli.Cube.Model.faceMove 5 Darklang.Cli.Cube.Model.Face.R 2 "'").name = "2R'"
+  (Darklang.Cli.Cube.Model.wideMove 5 Darklang.Cli.Cube.Model.Face.L 3 "2").name = "3Lw2"
+  (Darklang.Cli.Cube.Model.wideMove 3 Darklang.Cli.Cube.Model.Face.U 2 "").name = "u"
+
+
+module Keys =
+  let turnName (a: Darklang.Cli.Cube.Keys.Action) : String =
+    match a with
+    | Turn m -> m.name
+    | ShiftRight d -> "right " ++ (Stdlib.Int.toString d)
+    | ShiftLeft d -> "left " ++ (Stdlib.Int.toString d)
+    | NoAction -> "-"
+
+  (turnName (Darklang.Cli.Cube.Keys.action 3 1 1 "i")) = "R"
+  (turnName (Darklang.Cli.Cube.Keys.action 3 1 1 "K")) = "R'"
+  (turnName (Darklang.Cli.Cube.Keys.action 3 1 1 "j")) = "U"
+  (turnName (Darklang.Cli.Cube.Keys.action 3 1 1 ";")) = "y"
+  (turnName (Darklang.Cli.Cube.Keys.action 3 1 1 "u")) = "r"
+  (turnName (Darklang.Cli.Cube.Keys.action 3 1 1 "5")) = "M"
+  // With the right hand shifted in a layer, I turns the second layer and U takes three.
+  (turnName (Darklang.Cli.Cube.Keys.action 5 1 2 "i")) = "2R"
+  (turnName (Darklang.Cli.Cube.Keys.action 5 1 2 "u")) = "3Rw"
+  (turnName (Darklang.Cli.Cube.Keys.action 5 1 1 "7")) = "right 1"
+  (turnName (Darklang.Cli.Cube.Keys.action 3 1 1 "!")) = "-"
+
+
+module Scramble =
+  let axisRunsOk (moves: List<Darklang.Cli.Cube.Model.Move>) : Bool =
+    let (ok, _) =
+      moves
+      |> Stdlib.List.fold (true, []) (fun (ok, run) m ->
+        let run2 =
+          match run with
+          | latest :: _ -> if latest.axis == m.axis then Stdlib.List.push run m else [ m ]
+          | [] -> [ m ]
+
+        let keys = run2 |> Stdlib.List.map Darklang.Cli.Cube.Scramble.layerKey
+        (ok && (Stdlib.List.length (Stdlib.List.unique keys)) == (Stdlib.List.length keys), run2))
+
+    ok
+
+  (Stdlib.List.length (Darklang.Cli.Cube.Scramble.generate 2)) = 11
+  (Stdlib.List.length (Darklang.Cli.Cube.Scramble.generate 3)) = 25
+  (Stdlib.List.length (Darklang.Cli.Cube.Scramble.generate 5)) = 60
+  // No R R, no R L R, no Rw R Rw: within a same-axis run no layer set repeats.
+  (Stdlib.List.range 1 20 |> Stdlib.List.all (fun _ -> axisRunsOk (Darklang.Cli.Cube.Scramble.generate 3))) = true
+  (Stdlib.List.range 1 10 |> Stdlib.List.all (fun _ -> axisRunsOk (Darklang.Cli.Cube.Scramble.generate 4))) = true
+  // 2x2 sticks to U R F.
+  (Darklang.Cli.Cube.Scramble.generate 2
+   |> Stdlib.List.all (fun m -> Stdlib.List.member [ "U", "R", "F" ] (Stdlib.String.first m.name 1))) = true
+
+
+module Stats =
+  let solve (ms: Int) (p: Darklang.Cli.Cube.Stats.Penalty) : Darklang.Cli.Cube.Stats.Solve =
+    Darklang.Cli.Cube.Stats.Solve { size = 3; ms = ms; penalty = p; scramble = ""; at = "" }
+
+  let clean (ms: Int) : Darklang.Cli.Cube.Stats.Solve = solve ms Darklang.Cli.Cube.Stats.Penalty.Clean
+  let dnf (ms: Int) : Darklang.Cli.Cube.Stats.Solve = solve ms Darklang.Cli.Cube.Stats.Penalty.Dnf
+
+  // Drop the best and the worst, mean the rest.
+  (Darklang.Cli.Cube.Stats.averageOf [ clean 10000, clean 12000, clean 11000, clean 20000, clean 9000 ] 5) = Darklang.Cli.Cube.Stats.Average.Mean 11000
+  // One DNF is the worst and is the one dropped.
+  (Darklang.Cli.Cube.Stats.averageOf [ clean 10000, dnf 12000, clean 11000, clean 20000, clean 9000 ] 5) = Darklang.Cli.Cube.Stats.Average.Mean 13666
+  // Two DNFs make the average a DNF.
+  (Darklang.Cli.Cube.Stats.averageOf [ dnf 10000, dnf 12000, clean 11000, clean 20000, clean 9000 ] 5) = Darklang.Cli.Cube.Stats.Average.DnfAverage
+  (Darklang.Cli.Cube.Stats.averageOf [ clean 10000 ] 5) = Darklang.Cli.Cube.Stats.Average.NotEnough
+  // +2 counts in the average.
+  (Darklang.Cli.Cube.Stats.best [ solve 9000 Darklang.Cli.Cube.Stats.Penalty.PlusTwo, clean 10000 ]) = Some 10000
+
+  (Darklang.Cli.Cube.Stats.formatMs 5070) = "5.07"
+  (Darklang.Cli.Cube.Stats.formatMs 83456) = "1:23.45"
+  (Darklang.Cli.Cube.Stats.formatMs 60009) = "1:00.00"
+  (Darklang.Cli.Cube.Stats.formatSolve (dnf 12000)) = "DNF(12.00)"
