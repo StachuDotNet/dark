@@ -80,7 +80,12 @@ let mutable private pushedBack : ConsoleKeyInfo option = None
 /// Which it was is decided AFTER draining, on whether any insertable text came out - not on the first key.
 /// Deciding up front destroyed any paste beginning with a newline or tab, which is what you get selecting
 /// from the end of a line.
-let private readKeyOrPaste () : ConsoleKeyInfo * string option * int =
+///
+/// `waitMs` bounds the wait for the FIRST key: `None` waits for ever (the normal case), `Some ms` gives
+/// up after that long and returns `None`, so a view with a running clock can repaint between keys.
+let private readKeyOrPaste
+  (waitMs : int option)
+  : (ConsoleKeyInfo * string option * int) option =
   // What a single key contributes to pasted text (newlines/tabs preserved).
   let pasteText (k : ConsoleKeyInfo) : string option =
     match k.Key with
@@ -99,7 +104,7 @@ let private readKeyOrPaste () : ConsoleKeyInfo * string option * int =
   // InvalidOperation_ConsoleReadKeyOnFile mid-loop and crashes a full-screen view with a raw stack trace.
   // Report Escape (every view treats it as "quit") so it exits cleanly instead.
   if Console.IsInputRedirected then
-    (ConsoleKeyInfo('\u001b', ConsoleKey.Escape, false, false, false), None, 1)
+    Some(ConsoleKeyInfo('\u001b', ConsoleKey.Escape, false, false, false), None, 1)
   else
 
     Resize.arm ()
@@ -108,23 +113,35 @@ let private readKeyOrPaste () : ConsoleKeyInfo * string option * int =
     match pushedBack with
     | Some k ->
       pushedBack <- None
-      (k, None, 1)
+      Some(k, None, 1)
     | None ->
 
       // Poll rather than blocking outright, so a resize can wake the loop. The interval is short enough to feel
       // instant on a drag-resize and long enough to cost nothing while idle.
       let mutable resized = false
-      while not Console.KeyAvailable && not resized do
-        if Resize.takePending () then resized <- true else Threading.Thread.Sleep 15
+      let mutable timedOut = false
+      let waited = Diagnostics.Stopwatch.StartNew()
+      // Poll faster while a deadline is running, so a short budget isn't rounded up to 15ms steps.
+      let pollMs = if Option.isSome waitMs then 2 else 15
+      while not Console.KeyAvailable && not resized && not timedOut do
+        if Resize.takePending () then
+          resized <- true
+        else
+          match waitMs with
+          | Some budget when waited.Elapsed.TotalMilliseconds >= float budget ->
+            timedOut <- true
+          | _ -> Threading.Thread.Sleep pollMs
 
-      if resized then
+      if timedOut then
+        None
+      elif resized then
         // A key no view acts on: the loop goes round, re-samples the terminal, and repaints.
-        (ConsoleKeyInfo('\u0000', ConsoleKey.NoName, false, false, false), None, 1)
+        Some(ConsoleKeyInfo('\u0000', ConsoleKey.NoName, false, false, false), None, 1)
       else
 
         let first = Console.ReadKey true
         if not Console.KeyAvailable then
-          (first, None, 1)
+          Some(first, None, 1)
         else
           let sb = System.Text.StringBuilder()
           let append (text : string) : unit =
@@ -165,9 +182,216 @@ let private readKeyOrPaste () : ConsoleKeyInfo * string option * int =
           let pasted = sb.ToString()
           if pasted = "" then
             // Nothing insertable came out, so it was a run of control keys: a wheel, or a held-down key.
-            (first, None, repeat)
+            Some(first, None, repeat)
           else
-            (Option.defaultValue first printableKey, Some pasted, 1)
+            Some(Option.defaultValue first printableKey, Some pasted, 1)
+
+/// A key read as the Dark `KeyRead` record.
+let private keyReadDval
+  (readKey : ConsoleKeyInfo)
+  (pasteText : string option)
+  (repeat : int)
+  : Dval =
+  let altHeld =
+    (readKey.Modifiers &&& ConsoleModifiers.Alt) <> ConsoleModifiers.None
+  let shiftHeld =
+    (readKey.Modifiers &&& ConsoleModifiers.Shift) <> ConsoleModifiers.None
+  let ctrlHeld =
+    (readKey.Modifiers &&& ConsoleModifiers.Control) <> ConsoleModifiers.None
+
+  let modifiers =
+    let typeName =
+      FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.modifiers ())
+    let fields =
+      [ "alt", DBool altHeld
+        "shift", DBool shiftHeld
+        "ctrl", DBool ctrlHeld ]
+    DRecord(typeName, typeName, [], Map fields)
+
+  let keyCaseName =
+    match readKey.Key with
+    | ConsoleKey.Backspace -> "Backspace"
+    | ConsoleKey.Tab -> "Tab"
+    | ConsoleKey.Clear -> "Clear"
+    | ConsoleKey.Enter -> "Enter"
+    | ConsoleKey.Pause -> "Pause"
+    | ConsoleKey.Escape -> "Escape"
+    | ConsoleKey.Spacebar -> "Spacebar"
+    | ConsoleKey.PageUp -> "PageUp"
+    | ConsoleKey.PageDown -> "PageDown"
+    | ConsoleKey.End -> "End"
+    | ConsoleKey.Home -> "Home"
+    | ConsoleKey.LeftArrow -> "LeftArrow"
+    | ConsoleKey.UpArrow -> "UpArrow"
+    | ConsoleKey.RightArrow -> "RightArrow"
+    | ConsoleKey.DownArrow -> "DownArrow"
+    | ConsoleKey.Select -> "Select"
+    | ConsoleKey.Print -> "Print"
+    | ConsoleKey.Execute -> "Execute"
+    | ConsoleKey.PrintScreen -> "PrintScreen"
+    | ConsoleKey.Insert -> "Insert"
+    | ConsoleKey.Delete -> "Delete"
+    | ConsoleKey.Help -> "Help"
+    | ConsoleKey.D0 -> "D0"
+    | ConsoleKey.D1 -> "D1"
+    | ConsoleKey.D2 -> "D2"
+    | ConsoleKey.D3 -> "D3"
+    | ConsoleKey.D4 -> "D4"
+    | ConsoleKey.D5 -> "D5"
+    | ConsoleKey.D6 -> "D6"
+    | ConsoleKey.D7 -> "D7"
+    | ConsoleKey.D8 -> "D8"
+    | ConsoleKey.D9 -> "D9"
+    | ConsoleKey.A -> "A"
+    | ConsoleKey.B -> "B"
+    | ConsoleKey.C -> "C"
+    | ConsoleKey.D -> "D"
+    | ConsoleKey.E -> "E"
+    | ConsoleKey.F -> "F"
+    | ConsoleKey.G -> "G"
+    | ConsoleKey.H -> "H"
+    | ConsoleKey.I -> "I"
+    | ConsoleKey.J -> "J"
+    | ConsoleKey.K -> "K"
+    | ConsoleKey.L -> "L"
+    | ConsoleKey.M -> "M"
+    | ConsoleKey.N -> "N"
+    | ConsoleKey.O -> "O"
+    | ConsoleKey.P -> "P"
+    | ConsoleKey.Q -> "Q"
+    | ConsoleKey.R -> "R"
+    | ConsoleKey.S -> "S"
+    | ConsoleKey.T -> "T"
+    | ConsoleKey.U -> "U"
+    | ConsoleKey.V -> "V"
+    | ConsoleKey.W -> "W"
+    | ConsoleKey.X -> "X"
+    | ConsoleKey.Y -> "Y"
+    | ConsoleKey.Z -> "Z"
+    | ConsoleKey.LeftWindows -> "LeftWindows"
+    | ConsoleKey.RightWindows -> "RightWindows"
+    | ConsoleKey.Applications -> "Applications"
+    | ConsoleKey.Sleep -> "Sleep"
+    | ConsoleKey.NumPad0 -> "NumPad0"
+    | ConsoleKey.NumPad1 -> "NumPad1"
+    | ConsoleKey.NumPad2 -> "NumPad2"
+    | ConsoleKey.NumPad3 -> "NumPad3"
+    | ConsoleKey.NumPad4 -> "NumPad4"
+    | ConsoleKey.NumPad5 -> "NumPad5"
+    | ConsoleKey.NumPad6 -> "NumPad6"
+    | ConsoleKey.NumPad7 -> "NumPad7"
+    | ConsoleKey.NumPad8 -> "NumPad8"
+    | ConsoleKey.NumPad9 -> "NumPad9"
+    | ConsoleKey.Multiply -> "Multiply"
+    | ConsoleKey.Add -> "Add"
+    | ConsoleKey.Separator -> "Separator"
+    | ConsoleKey.Subtract -> "Subtract"
+    | ConsoleKey.Decimal -> "Decimal"
+    | ConsoleKey.Divide -> "Divide"
+    | ConsoleKey.F1 -> "F1"
+    | ConsoleKey.F2 -> "F2"
+    | ConsoleKey.F3 -> "F3"
+    | ConsoleKey.F4 -> "F4"
+    | ConsoleKey.F5 -> "F5"
+    | ConsoleKey.F6 -> "F6"
+    | ConsoleKey.F7 -> "F7"
+    | ConsoleKey.F8 -> "F8"
+    | ConsoleKey.F9 -> "F9"
+    | ConsoleKey.F10 -> "F10"
+    | ConsoleKey.F11 -> "F11"
+    | ConsoleKey.F12 -> "F12"
+    | ConsoleKey.F13 -> "F13"
+    | ConsoleKey.F14 -> "F14"
+    | ConsoleKey.F15 -> "F15"
+    | ConsoleKey.F16 -> "F16"
+    | ConsoleKey.F17 -> "F17"
+    | ConsoleKey.F18 -> "F18"
+    | ConsoleKey.F19 -> "F19"
+    | ConsoleKey.F20 -> "F20"
+    | ConsoleKey.F21 -> "F21"
+    | ConsoleKey.F22 -> "F22"
+    | ConsoleKey.F23 -> "F23"
+    | ConsoleKey.F24 -> "F24"
+    | ConsoleKey.BrowserBack -> "BrowserBack"
+    | ConsoleKey.BrowserForward -> "BrowserForward"
+    | ConsoleKey.BrowserRefresh -> "BrowserRefresh"
+    | ConsoleKey.BrowserStop -> "BrowserStop"
+    | ConsoleKey.BrowserSearch -> "BrowserSearch"
+    | ConsoleKey.BrowserFavorites -> "BrowserFavorites"
+    | ConsoleKey.BrowserHome -> "BrowserHome"
+    | ConsoleKey.VolumeMute -> "VolumeMute"
+    | ConsoleKey.VolumeDown -> "VolumeDown"
+    | ConsoleKey.VolumeUp -> "VolumeUp"
+    | ConsoleKey.MediaNext -> "MediaNext"
+    | ConsoleKey.MediaPrevious -> "MediaPrevious"
+    | ConsoleKey.MediaStop -> "MediaStop"
+    | ConsoleKey.MediaPlay -> "MediaPlay"
+    | ConsoleKey.LaunchMail -> "LaunchMail"
+    | ConsoleKey.LaunchMediaSelect -> "LaunchMediaSelect"
+    | ConsoleKey.LaunchApp1 -> "LaunchApp1"
+    | ConsoleKey.LaunchApp2 -> "LaunchApp2"
+    | ConsoleKey.Oem1 -> "Oem1"
+    | ConsoleKey.OemPlus -> "OemPlus"
+    | ConsoleKey.OemComma -> "OemComma"
+    | ConsoleKey.OemMinus -> "OemMinus"
+    | ConsoleKey.OemPeriod -> "OemPeriod"
+    | ConsoleKey.Oem2 -> "Oem2"
+    | ConsoleKey.Oem3 -> "Oem3"
+    | ConsoleKey.Oem4 -> "Oem4"
+    | ConsoleKey.Oem5 -> "Oem5"
+    | ConsoleKey.Oem6 -> "Oem6"
+    | ConsoleKey.Oem7 -> "Oem7"
+    | ConsoleKey.Oem8 -> "Oem8"
+    | ConsoleKey.Oem102 -> "Oem102"
+    | ConsoleKey.Process -> "Process"
+    | ConsoleKey.Packet -> "Packet"
+    | ConsoleKey.Attention -> "Attention"
+    | ConsoleKey.CrSel -> "CrSel"
+    | ConsoleKey.ExSel -> "ExSel"
+    | ConsoleKey.EraseEndOfFile -> "EraseEndOfFile"
+    | ConsoleKey.Play -> "Play"
+    | ConsoleKey.Zoom -> "Zoom"
+    | ConsoleKey.NoName -> "NoName"
+    | ConsoleKey.Pa1 -> "Pa1"
+    | ConsoleKey.OemClear -> "OemClear"
+    | ConsoleKey.None -> "None"
+    // CLEANUP tidy
+    | _ -> "None"
+
+  let key =
+    let typeName =
+      FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.key ())
+    DEnum(typeName, typeName, [], keyCaseName, [])
+
+  // Get character representation based on keyboard layout.
+  // For a paste, report the whole pasted run so it's inserted in one go;
+  // otherwise only include keyChar for printable characters.
+  let keyChar =
+    match pasteText with
+    | Some text -> DString text
+    | None ->
+      let ch = readKey.KeyChar
+      if System.Char.IsControl(ch) || ch = '\u0000' then
+        DString "" // Empty string for control/special keys
+      else
+        ch |> string |> DString
+
+  let keyRead =
+    let typeName =
+      FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.keyRead ())
+    DRecord(
+      typeName,
+      typeName,
+      [],
+      Map
+        [ "key", key
+          "modifiers", modifiers
+          "keyChar", keyChar
+          "repeat", Dval.int (bigint repeat) ]
+    )
+
+  keyRead
+
 
 let fns () : List<BuiltInFn> =
   [ { name = fn "stdinReadKey" 0
@@ -183,208 +407,45 @@ let fns () : List<BuiltInFn> =
         | _, _, _, [| DUnit |] ->
           // Treat Ctrl+C as input so the Dark code can handle it gracefully
           Console.TreatControlCAsInput <- true
-          let readKey, pasteText, repeat = readKeyOrPaste ()
+          let read = readKeyOrPaste None
           Console.TreatControlCAsInput <- false
 
-          let altHeld =
-            (readKey.Modifiers &&& ConsoleModifiers.Alt) <> ConsoleModifiers.None
-          let shiftHeld =
-            (readKey.Modifiers &&& ConsoleModifiers.Shift) <> ConsoleModifiers.None
-          let ctrlHeld =
-            (readKey.Modifiers &&& ConsoleModifiers.Control) <> ConsoleModifiers.None
+          match read with
+          | Some(readKey, pasteText, repeat) -> Ply(keyReadDval readKey pasteText repeat)
+          | None -> Exception.raiseInternal "readKeyOrPaste gave up without a budget" []
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.Stdin ]
+      deprecated = NotDeprecated }
 
-          let modifiers =
-            let typeName =
-              FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.modifiers ())
-            let fields =
-              [ "alt", DBool altHeld
-                "shift", DBool shiftHeld
-                "ctrl", DBool ctrlHeld ]
-            DRecord(typeName, typeName, [], Map fields)
 
-          let keyCaseName =
-            match readKey.Key with
-            | ConsoleKey.Backspace -> "Backspace"
-            | ConsoleKey.Tab -> "Tab"
-            | ConsoleKey.Clear -> "Clear"
-            | ConsoleKey.Enter -> "Enter"
-            | ConsoleKey.Pause -> "Pause"
-            | ConsoleKey.Escape -> "Escape"
-            | ConsoleKey.Spacebar -> "Spacebar"
-            | ConsoleKey.PageUp -> "PageUp"
-            | ConsoleKey.PageDown -> "PageDown"
-            | ConsoleKey.End -> "End"
-            | ConsoleKey.Home -> "Home"
-            | ConsoleKey.LeftArrow -> "LeftArrow"
-            | ConsoleKey.UpArrow -> "UpArrow"
-            | ConsoleKey.RightArrow -> "RightArrow"
-            | ConsoleKey.DownArrow -> "DownArrow"
-            | ConsoleKey.Select -> "Select"
-            | ConsoleKey.Print -> "Print"
-            | ConsoleKey.Execute -> "Execute"
-            | ConsoleKey.PrintScreen -> "PrintScreen"
-            | ConsoleKey.Insert -> "Insert"
-            | ConsoleKey.Delete -> "Delete"
-            | ConsoleKey.Help -> "Help"
-            | ConsoleKey.D0 -> "D0"
-            | ConsoleKey.D1 -> "D1"
-            | ConsoleKey.D2 -> "D2"
-            | ConsoleKey.D3 -> "D3"
-            | ConsoleKey.D4 -> "D4"
-            | ConsoleKey.D5 -> "D5"
-            | ConsoleKey.D6 -> "D6"
-            | ConsoleKey.D7 -> "D7"
-            | ConsoleKey.D8 -> "D8"
-            | ConsoleKey.D9 -> "D9"
-            | ConsoleKey.A -> "A"
-            | ConsoleKey.B -> "B"
-            | ConsoleKey.C -> "C"
-            | ConsoleKey.D -> "D"
-            | ConsoleKey.E -> "E"
-            | ConsoleKey.F -> "F"
-            | ConsoleKey.G -> "G"
-            | ConsoleKey.H -> "H"
-            | ConsoleKey.I -> "I"
-            | ConsoleKey.J -> "J"
-            | ConsoleKey.K -> "K"
-            | ConsoleKey.L -> "L"
-            | ConsoleKey.M -> "M"
-            | ConsoleKey.N -> "N"
-            | ConsoleKey.O -> "O"
-            | ConsoleKey.P -> "P"
-            | ConsoleKey.Q -> "Q"
-            | ConsoleKey.R -> "R"
-            | ConsoleKey.S -> "S"
-            | ConsoleKey.T -> "T"
-            | ConsoleKey.U -> "U"
-            | ConsoleKey.V -> "V"
-            | ConsoleKey.W -> "W"
-            | ConsoleKey.X -> "X"
-            | ConsoleKey.Y -> "Y"
-            | ConsoleKey.Z -> "Z"
-            | ConsoleKey.LeftWindows -> "LeftWindows"
-            | ConsoleKey.RightWindows -> "RightWindows"
-            | ConsoleKey.Applications -> "Applications"
-            | ConsoleKey.Sleep -> "Sleep"
-            | ConsoleKey.NumPad0 -> "NumPad0"
-            | ConsoleKey.NumPad1 -> "NumPad1"
-            | ConsoleKey.NumPad2 -> "NumPad2"
-            | ConsoleKey.NumPad3 -> "NumPad3"
-            | ConsoleKey.NumPad4 -> "NumPad4"
-            | ConsoleKey.NumPad5 -> "NumPad5"
-            | ConsoleKey.NumPad6 -> "NumPad6"
-            | ConsoleKey.NumPad7 -> "NumPad7"
-            | ConsoleKey.NumPad8 -> "NumPad8"
-            | ConsoleKey.NumPad9 -> "NumPad9"
-            | ConsoleKey.Multiply -> "Multiply"
-            | ConsoleKey.Add -> "Add"
-            | ConsoleKey.Separator -> "Separator"
-            | ConsoleKey.Subtract -> "Subtract"
-            | ConsoleKey.Decimal -> "Decimal"
-            | ConsoleKey.Divide -> "Divide"
-            | ConsoleKey.F1 -> "F1"
-            | ConsoleKey.F2 -> "F2"
-            | ConsoleKey.F3 -> "F3"
-            | ConsoleKey.F4 -> "F4"
-            | ConsoleKey.F5 -> "F5"
-            | ConsoleKey.F6 -> "F6"
-            | ConsoleKey.F7 -> "F7"
-            | ConsoleKey.F8 -> "F8"
-            | ConsoleKey.F9 -> "F9"
-            | ConsoleKey.F10 -> "F10"
-            | ConsoleKey.F11 -> "F11"
-            | ConsoleKey.F12 -> "F12"
-            | ConsoleKey.F13 -> "F13"
-            | ConsoleKey.F14 -> "F14"
-            | ConsoleKey.F15 -> "F15"
-            | ConsoleKey.F16 -> "F16"
-            | ConsoleKey.F17 -> "F17"
-            | ConsoleKey.F18 -> "F18"
-            | ConsoleKey.F19 -> "F19"
-            | ConsoleKey.F20 -> "F20"
-            | ConsoleKey.F21 -> "F21"
-            | ConsoleKey.F22 -> "F22"
-            | ConsoleKey.F23 -> "F23"
-            | ConsoleKey.F24 -> "F24"
-            | ConsoleKey.BrowserBack -> "BrowserBack"
-            | ConsoleKey.BrowserForward -> "BrowserForward"
-            | ConsoleKey.BrowserRefresh -> "BrowserRefresh"
-            | ConsoleKey.BrowserStop -> "BrowserStop"
-            | ConsoleKey.BrowserSearch -> "BrowserSearch"
-            | ConsoleKey.BrowserFavorites -> "BrowserFavorites"
-            | ConsoleKey.BrowserHome -> "BrowserHome"
-            | ConsoleKey.VolumeMute -> "VolumeMute"
-            | ConsoleKey.VolumeDown -> "VolumeDown"
-            | ConsoleKey.VolumeUp -> "VolumeUp"
-            | ConsoleKey.MediaNext -> "MediaNext"
-            | ConsoleKey.MediaPrevious -> "MediaPrevious"
-            | ConsoleKey.MediaStop -> "MediaStop"
-            | ConsoleKey.MediaPlay -> "MediaPlay"
-            | ConsoleKey.LaunchMail -> "LaunchMail"
-            | ConsoleKey.LaunchMediaSelect -> "LaunchMediaSelect"
-            | ConsoleKey.LaunchApp1 -> "LaunchApp1"
-            | ConsoleKey.LaunchApp2 -> "LaunchApp2"
-            | ConsoleKey.Oem1 -> "Oem1"
-            | ConsoleKey.OemPlus -> "OemPlus"
-            | ConsoleKey.OemComma -> "OemComma"
-            | ConsoleKey.OemMinus -> "OemMinus"
-            | ConsoleKey.OemPeriod -> "OemPeriod"
-            | ConsoleKey.Oem2 -> "Oem2"
-            | ConsoleKey.Oem3 -> "Oem3"
-            | ConsoleKey.Oem4 -> "Oem4"
-            | ConsoleKey.Oem5 -> "Oem5"
-            | ConsoleKey.Oem6 -> "Oem6"
-            | ConsoleKey.Oem7 -> "Oem7"
-            | ConsoleKey.Oem8 -> "Oem8"
-            | ConsoleKey.Oem102 -> "Oem102"
-            | ConsoleKey.Process -> "Process"
-            | ConsoleKey.Packet -> "Packet"
-            | ConsoleKey.Attention -> "Attention"
-            | ConsoleKey.CrSel -> "CrSel"
-            | ConsoleKey.ExSel -> "ExSel"
-            | ConsoleKey.EraseEndOfFile -> "EraseEndOfFile"
-            | ConsoleKey.Play -> "Play"
-            | ConsoleKey.Zoom -> "Zoom"
-            | ConsoleKey.NoName -> "NoName"
-            | ConsoleKey.Pa1 -> "Pa1"
-            | ConsoleKey.OemClear -> "OemClear"
-            | ConsoleKey.None -> "None"
-            // CLEANUP tidy
-            | _ -> "None"
+    { name = fn "stdinReadKeyWithin" 0
+      typeParams = []
+      parameters =
+        [ Param.make "waitMs" TInt "How long to wait for a key before giving up" ]
+      returnType =
+        let typeName =
+          FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.keyRead ())
+        TypeReference.option (TCustomType(NR.ok typeName, []))
+      description =
+        "Like stdinReadKey, but gives up after <param waitMs> and returns None, so a view with a clock can repaint between keys."
+      fn =
+        (function
+        | _, vm, _, [| DInt waitMs |] ->
+          let typeName =
+            FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.keyRead ())
+          let kt = KTCustomType(typeName, [])
+          let budget = intToInt32 vm waitMs |> max 0
 
-          let key =
-            let typeName =
-              FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.key ())
-            DEnum(typeName, typeName, [], keyCaseName, [])
+          Console.TreatControlCAsInput <- true
+          let read = readKeyOrPaste (Some budget)
+          Console.TreatControlCAsInput <- false
 
-          // Get character representation based on keyboard layout.
-          // For a paste, report the whole pasted run so it's inserted in one go;
-          // otherwise only include keyChar for printable characters.
-          let keyChar =
-            match pasteText with
-            | Some text -> DString text
-            | None ->
-              let ch = readKey.KeyChar
-              if System.Char.IsControl(ch) || ch = '\u0000' then
-                DString "" // Empty string for control/special keys
-              else
-                ch |> string |> DString
-
-          let keyRead =
-            let typeName =
-              FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Cli.Stdin.keyRead ())
-            DRecord(
-              typeName,
-              typeName,
-              [],
-              Map
-                [ "key", key
-                  "modifiers", modifiers
-                  "keyChar", keyChar
-                  "repeat", Dval.int (bigint repeat) ]
-            )
-
-          Ply(keyRead)
+          match read with
+          | Some(readKey, pasteText, repeat) ->
+            Ply(LibExecution.Dval.optionSome kt (keyReadDval readKey pasteText repeat))
+          | None -> Ply(LibExecution.Dval.optionNone kt)
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
       previewable = Impure

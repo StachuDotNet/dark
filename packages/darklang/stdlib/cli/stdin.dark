@@ -566,3 +566,11 @@ module KeyRead =
 
 let readKey () : KeyRead.KeyRead =
   Builtin.stdinReadKey ()
+
+/// `readKey`, but give up after <param waitMs> milliseconds and return None.
+///
+/// For a view that has something to show between keys, such as a running clock: read with a short
+/// budget, repaint on None, and go round again. A burst typed while it was repainting still comes
+/// back whole on the next read, exactly as with `readKey`.
+let readKeyWithin (waitMs: Int) : Stdlib.Option.Option<KeyRead.KeyRead> =
+  Builtin.stdinReadKeyWithin waitMs
