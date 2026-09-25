@@ -216,7 +216,8 @@ let orbit (s: State) (dyaw: Int) (dpitch: Int) : State =
         View.Camera
           { yaw = cam.yaw + dyaw
             pitch = Stdlib.Int.clamp (cam.pitch + dpitch) (0 - 85) 85 }
-      style = if s.style == View.Style.Net then View.Style.Perspective else s.style }
+      // Only the 3D view has a camera, so orbiting from the others switches to it.
+      style = View.Style.Perspective }
 
 let onKey (s: State) (k: Stdlib.Cli.Stdin.KeyRead.KeyRead) : State =
   let s = { s with now = nowMs (); finishedThisBurst = false }
@@ -337,7 +338,17 @@ let panel (s: State) (height: Int) : List<String> =
     [ (bold $"{size}x{size}") ++ (dim $"  {View.styleName s.style}{hands}")
       "" ]
 
-  let clockLines = Stdlib.List.append (bigText big) [ "", status ]
+  let tint =
+    match s.phase with
+    | Idle -> "\u001b[37m"
+    | Inspecting -> "\u001b[33m"
+    | Solving -> "\u001b[97m"
+    | Done -> "\u001b[32m"
+
+  let clockLines =
+    Stdlib.List.append
+      (bigText big |> Stdlib.List.map (fun l -> tint ++ l ++ "\u001b[0m"))
+      [ "", status ]
 
   let tps =
     if s.phase == Phase.Solving || s.phase == Phase.Done then
@@ -372,8 +383,8 @@ let panel (s: State) (height: Int) : List<String> =
       [ "" ]
       (Stdlib.List.append
         (Keys.card |> Stdlib.List.map dim)
-        [ dim "space scramble   tab style   [ ] size"
-          dim "arrows orbit   bksp drop   esc quit" ])
+        [ dim "space scramble  tab view  [ ] size"
+          dim "arrows orbit  bksp drop  esc quit" ])
 
   let main =
     [ header, clockLines, tps, scrambleLines, stats, recent ] |> Stdlib.List.flatten
@@ -432,6 +443,43 @@ let render (s: State) (size: Stdlib.Cli.Tui.Size) : Stdlib.Cli.Tui.View =
       mode = Stdlib.Cli.Tui.ViewMode.Fullscreen }
 
 
+// Size, view and camera carry over between runs.
+
+type Prefs =
+  { size: Int
+    style: String
+    yaw: Int
+    pitch: Int }
+
+val prefsKey = "cube.prefs"
+
+let styleFromName (name: String) : View.Style =
+  match name with
+  | "iso" -> View.Style.Isometric
+  | "net" -> View.Style.Net
+  | _ -> View.Style.Perspective
+
+let loadPrefs () : Stdlib.Option.Option<Prefs> =
+  let raw = Stdlib.LocalStore.configGet prefsKey
+
+  if raw == "" then
+    Stdlib.Option.Option.None
+  else
+    match Stdlib.Json.parse<Prefs> raw with
+    | Ok p -> Stdlib.Option.Option.Some p
+    | Error _ -> Stdlib.Option.Option.None
+
+let savePrefs (s: State) : Unit =
+  let p =
+    Prefs
+      { size = s.n
+        style = View.styleName s.style
+        yaw = s.camera.yaw
+        pitch = s.camera.pitch }
+
+  Stdlib.LocalStore.configSet prefsKey (Stdlib.Json.serialize<Prefs> p)
+
+
 // The loop.
 
 let loop (s: State) (term: Stdlib.Cli.Tui.TerminalSession.State) : State =
@@ -440,6 +488,7 @@ let loop (s: State) (term: Stdlib.Cli.Tui.TerminalSession.State) : State =
 
   if s.quit then
     let _ = Stdlib.Cli.Tui.TerminalSession.stop term
+    savePrefs s
     s
   else
     let size = Stdlib.Cli.Tui.TerminalSession.currentSize ()
@@ -447,9 +496,19 @@ let loop (s: State) (term: Stdlib.Cli.Tui.TerminalSession.State) : State =
     let term = Stdlib.Cli.Tui.TerminalSession.presentAtSize term size (render s size)
     loop s term
 
-let run (n: Int) : Int =
+/// `requested` is the size from the command line, if one was given; otherwise the last one used.
+let run (requested: Stdlib.Option.Option<Int>) : Int =
   let size = Stdlib.Cli.Tui.TerminalSession.currentSize ()
-  let s = withLayout (fresh n (Stats.load ()) View.Style.Perspective View.defaultCamera) size
+  let prefs = loadPrefs ()
+
+  let (n, style, camera) =
+    match prefs with
+    | Some p ->
+      (p.size, styleFromName p.style, View.Camera { yaw = p.yaw; pitch = p.pitch })
+    | None -> (3, View.Style.Perspective, View.defaultCamera)
+
+  let n = Stdlib.Option.withDefault requested n
+  let s = withLayout (fresh (Stdlib.Int.clamp n 2 5) (Stats.load ()) style camera) size
 
   match Stdlib.Cli.Tui.TerminalSession.startAtSize size (render s size) with
   | Ok term ->
@@ -480,12 +539,17 @@ let complete (_state: AppState) (_args: List<String>) : List<Completion.Completi
   |> Stdlib.List.map (fun s -> Completion.simple s)
 
 let execute (state: AppState) (args: List<String>) : AppState =
+  // Some(None) is "no size given", None is "a size we can't use".
   let size =
     match args with
-    | [] -> Stdlib.Option.Option.Some 3
+    | [] -> Stdlib.Option.Option.Some Stdlib.Option.Option.None
     | [ arg ] ->
       match Stdlib.Int.parse arg with
-      | Ok n -> if n >= 2 && n <= 5 then Stdlib.Option.Option.Some n else Stdlib.Option.Option.None
+      | Ok n ->
+        if n >= 2 && n <= 5 then
+          Stdlib.Option.Option.Some(Stdlib.Option.Option.Some n)
+        else
+          Stdlib.Option.Option.None
       | Error _ -> Stdlib.Option.Option.None
     | _ -> Stdlib.Option.Option.None
 
@@ -493,10 +557,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | None ->
     Stdlib.printLine "Usage: cube [2|3|4|5]  (a size from 2x2 to 5x5)"
     state
-  | Some n ->
+  | Some requested ->
     match Stdlib.Cli.Tui.TerminalSupport.current () with
     | Available ->
-      let _ = run n
+      let _ = run requested
       state
     | Unavailable reason ->
       Stdlib.printLine $"cube needs a terminal: {reason}"
