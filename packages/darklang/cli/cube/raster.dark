@@ -205,13 +205,13 @@ let rasterize (width: Int) (height: Int) (quads: List<Quad>) : Raster =
 // Painting a raster with a cube's colours. This is the per-frame part, so it stays lean: one lookup
 // per run and a string repeat.
 
-/// Colour for each face index, 256-colour: white, deep crimson, green, yellow, black, blue.
+/// Colour for each face index, 256-colour: white, red, green, yellow, black, blue.
 ///
-/// Picked for red-green colourblindness. L is black rather than orange, and red is a deep crimson
-/// (#af005f) rather than a pure red: simulated for deuteranopia and protanopia, pure red sits about
-/// 14 Lab units from this green and deep crimson about 68. Brighter pinker reds separate as well
-/// but stop reading as red.
-val palette = [ 231, 125, 40, 226, 16, 27 ]
+/// Picked for red-green colourblindness. L is black rather than orange. Red is a true red
+/// (#d70000), and green is a bright mint (#00ff87) rather than a pure green: simulated for
+/// deuteranopia and protanopia, pure green sits about 24 Lab units from this red and mint about 40,
+/// while both stay at least 39 from every other face.
+val palette = [ 231, 160, 48, 226, 16, 27 ]
 
 /// Mid grey: light enough that black stickers stand out from it, dark enough to outline the cube
 /// against the backdrop.

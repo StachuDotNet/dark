@@ -215,16 +215,14 @@ let centre (quads: List<Raster.Quad>) (w: Int) (h: Int) (width: Int) (heightPx: 
 
 let qsimQuads (n: Int) (width: Int) (heightPx: Int) : List<Raster.Quad> =
   let nn = n * n
-  // As in qCube, the strips sit flush against U and F (they share a border, so the gap between a
-  // strip and a face is the same as between two stickers), and the U/F seam is only a little wider.
-  let nf = Stdlib.Int.toFloat n
-  let u = pitchFor width heightPx (nf + 2.0) gap (2.0 * nf + 0.2) (2 * gap)
-  let seam = even (u / 5)
+  // The strips sit flush against U and F, and F sits flush under U: neighbours share a border,
+  // so every gap in the layout, strip to face and U to F included, is one sticker gap.
+  let u = pitchFor width heightPx ((Stdlib.Int.toFloat n) + 2.0) gap (2.0 * (Stdlib.Int.toFloat n)) gap
   let span = n * u + gap
   let stripW = u + gap
   let faceX = stripW - gap
   let rightX = faceX + span - gap
-  let fTop = span + seam
+  let fTop = span - gap
   let bottom = fTop + span
 
   let cell (idx: Int) (x: Int) (top: Int) (bottomEdge: Int) : Raster.Quad =
@@ -256,13 +254,8 @@ let qsimQuads (n: Int) (width: Int) (heightPx: Int) : List<Raster.Quad> =
   // R is face 1: its top row runs front to back, so read it backwards; column 0 is against F.
   let right = strip rightX (fun r -> nn + n - 1 - r) nn (fun r -> nn + r * n)
 
-  // Fill the seam with body grey too: bare terminal background there reads as a row of black
-  // stickers.
-  let seamFill = rectQuad Raster.body faceX span (faceX + span) fTop
-
   let quads =
-    Stdlib.List.flatten
-      [ [ seamFill ], flatFace n u 0 faceX 0, flatFace n u 2 faceX fTop, left, right ]
+    Stdlib.List.flatten [ flatFace n u 0 faceX 0, flatFace n u 2 faceX fTop, left, right ]
 
   centre quads (rightX + stripW) bottom width heightPx
 
