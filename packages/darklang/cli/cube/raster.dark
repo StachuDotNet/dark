@@ -209,15 +209,15 @@ let rasterize (width: Int) (height: Int) (quads: List<Quad>) : Raster =
 ///
 /// L is black rather than orange: red and orange are the pair a colourblind solver can't tell
 /// apart, and black against the grey body can't be mistaken for anything.
-val palette = [ 231, 124, 40, 226, 16, 27 ]
+val palette = [ 231, 160, 40, 226, 16, 27 ]
 
 /// Mid grey: light enough that black stickers stand out from it, dark enough to outline the cube
 /// against the backdrop.
-val bodyColor = 240
+val bodyColor = 238
 
-/// Light grey behind the cube. With L black, the terminal's own black background made the black
-/// stickers look like holes; a light backdrop keeps every sticker, black included, a shape on it.
-val backdropColor = 250
+/// Mid grey behind the cube. With L black, the terminal's own black background made the black
+/// stickers look like holes; a grey backdrop keeps every sticker, black included, a shape on it.
+val backdropColor = 245
 
 /// The 256-colour code a raster index shows.
 let colorOf (cube: List<Int>) (idx: Int) : Int =
