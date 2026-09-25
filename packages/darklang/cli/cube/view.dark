@@ -215,16 +215,15 @@ let centre (quads: List<Raster.Quad>) (w: Int) (h: Int) (width: Int) (heightPx: 
 
 let qsimQuads (n: Int) (width: Int) (heightPx: Int) : List<Raster.Quad> =
   let nn = n * n
-  // Side gaps and the U/F seam are about half and a third of a pitch; solve for the pitch with
-  // those folded in as fractions of it.
+  // As in qCube, the strips sit flush against U and F (they share a border, so the gap between a
+  // strip and a face is the same as between two stickers), and the U/F seam is only a little wider.
   let nf = Stdlib.Int.toFloat n
-  let u = pitchFor width heightPx (nf + 2.0 + 1.0) (3 * gap) (2.0 * nf + 0.4) (2 * gap)
-  let side = even (u / 2)
-  let seam = even (u * 2 / 5)
+  let u = pitchFor width heightPx (nf + 2.0) gap (2.0 * nf + 0.2) (2 * gap)
+  let seam = even (u / 5)
   let span = n * u + gap
   let stripW = u + gap
-  let faceX = stripW + side
-  let rightX = faceX + span + side
+  let faceX = stripW - gap
+  let rightX = faceX + span - gap
   let fTop = span + seam
   let bottom = fTop + span
 
