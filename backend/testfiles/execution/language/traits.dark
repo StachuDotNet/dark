@@ -179,3 +179,9 @@ module Rendering =
   // A type with no Ord implementation is what the bound refuses
   Stdlib.min true false = error "Bool has no implementation of Darklang.Stdlib.Ord. Write `impl Ord for Bool = ...`, or run `dark impls Ord` to see which types do"
   Stdlib.clamp 15 20 10 = 15
+  // `abs` needs three traits at once: compare, negate, and a zero to compare against
+  Stdlib.abs -5L = 5L
+  Stdlib.abs 2.5 = 2.5
+  Stdlib.abs 0 = 0
+  // an unsigned type has no Neg implementation, so it has no abs either
+  Stdlib.abs 5uy = error "UInt8 has no implementation of Darklang.Stdlib.Neg. Write `impl Neg for UInt8 = ...`, or run `dark impls Neg` to see which types do"

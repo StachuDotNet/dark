@@ -123,6 +123,13 @@ let max<'a: Ord> (a: 'a) (b: 'a) : 'a = if a > b then a else b
 let min<'a: Ord> (a: 'a) (b: 'a) : 'a = if a < b then a else b
 
 
+/// The distance of <param value> from zero, for any type that can compare, negate and produce a
+/// zero. `Stdlib.Float.absoluteValue` and the per-type integer ones remain, since a fixed-width
+/// minimum has no positive counterpart and each type says so its own way.
+let abs<'a: Ord + Neg + Zero> (value: 'a) : 'a =
+  if value < Zero.zero () then -value else value
+
+
 /// <param value> held between the two limits, whichever order they are given in
 let clamp<'a: Ord> (value: 'a) (limitA: 'a) (limitB: 'a) : 'a =
   let low = if limitA < limitB then limitA else limitB
