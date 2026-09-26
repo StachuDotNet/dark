@@ -33,25 +33,12 @@ let private isNumeric (typ : StaticType) : bool =
   | TFloat -> true
   | _ -> false
 
-/// Bitwise operators are defined only for integer operands. Only consulted for a call written
-/// as the polymorphic builtin, or on a tree whose package refs are not generated yet; through
-/// the operator syntax `1.0 & 2.0` is an ordinary missing `BitAnd` implementation.
-let private isBitwise (operation : InfixFnName) : bool =
-  match operation with
-  | BitwiseAnd
-  | BitwiseOr
-  | BitwiseXor
-  | ShiftLeft
-  | ShiftRight -> true
-  | _ -> false
-
 let private supportsNumericOperation
   (operation : InfixFnName)
   (typ : StaticType)
   : bool =
   match operation, typ with
   | ArithmeticPower, (TInt128 | TUInt128) -> false
-  | _, TFloat when isBitwise operation -> false
   | _ -> isNumeric typ
 
 /// What an arithmetic or comparison operand owes. Through the operator syntax it
