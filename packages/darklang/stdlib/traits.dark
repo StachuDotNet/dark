@@ -68,8 +68,10 @@ trait ToString<'a> =
 /// `a == b` (and `a != b`, which is its negation). Every value compares
 /// structurally unless its type implements this: a record or enum that says
 /// what equal means (compare ids, ignore a cache field) gets its own `==`.
-/// The builtin types are never overridden, and `List.sort` and dict keys stay
-/// structural whatever you implement.
+/// A container asks its elements, so `[ p ] == [ q ]` uses `impl Eq for Point`
+/// and agrees with `p == q`. The builtin types are never overridden, and
+/// `List.member`, `List.unique`, `List.sort` and dict keys stay structural
+/// whatever you implement.
 trait Eq<'a> =
   let equals (a: 'a) (b: 'a) : Bool
 

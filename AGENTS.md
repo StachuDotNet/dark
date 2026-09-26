@@ -335,8 +335,12 @@ stdlib traits (`stdlib/traits.dark`); `+` lowers to `Stdlib.Add.add` through
 `NumericTraits.fs`, whose hashes come from `PackageRefs.Trait`, so a new operator trait
 needs a ref and a regenerated `package-ref-hashes.txt`. `==` is `Eq.equals` with a
 structural fallback (`Interpreter.structuralEquals`; the selection memo holds `Hash ""`
-for "no implementation"), answered without dispatch for anything but a record or an
-enum; `!=` lowers to `boolNot (Eq.equals a b)`. `Zero.zero`/`One.one` dispatch from an
+for "no implementation"), answered without dispatch for anything but a record, an enum
+or a container holding one. A container consults its elements' `Eq`
+(`Interpreter.deepEquals`), and whether a type needs that walk at all is memoised per
+type, so a `List<Int64>` costs what it always did; `List.member`, `List.unique`,
+`List.sort` and dict keys are structural always, and dict keys have to be, since F#
+hashes them inside its own `Map`. `!=` lowers to `boolNot (Eq.equals a b)`. `Zero.zero`/`One.one` dispatch from an
 explicit type arg or the caller's bound, so a call to the impl fn clears the trait's
 type args first.
 
@@ -351,6 +355,14 @@ dependency edge, so propagation, `pin` and `follow` treat a newer implementation
 update. `None` where the self type is not knowable at save time (a call inside a bounded generic,
 an operator in a pipeline); those resolve at run time, which is what the selection
 path in `Interpreter.fs` is for.
+
+**Nothing loaded from disk is pinned.** `resolveTraitCalls` is reached only from
+`addAuthored`, so `dark fn`/`impl`/`module` and the editor pin, while
+`LocalExec.reloadPackages` inserts its ops directly. Every operator and trait method in
+`packages/`, and in `seed.db`, therefore resolves at RUN time in every clone. So a
+measurement of dispatch cost taken against the shipped tree is measuring the unpinned
+path, and "stored calls are stable" is today a property of interactively authored items
+only.
 
 **Every switch over item kinds has five arms.** Types, values, fns, traits, impls.
 A new listing, codec, or CLI command that handles three of them silently drops the
