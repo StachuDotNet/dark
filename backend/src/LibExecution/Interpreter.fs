@@ -1204,6 +1204,41 @@ let private structuralEquals (threadID : ThreadID) (a : Dval) (b : Dval) : Dval 
   | Error _ -> RTE.EqualityCheckOnIncompatibleTypes(vtA, vtB) |> raiseRTE threadID
   | Ok _ -> DBool(Dval.equals a b)
 
+/// Does a value of this type carry a custom type anywhere inside it? `Unknown` answers yes,
+/// because the type cannot say; the value walk below decides those.
+let rec private ktCarriesCustom (kt : KnownType) : bool =
+  match kt with
+  | KTCustomType _ -> true
+  | KTList v
+  | KTStream v
+  | KTDB v -> vtCarriesCustom v
+  | KTDict(k, v) -> vtCarriesCustom k || vtCarriesCustom v
+  | KTTuple(a, b, rest) ->
+    vtCarriesCustom a || vtCarriesCustom b || List.exists vtCarriesCustom rest
+  | _ -> false
+
+and private vtCarriesCustom (vt : ValueType) : bool =
+  match vt with
+  | ValueType.Unknown -> true
+  | ValueType.Known kt -> ktCarriesCustom kt
+
+/// Could comparing this value have to consult an `Eq` implementation? Only a record or an
+/// enum can have one, so this asks whether the value is one or contains one.
+///
+/// Answered from the container's element TYPE where it has one, so `==` on a `List<Int64>`
+/// costs a single match however long the list is, and the items are walked only when the
+/// type cannot say (an empty or heterogeneous container).
+let rec private needsEqDispatch (dv : Dval) : bool =
+  match dv with
+  | DRecord _
+  | DEnum _ -> true
+  | DList(vt, items) -> vtCarriesCustom vt && List.exists needsEqDispatch items
+  | DDict(_, vt, entries) ->
+    vtCarriesCustom vt && entries |> Map.exists (fun _ v -> needsEqDispatch v)
+  | DTuple(a, b, rest) ->
+    needsEqDispatch a || needsEqDispatch b || List.exists needsEqDispatch rest
+  | _ -> false
+
 /// The same operators as `tryFastOp`, reached straight from `Apply` before an `ApplyContext` exists.
 ///
 /// `tryFastOp` covers the ones that arrive through an elided package wrapper and have already had a
@@ -1232,11 +1267,13 @@ let private tryFastOpDirect
       match argRegs.tail with
       | [ secondReg ] when FastOps.isEquals traitHash methodName ->
         // A builtin type's equality is not overridable; only a record or an enum
-        // can carry an `Eq` implementation, so everything else is answered here.
-        match registers[argRegs.head] with
-        | DRecord _
-        | DEnum _ -> ValueNone
-        | a -> ValueSome(structuralEquals threadID a registers[secondReg])
+        // can carry an `Eq` implementation. A container of them has to ask each
+        // element, so it declines too; everything else is answered here.
+        let a = registers[argRegs.head]
+        if needsEqDispatch a then
+          ValueNone
+        else
+          ValueSome(structuralEquals threadID a registers[secondReg])
       | [ secondReg ] ->
         match FastOps.traitTag traitHash methodName with
         | ValueSome tag ->
@@ -2228,6 +2265,349 @@ let private resolveTraitMethod
         |> raiseRTE vm.threadID
   }
 
+/// The `Eq` implementation for a type, or None for the structural answer.
+///
+/// Shares `implSelectionMemo` with `resolveTraitMethod`, including the sentinel it stores for
+/// "no implementation", so the second comparison of a type costs one dictionary probe. Unlike
+/// that function this asks about a type rather than about a call, because the types it asks
+/// about are the ones found INSIDE a value being compared.
+let private eqImplFor
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (self : KnownType)
+  : Ply<Option<FQFnName.Package>> =
+  let hash = PackageRefs.Trait.Stdlib.Traits.eq ()
+  if hash = "" then
+    // No `Eq` in this tree's refs, which is the pre-reload bootstrap path: structural.
+    Ply None
+  else
+    let traitHash : FQTypeName.Package = Hash hash
+    let key = struct (exeState.branchId, traitHash, "equals", self)
+    let generation = exeState.fns.implGeneration ()
+    let mutable hit = Unchecked.defaultof<struct (int * FQFnName.Package)>
+    let remembered =
+      if exeState.fns.implSelectionMemo.TryGetValue(key, &hit) then
+        let struct (gen, implFn) = hit
+        if gen = generation then ValueSome implFn else ValueNone
+      else
+        ValueNone
+    match remembered with
+    | ValueSome implFn ->
+      Ply(if implFn = structuralEqualsSentinel then None else Some implFn)
+    | ValueNone ->
+      uply {
+        let! candidates = exeState.fns.implCandidates exeState.branchId traitHash
+        match Traits.select candidates self with
+        | Traits.Selected c ->
+          let picked = Map.tryFind "equals" c.methods
+          exeState.fns.implSelectionMemo[key] <-
+            struct (generation, Option.defaultValue structuralEqualsSentinel picked)
+          return picked
+        | Traits.NoImpl ->
+          exeState.fns.implSelectionMemo[key] <-
+            struct (generation, structuralEqualsSentinel)
+          return None
+        | Traits.Ambiguous cs ->
+          // Not remembered: rivals nothing can order are reported, here as at the top level.
+          return
+            RTE.Trait(
+              RTE.Traits.DispatchAmbiguous(
+                FQTraitName.Package traitHash,
+                ValueType.Known self,
+                cs |> List.map (fun c -> c.source)
+              )
+            )
+            |> raiseRTE vm.threadID
+      }
+
+/// Is there an `Eq` implementation anywhere inside this value? `ValueNone` means the memo could
+/// not say without asking the store, so the caller has to take the walk below and find out.
+///
+/// This is what keeps `==` on a record costing what it cost before implementations existed. `Eq`
+/// has no stdlib implementations at all and most programs have none of their own, so the honest
+/// answer for nearly every comparison is "no", and a "no" is answered by `Dval.equals` in one
+/// synchronous call with no `Ply` and nothing allocated. The first comparison of a type pays the
+/// async path and fills the memo; every later one is this probe.
+let rec private anyEqImplSync
+  (exeState : ExecutionState)
+  (generation : int)
+  (traitHash : FQTypeName.Package)
+  (dv : Dval)
+  : bool voption =
+  let remembered (self : KnownType) : FQFnName.Package voption =
+    let mutable hit = Unchecked.defaultof<struct (int * FQFnName.Package)>
+    if
+      exeState.fns.implSelectionMemo.TryGetValue(
+        struct (exeState.branchId, traitHash, "equals", self),
+        &hit
+      )
+    then
+      let struct (gen, implFn) = hit
+      if gen = generation then ValueSome implFn else ValueNone
+    else
+      ValueNone
+
+  let children (items : List<Dval>) : bool voption =
+    let mutable answer = ValueSome false
+    let mutable rest = items
+    while answer <> ValueSome true && not (List.isEmpty rest) do
+      match rest with
+      | item :: tail ->
+        match anyEqImplSync exeState generation traitHash item with
+        | ValueSome true -> answer <- ValueSome true
+        | ValueSome false -> ()
+        | ValueNone -> answer <- ValueNone
+        rest <- tail
+      | [] -> ()
+    answer
+
+  if not (needsEqDispatch dv) then
+    ValueSome false
+  else
+    match dv with
+    | DRecord _
+    | DEnum _ ->
+      let own =
+        match Dval.toValueType dv with
+        | ValueType.Unknown -> ValueNone
+        | ValueType.Known self ->
+          match remembered self with
+          | ValueNone -> ValueNone
+          | ValueSome implFn ->
+            if implFn = structuralEqualsSentinel then
+              ValueSome false
+            else
+              ValueSome true
+      match own with
+      | ValueSome false ->
+        match dv with
+        | DRecord(_, _, _, fields) -> children (fields |> Map.values |> Seq.toList)
+        | DEnum(_, _, _, _, fields) -> children fields
+        | _ -> ValueSome false
+      | answer -> answer
+    | DList(_, items) -> children items
+    | DDict(_, _, entries) -> children (entries |> Map.values |> Seq.toList)
+    | DTuple(a, b, rest) -> children (a :: b :: rest)
+    | _ -> ValueSome false
+
+/// `==` on a value with no `Eq` implementation of its own: structural, and consulting the
+/// implementation of every type found on the way down.
+///
+/// A list of a type that implements `Eq` compares element by element BY that implementation,
+/// and so does a record field, a dict value and a tuple slot. The alternative was to compare
+/// containers structurally whatever their elements implement, which lets `p == q` and
+/// `[ p ] == [ q ]` disagree.
+///
+/// `List.member`, `List.unique`, `List.sort` and dict keys are still structural, and dict keys
+/// have to be: they are hashed inside F#'s own `Map`, where there is no interpreter to call.
+let rec private deepEquals
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (access : Permissions.Access)
+  (a : Dval)
+  (b : Dval)
+  : Ply<bool> =
+  if not (needsEqDispatch a) then
+    // Nothing in here can carry an implementation, so the walk `Dval.equals` does IS the
+    // answer, and it does it without a Ply or an allocation.
+    Ply(Dval.equals a b)
+  else
+    uply {
+      match a with
+      | DRecord _
+      | DEnum _ ->
+        let! impl =
+          match Dval.toValueType a with
+          | ValueType.Known self -> eqImplFor exeState vm self
+          | ValueType.Unknown -> Ply None
+        match impl with
+        | None -> return! structuralChildren exeState vm access a b
+        | Some implFn ->
+          let applicable =
+            AppNamedFn
+              { name = FQFnName.Package implFn
+                typeSymbolTable = TST.empty
+                typeArgs = []
+                access = Some access
+                argsSoFar = [] }
+          match!
+            exeState.callApplicable exeState access applicable (NEList.doubleton a b)
+          with
+          | Ok(DBool r) -> return r
+          | Ok other ->
+            // The checker holds an `Eq` method to `Bool`, so a non-Bool here means a store
+            // written by something that was not the checker.
+            return
+              RTE.EqualityCheckOnIncompatibleTypes(
+                Dval.toValueType other,
+                ValueType.Known KTBool
+              )
+              |> raiseRTE vm.threadID
+          | Error(rte, nested) ->
+            vm.nestedCallStack <- nested
+            return raiseRTE vm.threadID rte
+      | _ -> return! structuralChildren exeState vm access a b
+    }
+
+/// The walk `Dval.equals` does, one level, recursing through `deepEquals` so every child gets
+/// its own implementation consulted. Anything that is not a container answers structurally.
+and private structuralChildren
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (access : Permissions.Access)
+  (a : Dval)
+  (b : Dval)
+  : Ply<bool> =
+  let mergesOk = List.forall2 (fun x y -> Result.isOk (ValueType.merge x y))
+  uply {
+    match a, b with
+    | DList(ta, xs), DList(tb, ys) ->
+      if Result.isOk (ValueType.merge ta tb) then
+        return! eachPair exeState vm access xs ys
+      else
+        return false
+
+    | DTuple(a1, a2, aRest), DTuple(b1, b2, bRest) ->
+      return! eachPair exeState vm access (a1 :: a2 :: aRest) (b1 :: b2 :: bRest)
+
+    | DDict(kA, vA, x), DDict(kB, vB, y) ->
+      if
+        Result.isOk (ValueType.merge kA kB)
+        && Result.isOk (ValueType.merge vA vB)
+        && Map.count x = Map.count y
+      then
+        return! eachEntry exeState vm access y (Map.toList x)
+      else
+        return false
+
+    | DRecord(_, typeNameA, typeArgsA, fieldsA),
+      DRecord(_, typeNameB, typeArgsB, fieldsB) ->
+      if
+        typeNameA = typeNameB
+        && typeArgsA.Length = typeArgsB.Length
+        && mergesOk typeArgsA typeArgsB
+        && Map.count fieldsA = Map.count fieldsB
+      then
+        return! eachEntry exeState vm access fieldsB (Map.toList fieldsA)
+      else
+        return false
+
+    | DEnum(_, typeNameA, typeArgsA, caseA, fieldsA),
+      DEnum(_, typeNameB, typeArgsB, caseB, fieldsB) ->
+      if
+        typeNameA = typeNameB
+        && typeArgsA.Length = typeArgsB.Length
+        && mergesOk typeArgsA typeArgsB
+        && caseA = caseB
+      then
+        return! eachPair exeState vm access fieldsA fieldsB
+      else
+        return false
+
+    | _ -> return Dval.equals a b
+  }
+
+/// Pairwise, stopping at the first difference. Different lengths are unequal.
+and private eachPair
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (access : Permissions.Access)
+  (xs : List<Dval>)
+  (ys : List<Dval>)
+  : Ply<bool> =
+  uply {
+    match xs, ys with
+    | [], [] -> return true
+    | x :: xRest, y :: yRest ->
+      match! deepEquals exeState vm access x y with
+      | false -> return false
+      | true -> return! eachPair exeState vm access xRest yRest
+    | _ -> return false
+  }
+
+/// By key, for a record's fields and a dict's entries. The counts are compared by the caller.
+and private eachEntry<'k when 'k : comparison>
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (access : Permissions.Access)
+  (other : Map<'k, Dval>)
+  (entries : List<'k * Dval>)
+  : Ply<bool> =
+  uply {
+    match entries with
+    | [] -> return true
+    | (k, valueA) :: rest ->
+      match Map.find k other with
+      | None -> return false
+      | Some valueB ->
+        match! deepEquals exeState vm access valueA valueB with
+        | false -> return false
+        | true -> return! eachEntry exeState vm access other rest
+  }
+
+/// Whether a value of this type has to take the walk above, remembered per type. Which types are
+/// inside a type is a fact about the type, so it is computed once and probed after that, under the
+/// `implGeneration` it was computed in. Only a fully known type is remembered: an `Unknown` in
+/// there means two values of the same `ValueType` can hold different things.
+let private eqDeepMemo
+  : System.Collections.Concurrent.ConcurrentDictionary<struct (Branching.BranchId *
+    KnownType), struct (int * bool)> =
+  System.Collections.Concurrent.ConcurrentDictionary()
+
+/// What `==` answers: the incompatible-type error up front, as the `equals` builtin gives it,
+/// then the deep walk.
+let private deepEqualsTop
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (access : Permissions.Access)
+  (a : Dval)
+  (b : Dval)
+  : Ply<Dval> =
+  let (vtA, vtB) = (Dval.toValueType a, Dval.toValueType b)
+  match ValueType.merge vtA vtB with
+  | Error _ -> RTE.EqualityCheckOnIncompatibleTypes(vtA, vtB) |> raiseRTE vm.threadID
+  | Ok _ ->
+    let hash = PackageRefs.Trait.Stdlib.Traits.eq ()
+    let generation = exeState.fns.implGeneration ()
+    let selfType =
+      match Dval.toValueType a with
+      | ValueType.Known self when isFullyKnown (ValueType.Known self) ->
+        ValueSome self
+      | _ -> ValueNone
+    let remembered =
+      match selfType with
+      | ValueNone -> ValueNone
+      | ValueSome self ->
+        let mutable hit = Unchecked.defaultof<struct (int * bool)>
+        if eqDeepMemo.TryGetValue(struct (exeState.branchId, self), &hit) then
+          let struct (gen, answer) = hit
+          if gen = generation then ValueSome answer else ValueNone
+        else
+          ValueNone
+    let nothingToConsult =
+      if hash = "" then
+        true
+      else
+        match remembered with
+        | ValueSome answer -> not answer
+        | ValueNone ->
+          match anyEqImplSync exeState generation (Hash hash) a with
+          | ValueSome answer ->
+            match selfType with
+            | ValueSome self ->
+              eqDeepMemo[struct (exeState.branchId, self)] <-
+                struct (generation, answer)
+            | ValueNone -> ()
+            not answer
+          | ValueNone -> false
+    if nothingToConsult then
+      Ply(DBool(Dval.equals a b))
+    else
+      uply {
+        let! r = deepEquals exeState vm access a b
+        return DBool r
+      }
+
 let private applyInstruction
   (exeState : ExecutionState)
   (vm : VMState)
@@ -2593,18 +2973,40 @@ let private applyInstruction
             vm.stats.traitDispatchMissCount <- vm.stats.traitDispatchMissCount + 1L
         // `==` with no implementation for the type: structural, no call.
         let structural () : Ply<PackageOutcome> =
+          // Asked synchronously first, and the two arms are written out rather than shared
+          // through a local function: sharing them captures the frame in a closure, which is
+          // an allocation on every `==` of a record, which is the case this is here for.
           match applicable.argsSoFar, newArgRegs.tail with
           | [], [ secondReg ] ->
-            Ply(
-              Completed(
-                structuralEquals
-                  vm.threadID
-                  registers[newArgRegs.head]
-                  registers[secondReg]
-              )
-            )
+            let answer =
+              deepEqualsTop
+                exeState
+                vm
+                currentFrame.access
+                registers[newArgRegs.head]
+                registers[secondReg]
+            match Ply.trySync answer with
+            | ValueSome dv -> Ply(Completed dv)
+            | ValueNone ->
+              uply {
+                let! dv = answer
+                return Completed dv
+              }
           | [ a ], [] ->
-            Ply(Completed(structuralEquals vm.threadID a registers[newArgRegs.head]))
+            let answer =
+              deepEqualsTop
+                exeState
+                vm
+                currentFrame.access
+                a
+                registers[newArgRegs.head]
+            match Ply.trySync answer with
+            | ValueSome dv -> Ply(Completed dv)
+            | ValueNone ->
+              uply {
+                let! dv = answer
+                return Completed dv
+              }
           | argsSoFar, rest ->
             // One argument so far, so this is `Eq.equals x` waiting for the second: hand back the
             // partial application, as any two-parameter fn would. Over-applied (three arguments or
