@@ -356,13 +356,15 @@ update. `None` where the self type is not knowable at save time (a call inside a
 an operator in a pipeline); those resolve at run time, which is what the selection
 path in `Interpreter.fs` is for.
 
-**Nothing loaded from disk is pinned.** `resolveTraitCalls` is reached only from
-`addAuthored`, so `dark fn`/`impl`/`module` and the editor pin, while
-`LocalExec.reloadPackages` inserts its ops directly. Every operator and trait method in
-`packages/`, and in `seed.db`, therefore resolves at RUN time in every clone. So a
-measurement of dispatch cost taken against the shipped tree is measuring the unpinned
-path, and "stored calls are stable" is today a property of interactively authored items
-only.
+**Nothing loaded from disk records its implementation choice.** `resolveTraitCalls` is
+reached only from `addAuthored`, so `dark fn`/`impl`/`module` and the editor fill `implFn`
+in, while `LocalExec.reloadPackages` inserts its ops directly. Those calls are still
+ordinary hash references (name resolution runs at parse, so the TRAIT is a hash either
+way); what they lack is the third field, so every operator and trait method in `packages/`
+and in `seed.db` selects an implementation at RUN time in every clone. Two consequences: a
+dispatch-cost measurement taken against the shipped tree is measuring the unselected path,
+and "a saved call goes on meaning what it meant" is today a property of interactively
+authored items only.
 
 **Every switch over item kinds has five arms.** Types, values, fns, traits, impls.
 A new listing, codec, or CLI command that handles three of them silently drops the
