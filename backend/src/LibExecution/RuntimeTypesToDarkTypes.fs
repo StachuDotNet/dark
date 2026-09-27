@@ -170,31 +170,50 @@ module FQFnName =
       | DEnum(_, _, [], "Hash", [ DString h ]) -> Hash h
       | _ -> Exception.raiseInternal "Invalid FQFnName.Package" []
 
+  module TraitMethod =
+    let typeName () =
+      FQTypeName.fqPackage (
+        PackageRefs.Type.LanguageTools.RuntimeTypes.FQFnName.traitMethod ()
+      )
+
+    let toDT (u : FQFnName.TraitMethod) : Dval =
+      let fields =
+        [ "trait_", FQTraitName.Package.toDT u.trait_
+          "method_", DString u.method_
+          "implFn",
+          u.implFn |> Option.map Package.toDT |> Dval.option (Hash.knownType ()) ]
+      DRecord(typeName (), typeName (), [], Map fields)
+
+    let fromDT (d : Dval) : FQFnName.TraitMethod =
+      match d with
+      | DRecord(_, _, _, fields) ->
+        { trait_ =
+            FQTraitName.Package.fromDT (Map.find "trait_" fields |> Option.get)
+          method_ =
+            match Map.find "method_" fields with
+            | Some(DString m) -> m
+            | _ -> Exception.raiseInternal "Invalid TraitMethod.method_" []
+          implFn =
+            match Map.find "implFn" fields with
+            | Some(DEnum(_, _, _, "Some", [ h ])) -> Some(Package.fromDT h)
+            | _ -> None }
+      | _ -> Exception.raiseInternal "Invalid FQFnName.TraitMethod" []
+
 
   let toDT (u : FQFnName.FQFnName) : Dval =
     let (caseName, fields) =
       match u with
       | FQFnName.Builtin u -> "Builtin", [ Builtin.toDT u ]
       | FQFnName.Package u -> "Package", [ Package.toDT u ]
-      | FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn } ->
-        "TraitMethod",
-        [ FQTraitName.Package.toDT t
-          DString m
-          implFn |> Option.map Package.toDT |> Dval.option (Hash.knownType ()) ]
+      | FQFnName.TraitMethod tm -> "TraitMethod", [ TraitMethod.toDT tm ]
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : FQFnName.FQFnName =
     match d with
     | DEnum(_, _, [], "Builtin", [ u ]) -> FQFnName.Builtin(Builtin.fromDT u)
     | DEnum(_, _, [], "Package", [ u ]) -> FQFnName.Package(Package.fromDT u)
-    | DEnum(_, _, [], "TraitMethod", [ t; DString m; implFn ]) ->
-      FQFnName.TraitMethod
-        { trait_ = FQTraitName.Package.fromDT t
-          method_ = m
-          implFn =
-            match implFn with
-            | DEnum(_, _, _, "Some", [ h ]) -> Some(Package.fromDT h)
-            | _ -> None }
+    | DEnum(_, _, [], "TraitMethod", [ tm ]) ->
+      FQFnName.TraitMethod(TraitMethod.fromDT tm)
     | _ -> Exception.raiseInternal "Invalid FQFnName" []
 
 

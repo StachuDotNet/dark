@@ -82,7 +82,7 @@ Stdlib.Float.clampRefusingNaN 0.5 Builtin.testNegativeInfinity 1.0 = Stdlib.Resu
   0.5
 
 Stdlib.Float.clampRefusingNaN 0.5 Builtin.testNan 1.0 = Stdlib.Result.Result.Error
-  "clamp requires arguments to be valid numbers"
+  "clampRefusingNaN requires limits that are numbers"
 
 Stdlib.Float.clampRefusingNaN -1.0 0.5 Builtin.testInfinity = Stdlib.Result.Result.Ok 0.5
 
@@ -90,7 +90,7 @@ Stdlib.Float.clampRefusingNaN -1.0 0.5 Builtin.testNegativeInfinity = Stdlib.Res
   -1.0
 
 Stdlib.Float.clampRefusingNaN 0.5 1.0 Builtin.testNan = Stdlib.Result.Result.Error
-  "clamp requires arguments to be valid numbers"
+  "clampRefusingNaN requires limits that are numbers"
 
 Stdlib.Float.clampRefusingNaN -2.0 -5.0 5.0 = Stdlib.Result.Result.Ok -2.0
 

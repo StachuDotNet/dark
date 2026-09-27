@@ -405,10 +405,10 @@ module FnName =
                                 // No implementation yet: the parser has no types, and the save
                                 // chooses (see `Traits.resolve` on the F# side).
                                 ProgramTypes.FQFnName.FQFnName.TraitMethod(
-                                  traitHash,
-                                  methodName,
-                                  Stdlib.Option.Option.None
-                                )
+                                  ProgramTypes.FQFnName.TraitMethod
+                                    { trait_ = traitHash
+                                      method_ = methodName
+                                      implFn = Stdlib.Option.Option.None })
                               location = resolved.location }) })
               else
                 Stdlib.Option.Option.None

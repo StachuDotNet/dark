@@ -190,34 +190,53 @@ module FQFnName =
 
     let fromDT (d : Dval) : PT.FQFnName.Package = Hash.fromDT d
 
+  module TraitMethod =
+    let typeName () =
+      FQTypeName.fqPackage (
+        PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.traitMethod ()
+      )
+
+    let toDT (u : PT.FQFnName.TraitMethod) : Dval =
+      let fields =
+        [ "trait_", FQTraitName.Package.toDT u.trait_
+          "method_", DString u.method_
+          "implFn",
+          u.implFn
+          |> Option.map (ResolvedName.toDT (Hash.knownType ()) Package.toDT)
+          |> Dval.option (ResolvedName.knownType (Hash.knownType ())) ]
+      DRecord(typeName (), typeName (), [], Map fields)
+
+    let fromDT (d : Dval) : PT.FQFnName.TraitMethod =
+      match d with
+      | DRecord(_, _, _, fields) ->
+        { trait_ =
+            FQTraitName.Package.fromDT (Map.find "trait_" fields |> Option.get)
+          method_ =
+            match Map.find "method_" fields with
+            | Some(DString m) -> m
+            | _ -> Exception.raiseInternal "Invalid TraitMethod.method_" []
+          implFn =
+            match Map.find "implFn" fields with
+            | Some(DEnum(_, _, _, "Some", [ r ])) ->
+              Some(ResolvedName.fromDT Package.fromDT r)
+            | _ -> None }
+      | _ -> Exception.raiseInternal "Invalid FQFnName.TraitMethod" []
+
 
   let toDT (u : PT.FQFnName.FQFnName) : Dval =
     let (caseName, fields) =
       match u with
       | PT.FQFnName.Builtin u -> "Builtin", [ Builtin.toDT u ]
       | PT.FQFnName.Package u -> "Package", [ Package.toDT u ]
-      | PT.FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn } ->
-        "TraitMethod",
-        [ FQTraitName.Package.toDT t
-          DString m
-          implFn
-          |> Option.map (ResolvedName.toDT (Hash.knownType ()) Package.toDT)
-          |> Dval.option (ResolvedName.knownType (Hash.knownType ())) ]
+      | PT.FQFnName.TraitMethod tm -> "TraitMethod", [ TraitMethod.toDT tm ]
     DEnum(typeName (), typeName (), [], caseName, fields)
 
   let fromDT (d : Dval) : PT.FQFnName.FQFnName =
     match d with
     | DEnum(_, _, [], "Builtin", [ u ]) -> PT.FQFnName.Builtin(Builtin.fromDT u)
     | DEnum(_, _, [], "Package", [ u ]) -> PT.FQFnName.Package(Package.fromDT u)
-    | DEnum(_, _, [], "TraitMethod", [ t; DString m; implFn ]) ->
-      PT.FQFnName.TraitMethod
-        { trait_ = FQTraitName.Package.fromDT t
-          method_ = m
-          implFn =
-            match implFn with
-            | DEnum(_, _, _, "Some", [ r ]) ->
-              Some(ResolvedName.fromDT Package.fromDT r)
-            | _ -> None }
+    | DEnum(_, _, [], "TraitMethod", [ tm ]) ->
+      PT.FQFnName.TraitMethod(TraitMethod.fromDT tm)
     | _ -> Exception.raiseInternal "Invalid FQFnName" []
 
 

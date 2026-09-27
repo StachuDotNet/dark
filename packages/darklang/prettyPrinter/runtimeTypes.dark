@@ -270,7 +270,10 @@ let fnName
   | Package p -> FQFnName.package branchId p
   // A trait's hash is not a type's, so it needs the trait's own locations: without this a trait
   // method prints as a 64-character hash, which it did in arity errors and partial applications.
-  | TraitMethod(traitHash, method, _) ->
+  | TraitMethod tm ->
+    let traitHash = tm.trait_
+    let method = tm.method_
+
     let traitName =
       resolvePackageHash
         LanguageTools.PackageManager.PickContext.empty

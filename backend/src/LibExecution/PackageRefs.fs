@@ -358,6 +358,7 @@ module Type =
       module FQFnName =
         let private p addl = p ("FQFnName" :: addl)
         let builtin = p [] "Builtin"
+        let traitMethod = p [] "TraitMethod"
         let fqFnName = p [] "FQFnName"
 
       let nameResolutionError = p [] "NameResolutionError"
@@ -437,6 +438,7 @@ module Type =
       module FQFnName =
         let private p addl = p ("FQFnName" :: addl)
         let builtin = p [] "Builtin"
+        let traitMethod = p [] "TraitMethod"
         let fqFnName = p [] "FQFnName"
 
       let typeReference = p [] "TypeReference"
