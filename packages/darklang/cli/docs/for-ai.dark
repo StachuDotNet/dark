@@ -246,7 +246,9 @@ Rules:
   a `+`; `impl ToString for Point = let toString (p: Point) : String = ...`
   gives `p.toString`; your own with `trait Area<'a> = let area (s: 'a) : Float`.
   A bound is `let f<'a: ToString> (v: 'a) = ...`. Author with `dark trait` /
-  `dark impl`; `dark impls <Trait>` lists implementations; `docs traits`.
+  `dark impl`; `dark impls <Trait> --json` lists implementations with the status a
+  call sees (active, shadowed, unordered); `dark constraints --json` has the rival
+  pairs; `docs traits`. `==` consults a type's `Eq`, inside containers too.
 - Bitwise operators have implementations for every integer type and none for
   Float; both operands (the shift count included) must be the same type.
 - `!x` is boolean not. Inside a `match`, `|` is the arm separator, so bitwise-or
