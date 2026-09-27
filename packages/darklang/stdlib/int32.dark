@@ -189,31 +189,31 @@ impl Add for Int32 =
   let add = Stdlib.Int32.add
 
 
-impl Sub for Int32 =
+impl Subtract for Int32 =
   let subtract = Stdlib.Int32.subtract
 
 
-impl Mul for Int32 =
+impl Multiply for Int32 =
   let multiply = Stdlib.Int32.multiply
 
 
-impl Div for Int32 =
+impl Divide for Int32 =
   let divide = Stdlib.Int32.divide
 
 
-impl Mod for Int32 =
+impl Modulo for Int32 =
   let modulo = Stdlib.Int32.``mod``
 
 
-impl Pow for Int32 =
+impl Power for Int32 =
   let power = Stdlib.Int32.power
 
 
-impl Neg for Int32 =
+impl Negate for Int32 =
   let negate = Stdlib.Int32.negate
 
 
-impl Ord for Int32 =
+impl Compare for Int32 =
   let lessThan = Stdlib.Int32.lessThan
   let lessThanOrEqualTo = Stdlib.Int32.lessThanOrEqualTo
   let greaterThan = Stdlib.Int32.greaterThan
@@ -232,25 +232,25 @@ impl One for Int32 =
   let one () : Int32 = 1l
 
 
-impl BitAnd for Int32 =
-  let bitAnd = Stdlib.Int32.bitwiseAnd
+impl BitwiseAnd for Int32 =
+  let bitwiseAnd = Stdlib.Int32.bitwiseAnd
 
 
-impl BitOr for Int32 =
-  let bitOr = Stdlib.Int32.bitwiseOr
+impl BitwiseOr for Int32 =
+  let bitwiseOr = Stdlib.Int32.bitwiseOr
 
 
-impl BitXor for Int32 =
-  let bitXor = Stdlib.Int32.bitwiseXor
+impl BitwiseXor for Int32 =
+  let bitwiseXor = Stdlib.Int32.bitwiseXor
 
 
-impl BitNot for Int32 =
-  let bitNot = Stdlib.Int32.bitwiseNot
+impl BitwiseNot for Int32 =
+  let bitwiseNot = Stdlib.Int32.bitwiseNot
 
 
-impl Shl for Int32 =
+impl ShiftLeft for Int32 =
   let shiftLeft = Stdlib.Int32.shiftLeft
 
 
-impl Shr for Int32 =
+impl ShiftRight for Int32 =
   let shiftRight = Stdlib.Int32.shiftRight

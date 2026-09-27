@@ -189,31 +189,31 @@ impl Add for Int =
   let add = Stdlib.Int.add
 
 
-impl Sub for Int =
+impl Subtract for Int =
   let subtract = Stdlib.Int.subtract
 
 
-impl Mul for Int =
+impl Multiply for Int =
   let multiply = Stdlib.Int.multiply
 
 
-impl Div for Int =
+impl Divide for Int =
   let divide = Stdlib.Int.divide
 
 
-impl Mod for Int =
+impl Modulo for Int =
   let modulo = Stdlib.Int.``mod``
 
 
-impl Pow for Int =
+impl Power for Int =
   let power = Stdlib.Int.power
 
 
-impl Neg for Int =
+impl Negate for Int =
   let negate = Stdlib.Int.negate
 
 
-impl Ord for Int =
+impl Compare for Int =
   let lessThan = Stdlib.Int.lessThan
   let lessThanOrEqualTo = Stdlib.Int.lessThanOrEqualTo
   let greaterThan = Stdlib.Int.greaterThan
@@ -232,25 +232,25 @@ impl One for Int =
   let one () : Int = 1
 
 
-impl BitAnd for Int =
-  let bitAnd = Stdlib.Int.bitwiseAnd
+impl BitwiseAnd for Int =
+  let bitwiseAnd = Stdlib.Int.bitwiseAnd
 
 
-impl BitOr for Int =
-  let bitOr = Stdlib.Int.bitwiseOr
+impl BitwiseOr for Int =
+  let bitwiseOr = Stdlib.Int.bitwiseOr
 
 
-impl BitXor for Int =
-  let bitXor = Stdlib.Int.bitwiseXor
+impl BitwiseXor for Int =
+  let bitwiseXor = Stdlib.Int.bitwiseXor
 
 
-impl BitNot for Int =
-  let bitNot = Stdlib.Int.bitwiseNot
+impl BitwiseNot for Int =
+  let bitwiseNot = Stdlib.Int.bitwiseNot
 
 
-impl Shl for Int =
+impl ShiftLeft for Int =
   let shiftLeft = Stdlib.Int.shiftLeft
 
 
-impl Shr for Int =
+impl ShiftRight for Int =
   let shiftRight = Stdlib.Int.shiftRight

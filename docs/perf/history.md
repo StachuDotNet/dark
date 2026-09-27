@@ -343,7 +343,7 @@ refuse it.
 
 ## 2026-09-24, the sweep
 
-Making the bitwise operators traits, and giving `Ord` implementations to String, Char and
+Making the bitwise operators traits, and giving `Compare` implementations to String, Char and
 DateTime, added about ninety package items that load at startup. The reference workload reads
 9,641,704 bytes in debug against a 9,460,680 budget: 1.9% over, inside the 3% tolerance, with
 1.05% of headroom left before the gate fails. Published is 9.8 MB against 9.74.

@@ -558,7 +558,7 @@ let compare (a: String) (b: String) : Int64 = Builtin.stringCompare a b
 
 
 /// `"a" < "b"`, and with it `Stdlib.max`, `min` and `clamp` on Strings.
-impl Ord for String =
+impl Compare for String =
   let lessThan (a: String) (b: String) : Bool = (Stdlib.String.compare a b) < 0L
 
   let lessThanOrEqualTo (a: String) (b: String) : Bool =
@@ -578,3 +578,8 @@ impl ToString for String =
 /// `"a" + "b"` is `"ab"`
 impl Add for String =
   let add = Stdlib.String.append
+
+
+/// The empty string is what `+` starts from, exactly as `0` is for a number
+impl Zero for String =
+  let zero () : String = ""

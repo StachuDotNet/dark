@@ -301,7 +301,8 @@ let private fnHashTests =
         let call (traitHash : string) (m : string) : PT.Expr =
           let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
             PT.NameResolution.ok (
-              PT.FQFnName.TraitMethod(PT.Hash traitHash, m, None)
+              PT.FQFnName.TraitMethod
+                { trait_ = PT.Hash traitHash; method_ = m; implFn = None }
             )
           PT.EApply(gid (), PT.EFnName(gid (), nr), [], NEList.singleton (eVar "x"))
         let h1 = h [ "x" ] (call "trait-show" "show")
@@ -326,7 +327,8 @@ let private fnHashTests =
               : PT.ResolvedName<PT.FQFnName.Package>))
           let nr : PT.NameResolution<PT.FQFnName.FQFnName> =
             PT.NameResolution.ok (
-              PT.FQFnName.TraitMethod(PT.Hash "trait-show", "show", pinned)
+              PT.FQFnName.TraitMethod
+                { trait_ = PT.Hash "trait-show"; method_ = "show"; implFn = pinned }
             )
           PT.EApply(gid (), PT.EFnName(gid (), nr), [], NEList.singleton (eVar "x"))
         let unpinned = h [ "x" ] (call None)
@@ -429,7 +431,7 @@ let private placeholderHashTests =
     "placeholder hashes (toFQN-based)"
     [ test "same location gives same FQN" {
         let loc : PT.PackageLocation =
-          { owner = "Test"; modules = [ "Mod" ]; name = "Foo" }
+          { owner = "Test"; modules = [ "Modulo" ]; name = "Foo" }
         Expect.equal
           (PackageLocation.toFQN loc)
           (PackageLocation.toFQN loc)
@@ -438,9 +440,9 @@ let private placeholderHashTests =
 
       test "different locations give different FQNs" {
         let loc1 : PT.PackageLocation =
-          { owner = "Test"; modules = [ "Mod" ]; name = "Foo" }
+          { owner = "Test"; modules = [ "Modulo" ]; name = "Foo" }
         let loc2 : PT.PackageLocation =
-          { owner = "Test"; modules = [ "Mod" ]; name = "Bar" }
+          { owner = "Test"; modules = [ "Modulo" ]; name = "Bar" }
         Expect.notEqual
           (PackageLocation.toFQN loc1)
           (PackageLocation.toFQN loc2)
@@ -458,7 +460,7 @@ let private placeholderHashTests =
 
       test "FQN-based SHA-256 produces valid hash" {
         let loc : PT.PackageLocation =
-          { owner = "Test"; modules = [ "Mod" ]; name = "Foo" }
+          { owner = "Test"; modules = [ "Modulo" ]; name = "Foo" }
         let nameKey = PackageLocation.toFQN loc
         let nameBytes =
           System.Security.Cryptography.SHA256.HashData(

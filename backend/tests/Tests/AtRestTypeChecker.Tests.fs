@@ -1157,7 +1157,7 @@ let private unitTests =
         |> expectChecked
       }
 
-      test "an operator is its trait: no Pow impl for the 128-bit ints" {
+      test "an operator is its trait: no Power impl for the 128-bit ints" {
         let infix nodeId operation =
           PT.EInfix(
             nodeId,
@@ -1260,7 +1260,7 @@ let private unitTests =
 
       test "unary minus is checked as negation" {
         // The parser lowers `-x` on a non-literal to `Builtin.negate`, whose
-        // declared `'a -> 'a` would accept anything; the checker asks for a `Neg`
+        // declared `'a -> 'a` would accept anything; the checker asks for a `Negate`
         // impl of the operand type instead, so unsigned and non-numeric operands
         // are a missing impl.
         let environment = numericEnvironment ()
@@ -2300,7 +2300,8 @@ let private traitTests =
       [],
       NEList.singleton arg
     )
-  let showMethod = PT.FQFnName.TraitMethod(showHash, "show", None)
+  let showMethod =
+    PT.FQFnName.TraitMethod { trait_ = showHash; method_ = "show"; implFn = None }
 
   testList
     "traits"

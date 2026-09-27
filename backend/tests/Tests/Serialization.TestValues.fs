@@ -733,7 +733,7 @@ module ProgramTypes =
       permissionCeiling = Some(Set.singleton LibExecution.Effects.Effect.Clock)
       bounds = [] }
 
-  /// `let f<'a: Show + Eq<Int>> ...`: two bounds on one param, one with a type arg,
+  /// `let f<'a: Show + Equal<Int>> ...`: two bounds on one param, one with a type arg,
   /// and a body that calls a trait method.
   let boundedPackageFn : PackageFn.PackageFn =
     let showRef : TraitRef =
@@ -749,14 +749,14 @@ module ProgramTypes =
           gid (),
           NameResolution.ok (
             // With an implementation chosen, which is what a saved call carries.
-            FQFnName.TraitMethod(
-              Hash "trait-show",
-              "show",
-              Some
-                { name = Hash "impl-show-fn"
-                  location =
-                    Some { owner = "Tests"; modules = [ "Show" ]; name = "show" } }
-            )
+            FQFnName.TraitMethod
+              { trait_ = Hash "trait-show"
+                method_ = "show"
+                implFn =
+                  Some
+                    { name = Hash "impl-show-fn"
+                      location =
+                        Some { owner = "Tests"; modules = [ "Show" ]; name = "show" } } }
           )
         ),
         [],
@@ -791,7 +791,7 @@ module ProgramTypes =
 
       description = "test" }
 
-  /// `type Set<'a: Ord> = List<'a>`
+  /// `type Set<'a: Compare> = List<'a>`
   let boundedPackageType : PackageType.PackageType =
     { hash = Hash "bounded-type"
       declaration =
@@ -812,7 +812,7 @@ module ProgramTypes =
 
   let packageValues = [ packageValue ]
 
-  /// `trait Convert<'a, 'b: Eq> = let convert (v: 'a) :{} 'b`, with a doc.
+  /// `trait Convert<'a, 'b: Equal> = let convert (v: 'a) :{} 'b`, with a doc.
   let trait_ : Trait.Trait =
     { hash = Hash "trait-convert"
       typeParams = NEList.doubleton "a" "b"

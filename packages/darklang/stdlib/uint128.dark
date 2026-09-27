@@ -121,23 +121,23 @@ impl Add for UInt128 =
   let add = Stdlib.UInt128.add
 
 
-impl Sub for UInt128 =
+impl Subtract for UInt128 =
   let subtract = Stdlib.UInt128.subtract
 
 
-impl Mul for UInt128 =
+impl Multiply for UInt128 =
   let multiply = Stdlib.UInt128.multiply
 
 
-impl Div for UInt128 =
+impl Divide for UInt128 =
   let divide = Stdlib.UInt128.divide
 
 
-impl Mod for UInt128 =
+impl Modulo for UInt128 =
   let modulo = Stdlib.UInt128.``mod``
 
 
-impl Ord for UInt128 =
+impl Compare for UInt128 =
   let lessThan = Stdlib.UInt128.lessThan
   let lessThanOrEqualTo = Stdlib.UInt128.lessThanOrEqualTo
   let greaterThan = Stdlib.UInt128.greaterThan
@@ -156,25 +156,25 @@ impl One for UInt128 =
   let one () : UInt128 = 1Z
 
 
-impl BitAnd for UInt128 =
-  let bitAnd = Stdlib.UInt128.bitwiseAnd
+impl BitwiseAnd for UInt128 =
+  let bitwiseAnd = Stdlib.UInt128.bitwiseAnd
 
 
-impl BitOr for UInt128 =
-  let bitOr = Stdlib.UInt128.bitwiseOr
+impl BitwiseOr for UInt128 =
+  let bitwiseOr = Stdlib.UInt128.bitwiseOr
 
 
-impl BitXor for UInt128 =
-  let bitXor = Stdlib.UInt128.bitwiseXor
+impl BitwiseXor for UInt128 =
+  let bitwiseXor = Stdlib.UInt128.bitwiseXor
 
 
-impl BitNot for UInt128 =
-  let bitNot = Stdlib.UInt128.bitwiseNot
+impl BitwiseNot for UInt128 =
+  let bitwiseNot = Stdlib.UInt128.bitwiseNot
 
 
-impl Shl for UInt128 =
+impl ShiftLeft for UInt128 =
   let shiftLeft = Stdlib.UInt128.shiftLeft
 
 
-impl Shr for UInt128 =
+impl ShiftRight for UInt128 =
   let shiftRight = Stdlib.UInt128.shiftRight

@@ -118,13 +118,13 @@ module Ambiguity =
 
 
 module Equality =
-  // `==` is `Eq.equals`. A type with an impl says what equal means; everything
+  // `==` is `Equal.equals`. A type with an impl says what equal means; everything
   // else, builtin types included, compares structurally.
   type User = { id: Int64; name: String }
   type Plain = { n: Int64 }
   type Holder = { user: User }
 
-  impl Stdlib.Eq for User =
+  impl Stdlib.Equal for User =
     let equals (a: User) (b: User) : Bool = a.id == b.id
 
   Equality.User { id = 1L; name = "a" } == Equality.User { id = 1L; name = "b" } = true
@@ -195,15 +195,15 @@ module Rendering =
   Stdlib.toString 2.5 = "2.5"
   (7).toString = "7"
   Stdlib.max 3L 9L = 9L
-  // String, Char and DateTime implement Ord, so the generics cover them too
+  // String, Char and DateTime implement Compare, so the generics cover them too
   Stdlib.min "apple" "banana" = "apple"
   Stdlib.max 'a' 'z' = 'z'
-  // A type with no Ord implementation is what the bound refuses
-  Stdlib.min true false = error "Bool has no implementation of Darklang.Stdlib.Ord. Write `impl Ord for Bool = ...`, or run `dark impls Ord` to see which types do"
+  // A type with no Compare implementation is what the bound refuses
+  Stdlib.min true false = error "Bool has no implementation of Darklang.Stdlib.Compare. Write `impl Compare for Bool = ...`, or run `dark impls Compare` to see which types do"
   Stdlib.clamp 15 20 10 = 15
   // `abs` needs three traits at once: compare, negate, and a zero to compare against
   Stdlib.abs -5L = 5L
   Stdlib.abs 2.5 = 2.5
   Stdlib.abs 0 = 0
-  // an unsigned type has no Neg implementation, so it has no abs either
-  Stdlib.abs 5uy = error "UInt8 has no implementation of Darklang.Stdlib.Neg. Write `impl Neg for UInt8 = ...`, or run `dark impls Neg` to see which types do"
+  // an unsigned type has no Negate implementation, so it has no abs either
+  Stdlib.abs 5uy = error "UInt8 has no implementation of Darklang.Stdlib.Negate. Write `impl Negate for UInt8 = ...`, or run `dark impls Negate` to see which types do"

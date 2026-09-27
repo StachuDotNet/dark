@@ -1,18 +1,10 @@
-Stdlib.max 5ul 6ul = 6ul
-Stdlib.max 10ul 1ul = 10ul
-Stdlib.max 0ul 6ul = 6ul
+// `Stdlib.max`, `min` and `clamp` are one generic over `Compare`; these check that it
+// reaches this type and that the type's own comparison holds at its extremes.
 Stdlib.max 4294967295ul 0ul = 4294967295ul
 
-Stdlib.min 5ul 6ul = 5ul
-Stdlib.min 10ul 10ul = 10ul
 Stdlib.min 4294967295ul 0ul = 0ul
 
-Stdlib.clamp 1ul 2ul 1ul = 1ul
-Stdlib.clamp 3ul 0ul 2ul = 2ul
 Stdlib.clamp 100ul 0ul 0ul = 0ul
-Stdlib.clamp 100ul 0ul 1ul = 1ul
-Stdlib.clamp 100ul 1ul 0ul = 1ul
-
 
 Stdlib.UInt32.add 10ul 9ul = 19ul
 Stdlib.UInt32.add 88ul 9ul = 97ul
@@ -144,7 +136,6 @@ Stdlib.UInt32.parse "" = Stdlib.Result.Result.Error Stdlib.UInt32.ParseError.Bad
 Stdlib.UInt32.parse "1I" = Stdlib.Result.Result.Error Stdlib.UInt32.ParseError.BadFormat
 Stdlib.UInt32.parse "one" = Stdlib.Result.Result.Error Stdlib.UInt32.ParseError.BadFormat
 Stdlib.UInt32.parse "XIV" = Stdlib.Result.Result.Error Stdlib.UInt32.ParseError.BadFormat
-
 
 Stdlib.UInt32.fromInt8 0y = Stdlib.Option.Option.Some 0ul
 Stdlib.UInt32.fromInt8 1y = Stdlib.Option.Option.Some 1ul

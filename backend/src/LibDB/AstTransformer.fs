@@ -100,13 +100,19 @@ let private pinAt
   : PT.NameResolution<PT.FQFnName.FQFnName> =
   match Map.tryFind nodeId mapping.pins, nr.resolved with
   | Some implFn,
-    Ok({ name = PT.FQFnName.TraitMethod(traitHash, methodName, _) } as r) ->
+    Ok({ name = PT.FQFnName.TraitMethod { trait_ = traitHash
+                                          method_ = methodName
+                                          implFn = _ } } as r) ->
     let implFn : PT.ResolvedName<PT.FQFnName.Package> = implFn
     { nr with
         resolved =
           Ok
             { r with
-                name = PT.FQFnName.TraitMethod(traitHash, methodName, Some implFn) } }
+                name =
+                  PT.FQFnName.TraitMethod
+                    { trait_ = traitHash
+                      method_ = methodName
+                      implFn = Some implFn } } }
   | _ -> nr
 
 
@@ -117,7 +123,9 @@ let private transformFnName
   (nr : PT.NameResolution<PT.FQFnName.FQFnName>)
   : PT.NameResolution<PT.FQFnName.FQFnName> =
   match nr.resolved with
-  | Ok { name = PT.FQFnName.TraitMethod(traitHash, methodName, implFn)
+  | Ok { name = PT.FQFnName.TraitMethod { trait_ = traitHash
+                                          method_ = methodName
+                                          implFn = implFn }
          location = loc } ->
     // The implementation this call was resolved to moves like any other fn reference: it is
     // usually a fn being saved in the same batch, whose placeholder hash stabilizes here, and
@@ -137,7 +145,9 @@ let private transformFnName
       { nr with
           resolved =
             Ok
-              { name = PT.FQFnName.TraitMethod(newHash, methodName, implFn)
+              { name =
+                  PT.FQFnName.TraitMethod
+                    { trait_ = newHash; method_ = methodName; implFn = implFn }
                 location = newLoc } }
     | Error _ -> nr
   | _ ->

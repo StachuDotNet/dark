@@ -90,7 +90,7 @@ let private fqFnStr (nr : PT.NameResolution<PT.FQFnName.FQFnName>) : string =
       match r.name with
       | PT.FQFnName.Builtin b -> $"Builtin({b.name},v{b.version})"
       | PT.FQFnName.Package(PT.Hash h) -> $"Pkg({h.Substring(0, 12)}…)"
-      | PT.FQFnName.TraitMethod(PT.Hash t, m, _) ->
+      | PT.FQFnName.TraitMethod { trait_ = PT.Hash t; method_ = m; implFn = _ } ->
         $"Trait({t.Substring(0, 12)}…).{m}"
     $"{orig}=Ok {n} loc=%A{r.location}"
   | Error e -> $"{orig}=Error %A{e}"

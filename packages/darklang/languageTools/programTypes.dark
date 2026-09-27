@@ -457,7 +457,7 @@ module TypeDeclaration =
 
   type TypeDeclaration =
     { typeParams: List<String>
-      /// `type Set<'a: Ord> = ...`
+      /// `type Set<'a: Compare> = ...`
       bounds: List<Bound>
       definition: Definition }
 
@@ -501,7 +501,7 @@ module PackageFn =
       /// Part of the content hash and of the upgrade contract, so changing the
       /// row is a new version that `permissions update` asks about.
       permissionCeiling: Option<List<LanguageTools.Permissions.Effect>>
-      /// `'a: Show + Eq` on the type params; part of the content hash. Checked
+      /// `'a: Show + Equal` on the type params; part of the content hash. Checked
       /// at fn entry by the interpreter and statically by the at-rest checker.
       bounds: List<Bound> }
 

@@ -1,7 +1,7 @@
 module Darklang.Stdlib
 
 // The traits the operators are. `a + b` is `Add.add a b`, and `<` and friends
-// are `Ord`. Every builtin numeric type implements them (next to its own fns:
+// are `Compare`. Every builtin numeric type implements them (next to its own fns:
 // `Stdlib.Int64.Add`), and a type of your own joins by writing an impl:
 //
 //   impl Add for Vec =
@@ -17,38 +17,40 @@ trait Add<'a> =
 
 
 /// `a - b`
-trait Sub<'a> =
+trait Subtract<'a> =
   let subtract (a: 'a) (b: 'a) : 'a
 
 
 /// `a * b`
-trait Mul<'a> =
+trait Multiply<'a> =
   let multiply (a: 'a) (b: 'a) : 'a
 
 
 /// `a / b`
-trait Div<'a> =
+trait Divide<'a> =
   let divide (a: 'a) (b: 'a) : 'a
 
 
 /// `a % b`, wrapped so that `0 <= result < b`
-trait Mod<'a> =
+trait Modulo<'a> =
   let modulo (a: 'a) (b: 'a) : 'a
 
 
 /// `a ** b`
-trait Pow<'a> =
+trait Power<'a> =
   let power (``base``: 'a) (exponent: 'a) : 'a
 
 
 /// `-a`
-trait Neg<'a> =
+trait Negate<'a> =
   let negate (a: 'a) : 'a
 
 
-/// The additive identity, `Zero.zero<Int64> ()`. Dispatched from an explicit
-/// type arg or the caller's bound, since there is no argument to read the type
-/// from; `Stdlib.sum` takes a seed instead so an empty list never has to ask.
+/// The identity for `+`: `Zero.zero<Int64> ()` is `0L`, and `Zero.zero<String> ()` is `""`.
+/// Not only a number's zero, which is why String implements it; a List, a Dict and a Set
+/// each have one too, and they are a follow-up rather than a decision against them.
+/// Dispatched from an explicit type arg or the caller's bound, since there is no argument
+/// to read the type from; `Stdlib.sum` takes a seed instead so an empty list never has to ask.
 trait Zero<'a> =
   let zero () : 'a
 
@@ -68,72 +70,76 @@ trait ToString<'a> =
 /// `a == b` (and `a != b`, which is its negation). Every value compares
 /// structurally unless its type implements this: a record or enum that says
 /// what equal means (compare ids, ignore a cache field) gets its own `==`.
-/// A container asks its elements, so `[ p ] == [ q ]` uses `impl Eq for Point`
+/// A container asks its elements, so `[ p ] == [ q ]` uses `impl Equal for Point`
 /// and agrees with `p == q`. The builtin types are never overridden, and
 /// `List.member`, `List.unique`, `List.sort` and dict keys stay structural
 /// whatever you implement.
-trait Eq<'a> =
+trait Equal<'a> =
   let equals (a: 'a) (b: 'a) : Bool
 
 
 /// `a & b`
-trait BitAnd<'a> =
-  let bitAnd (a: 'a) (b: 'a) : 'a
+trait BitwiseAnd<'a> =
+  let bitwiseAnd (a: 'a) (b: 'a) : 'a
 
 
 /// `a | b`
-trait BitOr<'a> =
-  let bitOr (a: 'a) (b: 'a) : 'a
+trait BitwiseOr<'a> =
+  let bitwiseOr (a: 'a) (b: 'a) : 'a
 
 
 /// `a ^ b`, exclusive or
-trait BitXor<'a> =
-  let bitXor (a: 'a) (b: 'a) : 'a
+trait BitwiseXor<'a> =
+  let bitwiseXor (a: 'a) (b: 'a) : 'a
 
 
 /// `~a`, every bit flipped
-trait BitNot<'a> =
-  let bitNot (a: 'a) : 'a
+trait BitwiseNot<'a> =
+  let bitwiseNot (a: 'a) : 'a
 
 
 /// `a << b`. The shift count is the same type as the value.
-trait Shl<'a> =
+trait ShiftLeft<'a> =
   let shiftLeft (a: 'a) (b: 'a) : 'a
 
 
 /// `a >> b`
-trait Shr<'a> =
+trait ShiftRight<'a> =
   let shiftRight (a: 'a) (b: 'a) : 'a
 
 
 /// `<`, `<=`, `>`, `>=`
-trait Ord<'a> =
+trait Compare<'a> =
   let lessThan (a: 'a) (b: 'a) : Bool
   let lessThanOrEqualTo (a: 'a) (b: 'a) : Bool
   let greaterThan (a: 'a) (b: 'a) : Bool
   let greaterThanOrEqualTo (a: 'a) (b: 'a) : Bool
 
 
-// Written once over `Ord`, for any type with an implementation. `Stdlib.Float.clamp` is a
-// different function under a similar name: it returns a Result and refuses a NaN limit.
+// Written once over `Compare`, for any type with an implementation.
 
-/// The larger of two values of any type with an `Ord` impl
-let max<'a: Ord> (a: 'a) (b: 'a) : 'a = if a > b then a else b
+/// The larger of two values of any type with a `Compare` impl
+let max<'a: Compare> (a: 'a) (b: 'a) : 'a = if a > b then a else b
 
 
-/// The smaller of two values of any type with an `Ord` impl
-let min<'a: Ord> (a: 'a) (b: 'a) : 'a = if a < b then a else b
+/// The smaller of two values of any type with a `Compare` impl
+let min<'a: Compare> (a: 'a) (b: 'a) : 'a = if a < b then a else b
 
 
 /// The distance of <param value> from zero, for any type that can compare, negate and produce a
 /// zero. `Stdlib.Float.absoluteValue` and the per-type integer ones remain, since a fixed-width
 /// minimum has no positive counterpart and each type says so its own way.
-let abs<'a: Ord + Neg + Zero> (value: 'a) : 'a =
+let abs<'a: Compare + Negate + Zero> (value: 'a) : 'a =
   if value < Zero.zero () then -value else value
 
 
-/// <param value> held between the two limits, whichever order they are given in
-let clamp<'a: Ord> (value: 'a) (limitA: 'a) (limitB: 'a) : 'a =
+/// <param value> held between the two limits, whichever order they are given in.
+///
+/// On Floats, a NaN limit compares false against everything, so the value comes back
+/// unclamped rather than pinned to a limit. <fn Float.clampRefusingNaN> refuses that case
+/// with a Result instead; use it when a limit can be NaN and silently not clamping would be
+/// the wrong answer.
+let clamp<'a: Compare> (value: 'a) (limitA: 'a) (limitB: 'a) : 'a =
   let low = if limitA < limitB then limitA else limitB
   let high = if limitA > limitB then limitA else limitB
   if value < low then low
@@ -148,8 +154,8 @@ let sum<'a: Add> (seed: 'a) (xs: List<'a>) : 'a =
   Stdlib.List.fold xs seed (fun acc x -> acc + x)
 
 
-/// <param xs> multiplied together from <param seed>, for any type with a `Mul`
-let product<'a: Mul> (seed: 'a) (xs: List<'a>) : 'a =
+/// <param xs> multiplied together from <param seed>, for any type with a `Multiply`
+let product<'a: Multiply> (seed: 'a) (xs: List<'a>) : 'a =
   Stdlib.List.fold xs seed (fun acc x -> acc * x)
 
 

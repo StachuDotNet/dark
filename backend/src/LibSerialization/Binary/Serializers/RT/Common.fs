@@ -86,7 +86,7 @@ module FQFnName =
     | FQFnName.Package h ->
       w.Write 1uy
       Hash.write w h
-    | FQFnName.TraitMethod(t, m, implFn) ->
+    | FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn } ->
       w.Write 2uy
       Hash.write w t
       String.write w m
@@ -105,7 +105,7 @@ module FQFnName =
       let t = Hash.read r
       let m = String.read r
       let implFn = Option.read r Hash.read
-      FQFnName.TraitMethod(t, m, implFn)
+      FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn }
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 
 

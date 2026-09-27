@@ -34,8 +34,8 @@ let content () : String =
 
 ## Generics
   type Box<'a> = { value: 'a }
-  let first<'a: Stdlib.Ord> (a: 'a) (b: 'a) : 'a = if a < b then a else b
-  # a bound (`'a: Ord`) says what the type must implement; `docs traits`
+  let first<'a: Stdlib.Compare> (a: 'a) (b: 'a) : 'a = if a < b then a else b
+  # a bound (`'a: Compare`) says what the type must implement; `docs traits`
 
 ## Traits
   impl ToString for Person =

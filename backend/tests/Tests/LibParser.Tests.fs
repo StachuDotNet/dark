@@ -1925,20 +1925,21 @@ let private traitTests =
 
       testCase "parses bounds with + on fns and types" (fun _ ->
         match
-          parseDecls "let f<'a: Show + Eq, 'b: Ord> (x: 'a) (y: 'b) : String = \"\""
+          parseDecls
+            "let f<'a: Show + Equal, 'b: Compare> (x: 'a) (y: 'b) : String = \"\""
         with
         | [ WT.DFunction f ] ->
           Expect.equal (f.typeParams |> List.map fst) [ "a"; "b" ] "type params"
           Expect.equal
             (f.bounds |> List.map (fun b -> b.param, b.trait_.typ.name))
-            [ "a", "Show"; "a", "Eq"; "b", "Ord" ]
+            [ "a", "Show"; "a", "Equal"; "b", "Compare" ]
             "bounds in order"
         | other -> failtest $"bounded fn: {other}"
-        match parseDecls "type Set<'a: Ord> = List<'a>" with
+        match parseDecls "type Set<'a: Compare> = List<'a>" with
         | [ WT.DType t ] ->
           Expect.equal
             (t.bounds |> List.map (fun b -> b.param, b.trait_.typ.name))
-            [ "a", "Ord" ]
+            [ "a", "Compare" ]
             "type bound"
         | other -> failtest $"bounded type: {other}")
 

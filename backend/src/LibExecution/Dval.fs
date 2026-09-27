@@ -275,7 +275,7 @@ let dlistToByteArray (dvalList : List<Dval>) : byte[] =
 /// Structural equality. Walks two Dvals in parallel and returns
 /// true iff every reachable leaf compares equal.
 ///
-/// This is the answer for a value that implements no `Eq` and holds
+/// This is the answer for a value that implements no `Equal` and holds
 /// nothing that does. `==` reaches it through
 /// `Interpreter.deepEqualsTop`, which consults the implementation of
 /// every type inside the value first and comes here when there is

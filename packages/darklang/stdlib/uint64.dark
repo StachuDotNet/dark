@@ -157,27 +157,27 @@ impl Add for UInt64 =
   let add = Stdlib.UInt64.add
 
 
-impl Sub for UInt64 =
+impl Subtract for UInt64 =
   let subtract = Stdlib.UInt64.subtract
 
 
-impl Mul for UInt64 =
+impl Multiply for UInt64 =
   let multiply = Stdlib.UInt64.multiply
 
 
-impl Div for UInt64 =
+impl Divide for UInt64 =
   let divide = Stdlib.UInt64.divide
 
 
-impl Mod for UInt64 =
+impl Modulo for UInt64 =
   let modulo = Stdlib.UInt64.``mod``
 
 
-impl Pow for UInt64 =
+impl Power for UInt64 =
   let power = Stdlib.UInt64.power
 
 
-impl Ord for UInt64 =
+impl Compare for UInt64 =
   let lessThan = Stdlib.UInt64.lessThan
   let lessThanOrEqualTo = Stdlib.UInt64.lessThanOrEqualTo
   let greaterThan = Stdlib.UInt64.greaterThan
@@ -196,25 +196,25 @@ impl One for UInt64 =
   let one () : UInt64 = 1UL
 
 
-impl BitAnd for UInt64 =
-  let bitAnd = Stdlib.UInt64.bitwiseAnd
+impl BitwiseAnd for UInt64 =
+  let bitwiseAnd = Stdlib.UInt64.bitwiseAnd
 
 
-impl BitOr for UInt64 =
-  let bitOr = Stdlib.UInt64.bitwiseOr
+impl BitwiseOr for UInt64 =
+  let bitwiseOr = Stdlib.UInt64.bitwiseOr
 
 
-impl BitXor for UInt64 =
-  let bitXor = Stdlib.UInt64.bitwiseXor
+impl BitwiseXor for UInt64 =
+  let bitwiseXor = Stdlib.UInt64.bitwiseXor
 
 
-impl BitNot for UInt64 =
-  let bitNot = Stdlib.UInt64.bitwiseNot
+impl BitwiseNot for UInt64 =
+  let bitwiseNot = Stdlib.UInt64.bitwiseNot
 
 
-impl Shl for UInt64 =
+impl ShiftLeft for UInt64 =
   let shiftLeft = Stdlib.UInt64.shiftLeft
 
 
-impl Shr for UInt64 =
+impl ShiftRight for UInt64 =
   let shiftRight = Stdlib.UInt64.shiftRight

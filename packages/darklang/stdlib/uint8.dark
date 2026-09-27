@@ -156,27 +156,27 @@ impl Add for UInt8 =
   let add = Stdlib.UInt8.add
 
 
-impl Sub for UInt8 =
+impl Subtract for UInt8 =
   let subtract = Stdlib.UInt8.subtract
 
 
-impl Mul for UInt8 =
+impl Multiply for UInt8 =
   let multiply = Stdlib.UInt8.multiply
 
 
-impl Div for UInt8 =
+impl Divide for UInt8 =
   let divide = Stdlib.UInt8.divide
 
 
-impl Mod for UInt8 =
+impl Modulo for UInt8 =
   let modulo = Stdlib.UInt8.``mod``
 
 
-impl Pow for UInt8 =
+impl Power for UInt8 =
   let power = Stdlib.UInt8.power
 
 
-impl Ord for UInt8 =
+impl Compare for UInt8 =
   let lessThan = Stdlib.UInt8.lessThan
   let lessThanOrEqualTo = Stdlib.UInt8.lessThanOrEqualTo
   let greaterThan = Stdlib.UInt8.greaterThan
@@ -195,25 +195,25 @@ impl One for UInt8 =
   let one () : UInt8 = 1uy
 
 
-impl BitAnd for UInt8 =
-  let bitAnd = Stdlib.UInt8.bitwiseAnd
+impl BitwiseAnd for UInt8 =
+  let bitwiseAnd = Stdlib.UInt8.bitwiseAnd
 
 
-impl BitOr for UInt8 =
-  let bitOr = Stdlib.UInt8.bitwiseOr
+impl BitwiseOr for UInt8 =
+  let bitwiseOr = Stdlib.UInt8.bitwiseOr
 
 
-impl BitXor for UInt8 =
-  let bitXor = Stdlib.UInt8.bitwiseXor
+impl BitwiseXor for UInt8 =
+  let bitwiseXor = Stdlib.UInt8.bitwiseXor
 
 
-impl BitNot for UInt8 =
-  let bitNot = Stdlib.UInt8.bitwiseNot
+impl BitwiseNot for UInt8 =
+  let bitwiseNot = Stdlib.UInt8.bitwiseNot
 
 
-impl Shl for UInt8 =
+impl ShiftLeft for UInt8 =
   let shiftLeft = Stdlib.UInt8.shiftLeft
 
 
-impl Shr for UInt8 =
+impl ShiftRight for UInt8 =
   let shiftRight = Stdlib.UInt8.shiftRight

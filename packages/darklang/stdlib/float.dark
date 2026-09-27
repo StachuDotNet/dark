@@ -101,13 +101,17 @@ let lessThanOrEqualTo (a: Float) (b: Float) : Bool =
 /// limitB>, whichever is closer to <param value>.
 /// Returns <param value> wrapped in a {{Result}}.
 /// <param limitA> and <param limitB> can be provided in any order.
-let clamp
+///
+/// The difference from <fn clamp>, which works on any type that compares: this one refuses a
+/// NaN limit rather than answering. The generic cannot, since NaN is a Float's business and
+/// NaN compares false against everything, so there it comes back unclamped.
+let clampRefusingNaN
   (value: Float)
   (limitA: Float)
   (limitB: Float)
   : Stdlib.Result.Result<Float, String> =
   if Stdlib.Float.isNaN limitA || Stdlib.Float.isNaN limitB then
-    Stdlib.Result.Result.Error "clamp requires arguments to be valid numbers"
+    Stdlib.Result.Result.Error "clampRefusingNaN requires limits that are numbers"
   else
     let (lower, upper) =
       if Stdlib.Float.lessThan limitA limitB then
@@ -152,31 +156,31 @@ impl Add for Float =
   let add = Stdlib.Float.add
 
 
-impl Sub for Float =
+impl Subtract for Float =
   let subtract = Stdlib.Float.subtract
 
 
-impl Mul for Float =
+impl Multiply for Float =
   let multiply = Stdlib.Float.multiply
 
 
-impl Div for Float =
+impl Divide for Float =
   let divide = Stdlib.Float.divide
 
 
-impl Mod for Float =
+impl Modulo for Float =
   let modulo = Stdlib.Float.``mod``
 
 
-impl Pow for Float =
+impl Power for Float =
   let power = Stdlib.Float.power
 
 
-impl Neg for Float =
+impl Negate for Float =
   let negate = Stdlib.Float.negate
 
 
-impl Ord for Float =
+impl Compare for Float =
   let lessThan = Stdlib.Float.lessThan
   let lessThanOrEqualTo = Stdlib.Float.lessThanOrEqualTo
   let greaterThan = Stdlib.Float.greaterThan

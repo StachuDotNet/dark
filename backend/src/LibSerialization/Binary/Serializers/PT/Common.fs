@@ -211,7 +211,7 @@ module FQFnName =
     | FQFnName.Package p ->
       w.Write(1uy)
       Package.write w p
-    | FQFnName.TraitMethod(t, m, implFn) ->
+    | FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn } ->
       // v2 only; a v1 blob never carries this tag. The implementation the save chose rides
       // along as an option: v3 and later.
       w.Write(2uy)
@@ -241,7 +241,7 @@ module FQFnName =
             { name = name; location = location })
         else
           None
-      FQFnName.TraitMethod(t, m, implFn)
+      FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn }
     | b -> raiseFormatError $"Invalid FQFnName tag: {b}"
 
 

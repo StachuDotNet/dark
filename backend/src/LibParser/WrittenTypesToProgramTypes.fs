@@ -539,7 +539,7 @@ module Expr =
       | WT.EFnName(_, q) ->
         let id = gid ()
         let name = qualifiedFnName q
-        // A bare qualified name like `Mod.Sub.foo` could be a package value or a
+        // A bare qualified name like `Mod.Subtract.foo` could be a package value or a
         // function. The parser uses a fn-name node so it can preserve module
         // ranges, but non-applied references still resolve value-first. Operator
         // `KnownBuiltin` names are always functions,

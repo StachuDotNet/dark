@@ -129,29 +129,32 @@ module FQFnName =
   /// The hash of a function in the package manager
   type Package = Hash
 
+  /// A trait method, named by the trait and the method: `Show.show`.
+  ///
+  /// `implFn` is the fn the chosen implementation names for this method, recorded when the
+  /// item was SAVED. Stored code means one thing forever: an implementation that arrives
+  /// later does not change what this call runs; it arrives as an ordinary update, through
+  /// propagation, like any other fn this item calls.
+  ///
+  /// It carries its location like every other reference, so a rename moves it and the
+  /// dependency edge it produces reads like any other.
+  ///
+  /// The fn, not the `TraitImpl` item: it is what runs and what traces record, and editing the
+  /// implementation's OTHER method then leaves this call alone.
+  ///
+  /// `None` where the implementation is not knowable at save time: inside
+  /// `let display<'a: Show> (v: 'a) = Show.show v` it depends on the caller's type argument,
+  /// so the lookup stays at run time. See `TraitMethod` in RuntimeTypes for that order.
+  type TraitMethod =
+    { trait_ : FQTraitName.Package
+      method_ : string
+      implFn : Option<ResolvedName<Package>> }
+
+
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
-    /// A trait method, named by the trait and the method: `Show.show`.
-    ///
-    /// `implFn` is the fn the chosen implementation names for this method, recorded when the
-    /// item was SAVED. Stored code means one thing forever: an implementation that arrives
-    /// later does not change what this call runs; it arrives as an ordinary update, through
-    /// propagation, like any other fn this item calls.
-    ///
-    /// It carries its location like every other reference, so a rename moves it and the
-    /// dependency edge it produces reads like any other.
-    ///
-    /// The fn, not the `TraitImpl` item: it is what runs and what traces record, and editing the
-    /// implementation's OTHER method then leaves this call alone.
-    ///
-    /// `None` where the implementation is not knowable at save time: inside
-    /// `let display<'a: Show> (v: 'a) = Show.show v` it depends on the caller's type argument,
-    /// so the lookup stays at run time. See `TraitMethod` in RuntimeTypes for that order.
-    | TraitMethod of
-      trait_ : FQTraitName.Package *
-      method_ : string *
-      implFn : Option<ResolvedName<Package>>
+    | TraitMethod of TraitMethod
 
   let assertFnName (name : string) : unit =
     assertRe $"Fn name must match" fnNamePattern name
@@ -677,7 +680,7 @@ module TypeDeclaration =
   type T =
     {
       typeParams : List<string>
-      /// `type Set<'a: Ord> = ...`. Stored from the start so the format does not
+      /// `type Set<'a: Compare> = ...`. Stored from the start so the format does not
       /// move twice; the checker reads it (the runtime does not, for types).
       bounds : List<Bound>
       definition : Definition
@@ -745,7 +748,7 @@ module PackageFn =
       /// row is a new version that `permissions update` asks about.
       permissionCeiling : Option<Set<Effects.Effect>>
 
-      /// `'a: Show + Eq` on the declaration's type params. Part of the content
+      /// `'a: Show + Equal` on the declaration's type params. Part of the content
       /// hash: a bound is a contract on the caller. Checked eagerly at fn entry by
       /// the interpreter (like every other declared parameter type) and statically
       /// by the at-rest checker.
@@ -774,7 +777,7 @@ module Trait =
       /// The first is the self type; the rest are the trait's other params
       /// (`Convert<'a, 'b>`).
       typeParams : NEList<string>
-      /// `trait Ord<'a: Eq> = ...`: supertraits, as bounds on the params.
+      /// `trait Compare<'a: Equal> = ...`: supertraits, as bounds on the params.
       bounds : List<Bound>
       methods : NEList<Method>
       description : string

@@ -5,7 +5,7 @@ let content () : String =
 
 A trait names one or more fns over one open type. An implementation says how one
 type does them. A call picks the implementation by the type of the value it is
-given. Every operator is a trait (`+` is `Add`, `<` is `Ord`, `==` is `Eq`), as
+given. Every operator is a trait (`+` is `Add`, `<` is `Compare`, `==` is `Equal`), as
 is `toString`, so every builtin type already has implementations; yours join
 with one `impl`.
 
@@ -46,7 +46,7 @@ with one `impl`.
 
 ## Bound a type parameter
   let describe<'a: ToString> (v: 'a) : String = "value: " + v.toString
-  let biggest<'a: Ord + ToString> (xs: List<'a>) : String = ...
+  let biggest<'a: Compare + ToString> (xs: List<'a>) : String = ...
 
   `'a: ToString` means "any type with a ToString implementation". It is checked
   when the fn is entered, against the caller's actual type, and statically by
@@ -73,25 +73,25 @@ with one `impl`.
   `Stdlib.<name>`; write the full path when two traits share a name.
 
 ## The stdlib traits
-  Add Sub Mul Div Mod Pow Neg    the operators `+ - * / % **` and `-x`
-  BitAnd BitOr BitXor BitNot     `& | ^` and `~x`
-  Shl Shr                        `<<` and `>>`
-  Ord                            `< <= > >=`; also `Stdlib.max`, `min`, `clamp`
-  Eq                             `==` and `!=`; structural unless implemented
+  Add Subtract Multiply Divide Modulo Power Negate    the operators `+ - * / % **` and `-x`
+  BitwiseAnd BitwiseOr BitwiseXor BitwiseNot     `& | ^` and `~x`
+  ShiftLeft ShiftRight                        `<<` and `>>`
+  Compare                            `< <= > >=`; also `Stdlib.max`, `min`, `clamp`
+  Equal                             `==` and `!=`; structural unless implemented
   ToString                       `x.toString`, `Stdlib.toString x`
   Zero, One                      `Zero.zero<Int64> ()`; `Stdlib.sum seed xs` and
                                  `product seed xs` take a seed, so summing an
                                  empty list has an answer
 
   Every builtin numeric type implements the arithmetic, comparison and bitwise
-  operators; String implements Add (`"a" + "b"`) and Ord, so `"a" < "b"` works;
-  Char and DateTime implement Ord too.
+  operators; String implements Add (`"a" + "b"`) and Compare, so `"a" < "b"` works;
+  Char and DateTime implement Compare too.
 
   Two things worth knowing. An implementation of your own for a builtin numeric
   type -- `impl Add for Int64` -- is stored and never called: two operands of one
   builtin numeric type are added directly. And `==` compares every value
-  structurally unless its type implements `Eq`, which no builtin type does. A
-  container asks its elements, so `[ p ] == [ q ]` runs `impl Eq for Point`;
+  structurally unless its type implements `Equal`, which no builtin type does. A
+  container asks its elements, so `[ p ] == [ q ]` runs `impl Equal for Point`;
   `List.member`, `List.unique`, `List.sort` and dict keys do not, and stay
   structural whatever you implement. `docs operators` has the operator table.
 

@@ -560,40 +560,40 @@ module Trait =
     /// The traits the operators lower to (`NumericTraits.fs`, `FastOps.traitTag`).
     module Traits =
       let add = p [] "Add"
-      let sub = p [] "Sub"
-      let mul = p [] "Mul"
-      let div = p [] "Div"
-      let mod' = p [] "Mod"
-      let pow = p [] "Pow"
-      let neg = p [] "Neg"
-      let ord = p [] "Ord"
-      let eq = p [] "Eq"
-      let bitAnd = p [] "BitAnd"
-      let bitOr = p [] "BitOr"
-      let bitXor = p [] "BitXor"
-      let bitNot = p [] "BitNot"
-      let shl = p [] "Shl"
-      let shr = p [] "Shr"
+      let subtract = p [] "Subtract"
+      let multiply = p [] "Multiply"
+      let divide = p [] "Divide"
+      let modulo = p [] "Modulo"
+      let power = p [] "Power"
+      let negate = p [] "Negate"
+      let compare = p [] "Compare"
+      let equal = p [] "Equal"
+      let bitwiseAnd = p [] "BitwiseAnd"
+      let bitwiseOr = p [] "BitwiseOr"
+      let bitwiseXor = p [] "BitwiseXor"
+      let bitwiseNot = p [] "BitwiseNot"
+      let shiftLeft = p [] "ShiftLeft"
+      let shiftRight = p [] "ShiftRight"
       // Not an operator, but in the same set for the same reason: `x.toString` is a method call
       // nothing names, and the checker needs the trait in hand to say "this type needs a
       // ToString implementation" rather than "no such field".
       let toString = p [] "ToString"
       let all () =
         [ add ()
-          sub ()
-          mul ()
-          div ()
-          mod' ()
-          pow ()
-          neg ()
-          ord ()
-          eq ()
-          bitAnd ()
-          bitOr ()
-          bitXor ()
-          bitNot ()
-          shl ()
-          shr ()
+          subtract ()
+          multiply ()
+          divide ()
+          modulo ()
+          power ()
+          negate ()
+          compare ()
+          equal ()
+          bitwiseAnd ()
+          bitwiseOr ()
+          bitwiseXor ()
+          bitwiseNot ()
+          shiftLeft ()
+          shiftRight ()
           toString () ]
 
 

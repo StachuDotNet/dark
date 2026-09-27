@@ -305,7 +305,10 @@ let private resolveTraitMethod
                       { name =
                           // The parser has no types, so which implementation runs is decided
                           // when the item is saved (`resolveTraitCalls`).
-                          PT.FQFnName.TraitMethod(traitHash, methodName, None)
+                          PT.FQFnName.TraitMethod
+                            { trait_ = traitHash
+                              method_ = methodName
+                              implFn = None }
                         location = loc } }
           | _ -> return None
   }

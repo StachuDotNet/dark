@@ -606,7 +606,7 @@ let expectGt (state : ParserState) (j : int) : TokenRange * int =
 // one `>` pending for the enclosing generic.
 // declaration type parameters `<'a, 'b>` — collect the (tick-stripped) names
 // so generic types/fns keep their params (needed for runtime type unification).
-/// `<'a, 'b: Show + Eq>`: the declared type params, and each `: Trait [+ Trait]`
+/// `<'a, 'b: Show + Equal>`: the declared type params, and each `: Trait [+ Trait]`
 /// bound as its own entry. `parseBoundTrait` is passed in because the type
 /// parser is defined later in the file (mutual recursion via a parameter rather
 /// than a `rec` group spanning half the parser).
@@ -649,7 +649,7 @@ let parseTypeParamsWith
         names.Add(name, rng state k)
         expectingName <- false
         k <- k + 1
-        // `'a: Show + Eq`: each trait after the colon is one bound on this param.
+        // `'a: Show + Equal`: each trait after the colon is one bound on this param.
         if tok state k = TColon then
           let colon = rng state k
           k <- k + 1

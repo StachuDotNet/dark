@@ -1193,10 +1193,10 @@ let private tryFastOpOn
 
 
 /// The hash the selection memo holds for "no implementation, use the structural
-/// fallback": only `Eq.equals` ever stores it.
+/// fallback": only `Equal.equals` ever stores it.
 let private structuralEqualsSentinel : FQFnName.Package = Hash ""
 
-/// `Eq.equals` for a type with no implementation, and for every builtin type: what
+/// `Equal.equals` for a type with no implementation, and for every builtin type: what
 /// the `equals` builtin does, incompatible types included.
 let private structuralEquals (threadID : ThreadID) (a : Dval) (b : Dval) : Dval =
   let (vtA, vtB) = (Dval.toValueType a, Dval.toValueType b)
@@ -1222,7 +1222,7 @@ and private vtCarriesCustom (vt : ValueType) : bool =
   | ValueType.Unknown -> true
   | ValueType.Known kt -> ktCarriesCustom kt
 
-/// Could comparing this value have to consult an `Eq` implementation? Only a record or an
+/// Could comparing this value have to consult an `Equal` implementation? Only a record or an
 /// enum can have one, so this asks whether the value is one or contains one.
 ///
 /// Answered from the container's element TYPE where it has one, so `==` on a `List<Int64>`
@@ -1263,11 +1263,13 @@ let private tryFastOpDirect
     // `a + b` on two values of one builtin numeric type: the impl the dispatch would pick
     // is the type's own wrapper over the same F# operator, so answer it here. An `Int` pair
     // takes the `Int` table; the rest take `evalNumeric`.
-    | FQFnName.TraitMethod(Hash traitHash, methodName, _) ->
+    | FQFnName.TraitMethod { trait_ = Hash traitHash
+                             method_ = methodName
+                             implFn = _ } ->
       match argRegs.tail with
       | [ secondReg ] when FastOps.isEquals traitHash methodName ->
         // A builtin type's equality is not overridable; only a record or an enum
-        // can carry an `Eq` implementation. A container of them has to ask each
+        // can carry an `Equal` implementation. A container of them has to ask each
         // element, so it declines too; everything else is answered here.
         let a = registers[argRegs.head]
         if needsEqDispatch a then
@@ -2242,7 +2244,7 @@ let private resolveTraitMethod
           RTE.Trait(RTE.Traits.NoSuchMethod(traitName, methodName))
           |> raiseRTE vm.threadID
     | Traits.NoImpl when structuralFallback ->
-      // `==` on a type with no `Eq`: structural, and remembered as such.
+      // `==` on a type with no `Equal`: structural, and remembered as such.
       exeState.fns.implSelectionMemo[struct (exeState.branchId,
                                              traitHash,
                                              methodName,
@@ -2265,7 +2267,7 @@ let private resolveTraitMethod
         |> raiseRTE vm.threadID
   }
 
-/// The `Eq` implementation for a type, or None for the structural answer.
+/// The `Equal` implementation for a type, or None for the structural answer.
 ///
 /// Shares `implSelectionMemo` with `resolveTraitMethod`, including the sentinel it stores for
 /// "no implementation", so the second comparison of a type costs one dictionary probe. Unlike
@@ -2276,9 +2278,9 @@ let private eqImplFor
   (vm : VMState)
   (self : KnownType)
   : Ply<Option<FQFnName.Package>> =
-  let hash = PackageRefs.Trait.Stdlib.Traits.eq ()
+  let hash = PackageRefs.Trait.Stdlib.Traits.equal ()
   if hash = "" then
-    // No `Eq` in this tree's refs, which is the pre-reload bootstrap path: structural.
+    // No `Equal` in this tree's refs, which is the pre-reload bootstrap path: structural.
     Ply None
   else
     let traitHash : FQTypeName.Package = Hash hash
@@ -2320,10 +2322,10 @@ let private eqImplFor
             |> raiseRTE vm.threadID
       }
 
-/// Is there an `Eq` implementation anywhere inside this value? `ValueNone` means the memo could
+/// Is there an `Equal` implementation anywhere inside this value? `ValueNone` means the memo could
 /// not say without asking the store, so the caller has to take the walk below and find out.
 ///
-/// This is what keeps `==` on a record costing what it cost before implementations existed. `Eq`
+/// This is what keeps `==` on a record costing what it cost before implementations existed. `Equal`
 /// has no stdlib implementations at all and most programs have none of their own, so the honest
 /// answer for nearly every comparison is "no", and a "no" is answered by `Dval.equals` in one
 /// synchronous call with no `Ply` and nothing allocated. The first comparison of a type pays the
@@ -2390,10 +2392,10 @@ let rec private anyEqImplSync
     | DTuple(a, b, rest) -> children (a :: b :: rest)
     | _ -> ValueSome false
 
-/// `==` on a value with no `Eq` implementation of its own: structural, and consulting the
+/// `==` on a value with no `Equal` implementation of its own: structural, and consulting the
 /// implementation of every type found on the way down.
 ///
-/// A list of a type that implements `Eq` compares element by element BY that implementation,
+/// A list of a type that implements `Equal` compares element by element BY that implementation,
 /// and so does a record field, a dict value and a tuple slot. The alternative was to compare
 /// containers structurally whatever their elements implement, which lets `p == q` and
 /// `[ p ] == [ q ]` disagree.
@@ -2435,7 +2437,7 @@ let rec private deepEquals
           with
           | Ok(DBool r) -> return r
           | Ok other ->
-            // The checker holds an `Eq` method to `Bool`, so a non-Bool here means a store
+            // The checker holds an `Equal` method to `Bool`, so a non-Bool here means a store
             // written by something that was not the checker.
             return
               RTE.EqualityCheckOnIncompatibleTypes(
@@ -2567,7 +2569,7 @@ let private deepEqualsTop
   match ValueType.merge vtA vtB with
   | Error _ -> RTE.EqualityCheckOnIncompatibleTypes(vtA, vtB) |> raiseRTE vm.threadID
   | Ok _ ->
-    let hash = PackageRefs.Trait.Stdlib.Traits.eq ()
+    let hash = PackageRefs.Trait.Stdlib.Traits.equal ()
     let generation = exeState.fns.implGeneration ()
     let selfType =
       match Dval.toValueType a with
@@ -2859,7 +2861,7 @@ let private applyInstruction
       // The save chose an implementation and stored the fn it named, so there is nothing to
       // pick: call it exactly as a direct call would. This is the ordinary case for a call
       // whose self type was known when it was written, which is nearly all of them.
-      | FQFnName.TraitMethod(_, _, Some implFn) ->
+      | FQFnName.TraitMethod { trait_ = _; method_ = _; implFn = Some implFn } ->
         let implCtx =
           { ctx with
               // The type args named the TRAIT's params (the self type first); the impl fn
@@ -2886,7 +2888,9 @@ let private applyInstruction
         | ValueSome(PushFrame frame) -> vm.frameToPush <- ValueSome frame
         | ValueNone -> outcome <- AwaitPackage(call, putResultIn)
 
-      | FQFnName.TraitMethod(traitHash, methodName, None) ->
+      | FQFnName.TraitMethod { trait_ = traitHash
+                               method_ = methodName
+                               implFn = None } ->
         // Pick the impl, then call its fn exactly as a direct call would: the impl
         // fn is what runs, what traces record, and what carries the ceiling.
         //
@@ -3008,7 +3012,7 @@ let private applyInstruction
                 return Completed dv
               }
           | argsSoFar, rest ->
-            // One argument so far, so this is `Eq.equals x` waiting for the second: hand back the
+            // One argument so far, so this is `Equal.equals x` waiting for the second: hand back the
             // partial application, as any two-parameter fn would. Over-applied (three arguments or
             // more) raises, also as any fn would.
             let all = argsSoFar @ (rest |> List.map (fun r -> registers[r]))

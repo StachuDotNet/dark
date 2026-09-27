@@ -900,7 +900,8 @@ let private checkValuesInDependencyOrder
 /// Check a closed package batch against a base environment. Types and function
 /// signatures are predeclared, making declaration order irrelevant. Values are
 /// inferred in dependency order; recursive value groups remain `Incomplete`.
-let checkPackageBatch
+let checkPackageBatchWhere
+  (shouldCheckBody : PackageFn.PackageFn -> bool)
   (baseEnvironment : TypeEnvironment)
   (types : List<PackageType.PackageType>)
   (values : List<PackageValue.PackageValue>)
@@ -922,8 +923,12 @@ let checkPackageBatch
         verdict = validateTrait declaredEnvironment t })
   let environment, valueResults =
     checkValuesInDependencyOrder declaredEnvironment values
+  // Every fn is DECLARED above whatever happens here, so nothing loses a signature; this only
+  // decides whose body is inferred. A caller that wants an answer about one item (the save-time
+  // pass wants the trait calls in it) pays for that item rather than for the tree.
   let functionResults =
     functions
+    |> List.filter shouldCheckBody
     |> List.map (fun fn ->
       { item = Reference.PackageFn fn.hash
         verdict = checkPackageFunction environment fn })
@@ -938,3 +943,21 @@ let checkPackageBatch
     functions = functionResults
     traits = traitResults
     impls = implResults }
+
+/// Check a closed package batch: every fn body included.
+let checkPackageBatch
+  (baseEnvironment : TypeEnvironment)
+  (types : List<PackageType.PackageType>)
+  (values : List<PackageValue.PackageValue>)
+  (functions : List<PackageFn.PackageFn>)
+  (traits : List<Trait.Trait>)
+  (impls : List<TraitImpl.TraitImpl>)
+  : BatchResult =
+  checkPackageBatchWhere
+    (fun _ -> true)
+    baseEnvironment
+    types
+    values
+    functions
+    traits
+    impls

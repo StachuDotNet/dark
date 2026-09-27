@@ -201,7 +201,7 @@ let help (_state: Cli.AppState) : String =
     "  marked `not used` has a newer implementation for that type running instead."
     ""
     "  A bare name is looked for in the current module, then under Stdlib, so"
-    "  `dark impls Ord` finds the operator trait from anywhere."
+    "  `dark impls Compare` finds the operator trait from anywhere."
     ""
     "Options:"
     "  --json    one object: trait, methods, and implementations with a status of"

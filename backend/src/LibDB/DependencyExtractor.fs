@@ -238,7 +238,10 @@ let private extract (roots : List<Work>) : List<Dependency> =
         // `Show.show` depends on the trait: editing the trait repoints every
         // caller, which is what makes a changed method signature visible.
         match nr.resolved with
-        | Ok { name = PT.FQFnName.TraitMethod(traitHash, _, implFn); location = loc } ->
+        | Ok { name = PT.FQFnName.TraitMethod { trait_ = traitHash
+                                                method_ = _
+                                                implFn = implFn }
+               location = loc } ->
           dependencies <-
             { hash = traitHash; itemKind = PT.ItemKind.Trait; location = loc }
             :: dependencies

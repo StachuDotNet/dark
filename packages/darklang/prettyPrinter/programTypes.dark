@@ -1376,7 +1376,7 @@ let db
 
 
 
-/// `<'a: Show + Eq, 'b>`: each type param followed by its bounds, if any.
+/// `<'a: Show + Equal, 'b>`: each type param followed by its bounds, if any.
 let typeParamsWithBounds
   (ctx: Context)
   (typeParams: List<String>)

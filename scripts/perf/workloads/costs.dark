@@ -25,12 +25,12 @@ let resFn (i: Int) : Stdlib.Result.Result<Int, String> = Stdlib.Result.Result.Ok
 let listFn (i: Int) : List<Int> = [ i ]
 let enumFn (i: Int) : Enum = Enum.One i
 
-// For the equality rows. `Tagged` carries an `Eq` implementation and `Plain` does not, so the
+// For the equality rows. `Tagged` carries an `Equal` implementation and `Plain` does not, so the
 // pair of rows says what consulting an implementation costs over the structural walk.
 type Plain = { n: Int }
 type Tagged = { id: Int; note: String }
 
-impl Stdlib.Eq for Tagged =
+impl Stdlib.Equal for Tagged =
   let equals (a: Tagged) (b: Tagged) : Bool = a.id == b.id
 
 // Built once, not per iteration: the rows are measuring the comparison, not the construction.
@@ -141,10 +141,10 @@ let main () : Int64 =
   measure "Int == Int" (fun i -> if i == 5 then 1 else 0)
   measure "String == String" (fun i -> if "hello" == "hellp" then 1 else 0)
   measure "5-list of Int ==" (fun i -> if intsL == intsR then 1 else 0)
-  measure "record, no Eq impl ==" (fun i -> if plainL == plainR then 1 else 0)
-  measure "record with an Eq impl ==" (fun i -> if taggedL == taggedR then 1 else 0)
-  measure "5-list of records, no Eq ==" (fun i -> if plainsL == plainsR then 1 else 0)
-  measure "5-list of records with Eq ==" (fun i -> if taggedsL == taggedsR then 1 else 0)
+  measure "record, no Equal impl ==" (fun i -> if plainL == plainR then 1 else 0)
+  measure "record with an Equal impl ==" (fun i -> if taggedL == taggedR then 1 else 0)
+  measure "5-list of records, no Equal ==" (fun i -> if plainsL == plainsR then 1 else 0)
+  measure "5-list of records with Equal ==" (fun i -> if taggedsL == taggedsR then 1 else 0)
 
   Builtin.debug "--- control flow" 0L
   measure "if/else" (fun i -> if i > 1000 then 1 else 0)

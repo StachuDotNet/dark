@@ -44,19 +44,19 @@ let listMember = 16
 let dictSetStrict = 17
 let strIsEmpty = 18
 let listIsEmpty = 19
-/// `Mul.multiply`; only reached as a trait method.
+/// `Multiply.multiply`; only reached as a trait method.
 let multiply = 20
-/// `Neg.negate`, one argument; `evalNegate` handles it.
+/// `Negate.negate`, one argument; `evalNegate` handles it.
 let negate = 21
 /// The bitwise operators. They have no arms in `eval`, `evalNumeric` or `evalNegate`, which
 /// decline them, so a bitwise call dispatches like any other trait method. They are in the
 /// TABLE because that is what tells the interpreter an operator is an operator: it is how
 /// `1L & 2y` says "Cannot perform numeric operation on Int64 and Int8" rather than
 /// failing inside the implementation's parameter check.
-let bitAnd = 22
-let bitOr = 23
-let bitXor = 24
-let bitNot = 25
+let bitwiseAnd = 22
+let bitwiseOr = 23
+let bitwiseXor = 24
+let bitwiseNot = 25
 let shiftLeft = 26
 let shiftRight = 27
 
@@ -519,24 +519,24 @@ let traitTag (traitHash : string) (methodName : string) : int voption =
       let put (hash : string) (methodName : string) (tag : int) =
         if hash <> "" then fresh[struct (hash, methodName)] <- tag
       put (PackageRefs.Trait.Stdlib.Traits.add ()) "add" add
-      put (PackageRefs.Trait.Stdlib.Traits.sub ()) "subtract" subtract
-      put (PackageRefs.Trait.Stdlib.Traits.mul ()) "multiply" multiply
-      put (PackageRefs.Trait.Stdlib.Traits.neg ()) "negate" negate
-      put (PackageRefs.Trait.Stdlib.Traits.eq ()) "equals" equals
-      put (PackageRefs.Trait.Stdlib.Traits.bitAnd ()) "bitAnd" bitAnd
-      put (PackageRefs.Trait.Stdlib.Traits.bitOr ()) "bitOr" bitOr
-      put (PackageRefs.Trait.Stdlib.Traits.bitXor ()) "bitXor" bitXor
-      put (PackageRefs.Trait.Stdlib.Traits.bitNot ()) "bitNot" bitNot
-      put (PackageRefs.Trait.Stdlib.Traits.shl ()) "shiftLeft" shiftLeft
-      put (PackageRefs.Trait.Stdlib.Traits.shr ()) "shiftRight" shiftRight
-      put (PackageRefs.Trait.Stdlib.Traits.ord ()) "lessThan" lessThan
+      put (PackageRefs.Trait.Stdlib.Traits.subtract ()) "subtract" subtract
+      put (PackageRefs.Trait.Stdlib.Traits.multiply ()) "multiply" multiply
+      put (PackageRefs.Trait.Stdlib.Traits.negate ()) "negate" negate
+      put (PackageRefs.Trait.Stdlib.Traits.equal ()) "equals" equals
+      put (PackageRefs.Trait.Stdlib.Traits.bitwiseAnd ()) "bitwiseAnd" bitwiseAnd
+      put (PackageRefs.Trait.Stdlib.Traits.bitwiseOr ()) "bitwiseOr" bitwiseOr
+      put (PackageRefs.Trait.Stdlib.Traits.bitwiseXor ()) "bitwiseXor" bitwiseXor
+      put (PackageRefs.Trait.Stdlib.Traits.bitwiseNot ()) "bitwiseNot" bitwiseNot
+      put (PackageRefs.Trait.Stdlib.Traits.shiftLeft ()) "shiftLeft" shiftLeft
+      put (PackageRefs.Trait.Stdlib.Traits.shiftRight ()) "shiftRight" shiftRight
+      put (PackageRefs.Trait.Stdlib.Traits.compare ()) "lessThan" lessThan
       put
-        (PackageRefs.Trait.Stdlib.Traits.ord ())
+        (PackageRefs.Trait.Stdlib.Traits.compare ())
         "lessThanOrEqualTo"
         lessThanOrEqualTo
-      put (PackageRefs.Trait.Stdlib.Traits.ord ()) "greaterThan" greaterThan
+      put (PackageRefs.Trait.Stdlib.Traits.compare ()) "greaterThan" greaterThan
       put
-        (PackageRefs.Trait.Stdlib.Traits.ord ())
+        (PackageRefs.Trait.Stdlib.Traits.compare ())
         "greaterThanOrEqualTo"
         greaterThanOrEqualTo
       traitTags <- (gen, fresh)
@@ -548,7 +548,7 @@ let traitTag (traitHash : string) (methodName : string) : int voption =
     ValueNone
 
 
-/// `Eq.equals`: the one trait method with a structural fallback, and the one the
+/// `Equal.equals`: the one trait method with a structural fallback, and the one the
 /// interpreter answers without dispatch for anything but a record or an enum.
 let isEquals (traitHash : string) (methodName : string) : bool =
   match traitTag traitHash methodName with

@@ -13,7 +13,7 @@ open ProgramTypes
 module Traits = PackageRefs.Trait.Stdlib.Traits
 
 /// The trait and method an operator is. Every operator is one, bitwise included: "integer-only"
-/// is the set of types with a `BitAnd` implementation. `==` is `Eq.equals`, with a structural
+/// is the set of types with a `BitwiseAnd` implementation. `==` is `Equal.equals`, with a structural
 /// fallback for a type that has no implementation, so every value stays comparable and the
 /// builtin types are never overridden.
 let ofInfix (op : InfixFnName) : Option<string * string> =
@@ -21,37 +21,37 @@ let ofInfix (op : InfixFnName) : Option<string * string> =
     if hash = "" then None else Some(hash, methodName)
   match op with
   | ArithmeticPlus -> some (Traits.add ()) "add"
-  | ArithmeticMinus -> some (Traits.sub ()) "subtract"
-  | ArithmeticMultiply -> some (Traits.mul ()) "multiply"
-  | ArithmeticDivide -> some (Traits.div ()) "divide"
-  | ArithmeticModulo -> some (Traits.mod' ()) "modulo"
-  | ArithmeticPower -> some (Traits.pow ()) "power"
-  | ComparisonLessThan -> some (Traits.ord ()) "lessThan"
-  | ComparisonLessThanOrEqual -> some (Traits.ord ()) "lessThanOrEqualTo"
-  | ComparisonGreaterThan -> some (Traits.ord ()) "greaterThan"
-  | ComparisonGreaterThanOrEqual -> some (Traits.ord ()) "greaterThanOrEqualTo"
-  // `==` is `Eq.equals`; `!=` is `not (Eq.equals a b)`, lowered as two calls.
-  | ComparisonEquals -> some (Traits.eq ()) "equals"
+  | ArithmeticMinus -> some (Traits.subtract ()) "subtract"
+  | ArithmeticMultiply -> some (Traits.multiply ()) "multiply"
+  | ArithmeticDivide -> some (Traits.divide ()) "divide"
+  | ArithmeticModulo -> some (Traits.modulo ()) "modulo"
+  | ArithmeticPower -> some (Traits.power ()) "power"
+  | ComparisonLessThan -> some (Traits.compare ()) "lessThan"
+  | ComparisonLessThanOrEqual -> some (Traits.compare ()) "lessThanOrEqualTo"
+  | ComparisonGreaterThan -> some (Traits.compare ()) "greaterThan"
+  | ComparisonGreaterThanOrEqual -> some (Traits.compare ()) "greaterThanOrEqualTo"
+  // `==` is `Equal.equals`; `!=` is `not (Equal.equals a b)`, lowered as two calls.
+  | ComparisonEquals -> some (Traits.equal ()) "equals"
   | ComparisonNotEquals -> None
-  | BitwiseAnd -> some (Traits.bitAnd ()) "bitAnd"
-  | BitwiseOr -> some (Traits.bitOr ()) "bitOr"
-  | BitwiseXor -> some (Traits.bitXor ()) "bitXor"
-  | ShiftLeft -> some (Traits.shl ()) "shiftLeft"
-  | ShiftRight -> some (Traits.shr ()) "shiftRight"
+  | BitwiseAnd -> some (Traits.bitwiseAnd ()) "bitwiseAnd"
+  | BitwiseOr -> some (Traits.bitwiseOr ()) "bitwiseOr"
+  | BitwiseXor -> some (Traits.bitwiseXor ()) "bitwiseXor"
+  | ShiftLeft -> some (Traits.shiftLeft ()) "shiftLeft"
+  | ShiftRight -> some (Traits.shiftRight ()) "shiftRight"
   // `++` is not in the language; the case exists to decode ops stored before it went, and
   // lowers to the string-append builtin.
   | StringConcat -> None
 
-/// Unary minus on a non-literal (`-x`): `Neg.negate`, or None while the refs are not
+/// Unary minus on a non-literal (`-x`): `Negate.negate`, or None while the refs are not
 /// generated. The parser stores `Builtin.negate` in the PT; this is the lowering-time swap.
 let ofNegate () : Option<string * string> =
-  let hash = Traits.neg ()
+  let hash = Traits.negate ()
   if hash = "" then None else Some(hash, "negate")
 
 /// `~x`, the same way: the parser stores `Builtin.bitwiseNot` and this is the swap.
 let ofBitwiseNot () : Option<string * string> =
-  let hash = Traits.bitNot ()
-  if hash = "" then None else Some(hash, "bitNot")
+  let hash = Traits.bitwiseNot ()
+  if hash = "" then None else Some(hash, "bitwiseNot")
 
 /// Every operator that is a trait method, with its trait and method, under the
 /// refs as they are now.

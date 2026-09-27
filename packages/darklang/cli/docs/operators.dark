@@ -5,8 +5,8 @@ let content () : String =
 
 ## Comparison
   == != < > <= >=
-  `==` and `!=` are `Stdlib.Eq`: structural on every type unless the type
-  implements `Eq`. `< > <= >=` are `Stdlib.Ord`: every numeric type implements
+  `==` and `!=` are `Stdlib.Equal`: structural on every type unless the type
+  implements `Equal`. `< > <= >=` are `Stdlib.Compare`: every numeric type implements
   it, and so can yours. `docs traits` has how.
 
 ## Boolean
@@ -15,17 +15,17 @@ let content () : String =
 
 ## Numeric (all int types + Float)
   + - * / % **   and unary -x
-  Each is a trait: `+` is `Stdlib.Add`, then Sub, Mul, Div, Mod, Pow, and `-x`
-  is `Neg`. Both operands must be the same type: `1 + 2`, `1.0 + 2.0` and
+  Each is a trait: `+` is `Stdlib.Add`, then Subtract, Multiply, Divide, Modulo, Power, and `-x`
+  is `Negate`. Both operands must be the same type: `1 + 2`, `1.0 + 2.0` and
   `1y * 2y` all work; `1L + 2.0` is "Cannot perform numeric operation on Int64
   and Float". `"a" + "b"` is `"ab"`, since String implements Add.
   A type of your own joins with `impl Add for Vec = ...`.
   `/` is integer division on ints, float division on floats.
   `%` works on all numeric types (the modulus must be > 0).
   `**` (power) works on all integer types and Float (not Int128/UInt128,
-  which have no Pow implementation), and nests right: `2 ** 3 ** 2` is
+  which have no Power implementation), and nests right: `2 ** 3 ** 2` is
   `2 ** (3 ** 2)`.
-  Unary `-x` negates signed ints and Float; an unsigned type has no Neg
+  Unary `-x` negates signed ints and Float; an unsigned type has no Negate
   implementation, and `-x` on one says so.
   Integer overflow (+ - * / ** and unary -) raises a runtime error.
   Float arithmetic follows IEEE (overflow -> infinity).
@@ -33,8 +33,8 @@ let content () : String =
 ## Bitwise (every integer type; Float has no implementation)
   & | ^ << >>   and unary ~x
   `&` and, `|` or, `^` xor, `<<`/`>>` shift, `~x` NOT (two's complement).
-  Traits like the rest: `&` is `BitAnd`, `|` `BitOr`, `^` `BitXor`, `~` `BitNot`,
-  `<<` `Shl`, `>>` `Shr`, so your own type can implement them.
+  Traits like the rest: `&` is `BitwiseAnd`, `|` `BitwiseOr`, `^` `BitwiseXor`, `~` `BitwiseNot`,
+  `<<` `ShiftLeft`, `>>` `ShiftRight`, so your own type can implement them.
   Both operands must be the same integer type, including the shift count:
   `1L << 4L`, not `1L << 4`.
   Fixed-width results wrap. `Int` is arbitrary-precision, so a shift count

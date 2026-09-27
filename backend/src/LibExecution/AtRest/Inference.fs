@@ -194,7 +194,7 @@ let private inferNegateResult
   (argType : StaticType)
   : StaticType =
   state.AddDependency(FunctionDependency fqName)
-  // Through the syntax `-x` is `Neg.negate x`, so the operand owes a `Neg` impl; the
+  // Through the syntax `-x` is `Negate.negate x`, so the operand owes a `Negate` impl; the
   // builtin's own table stands in only while the refs are not generated.
   match LibExecution.NumericTraits.ofNegate () with
   | Some(traitHash, methodName) ->
@@ -256,14 +256,19 @@ let private instantiateFunction
   | None ->
     state.Block(UnresolvedFunctionName, nodeId, Unresolved name.originalName)
     state.FreshTainted nodeId
-  | Some(FQFnName.TraitMethod(traitHash, methodName, _)) ->
+  | Some(FQFnName.TraitMethod { trait_ = traitHash
+                                method_ = methodName
+                                implFn = _ }) ->
     state.AddDependency(TraitDependency traitHash)
     match traitMethodSignature state nodeId traitHash methodName with
     | None ->
       state.Block(
         MissingFunctionSignature,
         nodeId,
-        FunctionUnavailable(FQFnName.TraitMethod(traitHash, methodName, None))
+        FunctionUnavailable(
+          FQFnName.TraitMethod
+            { trait_ = traitHash; method_ = methodName; implFn = None }
+        )
       )
       state.FreshTainted nodeId
     | Some signature ->

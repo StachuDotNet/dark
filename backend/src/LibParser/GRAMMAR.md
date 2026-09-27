@@ -274,7 +274,7 @@ Generics work on:
 `>>` closes two levels.
 
 A type parameter may carry **bounds**: `'a: Show`, or several joined with `+`
-(`'a: Show + Eq`; `,` separates parameters, so it cannot separate bounds).
+(`'a: Show + Equal`; `,` separates parameters, so it cannot separate bounds).
 A bound names a trait, optionally with type arguments (`'a: Convert<Int>`).
 Bounds are allowed on function and type declarations, and on `impl`. A bound
 that does not name a trait is `PARSE-BOUND`.

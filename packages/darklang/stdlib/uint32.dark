@@ -157,27 +157,27 @@ impl Add for UInt32 =
   let add = Stdlib.UInt32.add
 
 
-impl Sub for UInt32 =
+impl Subtract for UInt32 =
   let subtract = Stdlib.UInt32.subtract
 
 
-impl Mul for UInt32 =
+impl Multiply for UInt32 =
   let multiply = Stdlib.UInt32.multiply
 
 
-impl Div for UInt32 =
+impl Divide for UInt32 =
   let divide = Stdlib.UInt32.divide
 
 
-impl Mod for UInt32 =
+impl Modulo for UInt32 =
   let modulo = Stdlib.UInt32.``mod``
 
 
-impl Pow for UInt32 =
+impl Power for UInt32 =
   let power = Stdlib.UInt32.power
 
 
-impl Ord for UInt32 =
+impl Compare for UInt32 =
   let lessThan = Stdlib.UInt32.lessThan
   let lessThanOrEqualTo = Stdlib.UInt32.lessThanOrEqualTo
   let greaterThan = Stdlib.UInt32.greaterThan
@@ -196,25 +196,25 @@ impl One for UInt32 =
   let one () : UInt32 = 1ul
 
 
-impl BitAnd for UInt32 =
-  let bitAnd = Stdlib.UInt32.bitwiseAnd
+impl BitwiseAnd for UInt32 =
+  let bitwiseAnd = Stdlib.UInt32.bitwiseAnd
 
 
-impl BitOr for UInt32 =
-  let bitOr = Stdlib.UInt32.bitwiseOr
+impl BitwiseOr for UInt32 =
+  let bitwiseOr = Stdlib.UInt32.bitwiseOr
 
 
-impl BitXor for UInt32 =
-  let bitXor = Stdlib.UInt32.bitwiseXor
+impl BitwiseXor for UInt32 =
+  let bitwiseXor = Stdlib.UInt32.bitwiseXor
 
 
-impl BitNot for UInt32 =
-  let bitNot = Stdlib.UInt32.bitwiseNot
+impl BitwiseNot for UInt32 =
+  let bitwiseNot = Stdlib.UInt32.bitwiseNot
 
 
-impl Shl for UInt32 =
+impl ShiftLeft for UInt32 =
   let shiftLeft = Stdlib.UInt32.shiftLeft
 
 
-impl Shr for UInt32 =
+impl ShiftRight for UInt32 =
   let shiftRight = Stdlib.UInt32.shiftRight

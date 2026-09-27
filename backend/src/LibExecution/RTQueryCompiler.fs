@@ -72,7 +72,9 @@ let getSqlSpec
      | false, _ -> None)
   // An operator trait method pushes down as the SQL operator its polymorphic
   // builtin carries; any other trait method is dispatched code, not SQL.
-  | RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, _) ->
+  | RT.FQFnName.TraitMethod { trait_ = RT.Hash traitHash
+                              method_ = methodName
+                              implFn = _ } ->
     match NumericTraits.tryInfix traitHash methodName with
     | Some op ->
       let builtinName = PT.InfixFnName.toBuiltinName op
@@ -446,7 +448,7 @@ and executeInstruction
             Ok(
               state.withReg (createTo, Unknown $"Unsupported builtin function: {n}")
             )
-          | RT.FQFnName.TraitMethod(_, m, _) ->
+          | RT.FQFnName.TraitMethod { trait_ = _; method_ = m; implFn = _ } ->
             Ok(state.withReg (createTo, Unknown $"Cannot inline trait method: {m}"))
 
     | other ->

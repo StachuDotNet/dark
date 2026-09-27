@@ -141,7 +141,7 @@ impl ToString for DateTime =
 
 
 /// `d1 < d2` on DateTimes, by the four comparisons above.
-impl Ord for DateTime =
+impl Compare for DateTime =
   let lessThan = Stdlib.DateTime.lessThan
   let lessThanOrEqualTo = Stdlib.DateTime.lessThanOrEqualTo
   let greaterThan = Stdlib.DateTime.greaterThan

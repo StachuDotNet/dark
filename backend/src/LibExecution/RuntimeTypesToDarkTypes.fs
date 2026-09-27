@@ -176,7 +176,7 @@ module FQFnName =
       match u with
       | FQFnName.Builtin u -> "Builtin", [ Builtin.toDT u ]
       | FQFnName.Package u -> "Package", [ Package.toDT u ]
-      | FQFnName.TraitMethod(t, m, implFn) ->
+      | FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn } ->
         "TraitMethod",
         [ FQTraitName.Package.toDT t
           DString m
@@ -188,13 +188,13 @@ module FQFnName =
     | DEnum(_, _, [], "Builtin", [ u ]) -> FQFnName.Builtin(Builtin.fromDT u)
     | DEnum(_, _, [], "Package", [ u ]) -> FQFnName.Package(Package.fromDT u)
     | DEnum(_, _, [], "TraitMethod", [ t; DString m; implFn ]) ->
-      FQFnName.TraitMethod(
-        FQTraitName.Package.fromDT t,
-        m,
-        (match implFn with
-         | DEnum(_, _, _, "Some", [ h ]) -> Some(Package.fromDT h)
-         | _ -> None)
-      )
+      FQFnName.TraitMethod
+        { trait_ = FQTraitName.Package.fromDT t
+          method_ = m
+          implFn =
+            match implFn with
+            | DEnum(_, _, _, "Some", [ h ]) -> Some(Package.fromDT h)
+            | _ -> None }
     | _ -> Exception.raiseInternal "Invalid FQFnName" []
 
 

@@ -158,27 +158,27 @@ impl Add for UInt16 =
   let add = Stdlib.UInt16.add
 
 
-impl Sub for UInt16 =
+impl Subtract for UInt16 =
   let subtract = Stdlib.UInt16.subtract
 
 
-impl Mul for UInt16 =
+impl Multiply for UInt16 =
   let multiply = Stdlib.UInt16.multiply
 
 
-impl Div for UInt16 =
+impl Divide for UInt16 =
   let divide = Stdlib.UInt16.divide
 
 
-impl Mod for UInt16 =
+impl Modulo for UInt16 =
   let modulo = Stdlib.UInt16.``mod``
 
 
-impl Pow for UInt16 =
+impl Power for UInt16 =
   let power = Stdlib.UInt16.power
 
 
-impl Ord for UInt16 =
+impl Compare for UInt16 =
   let lessThan = Stdlib.UInt16.lessThan
   let lessThanOrEqualTo = Stdlib.UInt16.lessThanOrEqualTo
   let greaterThan = Stdlib.UInt16.greaterThan
@@ -197,25 +197,25 @@ impl One for UInt16 =
   let one () : UInt16 = 1us
 
 
-impl BitAnd for UInt16 =
-  let bitAnd = Stdlib.UInt16.bitwiseAnd
+impl BitwiseAnd for UInt16 =
+  let bitwiseAnd = Stdlib.UInt16.bitwiseAnd
 
 
-impl BitOr for UInt16 =
-  let bitOr = Stdlib.UInt16.bitwiseOr
+impl BitwiseOr for UInt16 =
+  let bitwiseOr = Stdlib.UInt16.bitwiseOr
 
 
-impl BitXor for UInt16 =
-  let bitXor = Stdlib.UInt16.bitwiseXor
+impl BitwiseXor for UInt16 =
+  let bitwiseXor = Stdlib.UInt16.bitwiseXor
 
 
-impl BitNot for UInt16 =
-  let bitNot = Stdlib.UInt16.bitwiseNot
+impl BitwiseNot for UInt16 =
+  let bitwiseNot = Stdlib.UInt16.bitwiseNot
 
 
-impl Shl for UInt16 =
+impl ShiftLeft for UInt16 =
   let shiftLeft = Stdlib.UInt16.shiftLeft
 
 
-impl Shr for UInt16 =
+impl ShiftRight for UInt16 =
   let shiftRight = Stdlib.UInt16.shiftRight

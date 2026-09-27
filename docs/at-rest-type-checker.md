@@ -152,8 +152,8 @@ their type variables. Two kinds of signature must not be trusted:
 Infix syntax itself no longer lowers to those builtins. `a + b` is
 `Stdlib.Add.add a b` (`NumericTraits.ofInfix`; likewise `- * / % **` and the four
 comparisons), and `-x`, which the parser stores as `Builtin.negate x`, runs as
-`Stdlib.Neg.negate x` (`NumericTraits.ofNegate`). The checker treats each as a trait
-method call: the operands unify, and the operand type owes an `Add` (or `Neg`) impl.
+`Stdlib.Negate.negate x` (`NumericTraits.ofNegate`). The checker treats each as a trait
+method call: the operands unify, and the operand type owes an `Add` (or `Negate`) impl.
 See below.
 
 ## Traits
@@ -188,7 +188,7 @@ method's (`ImplExceedsCeiling`).
   `Show List<Option<Int>>` against `impl<'a: Show> Show for List<'a>` unifies the
   impl's self with the concrete type and owes `Show Option<Int>`, round by round
   until the type is exhausted (`dischargeConstraints`).
-- `==` records no constraint: `Eq` has a structural fallback, so every type is
+- `==` records no constraint: `Equal` has a structural fallback, so every type is
   comparable; the operand types still have to unify.
 
 ## Where this should live

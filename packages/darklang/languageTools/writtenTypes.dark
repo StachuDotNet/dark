@@ -507,7 +507,7 @@ module TypeDeclaration =
     { range: Range
       name: TypeIdentifier
       typeParams: List<(Range * String)>
-      /// `'a: Ord` on the type params
+      /// `'a: Compare` on the type params
       bounds: List<TypeParamBound>
       definition: Definition
       description: String
@@ -549,7 +549,7 @@ module FnDeclaration =
     { range: Range
       name: FnIdentifier
       typeParams: List<(Range * String)>
-      /// `'a: Show + Eq` on the type params, one entry per trait
+      /// `'a: Show + Equal` on the type params, one entry per trait
       bounds: List<TypeParamBound>
       parameters: List<Parameter>
       /// The effect row on the return colon, if one was written. Like

@@ -302,6 +302,12 @@ let resolveTraitCalls
              | _ -> false)
         || (PTAst.subExprs expr |> List.exists hasInfix)
       | _ -> PTAst.subExprs expr |> List.exists hasInfix
+    // A trait method named outright (`Show.show x`), as opposed to an operator.
+    let rec namesATraitMethod (expr : PT.Expr) : bool =
+      match expr with
+      | PT.EFnName(_, { resolved = Ok { name = PT.FQFnName.TraitMethod _ } }) -> true
+      | _ -> PTAst.subExprs expr |> List.exists namesATraitMethod
+
     let worthChecking =
       ops
       |> List.exists (fun op ->
@@ -337,8 +343,15 @@ let resolveTraitCalls
             (fun values hash value -> Map.add hash value values)
             dependencies.values
             candidates.values
+        // Only the fns that could have something to record are inferred. Every fn is still
+        // declared, so no signature goes missing, and `hasInfix` is a cheap AST walk against
+        // an inference pass over the body. On a whole-tree reload that is most of the work:
+        // about a third of the tree mentions an operator or a trait.
+        let worthChecking (fn : PT.PackageFn.PackageFn) : bool =
+          hasInfix fn.body || namesATraitMethod fn.body
         let batch =
-          CheckerApi.checkPackageBatch
+          CheckerApi.checkPackageBatchWhere
+            worthChecking
             environment
             (candidates.types.Values |> Seq.toList)
             (values.Values |> Seq.toList)
@@ -644,7 +657,7 @@ module private DarkTypes =
       )
     | PT.FQFnName.Package hash ->
       DEnum(typeName, typeName, [], "Package", [ PT2DT.Hash.toDT hash ])
-    | PT.FQFnName.TraitMethod(traitHash, method_, _) ->
+    | PT.FQFnName.TraitMethod { trait_ = traitHash; method_ = method_; implFn = _ } ->
       DEnum(
         typeName,
         typeName,

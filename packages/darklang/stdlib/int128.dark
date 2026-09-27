@@ -154,27 +154,27 @@ impl Add for Int128 =
   let add = Stdlib.Int128.add
 
 
-impl Sub for Int128 =
+impl Subtract for Int128 =
   let subtract = Stdlib.Int128.subtract
 
 
-impl Mul for Int128 =
+impl Multiply for Int128 =
   let multiply = Stdlib.Int128.multiply
 
 
-impl Div for Int128 =
+impl Divide for Int128 =
   let divide = Stdlib.Int128.divide
 
 
-impl Mod for Int128 =
+impl Modulo for Int128 =
   let modulo = Stdlib.Int128.``mod``
 
 
-impl Neg for Int128 =
+impl Negate for Int128 =
   let negate = Stdlib.Int128.negate
 
 
-impl Ord for Int128 =
+impl Compare for Int128 =
   let lessThan = Stdlib.Int128.lessThan
   let lessThanOrEqualTo = Stdlib.Int128.lessThanOrEqualTo
   let greaterThan = Stdlib.Int128.greaterThan
@@ -193,25 +193,25 @@ impl One for Int128 =
   let one () : Int128 = 1Q
 
 
-impl BitAnd for Int128 =
-  let bitAnd = Stdlib.Int128.bitwiseAnd
+impl BitwiseAnd for Int128 =
+  let bitwiseAnd = Stdlib.Int128.bitwiseAnd
 
 
-impl BitOr for Int128 =
-  let bitOr = Stdlib.Int128.bitwiseOr
+impl BitwiseOr for Int128 =
+  let bitwiseOr = Stdlib.Int128.bitwiseOr
 
 
-impl BitXor for Int128 =
-  let bitXor = Stdlib.Int128.bitwiseXor
+impl BitwiseXor for Int128 =
+  let bitwiseXor = Stdlib.Int128.bitwiseXor
 
 
-impl BitNot for Int128 =
-  let bitNot = Stdlib.Int128.bitwiseNot
+impl BitwiseNot for Int128 =
+  let bitwiseNot = Stdlib.Int128.bitwiseNot
 
 
-impl Shl for Int128 =
+impl ShiftLeft for Int128 =
   let shiftLeft = Stdlib.Int128.shiftLeft
 
 
-impl Shr for Int128 =
+impl ShiftRight for Int128 =
   let shiftRight = Stdlib.Int128.shiftRight

@@ -163,7 +163,7 @@ let writeFQFnName
     | None ->
       w.Write(1uy)
       PTC.FQFnName.Package.write w (resolveHash mode loc p)
-  | PT.FQFnName.TraitMethod(t, m, implFn) ->
+  | PT.FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn } ->
     w.Write(3uy)
     writeFQTraitName mode w loc (PT.FQTraitName.Package t)
     Common.String.write w m

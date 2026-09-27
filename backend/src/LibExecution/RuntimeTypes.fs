@@ -101,21 +101,21 @@ module FQFnName =
 
   type Package = Hash
 
+  /// A trait method: the trait, the method name, and the fn the chosen implementation names
+  /// for it, when the save was able to choose.
+  ///
+  /// With an `implFn`, that is what runs: no lookup, and no implementation stored later can
+  /// change it. Without one (a call inside a polymorphic fn, where the implementation depends
+  /// on the caller's type argument), applying it resolves at call time, in this order:
+  /// explicit type args, the self argument's ValueType head, the caller's TypeSymbolTable
+  /// binding for the self param.
+  type TraitMethod =
+    { trait_ : FQTraitName.Package; method_ : string; implFn : Option<Package> }
+
   type FQFnName =
     | Builtin of Builtin
     | Package of Package
-    /// A trait method: the trait, the method name, and the fn the chosen implementation names
-    /// for it, when the save was able to choose.
-    ///
-    /// With an `implFn`, that is what runs: no lookup, and no implementation stored later can
-    /// change it. Without one (a call inside a polymorphic fn, where the implementation depends
-    /// on the caller's type argument), applying it resolves at call time, in this order:
-    /// explicit type args, the self argument's ValueType head, the caller's TypeSymbolTable
-    /// binding for the self param.
-    | TraitMethod of
-      trait_ : FQTraitName.Package *
-      method_ : string *
-      implFn : Option<Package>
+    | TraitMethod of TraitMethod
 
   let assertBuiltinFnName (name : string) : unit =
     assertRe $"Fn name must match" builtinNamePattern name
@@ -883,6 +883,10 @@ and Instructions =
 
 and DvalMap = Map<string, Dval>
 
+/// TODO the one place that CANNOT be made consistent with `==`, which consults a type's
+/// `Equal` implementation. A dict key is hashed and compared inside F#'s own `Map`, where
+/// there is no interpreter to call and no `Ply` to await, so a type that says what equal
+/// means is ignored here. Worth saying out loud in the docs rather than fixing.
 and [<CustomEquality; CustomComparison>] DictKey =
   | DictKey of Dval
 
@@ -2347,7 +2351,7 @@ module PackageFn =
       /// `Access`; this never widens it.
       permissionCeiling : Option<Set<Effects.Effect>>
 
-      /// `'a: Show + Eq`; see `ProgramTypes.PackageFn.bounds`. Checked at entry.
+      /// `'a: Show + Equal`; see `ProgramTypes.PackageFn.bounds`. Checked at entry.
       bounds : List<Bound>
 
       // CLEANUP consider renaming - just `instructions` maybe?

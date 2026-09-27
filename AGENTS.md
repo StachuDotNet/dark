@@ -333,14 +333,14 @@ selection is `Traits.fs`, the checker validates traits and impls in `AtRestTypeC
 (`ImplMethodSet`, `ImplMethodSignature`, `ImplExceedsCeiling`). The operators are the
 stdlib traits (`stdlib/traits.dark`); `+` lowers to `Stdlib.Add.add` through
 `NumericTraits.fs`, whose hashes come from `PackageRefs.Trait`, so a new operator trait
-needs a ref and a regenerated `package-ref-hashes.txt`. `==` is `Eq.equals` with a
+needs a ref and a regenerated `package-ref-hashes.txt`. `==` is `Equal.equals` with a
 structural fallback (`Interpreter.structuralEquals`; the selection memo holds `Hash ""`
 for "no implementation"), answered without dispatch for anything but a record, an enum
-or a container holding one. A container consults its elements' `Eq`
+or a container holding one. A container consults its elements' `Equal`
 (`Interpreter.deepEquals`), and whether a type needs that walk at all is memoised per
 type, so a `List<Int64>` costs what it always did; `List.member`, `List.unique`,
 `List.sort` and dict keys are structural always, and dict keys have to be, since F#
-hashes them inside its own `Map`. `!=` lowers to `boolNot (Eq.equals a b)`. `Zero.zero`/`One.one` dispatch from an
+hashes them inside its own `Map`. `!=` lowers to `boolNot (Equal.equals a b)`. `Zero.zero`/`One.one` dispatch from an
 explicit type arg or the caller's bound, so a call to the impl fn clears the trait's
 type args first.
 

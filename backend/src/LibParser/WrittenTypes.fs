@@ -415,7 +415,7 @@ type FnParam =
 
 /// `'a: Show<Int>` in a type-param list. The trait is a type name: a bound says
 /// "a value of type `Show<'a>` must exist". Several bounds on one param are
-/// written `'a: Show + Eq` and stored as separate entries.
+/// written `'a: Show + Equal` and stored as separate entries.
 type TypeParamBound =
   { range : Range
     param : string

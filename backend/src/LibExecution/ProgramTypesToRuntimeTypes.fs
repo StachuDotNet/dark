@@ -51,32 +51,33 @@ module FQFnName =
 
   let toRT (fqfn : PT.FQFnName.FQFnName) : RT.FQFnName.FQFnName =
     match fqfn with
-    // `-x` is stored as `Builtin.negate x`; it runs as `Neg.negate x`, like `+` runs
-    // as `Add.add`, so a user type with `impl Neg` gets its unary minus.
+    // `-x` is stored as `Builtin.negate x`; it runs as `Negate.negate x`, like `+` runs
+    // as `Add.add`, so a user type with `impl Negate` gets its unary minus.
     | PT.FQFnName.Builtin { name = name; version = 0 } when
       name = PT.InfixFnName.negateBuiltinName
       ->
       match NumericTraits.ofNegate () with
       | Some(traitHash, methodName) ->
-        RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, None)
+        RT.FQFnName.TraitMethod
+          { trait_ = RT.Hash traitHash; method_ = methodName; implFn = None }
       | None -> RT.FQFnName.Builtin { name = name; version = 0 }
-    // `~x` the same way: stored as `Builtin.bitwiseNot`, run as `BitNot.bitNot`.
+    // `~x` the same way: stored as `Builtin.bitwiseNot`, run as `BitwiseNot.bitwiseNot`.
     | PT.FQFnName.Builtin { name = name; version = 0 } when
       name = PT.InfixFnName.bitwiseNotBuiltinName
       ->
       match NumericTraits.ofBitwiseNot () with
       | Some(traitHash, methodName) ->
-        RT.FQFnName.TraitMethod(RT.Hash traitHash, methodName, None)
+        RT.FQFnName.TraitMethod
+          { trait_ = RT.Hash traitHash; method_ = methodName; implFn = None }
       | None -> RT.FQFnName.Builtin { name = name; version = 0 }
     | PT.FQFnName.Builtin s -> RT.FQFnName.Builtin(Builtin.toRT s)
     | PT.FQFnName.Package p -> RT.FQFnName.Package(Package.toRT p)
-    | PT.FQFnName.TraitMethod(t, m, implFn) ->
+    | PT.FQFnName.TraitMethod { trait_ = t; method_ = m; implFn = implFn } ->
       // The runtime needs the fn, not where it is named.
-      RT.FQFnName.TraitMethod(
-        FQTypeName.Package.toRT t,
-        m,
-        implFn |> Option.map (fun r -> Package.toRT r.name)
-      )
+      RT.FQFnName.TraitMethod
+        { trait_ = FQTypeName.Package.toRT t
+          method_ = m
+          implFn = implFn |> Option.map (fun r -> Package.toRT r.name) }
 
 
 module NameResolutionError =
@@ -214,11 +215,10 @@ module InfixFnName =
     : RT.FQFnName.FQFnName =
     match NumericTraits.ofInfix name with
     | Some(traitHash, methodName) ->
-      RT.FQFnName.TraitMethod(
-        RT.Hash traitHash,
-        methodName,
-        implFn |> Option.map (fun r -> FQFnName.Package.toRT r.name)
-      )
+      RT.FQFnName.TraitMethod
+        { trait_ = RT.Hash traitHash
+          method_ = methodName
+          implFn = implFn |> Option.map (fun r -> FQFnName.Package.toRT r.name) }
     | None -> RT.FQFnName.Builtin(toFnName name)
 
 
@@ -900,7 +900,7 @@ module Expr =
 
 
 
-    // `a != b` is `not (a == b)`: `Eq` has one method, so a type's own equality
+    // `a != b` is `not (a == b)`: `Equal` has one method, so a type's own equality
     // serves both operators, and `not` pushes down to SQL like the rest.
     | PT.EInfix(id, PT.InfixFnCall PT.ComparisonNotEquals, left, right, implFn) when
       Option.isSome (NumericTraits.ofInfix PT.ComparisonEquals)

@@ -98,7 +98,7 @@ impl ToString for Char =
 
 
 /// `a < b` on Chars: ordinal, the rule the four comparisons above already use.
-impl Ord for Char =
+impl Compare for Char =
   let lessThan = Stdlib.Char.isLessThan
   let lessThanOrEqualTo = Stdlib.Char.isLessThanOrEqualTo
   let greaterThan = Stdlib.Char.isGreaterThan
