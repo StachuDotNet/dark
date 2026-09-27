@@ -135,26 +135,33 @@ type Selection =
   /// says which was written later. The call reports them instead of picking.
   | Ambiguous of List<ImplCandidate>
 
+/// Every candidate that applies to a self type.
+///
+/// An implementation applies when its head matches AND its type arguments do: `Show for
+/// Option<Int>` must not answer `Show.show (Some "x")`. A blanket `for 'a` is the fallback,
+/// whether nothing specific matched the head or nothing specific fit the arguments.
+///
+/// `select` narrows this to one. It is also what a receiver call (`p.show`) asks, because
+/// there the question is which TRAITS apply, not which implementation: two traits that both
+/// declare `show` are an ambiguity a stamp must not break.
+let applicable
+  (candidates : List<ImplCandidate>)
+  (self : KnownType)
+  : List<ImplCandidate> =
+  let head = headOfKnownType self
+  match
+    candidates
+    |> List.filter (fun c ->
+      headOfTypeReference c.self = Some head
+      && argsAgree c.self (ValueType.Known self))
+  with
+  | [] ->
+    candidates |> List.filter (fun c -> headOfTypeReference c.self = Some Head.Any)
+  | fitting -> fitting
+
 /// The candidate for a self type, if exactly one applies.
 let select (candidates : List<ImplCandidate>) (self : KnownType) : Selection =
-  let blanket () =
-    candidates |> List.filter (fun c -> headOfTypeReference c.self = Some Head.Any)
-
-  // An implementation applies when its head matches AND its type arguments do: `Show for
-  // Option<Int>` must not answer `Show.show (Some "x")`. A blanket `for 'a` is the fallback,
-  // whether nothing specific matched the head or nothing specific fit the arguments.
-  let head = headOfKnownType self
-  let matching =
-    match
-      candidates
-      |> List.filter (fun c ->
-        headOfTypeReference c.self = Some head
-        && argsAgree c.self (ValueType.Known self))
-    with
-    | [] -> blanket ()
-    | fitting -> fitting
-
-  match matching with
+  match applicable candidates self with
   | [] -> NoImpl
   | [ one ] -> Selected one
   | several ->

@@ -3903,54 +3903,76 @@ let private receiverMethod
     | ValueType.Known self ->
       let! candidates =
         exeState.fns.implCandidatesByMethod exeState.branchId methodName
-      match Traits.select candidates self with
-      | Traits.NoImpl -> return None
-      | Traits.Selected c ->
-        match Map.tryFind methodName c.methods with
-        | Some fnHash ->
-          let applicable =
-            AppNamedFn
-              { name = FQFnName.Package fnHash
-                typeSymbolTable = TST.empty
-                typeArgs = []
-                access = Some currentFrame.access
-                argsSoFar = [] }
-          match! exeState.fns.package fnHash with
-          | Some fn when NEList.length fn.parameters = 1 ->
-            match!
-              exeState.callApplicable
-                exeState
-                currentFrame.access
-                applicable
-                (NEList.singleton receiver)
-            with
-            | Ok result -> return Some result
-            | Error(rte, nested) ->
-              vm.nestedCallStack <- nested
-              return raiseRTE vm.threadID rte
-          | _ ->
-            return
-              Some(
-                DApplicable(
-                  AppNamedFn
-                    { name = FQFnName.Package fnHash
-                      typeSymbolTable = TST.empty
-                      typeArgs = []
-                      access = Some currentFrame.access
-                      argsSoFar = [ receiver ] }
-                )
-              )
-        | None -> return None
-      | Traits.Ambiguous cs ->
+      // Two TRAITS that both declare this method is an ambiguity, and it is settled here
+      // rather than by `select`. `select` breaks a tie by the stamp of the op that added the
+      // implementation, which is the right answer for rivals of ONE trait (they share a
+      // signature, so the pick is invisible) and the wrong one across two: `p.describe`
+      // would silently mean whichever trait was written later, where the checker refuses to
+      // save the call at all. The checker's rule is in `receiverMethodType`; this is its
+      // other half.
+      let applicable = Traits.applicable candidates self
+      let traits = applicable |> List.map (fun c -> c.trait_) |> List.distinct
+      match traits with
+      | _ :: _ :: _ ->
         return
           RTE.Trait(
             RTE.Traits.MethodAmbiguous(
               methodName,
               ValueType.Known self,
-              cs |> List.map (fun c -> FQTraitName.Package c.trait_)
+              traits |> List.map FQTraitName.Package
             )
           )
           |> raiseRTE vm.threadID
+      | _ ->
+
+        match Traits.select candidates self with
+        | Traits.NoImpl -> return None
+        | Traits.Selected c ->
+          match Map.tryFind methodName c.methods with
+          | Some fnHash ->
+            let applicable =
+              AppNamedFn
+                { name = FQFnName.Package fnHash
+                  typeSymbolTable = TST.empty
+                  typeArgs = []
+                  access = Some currentFrame.access
+                  argsSoFar = [] }
+            match! exeState.fns.package fnHash with
+            | Some fn when NEList.length fn.parameters = 1 ->
+              match!
+                exeState.callApplicable
+                  exeState
+                  currentFrame.access
+                  applicable
+                  (NEList.singleton receiver)
+              with
+              | Ok result -> return Some result
+              | Error(rte, nested) ->
+                vm.nestedCallStack <- nested
+                return raiseRTE vm.threadID rte
+            | _ ->
+              return
+                Some(
+                  DApplicable(
+                    AppNamedFn
+                      { name = FQFnName.Package fnHash
+                        typeSymbolTable = TST.empty
+                        typeArgs = []
+                        access = Some currentFrame.access
+                        argsSoFar = [ receiver ] }
+                  )
+                )
+          | None -> return None
+        | Traits.Ambiguous cs ->
+          return
+            RTE.Trait(
+              RTE.Traits.MethodAmbiguous(
+                methodName,
+                ValueType.Known self,
+                cs |> List.map (fun c -> FQTraitName.Package c.trait_)
+              )
+            )
+            |> raiseRTE vm.threadID
   }
 
 let private runRareOpcode
