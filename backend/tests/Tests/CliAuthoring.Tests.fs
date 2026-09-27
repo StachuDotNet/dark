@@ -302,6 +302,31 @@ let traitsAreAuthoredListedAndDisambiguated =
             [ "impls"; "Tests.Tr.Describe" ]
             "Tests.Tr.Point.Describe"
             "impls lists it"
+        do!
+          shows
+            state
+            [ "impls"; "Tests.Tr.Describe"; "--json" ]
+            "\"status\":\"active\""
+            "impls --json says what a call would see for each implementation"
+
+        // The method fns are authored by the same batch as the implementation that names them,
+        // so the name resolver cannot see them yet. Left unbound, the at-rest check reported
+        // `UnresolvedFunctionName` on every correct implementation anyone wrote at the CLI.
+        do! run state [ "type"; "Tests.Tr.Other"; "{ n: Int64 }" ]
+        do!
+          lacks
+            state
+            [ "impl"
+              "Tests.Tr"
+              "Describe for Other =\n  let describe (o: Other) : String = \"other\"\n  let short (o: Other) : String = \"o\"" ]
+            "Unresolved"
+            "a correct implementation authored at the CLI reports nothing"
+        do!
+          evals
+            state
+            "Tests.Tr.Describe.describe (Tests.Tr.Other { n = 1L })"
+            "other"
+            "and it dispatches"
 
         // A saved caller stores the implementation it resolved to, so it keeps running that
         // one however the store moves afterwards. This is the whole point of the pin, and the

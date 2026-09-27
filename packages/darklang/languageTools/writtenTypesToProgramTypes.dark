@@ -1774,6 +1774,50 @@ let implWithOps
 
   let (pi, implUnresolved) = ImplDeclaration.toPT implCtx implDecl
 
+  // A method written out in the block resolves to a fn that does not exist yet: it is being
+  // authored by the ops above, in this same batch, and the name resolver only knows the store.
+  // Left alone it lands as an unresolved reference, and the at-rest check reports
+  // `UnresolvedFunctionName` on every correct implementation anyone writes at the CLI. So point
+  // it at the fn's placeholder hash here; `stabilizeHashes` remaps that like any other
+  // reference. An alias method (`let m = Some.existing.fn`) resolves normally and is untouched.
+  let declaredMethodNames = ImplDeclaration.methodFns implDecl |> Stdlib.List.map (fun f -> f.name.name)
+
+  let patchMethod
+    (pair: (String * ProgramTypes.NameResolution<ProgramTypes.FQFnName.FQFnName>))
+    : (String * ProgramTypes.NameResolution<ProgramTypes.FQFnName.FQFnName>) =
+    let (name, nr) = pair
+
+    match nr.resolved with
+    | Ok _ -> pair
+    | Error _ ->
+      if Stdlib.List.member declaredMethodNames name then
+        let location =
+          ProgramTypes.PackageLocation
+            { owner = ctx.owner; modules = memberPath; name = name }
+
+        let resolved =
+          ProgramTypes.ResolvedName
+            { name =
+                ProgramTypes.FQFnName.FQFnName.Package(
+                  locationPlaceholderHash ctx.owner memberPath name)
+              location = Stdlib.Option.Option.Some location }
+
+        (name, { nr with resolved = Stdlib.Result.Result.Ok resolved })
+      else
+        pair
+
+  let pi = { pi with methods = pi.methods |> Stdlib.List.map patchMethod }
+
+  // and the names we just bound are no longer unresolved
+  let implUnresolved =
+    implUnresolved
+    |> Stdlib.List.filter (fun u ->
+      let (_range, originalName, _err) = u
+
+      match Stdlib.List.last originalName with
+      | Some last -> Stdlib.Bool.not (Stdlib.List.member declaredMethodNames last)
+      | None -> true)
+
   let (implModules, implName) =
     match Stdlib.List.reverse memberPath with
     | name :: revModules -> (Stdlib.List.reverse revModules, name)
