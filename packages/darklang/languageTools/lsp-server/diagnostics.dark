@@ -270,7 +270,8 @@ let reportedByNameResolver (issue: AtRestTypeChecker.Issue) : Bool =
   match issue.code with
   | UnresolvedTypeName
   | UnresolvedFunctionName
-  | UnresolvedValueName -> true
+  | UnresolvedValueName
+  | UnresolvedTraitName -> true
   | _ -> false
 
 let itemDiagnostics

@@ -112,6 +112,10 @@ type BlockerCode =
   | UnresolvedTypeName
   | UnresolvedFunctionName
   | UnresolvedValueName
+  /// `impl Show for Point` where nothing called `Show` is visible. Its own code rather
+  /// than `UnresolvedTypeName`, because a trait is not a type and something reading the
+  /// code should not go looking for one.
+  | UnresolvedTraitName
   | MissingTypeDeclaration
   | MissingFunctionSignature
   | MissingValueSignature

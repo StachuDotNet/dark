@@ -689,7 +689,10 @@ let private validateImpl
   guardingStack None (fun () ->
     let state = State environment
     match impl.trait_.resolved with
-    | Error _ -> state.Block(UnresolvedTypeName, None, Identifier "trait")
+    | Error _ ->
+      // The name as written, not the word "trait": `impl Nope for Pt` said
+      // `UnresolvedTypeName 'trait'`, which names nothing anyone typed.
+      state.Block(UnresolvedTraitName, None, Unresolved impl.trait_.originalName)
     | Ok { name = FQTraitName.Package traitHash } ->
       state.AddDependency(TraitDependency traitHash)
       match Map.tryFind traitHash environment.traits with

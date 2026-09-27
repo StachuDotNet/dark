@@ -69,6 +69,8 @@ type IssueCode =
   | UnresolvedTypeName
   | UnresolvedFunctionName
   | UnresolvedValueName
+  /// `impl Show for Point` where nothing called `Show` is visible
+  | UnresolvedTraitName
   | MissingTypeDeclaration
   | MissingFunctionSignature
   | MissingValueSignature
@@ -301,6 +303,7 @@ let issueCodeToString (code: IssueCode) : String =
   | UnresolvedTypeName -> "UnresolvedTypeName"
   | UnresolvedFunctionName -> "UnresolvedFunctionName"
   | UnresolvedValueName -> "UnresolvedValueName"
+  | UnresolvedTraitName -> "UnresolvedTraitName"
   | MissingTypeDeclaration -> "MissingTypeDeclaration"
   | MissingFunctionSignature -> "MissingFunctionSignature"
   | MissingValueSignature -> "MissingValueSignature"
