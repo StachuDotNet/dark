@@ -56,7 +56,7 @@ let rec subExprs (expr : Expr) : List<Expr> =
   | ERecordUpdate(_, record, updates) ->
     record :: (updates |> NEList.toList |> List.map snd)
 
-  | EInfix(_, _, lhs, rhs) -> [ lhs; rhs ]
+  | EInfix(_, _, lhs, rhs, _) -> [ lhs; rhs ]
   | ELambda(_, _, body) -> [ body ]
   | EApply(_, fnExpr, _, args) -> fnExpr :: NEList.toList args
 
@@ -157,7 +157,7 @@ let rec symbolsUsedInExpr (expr : Expr) : Set<string> =
   | EValue(_, _) -> Set.empty
 
   // things that can be applied
-  | EInfix(_, _, left, right) -> Set.union (r left) (r right)
+  | EInfix(_, _, left, right, _) -> Set.union (r left) (r right)
   | EFnName(_, _) -> Set.empty
   | ELambda(_, _, body) -> r body
   | EApply(_, thingToApply, _, args) ->
@@ -269,7 +269,7 @@ let rec unqualifiedResolvedNamesInExpr (expr : Expr) : Set<string> =
   | EFnName _ -> Set.empty
 
   // things that can be applied
-  | EInfix(_, _, left, right) -> Set.union (r left) (r right)
+  | EInfix(_, _, left, right, _) -> Set.union (r left) (r right)
   | ELambda(_, _, body) -> r body
   | EApply(_, thingToApply, _, args) ->
     Set.unionMany
