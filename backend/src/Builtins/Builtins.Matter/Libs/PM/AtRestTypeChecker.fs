@@ -310,6 +310,11 @@ let resolveTraitCalls
           hasInfix fn.body
           || (Dependencies.extractFromFn fn
               |> List.exists (fun d -> d.itemKind = PT.ItemKind.Trait))
+        // A value's body is an expression too, and `let scale = 3L * 4L` is an operator call
+        // that the checker types the same way. It is evaluated once at load rather than per
+        // call, so nothing here is about speed; it is about the value meaning the same thing
+        // after someone else's implementation arrives.
+        | PT.PackageOp.AddValue value -> hasInfix value.body
         | _ -> false)
     if not worthChecking then
       return ops
@@ -391,33 +396,50 @@ let resolveTraitCalls
                       | _ -> None))
           }
 
-        let pinsByFn =
+        let pinsByItem =
           Dictionary<PT.Hash, Map<id, PT.ResolvedName<PT.FQFnName.Package>>>()
-        for result in batch.functions do
-          match result.item, result.verdict with
-          | PT.Reference.PackageFn fnHash, Checker.Checked proof ->
+        let collect (hash : PT.Hash) (proof : Checker.Proof) : Ply<unit> =
+          uply {
             let mutable pins = Map.empty
             for KeyValue(nodeId, (method_, implHashes)) in
               CheckerApi.resolutionsOf proof do
               match! implFnFor method_ implHashes with
               | Some implFn -> pins <- Map.add nodeId implFn pins
               | None -> ()
-            if not (Map.isEmpty pins) then pinsByFn[fnHash] <- pins
+            if not (Map.isEmpty pins) then pinsByItem[hash] <- pins
+          }
+        for result in batch.functions do
+          match result.item, result.verdict with
+          | PT.Reference.PackageFn fnHash, Checker.Checked proof ->
+            do! collect fnHash proof
           | _, _ -> ()
+        for result in batch.values do
+          match result.item, result.verdict with
+          | PT.Reference.PackageValue valueHash, Checker.Checked proof ->
+            do! collect valueHash proof
+          | _, _ -> ()
+
+        let mappingFor (hash : PT.Hash) : Option<LibDB.AstTransformer.HashMapping> =
+          match pinsByItem.TryGetValue hash with
+          | true, pins -> Some { LibDB.AstTransformer.emptyMapping with pins = pins }
+          | _ -> None
 
         return
           ops
           |> List.map (fun op ->
             match op with
             | PT.PackageOp.AddFn fn ->
-              match pinsByFn.TryGetValue fn.hash with
-              | true, pins ->
-                PT.PackageOp.AddFn(
-                  LibDB.AstTransformer.transformFn
-                    { LibDB.AstTransformer.emptyMapping with pins = pins }
-                    fn
+              match mappingFor fn.hash with
+              | Some mapping ->
+                PT.PackageOp.AddFn(LibDB.AstTransformer.transformFn mapping fn)
+              | None -> op
+            | PT.PackageOp.AddValue value ->
+              match mappingFor value.hash with
+              | Some mapping ->
+                PT.PackageOp.AddValue(
+                  LibDB.AstTransformer.transformValue mapping value
                 )
-              | _ -> op
+              | None -> op
             | _ -> op)
   }
 
@@ -591,6 +613,7 @@ module private DarkTypes =
       | Checker.UnresolvedTypeName -> "UnresolvedTypeName"
       | Checker.UnresolvedFunctionName -> "UnresolvedFunctionName"
       | Checker.UnresolvedValueName -> "UnresolvedValueName"
+      | Checker.UnresolvedTraitName -> "UnresolvedTraitName"
       | Checker.MissingTypeDeclaration -> "MissingTypeDeclaration"
       | Checker.MissingFunctionSignature -> "MissingFunctionSignature"
       | Checker.MissingValueSignature -> "MissingValueSignature"

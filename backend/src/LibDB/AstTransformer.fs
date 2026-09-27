@@ -230,7 +230,9 @@ and private transformPipeExpr
   | PT.EPipeFnCall(id, nr, typeArgs, args) ->
     PT.EPipeFnCall(
       id,
-      transformFnName mapping nr,
+      // `pinAt` as well as the move: `xs |> Show.show` is a trait method call like any
+      // other, and the save picked an implementation for it.
+      transformFnName mapping nr |> pinAt mapping id,
       typeArgs |> List.map (transformTypeRef mapping),
       args |> List.map (transformExpr mapping)
     )
