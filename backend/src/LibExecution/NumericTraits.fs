@@ -77,14 +77,18 @@ let private all () : List<InfixFnName * (string * string)> =
 /// The operator a trait method is, when it is one. Generation-checked because the
 /// hashes move with the stdlib; the table is published whole and never written
 /// after, so readers on other threads only ever see a finished one.
+///
+/// A reference tuple rather than a struct one, so the generation and the table it
+/// belongs to are published in ONE store. As a struct it took two, and a reader
+/// between them could pair the new generation with the old table and answer from it.
 let mutable private cache
-  : struct (int *
-    System.Collections.Generic.Dictionary<struct (string * string), InfixFnName>) =
-  struct (-1, System.Collections.Generic.Dictionary())
+  : int *
+    System.Collections.Generic.Dictionary<struct (string * string), InfixFnName> =
+  (-1, System.Collections.Generic.Dictionary())
 
 let tryInfix (traitHash : string) (methodName : string) : Option<InfixFnName> =
   let gen = PackageRefs.currentGeneration ()
-  let struct (tableGen, table) = cache
+  let (tableGen, table) = cache
   let table =
     if gen = tableGen then
       table
@@ -92,7 +96,7 @@ let tryInfix (traitHash : string) (methodName : string) : Option<InfixFnName> =
       let fresh = System.Collections.Generic.Dictionary()
       for (op, (hash, m)) in all () do
         fresh[struct (hash, m)] <- op
-      cache <- struct (gen, fresh)
+      cache <- (gen, fresh)
       fresh
   match table.TryGetValue(struct (traitHash, methodName)) with
   | true, op -> Some op

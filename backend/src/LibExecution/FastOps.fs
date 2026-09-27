@@ -502,13 +502,15 @@ let evalNumeric (tag : int) (a : Dval) (b : Dval) : Dval voption =
 /// when the package refs reload, since the hashes move with the stdlib. The table is
 /// published whole and never written after: readers on other threads only ever see a
 /// finished one.
-let mutable private traitTags
-  : struct (int * Dictionary<struct (string * string), int>) =
-  struct (-1, Dictionary())
+/// A reference tuple rather than a struct one, so the generation and the table it belongs to
+/// are published in ONE store. As a struct it took two, and a reader between them could pair
+/// the new generation with the old table and read an operator's tag out of it.
+let mutable private traitTags : int * Dictionary<struct (string * string), int> =
+  (-1, Dictionary())
 
 let traitTag (traitHash : string) (methodName : string) : int voption =
   let gen = PackageRefs.currentGeneration ()
-  let struct (tableGen, table) = traitTags
+  let (tableGen, table) = traitTags
   let table =
     if gen = tableGen then
       table
@@ -537,7 +539,7 @@ let traitTag (traitHash : string) (methodName : string) : int voption =
         (PackageRefs.Trait.Stdlib.Traits.ord ())
         "greaterThanOrEqualTo"
         greaterThanOrEqualTo
-      traitTags <- struct (gen, fresh)
+      traitTags <- (gen, fresh)
       fresh
   let mutable tag = 0
   if table.TryGetValue(struct (traitHash, methodName), &tag) then
