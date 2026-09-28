@@ -271,7 +271,7 @@ let private unitTests =
         let call =
           PT.EApply(
             10UL,
-            PT.EFnName(11UL, PT.NameResolution.ok name),
+            PT.EFnName(11UL, PT.NameResolution.ok name, []),
             [],
             NEList.singleton (PT.EInt(12UL, 1I))
           )
@@ -509,7 +509,7 @@ let private unitTests =
         let sourceCall =
           PT.EApply(
             57UL,
-            PT.EFnName(58UL, PT.NameResolution.ok sourceName),
+            PT.EFnName(58UL, PT.NameResolution.ok sourceName, []),
             [],
             NEList.singleton (PT.EUnit 59UL)
           )
@@ -1082,7 +1082,7 @@ let private unitTests =
         let body =
           PT.EApply(
             28UL,
-            PT.EFnName(29UL, PT.NameResolution.ok add),
+            PT.EFnName(29UL, PT.NameResolution.ok add, []),
             [],
             NEList.ofList (PT.EInt64(30UL, 1L)) [ PT.EInt64(31UL, 2L) ]
           )
@@ -1098,7 +1098,7 @@ let private unitTests =
         let call name lhs rhs =
           PT.EApply(
             28UL,
-            PT.EFnName(29UL, PT.NameResolution.ok (PT.FQFnName.fqBuiltIn name 0)),
+            PT.EFnName(29UL, PT.NameResolution.ok (PT.FQFnName.fqBuiltIn name 0), []),
             [],
             NEList.ofList lhs [ rhs ]
           )
@@ -1132,7 +1132,11 @@ let private unitTests =
           PT.TInt
           (PT.EApply(
             33UL,
-            PT.EFnName(34UL, PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "add" 0)),
+            PT.EFnName(
+              34UL,
+              PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "add" 0),
+              []
+            ),
             [],
             NEList.singleton one
           ))
@@ -1164,7 +1168,7 @@ let private unitTests =
             PT.InfixFnCall operation,
             PT.EArg(nodeId + 1UL, 0),
             PT.EArg(nodeId + 2UL, 0),
-            None
+            PT.FQFnName.Unknown
           )
         let environment = numericEnvironment ()
 
@@ -1207,7 +1211,7 @@ let private unitTests =
             PT.InfixFnCall operation,
             PT.EArg(nodeId + 1UL, 0),
             PT.EArg(nodeId + 2UL, 0),
-            None
+            PT.FQFnName.Unknown
           )
 
         let bitwise =
@@ -1235,7 +1239,12 @@ let private unitTests =
           PT.EPipe(
             199UL,
             PT.EArg(200UL, 0),
-            [ PT.EPipeInfix(201UL, PT.InfixFnCall operation, PT.EArg(202UL, 0)) ]
+            [ PT.EPipeInfix(
+                201UL,
+                PT.InfixFnCall operation,
+                PT.EArg(202UL, 0),
+                PT.FQFnName.Unknown
+              ) ]
           )
 
         oneArgFn PT.TInt128 PT.TInt128 (pipeline PT.ArithmeticPower)
@@ -1249,7 +1258,11 @@ let private unitTests =
         let builtinPower =
           PT.EApply(
             203UL,
-            PT.EFnName(204UL, PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "power" 0)),
+            PT.EFnName(
+              204UL,
+              PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "power" 0),
+              []
+            ),
             [],
             NEList.ofList (PT.EArg(205UL, 0)) [ PT.EArg(206UL, 0) ]
           )
@@ -1267,7 +1280,11 @@ let private unitTests =
         let negate =
           PT.EApply(
             40UL,
-            PT.EFnName(41UL, PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "negate" 0)),
+            PT.EFnName(
+              41UL,
+              PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "negate" 0),
+              []
+            ),
             [],
             NEList.singleton (PT.EArg(42UL, 0))
           )
@@ -1294,7 +1311,7 @@ let private unitTests =
         let call name =
           PT.EApply(
             133UL,
-            PT.EFnName(134UL, PT.NameResolution.ok name),
+            PT.EFnName(134UL, PT.NameResolution.ok name, []),
             [],
             NEList.ofList (PT.EInt(135UL, 1I)) [ PT.EInt(136UL, 2I) ]
           )
@@ -1339,7 +1356,8 @@ let private unitTests =
             140UL,
             PT.EFnName(
               141UL,
-              PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "unconstrainedResult" 0)
+              PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "unconstrainedResult" 0),
+              []
             ),
             [ PT.TInt; PT.TInt; PT.TInt ],
             NEList.ofList (PT.EInt(142UL, 1I)) [ PT.EInt(143UL, 2I) ]
@@ -1356,7 +1374,8 @@ let private unitTests =
             137UL,
             PT.EFnName(
               138UL,
-              PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "unwrap" 0)
+              PT.NameResolution.ok (PT.FQFnName.fqBuiltIn "unwrap" 0),
+              []
             ),
             [],
             NEList.singleton (PT.EInt(139UL, 1I))
@@ -1378,7 +1397,7 @@ let private unitTests =
         let body =
           PT.EApply(
             60UL,
-            PT.EFnName(61UL, PT.NameResolution.ok identity),
+            PT.EFnName(61UL, PT.NameResolution.ok identity, []),
             [ PT.TInt ],
             NEList.singleton (PT.EInt(62UL, 1I))
           )
@@ -1400,7 +1419,7 @@ let private unitTests =
         let body =
           PT.EApply(
             128UL,
-            PT.EFnName(129UL, PT.NameResolution.ok identity),
+            PT.EFnName(129UL, PT.NameResolution.ok identity, []),
             [ PT.TVariable "a" ],
             NEList.singleton (PT.EArg(130UL, 0))
           )
@@ -1515,7 +1534,7 @@ let private unitTests =
                 PT.InfixFnCall PT.ComparisonEquals,
                 PT.EVariable(304UL, "n"),
                 PT.EInt(305UL, 0I),
-                None
+                PT.FQFnName.Unknown
               ),
               PT.EInt(306UL, 0I),
               Some(
@@ -1529,7 +1548,7 @@ let private unitTests =
                       PT.InfixFnCall PT.ArithmeticMinus,
                       PT.EVariable(310UL, "n"),
                       PT.EVariable(311UL, "step"),
-                      None
+                      PT.FQFnName.Unknown
                     ))
                     (PT.EVariable(318UL, "step"))
                 )
@@ -1596,7 +1615,7 @@ let private unitTests =
               PT.InfixFnCall PT.ArithmeticPlus,
               PT.EVariable(333UL, "f"),
               PT.EVariable(334UL, "x"),
-              None
+              PT.FQFnName.Unknown
             )
           )
         let body =
@@ -1848,7 +1867,8 @@ let private unitTests =
                 40UL,
                 PT.EFnName(
                   41UL,
-                  PT.NameResolution.ok (PT.FQFnName.Package identityHash)
+                  PT.NameResolution.ok (PT.FQFnName.Package identityHash),
+                  []
                 ),
                 [],
                 NEList.singleton (PT.EArg(42UL, 0))
@@ -2107,7 +2127,8 @@ let private unitTests =
                 2UL,
                 PT.EFnName(
                   3UL,
-                  PT.NameResolution.ok (PT.FQFnName.Package dependencyHash)
+                  PT.NameResolution.ok (PT.FQFnName.Package dependencyHash),
+                  []
                 ),
                 [],
                 NEList.singleton (PT.EUnit 4UL)
@@ -2297,12 +2318,13 @@ let private traitTests =
   let call (name : PT.FQFnName.FQFnName) (arg : PT.Expr) : PT.Expr =
     PT.EApply(
       10UL,
-      PT.EFnName(11UL, PT.NameResolution.ok name),
+      PT.EFnName(11UL, PT.NameResolution.ok name, []),
       [],
       NEList.singleton arg
     )
   let showMethod =
-    PT.FQFnName.TraitMethod { trait_ = showHash; method_ = "show"; implFn = None }
+    PT.FQFnName.TraitMethod
+      { trait_ = showHash; method_ = "show"; implFn = PT.FQFnName.Unknown }
 
   testList
     "traits"
