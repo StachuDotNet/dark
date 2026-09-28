@@ -2229,6 +2229,7 @@ let private traitTests =
         NEList.singleton
           { name = "show"
             typeParams = []
+            bounds = []
             parameters =
               NEList.singleton
                 { name = "value"; typ = PT.TVariable "a"; description = "" }

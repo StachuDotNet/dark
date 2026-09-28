@@ -1567,6 +1567,7 @@ module Trait =
       let fields =
         [ "name", DString m.name
           "typeParams", DList(VT.string, List.map DString m.typeParams)
+          "bounds", Bound.listToDT m.bounds
           "parameters",
           DList(
             VT.known (PackageFn.Parameter.knownType ()),
@@ -1585,6 +1586,7 @@ module Trait =
       | DRecord(_, _, _, fields) ->
         { name = fields |> D.field "name" |> D.string
           typeParams = fields |> D.field "typeParams" |> D.list D.string
+          bounds = fields |> D.field "bounds" |> D.list Bound.fromDT
           parameters =
             fields
             |> D.field "parameters"
