@@ -402,7 +402,10 @@ let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState
       allItemKinds
       |> Stdlib.List.filterMap (fun pair ->
         let (k, _) = pair
-        resolveTarget branchId currentLoc k target)
+
+        match resolveTarget branchId currentLoc k target with
+        | Some r -> Stdlib.Option.Option.Some((k, r))
+        | None -> Stdlib.Option.Option.None)
 
     match resolved with
     | [] ->
@@ -418,33 +421,56 @@ let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState
         (Stdlib.Cli.UI.Colors.hint "  say which: `dark deprecate <fn|type|value|trait|impl> <name>`")
 
       state
-    | [ targetRef ] ->
-      let op =
-        LanguageTools.ProgramTypes.PackageOp.Undeprecate
-          (targetRef, Stdlib.Option.Option.None)
+    | [ pair ] ->
+      let (itemKind, targetRef) = pair
 
-      match SCM.PackageOps.add branchId [ op ] with
-      | Ok _ ->
-        // Same reason as `deprecate`: ask what is in effect. `Undeprecate` carries only its
-        // target, so before it had a stamp there was exactly one possible undeprecate op per item
-        // for all time; now authoring re-states it and this should always be undeprecated.
-        match
-          LanguageTools.PackageManager.currentDeprecation
-            branchId
-            (LanguageTools.ProgramTypes.Reference.hash targetRef)
-            (LanguageTools.ProgramTypes.Reference.kind targetRef)
-        with
-        | None ->
+      // Two checks, because they ask different questions and both have been wrong here. BEFORE:
+      // undeprecating something that was never deprecated used to report success, which reads as
+      // though it undid something. AFTER: an op can be written and not take effect, which is what
+      // restatement fixed, so the only honest success is one the store agrees with.
+      let standing () =
+        LanguageTools.PackageManager.currentDeprecation
+          branchId
+          (LanguageTools.ProgramTypes.Reference.hash targetRef)
+          itemKind
+
+      match standing () with
+      | None ->
+        Stdlib.printLine
+          (Stdlib.Cli.UI.Colors.hint $"{target} is not deprecated; nothing to undo.")
+
+        state
+      | Some _ ->
+        let op =
+          LanguageTools.ProgramTypes.PackageOp.Undeprecate
+            (targetRef, Stdlib.Option.Option.None)
+
+        match SCM.PackageOps.add branchId [ op ] with
+        | Ok _ ->
+          match standing () with
+          | None ->
+            Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"Undeprecated {target}")
+            state
+          | Some _ ->
+            Stdlib.printLine
+              (Stdlib.Cli.UI.Colors.error
+                $"Still deprecated, though the op was written. That is a bug in op restatement -- please report it.")
+
+            state
+        | Error e ->
+          Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Undeprecate failed: {e}")
+          state
+        state
+      else
+        let op = LanguageTools.ProgramTypes.PackageOp.Undeprecate targetRef
+
+        match SCM.PackageOps.add branchId [ op ] with
+        | Ok _ ->
           Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"Undeprecated {target}")
           state
-        | Some _ ->
-          Stdlib.printLine
-            (Stdlib.Cli.UI.Colors.error
-              $"Still deprecated, though the op was written. That is a bug in op restatement -- please report it.")
+        | Error e ->
+          Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Undeprecate failed: {e}")
           state
-      | Error e ->
-        Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Undeprecate failed: {e}")
-        state
   | _ ->
     Stdlib.printLine (Stdlib.Cli.UI.Colors.error "usage: dark undeprecate <name>")
     state
