@@ -424,10 +424,10 @@ let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState
     | [ pair ] ->
       let (itemKind, targetRef) = pair
 
-      // Two checks, because they ask different questions and both have been wrong here. BEFORE:
-      // undeprecating something that was never deprecated used to report success, which reads as
-      // though it undid something. AFTER: an op can be written and not take effect, which is what
-      // restatement fixed, so the only honest success is one the store agrees with.
+      // Two checks, because they ask different questions. Reporting success for
+      // undeprecating something that was never deprecated reads as though it undid
+      // something. And an op can be written without taking effect, which is what
+      // `restating` settles, so the only honest success is one the store agrees to.
       let standing () =
         LanguageTools.PackageManager.currentDeprecation
           branchId
@@ -457,17 +457,6 @@ let executeUndeprecate (state: Cli.AppState) (args: List<String>) : Cli.AppState
                 $"Still deprecated, though the op was written. That is a bug in op restatement -- please report it.")
 
             state
-        | Error e ->
-          Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Undeprecate failed: {e}")
-          state
-        state
-      else
-        let op = LanguageTools.ProgramTypes.PackageOp.Undeprecate targetRef
-
-        match SCM.PackageOps.add branchId [ op ] with
-        | Ok _ ->
-          Stdlib.printLine (Stdlib.Cli.UI.Colors.success $"Undeprecated {target}")
-          state
         | Error e ->
           Stdlib.printLine (Stdlib.Cli.UI.Colors.error $"Undeprecate failed: {e}")
           state
