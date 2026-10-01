@@ -43,7 +43,7 @@ let encodeChar (c: Char) : String =
     // CRLF. Escape those without dropping the rest of the grapheme. Escape
     // backslashes first so the escapes added for CR and LF stay intact.
     c
-    |> Stdlib.Char.toString
+    |> Stdlib.toString
     |> Stdlib.String.replaceAll "\\" "\\\\"
     |> Stdlib.String.replaceAll "\r" "\\r"
     |> Stdlib.String.replaceAll "\n" "\\n"
@@ -61,7 +61,7 @@ let encodeChar (c: Char) : String =
       let lo = code % 16
       $"\\x{hexDigitChar hi}{hexDigitChar lo}"
     else
-      Stdlib.Char.toString c
+      Stdlib.toString c
 
 // Encode special characters back to source-form. Symmetric with the parser's
 // `decodeStringContent`. Quote escapes are added per quote style — `"` for
@@ -131,11 +131,11 @@ let formatAccessedFieldName (name: String) : String =
 let processRemainder (remainder: String) : String =
   match $".{remainder}" |> Stdlib.Float.parse with
   | Ok floatValue ->
-    let printed = Stdlib.Float.toString floatValue
+    let printed = Stdlib.toString floatValue
     let isPlainDecimal =
       printed
       |> Stdlib.String.toList
-      |> Stdlib.List.all (fun c -> Stdlib.Char.isDigit c || (Stdlib.Char.toString c) == ".")
+      |> Stdlib.List.all (fun c -> Stdlib.Char.isDigit c || (Stdlib.toString c) == ".")
     if isPlainDecimal && (Stdlib.String.startsWith printed "0.") then
       Stdlib.String.dropFirst printed 2
     else
