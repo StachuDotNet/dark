@@ -1221,15 +1221,17 @@ let private tryFastOpDirect
   (typeArgs : List<TypeReference>)
   (argRegs : NEList<Register>)
   : Dval voption =
-  if
-    not exeState.tracing.skipTracing
-    || not (List.isEmpty typeArgs)
-    || not (List.isEmpty applicable.argsSoFar)
-  then
+  if not (List.isEmpty typeArgs) || not (List.isEmpty applicable.argsSoFar) then
     ValueNone
   else
     match applicable.name with
-    | FQFnName.Builtin b -> tryFastOpOn threadID registers b argRegs
+    // Still declines while tracing is on. A builtin call is recorded with its arguments and its
+    // result when it returns, and a fast path that skipped that would drop it from the trace.
+    // Nothing about a builtin call's RESULT turns on this: a builtin has no rival implementation,
+    // so both paths compute the same number.
+    | FQFnName.Builtin b ->
+      if exeState.tracing.skipTracing then tryFastOpOn threadID registers b argRegs
+      else ValueNone
     // `a + b` on two values of one builtin type: the impl the dispatch would pick
     // is the type's own wrapper over the same F# operator, so answer it here. An `Int` pair
     // takes the `Int` table; the rest take `evalNumeric`.
