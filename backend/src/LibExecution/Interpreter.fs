@@ -1088,19 +1088,11 @@ let private completeBuiltin
 /// The result of an `Int` operator, or `ValueNone` to take the ordinary path.
 ///
 /// Declines while tracing is on: a builtin call is recorded with its arguments and result when it
-/// returns, and a fast path that skipped that would quietly drop every arithmetic operation from the
-/// trace. Tracing is off in the CLI, which is what this is for.
-///
-/// TODO: now that operators are traits, that guard is load-bearing for RESULTS and not only for
-/// what a trace shows. `docs traits` says a user's own `impl Add for Int64` is stored and never
-/// called, because two operands of one builtin numeric type are added directly. That holds here and
-/// does not hold on the dispatch path, so with `DARK_CONFIG_TRACE_DETAIL=on` a rival
-/// implementation wins and `1L + 2L` answers 999. Measured. Not reachable from a shipped binary,
-/// where trace detail defaults off, so this is a dev and CI exposure rather than a product one.
-/// The fix is for the builtin-numeric-pair answer to stop being an optimisation behind this guard
-/// and become what dispatch does for that case; the trace then shows no `Add` frame for `1L + 2L`,
-/// which is what the program does anyway. Left alone because it is the interpreter's hot path and
-/// the guard predates traits.
+/// returns, and a fast path that skipped that would quietly drop it from the trace. Nothing about a
+/// builtin call's RESULT turns on this, because `fn` is a `BuiltInFn` and a builtin has no rival
+/// implementation to diverge to. The arm that CAN change a result is the `TraitMethod` one in
+/// `tryFastOpDirect`, which is what `a + b` compiles to, and it answers whether or not anything is
+/// watching.
 let private tryFastOp
   (exeState : ExecutionState)
   (threadID : ThreadID)
