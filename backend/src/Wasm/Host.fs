@@ -602,8 +602,17 @@ module Cli =
         LibExecution.HostSecurity.setPolicyDirectory (
           IO.Path.Combine(runDir, "policy")
         )
-        LibDB.PolicyStore.seedInstanceIfMissing
-          LibExecution.Permissions.Policy.defaultInstance
+        // A tab gets the permissive policy, not `defaultInstance`, and the reason is that the
+        // browser is already a tighter sandbox than this policy can describe. There is no
+        // filesystem to read, no process to spawn and no environment to leak; the things
+        // `defaultInstance` withholds are things a tab cannot do at all. Network is the one that
+        // matters and granting it gives away nothing, because `fetch` is bound by CORS and the
+        // page's origin either way: the page could already make the request.
+        //
+        // Without this, the first interesting thing anyone types dies with "permission denied by
+        // instance policy" and advice (`permissions allow http GET ...`) that cannot be followed
+        // in a tab, which reads as broken rather than as sandboxed.
+        LibDB.PolicyStore.seedInstanceIfMissing LibExecution.Permissions.Policy.allowAll
         LibExecution.HostSecurity.setPackageDbPath dbPath
 
         LibDB.Sqlite.Sql.warm ()
