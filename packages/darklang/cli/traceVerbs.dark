@@ -756,12 +756,21 @@ let loopsOf
       Stdlib.Dict.get siteIsOurs (Stdlib.Int64.toString f.callSite)
       |> Stdlib.Option.withDefault false)
 
+  // Every frame by id, built once. `ownerOf` below is called per lambda and used to scan the
+  // whole frame list for the parent, which is frames times lambdas: a 2,000-iteration loop
+  // walked 2,000 frames two thousand times, and `reportTwo`'s two loops over 2,000 (4,000
+  // frames, 4,000 lambdas) spent most of its nine seconds here. Same reasoning, and the same
+  // fix, as `siteIsOurs` above: one lookup per frame rather than one scan per frame.
+  let frameById =
+    frames
+    |> Stdlib.List.fold Stdlib.Dict.empty (fun acc f ->
+      Stdlib.Dict.setOverridingDuplicates acc f.id f)
+
   // Where a loop gets its name: the function the lambda was passed TO, which is its parent
   // frame. `List.map` pushes a frame and applies the lambda inside it, and the frame carries the
   // callee's hash, which the trace's own index turns back into a name.
   let ownerOf (parentId: String) : (String * String) =
-    frames
-    |> Stdlib.List.findFirst (fun f -> f.id == parentId)
+    Stdlib.Dict.get frameById parentId
     |> Stdlib.Option.andThen (fun parent ->
       if parent.kind == "function" then
         fnNames
