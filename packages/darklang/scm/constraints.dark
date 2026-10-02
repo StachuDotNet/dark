@@ -557,8 +557,12 @@ let ack
 
   let op =
     LanguageTools.ProgramTypes.PackageOp.Decision(
-      // The finding id, so acking the same finding twice is one decision stated twice. There is no
-      // un-ack, so nothing needs a later ack of the same finding to be a distinct op.
+      // The finding id, so acking the same finding twice is one decision stated twice. That is safe
+      // only while there is no un-ack: an op's id is its content hash, so a second identical
+      // `Decision` is the first one and folds nothing. If an un-ack is ever added, ack-unack-ack
+      // loses the last ack, the way deprecate-undeprecate-deprecate loses the last deprecation
+      // today. The fix then is what the keep-mine override already does in `branches.dark`: put a
+      // stamp in the decision id so a repeat is a distinct op.
       $"ack:{s.id}",
       s.usage,
       reason,
