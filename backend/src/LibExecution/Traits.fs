@@ -168,6 +168,16 @@ let select (candidates : List<ImplCandidate>) (self : KnownType) : Selection =
     // Two implementations for one type: the one written later runs, by the stamp of the op that
     // added it and the rule the op-fold uses for two bindings of one name. Both stay in the
     // store; `dark constraints` reports the pair, and deprecating one settles it.
+    //
+    // TODO: nothing stops the later one belonging to somebody who owns neither the trait nor the
+    // type. Writing `impl Stdlib.ToString for Int64` in your own package is allowed, the save says
+    // only `Created`, and from then on `Stdlib.toString 42L` answers what you wrote, for all new
+    // code; already-saved calls keep what they pinned, so the exposure is to what is written next.
+    // Which of our stable traits that can reach is currently an accident of `FastOps`, not a
+    // policy: `1L + 2L` ignores a rival because the fast path answers builtin numeric pairs
+    // directly, and `10L / 2L` takes it, because `Divide` is not in that table. `ToString` is not
+    // either. Measured, both of them. This is the orphan instance problem and the languages with
+    // traits all answer it with an ownership rule; the PR description carries the options.
     let stamped =
       several
       |> List.map (fun c ->
