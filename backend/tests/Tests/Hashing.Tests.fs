@@ -514,7 +514,15 @@ let private placeholderHashTests =
               .ToLowerInvariant()
           )
         let (PT.Hash h) = hash
-        Expect.isTrue (h.Length = 64) "should be 64 hex chars (SHA-256)"
+        // The exact digest, not its length. Every SHA-256 is 64 hex characters by construction, so
+        // a length assertion passes whatever `toFQN` returned and whatever case the encoding used;
+        // it tests `System.Security.Cryptography` rather than anything of ours. This vector is the
+        // SHA-256 of the string `toFQN` is supposed to produce for that location, lowercase, so it
+        // fails if the name, the separator or the case changes.
+        Expect.equal
+          h
+          "190a5ec0f6b1f322ac0e88809af69c4142aab838abd67481633f5fb8cda305dc"
+          "the SHA-256 of `Test.Modulo.Foo`, lowercase hex"
       } ]
 
 
