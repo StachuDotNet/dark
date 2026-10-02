@@ -1069,15 +1069,31 @@ let createViewTracer
   let headKept = 5
   let tailKept = 5
 
-  // (parent frame, which call site) -> how many frames have been seen there
-  let siteCounts =
-    System.Collections.Generic.Dictionary<struct (System.Guid * int64), int>()
+  // which call site -> how many frames have been seen there, across the whole view
+  //
+  // The site ALONE, with no parent in the key, because that is what every consumer means by a
+  // site: `loopsOf` groups a function's passes by `callSite` and nothing else ("this is one
+  // grouping key, not two"), `siteKeyOf` is built so recursion's entries share one key, and
+  // `focus` below names an iteration by (site, index). Keying this by (parent, site) instead
+  // made two things answer the same question differently, and the cost landed on recursion:
+  // every recursive call has a DIFFERENT parent frame, so every call was the first at its own
+  // key, `inHead` was always true, and nothing was ever evicted. `fib 20`'s twenty-two thousand
+  // frames all kept their arguments and values. That is the quadratic: not the frame count, but
+  // a window that recursion could never fall out of.
+  //
+  // What it means when one loop runs more than once: its passes merge into a single numbered
+  // sequence in execution order, so a `List.map` inside a function called twice reads as one
+  // loop of 2N rather than two of N. That is already what the page shows, since `loopsOf`
+  // merges them; this makes the frames that are KEPT agree with the count that is displayed.
+  // The window is five and five per site across the run, and anything in between is reached by
+  // `focus`, which now keys the same way and so can actually reach it.
+  let siteCounts = System.Collections.Generic.Dictionary<int64, int>()
 
   // The tail window: the most recent frames at each site that are still holding values, oldest
   // first. When an eleventh iteration arrives the sixth-from-last stops being in the last five,
   // so its values go. Head frames never enter this queue and so are never dropped.
   let tailWindow =
-    System.Collections.Generic.Dictionary<struct (System.Guid * int64), System.Collections.Generic.Queue<System.Guid>>()
+    System.Collections.Generic.Dictionary<int64, System.Collections.Generic.Queue<System.Guid>>()
 
   // Which expressions each frame wrote, so dropping one is a bounded amount of work rather than
   // a scan of everything collected so far.
@@ -1115,7 +1131,7 @@ let createViewTracer
     (ep : RT.ExecutionPoint)
     (args : List<RT.Dval>)
     : unit =
-    let site = struct (parentId, siteKeyOf ep)
+    let site = siteKeyOf ep
     lock gate (fun () ->
       let mutable seen = 0
       siteCounts.TryGetValue(site, &seen) |> ignore<bool>
@@ -1131,9 +1147,8 @@ let createViewTracer
       frameOrd <- frameOrd + 1
 
       // In the head, or the one iteration this view was asked to go and get.
-      let here = siteKeyOf ep
       let isFocused =
-        focus |> List.exists (fun (struct (site', at)) -> site' = here && at = seen)
+        focus |> List.exists (fun (struct (site', at)) -> site' = site && at = seen)
 
       let inHead = seen < headKept
 

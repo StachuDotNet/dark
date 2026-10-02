@@ -84,7 +84,10 @@ let big (n: Int) : Int =
 
 
 /// Branching recursion, for the big-trace timings. `fib 12` is 465 calls, `fib 14` 1,219,
-/// `fib 16` 3,193. Opening a trace of one is roughly quadratic in those, so stop at 16.
+/// `fib 16` 3,193, `fib 20` 21,891. Opening one used to be roughly quadratic in those, because
+/// the window that bounds how many iterations keep their values was keyed by (parent, site) and
+/// every recursive call has a different parent, so nothing was ever evicted. Keyed by site
+/// alone it is flat, and `fib 20` is a reasonable thing to ask for.
 let fib (n: Int) : Int =
   if n < 2 then n else (fib (n - 1)) + (fib (n - 2))
 
