@@ -70,6 +70,51 @@ let listModule
   Stdlib.printLine $"Contents of {locationStr}:"
   Stdlib.printLine ""
 
+  // An implementation is named `<module>.<Type>.<Trait>`, so the ones written in THIS module are
+  // stored one level down, under the type they are for. A listing of the module shows them anyway:
+  // you wrote `impl Show for Pt` in `Acme`, so `ls Acme` is where you look for it. They also show
+  // in `ls Acme.Pt`, which is deliberate -- the type's module is a sub-listing of this one and
+  // seeing an implementation in both is what a reader expects. Do not "fix" the duplicate.
+  //
+  // One query per type that is ALSO a submodule here. An implementation at `M.T.Trait` makes `M.T`
+  // a module, so a type with no submodule has no implementations and needs no query; the submodule
+  // names are already in hand from the one call above. `Darklang.Stdlib` declares no types at all,
+  // so its listing pays nothing, and `LanguageTools.ProgramTypes` declares 31 and pays for the two
+  // that have implementations rather than for all of them.
+  let implsUnder
+    (typeName: String)
+    : List<(String * String * LanguageTools.ProgramTypes.Hash * List<String>)> =
+    let childPath = Stdlib.List.append modulePath [ typeName ]
+    let (_subs, _t, _v, _f, _tr, childImpls) =
+      Query.allDirectDescendantNamesAndHashes branchId childPath
+
+    Query.filterDeprecatedPairs childImpls depSets includeDeprecated
+    |> Stdlib.List.map (fun (traitName, hash) -> (traitName, typeName, hash, childPath))
+
+  // The type an implementation stored HERE is for is the module we are standing in: at
+  // `Stdlib.Int64` the entries are `Add for Int64`.
+  let selfType =
+    modulePath |> Stdlib.List.last |> Stdlib.Option.withDefault ""
+
+  // The fourth field is the module the implementation actually lives in, which `--versions` needs:
+  // for one stored here that is this module, and for one under a type it is that type's.
+  let ownImplEntries =
+    impls
+    |> Stdlib.List.map (fun (traitName, hash) -> (traitName, selfType, hash, modulePath))
+
+  let childImplEntries =
+    types
+    |> Stdlib.List.map (fun (typeName, _hash) -> typeName)
+    |> Stdlib.List.filter (fun typeName -> Stdlib.List.member allSubmodules typeName)
+    |> Stdlib.List.map implsUnder
+    |> Stdlib.List.flatten
+
+  let implEntries =
+    Stdlib.List.append ownImplEntries childImplEntries
+    |> Stdlib.List.sortBy (fun entry ->
+      let (traitName, typeName, _hash, _path) = entry
+      typeName + "." + traitName)
+
   let implNames = impls |> Stdlib.List.map (fun (name, _) -> name)
   let submodules =
     LanguageTools.PackageManager.Search.readerSubmodules allSubmodules implNames
@@ -95,6 +140,25 @@ let listModule
 
       Stdlib.printLine ""
 
+  // Its own printer: an implementation entry names the trait AND the type, because at the module
+  // level the type is no longer implied by where you are standing, and one form everywhere beats
+  // a short one here and a long one there.
+  let printImplSection
+    (entries: List<(String * String * LanguageTools.ProgramTypes.Hash * List<String>)>)
+    : Unit =
+    if Stdlib.Bool.not (Stdlib.List.isEmpty entries) then
+      Stdlib.printLine (Display.getSectionHeader "impl")
+      entries
+      |> Stdlib.List.iter (fun entry ->
+        let (traitName, typeName, hash, versionsPath) = entry
+        let mark = Query.deprecationMarker depSets hash
+        Stdlib.printLine $"  {traitName} for {typeName}{mark}"
+
+        if showVersions then
+          printVersionLines versionsPath traitName hash)
+
+      Stdlib.printLine ""
+
   // Driven by the one kind order, so this list cannot drift from `tree` or the workbench.
   Darklang.Cli.Glyphs.kindOrder
   |> Stdlib.List.iter (fun kind ->
@@ -104,7 +168,7 @@ let listModule
     | "fn" -> printSection "fn" fns
     | "val" -> printSection "val" values
     | "trait" -> printSection "trait" traits
-    | "impl" -> printSection "impl" impls
+    | "impl" -> printImplSection implEntries
     | _ -> ())
 
 
