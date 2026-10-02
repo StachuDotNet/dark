@@ -453,6 +453,10 @@ agrees with whatever you already believed. Measured instances:
   `toStringISO8601BasicDate`), inventing call sites that do not exist
 - `head -c N` on JSON truncates mid-structure, so a valid payload fails to parse and reads as a
   malformed response
+- a context pattern like `grep -o '.\{260\}NEEDLE.\{120\}'` requires 260 characters BEFORE the
+  match, so any hit near the start of a line silently fails to match and the needle reads as
+  absent. Reported "zero occurrences" of a number that was in the file 15 times. Count with a
+  fixed string first (`grep -c -F`), then go looking for context
 
 A HARNESS manufactures a negative the same way a filter does, and it is harder to see because
 running a control FEELS like the check. Headless chromium never reached a prompt in the browser
@@ -589,6 +593,31 @@ application references in the driver's value position so they are stamped broad 
 `DApplicable(AppNamedFn …)` in package instructions. Keep code constants distinct from
 captured values when changing applicable decoding; attenuating code references can lock
 down the entire CLI.
+
+**`Defined N declarations` is not evidence your edit took effect.** Two different mechanisms
+drop an edit while printing the same success line, so treat the line as "parsed", not "live":
+
+- AN APPROVED NAME FOLLOWS THE APPROVED VERSION. `permissions approve` says so out loud
+  ("the name follows this version"). Re-authoring does write the new body and does repoint the
+  name, but a previously approved name keeps resolving to the approved version until you approve
+  again. Editing bodies in `docs/browser-concurrency-demo.dark` and re-running
+  `dark module /Demo.Browser - < ...` left every approved function on its OLD body; a
+  `permissions approve Demo.Browser.overlapping` made the new one live immediately. A newly
+  added name in the same file (a `val`) landed straight away, having no approval to pin it,
+  which is what makes it confusing: part of the file takes effect and part does not.
+- A DOC-ONLY EDIT NEVER LANDS AT ALL, for an unrelated reason: doc comments are deliberately
+  excluded from the content hash (`Canonical.fs`), so the write produces nothing new to store.
+  Written up in `notes/doc-comment-edits-dropped-2026-10-02.md`.
+
+These are NOT the same bug, and the first one is not a bug at all once you know it. What they
+share is the output.
+
+The tell, and the useful part, because it works without knowing which one you are in: A COUNT IN
+THE OUTPUT DISAGREED WITH THE FILE. A five-element list reported "10 reads", the old body's
+`repeatUnsafe 10` still running. Put something countable in what you are editing (a length, a
+name, a number in a string) and check the output moved. To test an edited module without
+re-approving, load it under a fresh module path, which needs `permissions approve` per function
+anyway since a fresh name has none.
 
 ## Scratch stores carry the real relay
 
