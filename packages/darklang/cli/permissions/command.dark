@@ -769,9 +769,11 @@ let complete
   match args with
   | [ "profile" ] ->
     Profiles.all |> Stdlib.List.map (fun profile -> Cli.Completion.simple profile.name)
+  // Wildcards, not `_root`: every branch of an or-pattern has to bind the same names, and the
+  // first one binds nothing. Nothing here reads the root anyway.
   | [ "profile", "default" ]
-  | [ "profile", "read-only", _root ]
-  | [ "profile", "local-dev", _root ] -> [ Cli.Completion.simple "--yes" ]
+  | [ "profile", "read-only", _ ]
+  | [ "profile", "local-dev", _ ] -> [ Cli.Completion.simple "--yes" ]
   | "profile" :: _ -> []
   | _ ->
     Command.subcommands

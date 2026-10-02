@@ -224,21 +224,21 @@ let modulePreviewLines (state: State) (item: BodyItem) : List<String> =
     if Stdlib.List.isEmpty children then
       [ Stdlib.Cli.UI.Colors.dimText "  (empty module)", "" ]
     else
-      Stdlib.List.flatten
-        // The one kind order, shared with `dark ls` and `dark tree`.
-        Darklang.Cli.Glyphs.kindOrder
-        |> Stdlib.List.map (fun kind ->
-          let label =
-            match kind with
-            | "module" -> "modules"
-            | "type" -> "types"
-            | "fn" -> "functions"
-            | "val" -> "values"
-            | "trait" -> "traits"
-            | "impl" -> "trait implementations"
-            | other -> other
-          group label (ofKind kind))
-        |> Stdlib.List.flatten
+      // The one kind order, shared with `dark ls` and `dark tree`. One `flatten`, at the end:
+      // there used to be a second one in front of `kindOrder`, which is a list of strings.
+      Darklang.Cli.Glyphs.kindOrder
+      |> Stdlib.List.map (fun kind ->
+        let label =
+          match kind with
+          | "module" -> "modules"
+          | "type" -> "types"
+          | "fn" -> "functions"
+          | "val" -> "values"
+          | "trait" -> "traits"
+          | "impl" -> "trait implementations"
+          | other -> other
+        group label (ofKind kind))
+      |> Stdlib.List.flatten
   Stdlib.List.flatten
     [ [ Stdlib.Cli.UI.Colors.boldText (item.name + "/")
         Stdlib.Cli.UI.Colors.dimText (plural (Stdlib.List.length children) "item")

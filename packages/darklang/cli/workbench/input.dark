@@ -6,8 +6,16 @@ module Darklang.Cli.Workbench
 let performInputAction (state: State) (inp: InputState) : Step =
   if inp.action == "commit" then
     match state.accountId with
-    | Some acct ->
-      match SCM.PackageOps.commitDraft acct state.branchId inp.field.text with
+    | Some _acct ->
+      // The author is a NAME, not the account's id. Same rule as `dark commit`: the stored
+      // identity, falling back to the account name. `acct` only gates whether there is an
+      // account at all.
+      let author =
+        match SCM.PackageOps.identity () with
+        | "" -> state.accountName
+        | id -> id
+
+      match SCM.PackageOps.commitDraft author state.branchId inp.field.text with
       | Ok _ ->
         Step.Continue
           { state with
