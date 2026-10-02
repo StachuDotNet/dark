@@ -902,7 +902,7 @@ let rt : RT.PackageManager =
                 PT2RT.ImplCandidate.ofPackageManager
                   (ptForBranch branchId)
                   traitHash
-              let! deprecated = Queries.getDeprecatedTraitImplHashes ()
+              let! deprecated = Queries.getDeprecatedTraitImplHashesFor branchId
               let! stamps = Queries.getTraitImplStamps ()
               return
                 Some(
@@ -926,7 +926,7 @@ let rt : RT.PackageManager =
               PT2RT.ImplCandidate.ofPackageManagerByMethod
                 (ptForBranch branchId)
                 methodName
-            let! deprecated = Queries.getDeprecatedTraitImplHashes ()
+            let! deprecated = Queries.getDeprecatedTraitImplHashesFor branchId
             let! stamps = Queries.getTraitImplStamps ()
             return
               Some(

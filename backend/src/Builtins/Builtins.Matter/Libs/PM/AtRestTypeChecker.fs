@@ -280,7 +280,11 @@ let private aggregate
 /// A call whose self type the checker cannot know (inside a bounded generic) is left to
 /// resolve at run time. Two applicable impls are ordered by the store's stamps, which is
 /// why this lives here and not in the checker (`LibExecution.Lww`).
+/// <param branchId> is the branch the author is standing on. `pm` carries the branch for NAMES,
+/// but a deprecation read does not go through it, so the branch has to be passed as well or the
+/// save-time choice is made against main's deprecations while the call runs against the branch's.
 let resolveTraitCalls
+  (branchId : PT.BranchId)
   (pm : PT.PackageManager)
   (builtins : Builtins)
   (ops : List<PT.PackageOp>)
@@ -337,7 +341,7 @@ let resolveTraitCalls
         // here either: `dark constraints` tells you to deprecate one of two rivals, and pinning
         // the one you just retired would make that advice a trap. The checker below is held to
         // the same set, or it types a call `implFnFor` then refuses to resolve.
-        let! deprecated = LibDB.Queries.getDeprecatedTraitImplHashes ()
+        let! deprecated = LibDB.Queries.getDeprecatedTraitImplHashesFor branchId
         let! environment =
           CheckerApi.addVisibleImpls
             pm
@@ -553,7 +557,10 @@ let resolveTraitCalls
   }
 
 
+/// <param branchId> for the same reason as <fn resolveTraitCalls>: `pm` carries the branch's
+/// names, not its deprecations.
 let checkPackageOps
+  (branchId : PT.BranchId)
   (pm : PT.PackageManager)
   (builtins : Builtins)
   (ops : List<PT.PackageOp>)
@@ -574,7 +581,7 @@ let checkPackageOps
       let environment = addTrustedDependencyDeclarations dependencies environment
       // Every trait the batch or its closure mentions: its stored impls are what a
       // bound or a method call in the batch can discharge with.
-      let! deprecated = LibDB.Queries.getDeprecatedTraitImplHashes ()
+      let! deprecated = LibDB.Queries.getDeprecatedTraitImplHashesFor branchId
       let! environment =
         CheckerApi.addVisibleImpls
           pm
@@ -599,9 +606,14 @@ let checkPackageOps
 
 /// Check every declaration the given package manager can see.
 ///
-/// No branch parameter: a branch is an overlay carried by the pm itself, so `pm` decides what the
-/// search below reaches.
-let checkBranch (pm : PT.PackageManager) (builtins : Builtins) : Ply<CheckReport> =
+/// `pm` decides what the search reaches, because names are an overlay it carries. Deprecations are
+/// not: they are read straight out of the table, so <param branchId> has to be passed too. That
+/// gap is what made a deprecated impl on a branch still a dispatch candidate.
+let checkBranch
+  (branchId : PT.BranchId)
+  (pm : PT.PackageManager)
+  (builtins : Builtins)
+  : Ply<CheckReport> =
   uply {
     let query : PT.Search.SearchQuery =
       { currentModule = []
@@ -618,7 +630,7 @@ let checkBranch (pm : PT.PackageManager) (builtins : Builtins) : Ply<CheckReport
           results.traits |> List.map (fun item -> PT.PackageOp.AddTrait item.entity)
           results.impls
           |> List.map (fun item -> PT.PackageOp.AddTraitImpl item.entity) ]
-    return! checkPackageOps pm builtins ops
+    return! checkPackageOps branchId pm builtins ops
   }
 
 
@@ -1018,7 +1030,7 @@ let fns (_pm : PT.PackageManager) : List<BuiltInFn> =
                 // The branch the author is on, not this builtin set's pm (main's):
                 // impls bound on the branch are what the batch's calls dispatch to.
                 let branchPm = LibDB.PackageManager.ptForBranch exeState.branchId
-                let! report = checkPackageOps branchPm builtins ops
+                let! report = checkPackageOps exeState.branchId branchPm builtins ops
                 return DarkTypes.reportToDT report
             with ex ->
               return
@@ -1071,7 +1083,8 @@ let fns (_pm : PT.PackageManager) : List<BuiltInFn> =
               else
                 let decoded = decoded |> List.choose (fun value -> value)
                 let branchPm = LibDB.PackageManager.ptForBranch exeState.branchId
-                let! resolved = resolveTraitCalls branchPm exeState.builtins decoded
+                let! resolved =
+                  resolveTraitCalls exeState.branchId branchPm exeState.builtins decoded
                 return DList(vt, resolved |> List.map PT2DT.PackageOp.toDT)
             with ex ->
               // Resolution is an improvement on what is stored, never a gate on storing it:
@@ -1105,7 +1118,7 @@ let fns (_pm : PT.PackageManager) : List<BuiltInFn> =
               let branchPm =
                 LibDB.PackageManager.ptForBranch (PT.BranchId.Id branchId)
 
-              let! report = checkBranch branchPm exeState.builtins
+              let! report = checkBranch (PT.BranchId.Id branchId) branchPm exeState.builtins
               return DarkTypes.reportToDT report
             with ex ->
               return

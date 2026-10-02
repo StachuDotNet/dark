@@ -1622,6 +1622,7 @@ let private unitTests =
 
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             PT.PackageManager.empty
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             [ PT.PackageOp.AddType pairType; PT.PackageOp.AddFn malformedFn ]
@@ -2570,6 +2571,7 @@ let private unitTests =
             []
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             pm
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             [ PT.PackageOp.AddFn candidate ]
@@ -2614,6 +2616,7 @@ let private unitTests =
           |> PT.PackageManager.withExtras [ boxType, location ] [] [] [] []
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             pm
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             [ PT.PackageOp.AddFn candidate ]
@@ -2646,6 +2649,7 @@ let private unitTests =
           { oneArgFn PT.TInt PT.TString (PT.EArg(44UL, 0)) with hash = invalidHash }
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             PT.PackageManager.empty
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             [ PT.PackageOp.AddFn valid; PT.PackageOp.AddFn invalid ]
@@ -2695,6 +2699,7 @@ let private unitTests =
           |> HashStabilization.computeRealHashes
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             PT.PackageManager.empty
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             ops
@@ -2735,6 +2740,7 @@ let private unitTests =
               hash = PT.Hash "deep-authoring-type" }
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             PT.PackageManager.empty
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             [ PT.PackageOp.AddFn candidate ]
@@ -2782,6 +2788,7 @@ let private unitTests =
               hash = PT.Hash "deep-authoring-expression" }
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             PT.PackageManager.empty
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             [ PT.PackageOp.AddFn candidate ]
@@ -2825,6 +2832,7 @@ let private unitTests =
           |> PT.PackageManager.withExtras [] [] [ dependency, location ] [] []
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             pm
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             [ PT.PackageOp.AddFn candidate ]
@@ -2909,6 +2917,7 @@ let private unitTests =
           :: (functions |> List.map PT.PackageOp.AddFn)
         let report =
           AuthoringChecker.checkPackageOps
+            PT.BranchId.Main
             PT.PackageManager.empty
             (TestUtils.TestUtils.localBuiltIns TestUtils.TestUtils.pmPT)
             ops

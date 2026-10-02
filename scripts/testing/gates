@@ -33,6 +33,7 @@ GATES=(
   reload-is-reproducible
   trait-choice-survives-rival
   trait-checker-vs-dispatch
+  trait-deprecation-is-per-branch
   gates-are-clean
 )
 
@@ -51,7 +52,8 @@ GATES=(
 # Measured locally, for comparison with the 5m per-gate bound CI applies:
 #   relay-routes 5s, workbench-views 14s, first-day 24s, workbench-scm 35s, lsp-branches 12s
 CI_GATES=(relay-routes workbench-scm workbench-views lsp-branches
-          trait-choice-survives-rival trait-checker-vs-dispatch)
+          trait-choice-survives-rival trait-checker-vs-dispatch
+          trait-deprecation-is-per-branch)
 
 describe() {
   # shellcheck disable=SC2016  # the backticks are prose, not expansion
@@ -68,6 +70,7 @@ describe() {
     reload-is-reproducible) echo 'two reloads of one tree agree on every op id' ;;
     trait-choice-survives-rival) echo 'a saved call keeps its implementation when a newer rival lands' ;;
     trait-checker-vs-dispatch) echo 'the at-rest checker and dispatch agree on which impls exist' ;;
+    trait-deprecation-is-per-branch) echo 'deprecating an implementation is branch-aware, display and dispatch' ;;
     gates-are-clean)        echo 'no gate touches the shared dev store (slow: re-runs the rest)' ;;
     *)                      echo '?' ;;
   esac

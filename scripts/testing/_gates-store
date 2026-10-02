@@ -420,3 +420,86 @@ DARK
   echo "trait-choice-survives-rival: the saved bounded call kept its implementation ($after)"
   echo "  while a fresh call takes the newer one ($direct)."
 }
+
+
+# --- trait-deprecation-is-per-branch: deprecating an implementation is branch-aware ---
+# `deprecations` has no `branch_id`: a branch's `Deprecate` op sits inert in the op log the same
+# way its names do, and names answer that with an in-memory overlay. The impl-candidate read did
+# not, so it answered about MAIN while you stood on a branch: `dark view` there called an
+# implementation deprecated while a call there still dispatched to it. The display half and the
+# dispatch half disagreed exactly where a branch is supposed to be the thing that differs.
+#
+# Gate, not a testfile: it needs a store, a commit, and a second branch, which is three things a
+# testfile has none of.
+gate_trait_deprecation_is_per_branch() {
+  set -euo pipefail
+
+  WORK=rundir/trait-branch-dep
+  rm -rf "$WORK"
+  mkdir -p "$WORK/logs"
+  scripts/testing/_copy-store "$WORK/data.db"
+  # A copied store carries the real relay and its write secret. See the AGENTS.md note.
+  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
+
+  # The runner's binary, not `run-cli`: CI has no debug build and passes the published one in.
+  CLI="$PWD/${CLI:-backend/Build/out/Cli/Debug/net10.0/Cli}"
+
+  export DARK_CONFIG_RUNDIR="$PWD/$WORK"
+  clean() { sed 's/\x1b\[[0-9;]*m//g'; }
+
+  # A field name nobody else would write: a record's hash IS its identity. See the AGENTS.md note.
+  $CLI type Stachu.BDep.Pt "= { gateBranchDepOnly: Int64 }" >/dev/null
+  $CLI trait Stachu.BDep.Show "<'a> = let show (v: 'a) : String" >/dev/null
+  $CLI impl Stachu.BDep \
+    "Stachu.BDep.Show for Pt = let show (p: Pt) : String = \"FIRST\"" >/dev/null
+  $CLI impl Stachu.BDepRival - >/dev/null <<'DARK'
+Stachu.BDep.Show for Stachu.BDep.Pt =
+  let show (p: Stachu.BDep.Pt) : String = "RIVAL"
+DARK
+
+  # The rival is newer, so it is what a call takes. Checked before anything is deprecated, so a
+  # pass cannot come from the pair never having been ambiguous.
+  on_main=$($CLI eval 'Stachu.BDep.Show.show (Stachu.BDep.Pt { gateBranchDepOnly = 1L })' | clean)
+  if [[ "$on_main" != *RIVAL* ]]; then
+    echo "trait-deprecation-is-per-branch: the rival never became the newest implementation,"
+    echo "  so nothing was tested. Main answered: $on_main"
+    exit 1
+  fi
+
+  # A branch sees main's items only once they are committed.
+  $CLI commit -m 'gate: the pair' --yes >/dev/null
+  $CLI branch create gate-dep >/dev/null
+
+  $CLI deprecate impl Stachu.BDepRival.Pt.Show --kind obsolete -m 'gate' --yes >/dev/null
+
+  # The display half, which was right all along.
+  viewed=$($CLI view Stachu.BDepRival.Pt.Show 2>&1 | clean || true)
+  if [[ "$viewed" != *DEPRECATED* ]]; then
+    echo "trait-deprecation-is-per-branch: the branch does not even DISPLAY the implementation as"
+    echo "  deprecated, so the two halves cannot be compared. It showed:"
+    echo "    ${viewed//$'\n'/$'\n'    }"
+    exit 1
+  fi
+
+  # The dispatch half, which is the bug. A deprecated implementation is not a candidate, so the
+  # call falls back to the one that is left.
+  on_branch=$($CLI eval 'Stachu.BDep.Show.show (Stachu.BDep.Pt { gateBranchDepOnly = 1L })' | clean)
+  if [[ "$on_branch" != *FIRST* ]]; then
+    echo "trait-deprecation-is-per-branch: the branch calls an implementation it reports as"
+    echo "  deprecated. The display path is branch-aware and the candidate path is not."
+    echo "  Expected FIRST, got: $on_branch"
+    exit 1
+  fi
+
+  # And main is untouched by a deprecation authored on a branch.
+  $CLI switch main >/dev/null
+  after_main=$($CLI eval 'Stachu.BDep.Show.show (Stachu.BDep.Pt { gateBranchDepOnly = 1L })' | clean)
+  if [[ "$after_main" != *RIVAL* ]]; then
+    echo "trait-deprecation-is-per-branch: a deprecation authored on a branch reached MAIN."
+    echo "  Expected RIVAL, got: $after_main"
+    exit 1
+  fi
+
+  echo "trait-deprecation-is-per-branch: deprecating an implementation on a branch retires it"
+  echo "  there ($on_branch) and leaves main alone ($after_main)."
+}

@@ -75,6 +75,7 @@ module HandleCommand =
 
       let! resolved =
         Builtins.Matter.Libs.PM.AtRestTypeChecker.resolveTraitCalls
+          BranchId.Main
           PM.pt
           (Builtins.all ())
           ops
