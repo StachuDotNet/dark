@@ -37,3 +37,22 @@ let bothWays () : String =
   let slow = oneAtATime ()
   let fast = overlapping ()
   slow ++ "\n" ++ fast
+
+/// Is a read eager in this runtime? Two one-second reads, timed at the call and again after
+/// forcing. This is the probe behind the diagnosis in the browser-concurrency write-up.
+///
+/// Eager: both calls return about 0 ms and the forcing costs about one second, because the two
+/// requests were in flight together. Serialised: the forcing costs about two.
+let twoReads () : String =
+  let t0 = Stdlib.DateTime.now ()
+  let a = Stdlib.HttpClient.get "https://httpbin.org/delay/1" []
+  let afterOne = Stdlib.DateTime.subtractMs (Stdlib.DateTime.now ()) t0
+  let b = Stdlib.HttpClient.get "https://httpbin.org/delay/1" []
+  let afterTwo = Stdlib.DateTime.subtractMs (Stdlib.DateTime.now ()) t0
+  let bothOk = (Stdlib.Result.isOk a) && (Stdlib.Result.isOk b)
+  let forced = Stdlib.DateTime.subtractMs (Stdlib.DateTime.now ()) t0
+  let one = Stdlib.Int.toString afterOne
+  let two = Stdlib.Int.toString afterTwo
+  let f = Stdlib.Int.toString forced
+  let ok = Stdlib.Bool.toString bothOk
+  $"call1 at {one} ms, call2 at {two} ms, both forced at {f} ms, ok={ok}"
