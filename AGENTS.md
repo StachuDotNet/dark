@@ -462,6 +462,13 @@ agrees with whatever you already believed. Measured instances:
   match, so any hit near the start of a line silently fails to match and the needle reads as
   absent. Reported "zero occurrences" of a number that was in the file 15 times. Count with a
   fixed string first (`grep -c -F`), then go looking for context
+- a pipeline hides the exit code of the thing you care about. `./scripts/dev/build ... | tail -40`
+  reported exit 0 over a build that printed "Failed in 64.85s". Use `${PIPESTATUS[0]}`, or do not
+  pipe
+- `ls backend/Build/...` from the HOST returns nothing whether or not the file is there, because
+  that path is a container volume. See the entry below. This is the one variant that does not
+  announce itself: the others cut a real answer short, this one shows you an empty directory with
+  no error at all
 
 A HARNESS manufactures a negative the same way a filter does, and it is harder to see because
 running a control FEELS like the check. Headless chromium never reached a prompt in the browser
@@ -469,6 +476,39 @@ build; the deployed site did not either, so the conclusion drawn was "not a regr
 available conclusion was equally "not a working instrument". A real browser with a person in
 front of it gets a prompt in seconds. A control agreeing with your negative only rules out one of
 the two explanations, and the instrument is the one nobody suspects.
+
+**`backend/Build` is a container volume, so from the host it reads as EMPTY.** `ls`, `du` and
+`find` against it from the host return nothing at all, with no error, whether or not the binary is
+there. Everything here is driven through `./scripts/*` from the host, which is exactly the habit
+that leaves you inspecting host paths, and this one lies. To look at build output, look from
+inside:
+
+    source scripts/devcontainer/_container-for-clone
+    docker exec "$(container_for_clone "$PWD")" \
+      ls -la /home/dark/app/backend/Build/out/Cli/Debug/net10.0/Cli
+
+That helper exists for this and is meant to be sourced; its own comment explains why the
+`/home/dark/app` mount source is the only key that holds (names vary, the `local_folder` label is
+empty on some containers, and `docker ps --last 1` sorts by creation time, which says nothing about
+which clone you are in). `workspace-tools/clones` shows a container's STATE and ports, not its name.
+
+Cost of not knowing: twenty minutes on a missing-binary theory for a binary that was sitting there
+the whole time, immediately after a control had just saved me from a different wrong theory.
+
+**After `--optimize`, nothing will rebuild the debug tree.** `scripts/dev/build --optimize` builds
+Release INSTEAD of Debug, and `--help` says the debug tree is left behind "until the next plain
+build". A plain build does not do it. The build index tracks SOURCES, not outputs, so with no `.fs`
+change it reports "nothing has changed since the last successful build" and stops. Naming paths
+does not do it either: "1 path(s) given, but none of it changes what gets built". `dev/build` does
+force a full build when binaries are MISSING, but after `--optimize` the Debug binary is not
+missing, it is merely from whatever commit built it last, so the check passes and you are left with
+a Debug CLI and a package store that disagree about which commit they came from, silently. The
+supported escape, whose own comment explains the asymmetry:
+
+    scripts/build/clear-dotnet-build && scripts/dev/build
+
+That wipes Release too and costs a full rebuild, so do not reach for `--optimize` unless you are
+about to run the whole suite and then stop.
 
 If a search comes back empty and you are about to act on the emptiness, re-run it without the
 filter. If a harness reports that nothing happened, reproduce it by hand once before you write it

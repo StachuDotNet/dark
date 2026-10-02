@@ -296,3 +296,80 @@ though its allocation column repeats to 0.1 KB.
   Two things to check before believing an A/B between binaries of different ages: that both
   arms print the workload's own `elapsed_ms`, and that `rundir/policy` was written by a binary
   the older arm understands.
+
+---
+
+## The gate could not reproduce its own baseline across a day
+
+On 2026-10-02 the published gate read 17% over budget. It was not a regression. Checking out
+`7973a64262`, the commit that had PINNED the budget the previous evening, building it and running
+the debug gate on a clean store gave:
+
+    steady.dark (debug) allocated 11.9 MB; budget 9.7 MB -- 23.0% over
+
+That commit's own message records the same gate at 5.8% over, which is 10.2 MB. Same source tree,
+same machine, eighteen hours apart, 1.7 MB different. There was nothing to bisect: the regression
+was already present at the baseline that defined "no regression".
+
+So a budget pinned from a reading taken on a working clone is pinned to that clone's afternoon.
+**Re-pin only from CI**, where the environment is constructed rather than accumulated, and treat a
+local red as a question rather than a finding until it reproduces somewhere clean.
+
+Ruled out that day, each with a measurement rather than an argument:
+
+- store dirt. Three store states, same binary: dirty 152 MB gave 11.8 MB, a copy of `seed.db`
+  108 MB gave 11.4 MB, a clean 56 MB store gave 11.3 MB
+- `rundir/policy/policies.bin`. Moving it aside did not lower the number; it made the gate exit 1
+  with no output at all, because `initialized` without `policies.bin` fails closed
+- a stored `trace.record` defeating the gate's `DARK_CONFIG_TRACE_DETAIL=off`. It was off. Worth
+  knowing anyway: `config/dev` sets that variable to `on` container-wide, and a STORED setting
+  beats the environment by design, so the gate's explicit `off` is load-bearing
+
+Not ruled out, and left alone deliberately: the `backend/Build` volume carrying something between
+builds, and the container's own baked environment (a container made from a sibling clone bakes
+that branch's `config/dev`, and this one's `TRACE_DETAIL` default already disagreed with the file).
+
+### The seed is not automatically clean
+
+"Build a fresh store from `rundir/seed.db`" is only valid if nobody has re-exported the seed since.
+`export-seed` writes it FROM the live store, so a seed exported during a working session carries
+that session's ops. Mine had the same day's mtime and gave 11.4 MB, which is exactly the dirty
+figure, and it nearly got written up as dirt a second time.
+
+**Look at `ls -la rundir/seed.db` before trusting a store built from it.** To get a store that is
+genuinely clean, delete `rundir/data.db*` and run `scripts/build/reload-packages`, which authors
+packages from source and carries no traces, no hand-authored modules and no approvals.
+
+Size is the other tell, and it is blunt enough to use without thinking. A freshly exported seed on
+this branch is 13 MB. The one that had been sitting in `rundir/` was 108 MB, so it was carrying
+about 95 MB of one session's ops. If `seed.db` is an order of magnitude larger than a fresh export,
+every "fresh store" built from it was a working store wearing a fresh store's name.
+
+A build will eventually tell you the seed is stale, but only when the package refs move:
+`rundir/seed.db cannot produce this binary's package refs`. Nothing tells you it is merely dirty.
+
+### Dirt is worth about 4%, not 19%
+
+An earlier commit message asserted that nine days of accumulated ops inflated the gate by about
+19%. The three-way measurement above says about 4%, and the 19% was itself an artifact of
+comparing against a seed that was not clean. This matters because that figure had become the
+standard reason to dismiss a bad reading, and it was wrong in the direction that made dismissal
+too easy.
+
+### A number far UNDER budget deserves the same suspicion as one far over
+
+Attempting an A/B against an older published binary gave 5.1 MB against a 9.7 MB budget, a
+plausible-looking 2.2x win. It was a failed run: that binary could not read the newer store
+("Function ... couldn't be found"), and stderr had gone to `/dev/null`. The only thing that caught
+it was the number being implausibly GOOD.
+
+This is a repeat, and the guard was already written down twice. The section above already says to
+check that both arms print the workload's own `elapsed_ms`, and `rundir/alloc-bisect.sh` exists for
+exactly this job: its header notes that twice on 30 September a binary that was not doing the work
+produced a plausible number, so it refuses a run whose summary line is absent. Use that script
+rather than writing a fresh loop, which is how this was hit again.
+
+Counting the ones we know about: two on 30 September, two the evening of 1 October, and the 5.1 MB
+above. **Five plausible wrong readings from this instrument.** The count is the argument: the gate
+is not a reliable instrument on a working clone, and the budget is pinned from readings taken
+with it.
