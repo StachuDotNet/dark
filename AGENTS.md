@@ -91,7 +91,8 @@ tell you the tree has moved on rather than silently running a stale binary.
     ./scripts/testing/gates ci                        the subset CI runs, each bounded by 5m
     ./scripts/testing/gates all                       every gate except gates-are-clean, the slow
                                                       meta-gate that re-runs the rest itself
-    ./scripts/perf/gate                               reference workload, allocation vs budget
+    ./scripts/perf/gate --published                   reference workload, allocation vs budget
+    ./scripts/perf/gate                               the same, debug, reported but not gated
     ./scripts/perf/suite                              six workloads, allocation per iteration
     ./scripts/perf/checks                             by-hand interpreter and error-message checks
 
@@ -156,7 +157,8 @@ Everything perf lives in `scripts/perf/` (tools) and `docs/perf/` (writing):
     docs/perf/roadmap.md     what's worth doing next, ranked, with measured vs estimated marked
     docs/perf/history.md     the numbers round by round, and facts not worth re-deriving
 
-    scripts/perf/gate        the CI assertion: one workload, allocation against a checked-in budget
+    scripts/perf/gate        one workload, allocation against a checked-in budget. `--published`
+                             is the CI assertion; a debug run reports and does not gate
     scripts/perf/suite       six workloads, allocation and time per iteration
     scripts/perf/checks      by-hand interpreter and error-message checks
     scripts/perf/http        a real server under concurrent load
@@ -193,7 +195,10 @@ not byte-identical though, and the store it runs against matters as much as the 
 `docs/perf/playbook.md` has the measured noise floor. So
 `gate` asserts allocation and only allocation, against `scripts/perf/budget.json`, and CI runs it
 after the backend tests. When a change earns a lower number, lower the budget in the same commit
-with `scripts/perf/gate --update`, or it stops being a gate and becomes a ceiling to drift up to.
+with `scripts/perf/gate --published --update`, or it stops being a gate and becomes a ceiling to
+drift up to. Only the published build is budgeted: the debug budget was retired because most of
+its overage was an interpreter hook the Release optimiser elides, so it tracked a configuration
+nobody ships.
 
 `suite` is the wider view and asserts nothing -- it is for seeing whether a change that helped one
 shape of program hurt another. The six differ by more than an order of magnitude per iteration, so
