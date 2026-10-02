@@ -659,13 +659,22 @@ module Cli =
   [<JSInvokable>]
   let RunCli (args : string[]) : Task<int> =
     task {
-      let! bundled = LibDB.ProgramTypes.Fn.hashesOwnedBy "Darklang" |> Ply.toTask
+      // Everything in a tab's store is bundled, which is why this is `true` rather than the
+      // `hashesOwnedBy "Darklang"` a native binary uses. Natively that set separates the stdlib
+      // that shipped with the binary from code a person authored or pulled, and only the former
+      // is trusted without an explicit `permissions approve`. A tab has no such distinction: the
+      // store is downloaded with the build and is the same artifact, there is nothing in it that
+      // did not ship, and there is no way to approve anything anyway because an approval is
+      // written to `~/.darklang`, which a browser does not have.
+      //
+      // Without this, a demo function in the store dies with "permission denied by package
+      // policy ... To approve: `permissions approve <fn>`", naming a command a tab cannot run.
       let state =
         { Exe.setInstancePolicy LibExecution.Permissions.Policy.allowAll (state ()) with
             branchId = LibDB.PackageManager.currentBranchId ()
             canManagePolicies = true
             canUsePrivateNetworkHttp = true
-            isBundledPackageFn = fun (RT.Hash h) -> bundled.Contains h }
+            isBundledPackageFn = fun _ -> true }
       let fnName = RT.FQFnName.fqPackage (PackageRefs.Fn.Cli.executeCliCommand ())
       let args =
         args

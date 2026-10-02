@@ -454,8 +454,16 @@ agrees with whatever you already believed. Measured instances:
 - `head -c N` on JSON truncates mid-structure, so a valid payload fails to parse and reads as a
   malformed response
 
+A HARNESS manufactures a negative the same way a filter does, and it is harder to see because
+running a control FEELS like the check. Headless chromium never reached a prompt in the browser
+build; the deployed site did not either, so the conclusion drawn was "not a regression", when the
+available conclusion was equally "not a working instrument". A real browser with a person in
+front of it gets a prompt in seconds. A control agreeing with your negative only rules out one of
+the two explanations, and the instrument is the one nobody suspects.
+
 If a search comes back empty and you are about to act on the emptiness, re-run it without the
-filter.
+filter. If a harness reports that nothing happened, reproduce it by hand once before you write it
+down.
 
 **Bracket every pattern you hand to `pgrep -f` / `pkill -f`.** The pattern appears in your own
 shell's command line, so an unbracketed one matches the process doing the matching. A waiter waits
