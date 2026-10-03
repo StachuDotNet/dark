@@ -520,7 +520,16 @@ on itself forever; a `pkill -f "serve Foo"` kills the backgrounded shell whose c
 contains "serve Foo", which looks exactly like the publish you just started dying for no reason.
 `[s]erve Foo` matches the target and not the matcher. Note that bracketing is not enough on its
 own: if the same shell also RUNS `serve Foo`, the bracketed pattern still matches it, so kill and
-start belong in separate commands. The same family: `2>&1` on a command whose stdout you are about
+start belong in separate commands. That last clause caught me three more times in one night, each
+time in a command that started a fixture server and tidied up after an earlier one, so take the
+recipe rather than the rule: start background fixtures with `docker exec -d` (or `setsid` plus a
+redirect, so the exec can return), and STOP them by pid read from `ps`, never by pattern:
+
+    P=$(ps -eo pid,args | awk '/python3 \/tmp\/delay.py/ && !/awk/ {print $1}')
+    for p in $P; do kill $p; done
+
+`docker exec` without `-d` also hangs on a server that never exits, which looks like the command
+failing rather than the server working. The same family: `2>&1` on a command whose stdout you are about
 to parse as JSON merges a warning into the payload and the parse failure reads as a product bug.
 All of these presented as product failures here and all of them were the harness.
 
