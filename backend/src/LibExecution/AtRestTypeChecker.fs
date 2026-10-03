@@ -99,6 +99,76 @@ let private headOfImplSelf (self : TypeReference) : Option<string> =
   | TypeReference.TDB _ -> Some "DB"
   | TypeReference.TVariable _ -> None
 
+/// Whether an implementation's self type fits a concrete one, TYPE ARGUMENTS INCLUDED.
+///
+/// Three-valued on purpose. At the point the checker asks, a type's head is known but its arguments
+/// may still be inference variables, so `Option<?3>` cannot be told from `Option<Int64>` or
+/// `Option<String>`. Answering "fits" there pins arbitrarily, which is the bug this exists to stop;
+/// answering "does not fit" refuses a save that is perfectly good. `NotYetKnown` says so and the
+/// caller declines to choose.
+///
+/// CLEANUP this is the THIRD implementation of "does this implementation apply", after
+/// `LibExecution.Traits.applicable` over `ValueType` and the head-only filter below over
+/// `StaticType`, and there are already four head functions across the two files. That is the shape
+/// this branch spent its time removing elsewhere, and it is here deliberately rather than by
+/// accident: the two matchers compare different representations and neither can be expressed in
+/// terms of the other without a common one. Unifying `StaticType` and `ValueType`, or giving both a
+/// shared structural view, is the real fix and a different job. Until then, a change to either
+/// matcher belongs in both, and `gates trait-checker-vs-dispatch` is what notices when it is not.
+type private Fit =
+  | Fits
+  | DoesNotFit
+  | NotYetKnown
+
+let rec private implSelfFits (self : TypeReference) (typ : StaticType) : Fit =
+  let all (fits : List<Fit>) : Fit =
+    if List.contains DoesNotFit fits then DoesNotFit
+    elif List.contains NotYetKnown fits then NotYetKnown
+    else Fits
+
+  match self, typ with
+  // A blanket impl (`for 'a`) fits anything, which is what makes it the fallback.
+  | TypeReference.TVariable _, _ -> Fits
+
+  // Undecided at this point in the check, in any position. Not a refusal and not a fit.
+  | _, StaticType.TInferenceVariable _ -> NotYetKnown
+  | _, StaticType.TRigidVariable _ -> NotYetKnown
+
+  | TypeReference.TList a, StaticType.TList b -> implSelfFits a b
+  | TypeReference.TStream a, StaticType.TStream b -> implSelfFits a b
+  | TypeReference.TDB a, StaticType.TDB b -> implSelfFits a b
+  | TypeReference.TDict(k, v), StaticType.TDict(k2, v2) ->
+    all [ implSelfFits k k2; implSelfFits v v2 ]
+  | TypeReference.TTuple(a, b, rest), StaticType.TTuple(a2, b2, rest2) ->
+    if List.length rest <> List.length rest2 then
+      DoesNotFit
+    else
+      all (implSelfFits a a2 :: implSelfFits b b2 :: List.map2 implSelfFits rest rest2)
+  | TypeReference.TFn(args, ret), StaticType.TFn(args2, ret2) ->
+    if NEList.length args <> NEList.length args2 then
+      DoesNotFit
+    else
+      all (
+        implSelfFits ret ret2
+        :: List.map2 implSelfFits (NEList.toList args) (NEList.toList args2)
+      )
+  | TypeReference.TCustomType({ resolved = Ok { name = FQTypeName.Package(PT.Hash h) } },
+                              targs),
+    StaticType.TCustom(PT.Hash h2, targs2) ->
+    if h <> h2 then DoesNotFit
+    // No arguments written on the implementation is the pre-generics spelling of a blanket over
+    // them, which `argsAgree` treats the same way.
+    elif List.isEmpty targs then Fits
+    elif List.length targs <> List.length targs2 then DoesNotFit
+    else all (List.map2 implSelfFits targs targs2)
+
+  // Everything else is decided by the head alone, which already carries a custom type's hash.
+  | _ ->
+    match headOfImplSelf self, headOfStatic typ with
+    | Some a, Some b -> if a = b then Fits else DoesNotFit
+    | _ -> DoesNotFit
+
+
 /// The impls of a trait that apply to a concrete head: the specific ones, else the
 /// blanket ones.
 let private implsFor
@@ -202,7 +272,25 @@ and private dischargeOne
     match headOfStatic concrete with
     | None -> ()
     | Some head ->
-      match implsFor state trait_ head with
+      // The head is only half the question. `impl T for Option<Int64>` and
+      // `impl T for Option<String>` share a head, so matching on it alone left BOTH as candidates
+      // and the save then picked between them by timestamp: the pin landed on whichever was
+      // authored later rather than the one whose type arguments fit, and because the pin is
+      // `Chosen` the runtime never re-asked. A green save that raised on its first call.
+      //
+      // When any candidate's fit is not decided yet, keep them all rather than narrowing on a
+      // half-known answer: with one candidate that is still the only choice, and with several the
+      // branch below records them all and pins nothing, which is what we want when we cannot tell.
+      let candidates =
+        let scored =
+          implsFor state trait_ head
+          |> List.map (fun e -> e, implSelfFits e.self concrete)
+        if scored |> List.exists (fun (_, fit) -> fit = NotYetKnown) then
+          scored |> List.map fst
+        else
+          scored |> List.filter (fun (_, fit) -> fit = Fits) |> List.map fst
+
+      match candidates with
       | [] ->
         state.Error(
           MissingImpl,

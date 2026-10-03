@@ -353,8 +353,66 @@ DARK
     exit 1
   fi
 
+  # --- case 2: they must agree about which implementation FITS, not only which exist ---
+  #
+  # The checker matched an implementation by the HEAD of its self type and the runtime matched the
+  # type arguments too, so `impl T for Option<Int64>` and `impl T for Option<String>` were both
+  # candidates at the save and it picked between them by timestamp. The pin landed on whichever was
+  # authored later rather than the one that fits, and since the pin is `Chosen` the runtime never
+  # re-asked: a green save that raised on its first call. The tell is that the ANSWER depended on
+  # authoring order, so this walks both orders and expects the same answer from each.
+  for order in int-first str-first; do
+    W2="rundir/trait-argfit-$order"
+    rm -rf "$W2"
+    mkdir -p "$W2/logs"
+    scripts/testing/_copy-store "$W2/data.db"
+    sqlite3 "$W2/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
+    export DARK_CONFIG_RUNDIR="$PWD/$W2"
+
+    $CLI trait Stachu.Fit.Show "<'a> = let show (v: 'a) : String" >/dev/null
+
+    intImpl() {
+      $CLI impl Stachu.FitInt - >/dev/null <<'DARK'
+Stachu.Fit.Show for Stdlib.Option.Option<Int64> =
+  let show (v: Stdlib.Option.Option<Int64>) : String = "INT"
+DARK
+    }
+    strImpl() {
+      $CLI impl Stachu.FitStr - >/dev/null <<'DARK'
+Stachu.Fit.Show for Stdlib.Option.Option<String> =
+  let show (v: Stdlib.Option.Option<String>) : String = "STR"
+DARK
+    }
+
+    if [[ "$order" == "int-first" ]]; then
+      intImpl
+      strImpl
+    else
+      strImpl
+      intImpl
+    fi
+
+    $CLI fn Stachu.Fit.callIt - >/dev/null <<'DARK'
+() : String =
+  Stachu.Fit.Show.show (Stdlib.Option.Option.Some 1L)
+DARK
+
+    got=$($CLI eval 'Stachu.Fit.callIt ()' 2>&1 | clean || true)
+    if [[ "$got" != *INT* ]]; then
+      echo "trait-checker-vs-dispatch: a saved call was pinned to an implementation that does not"
+      echo "  fit its type arguments, with the implementations authored $order."
+      echo "  An Option<Int64> should take the Option<Int64> implementation whichever order they"
+      echo "  were written in. It answered:"
+      echo "    ${got//$'\n'/$'\n'    }"
+      exit 1
+    fi
+  done
+
+  export DARK_CONFIG_RUNDIR="$PWD/$WORK"
+
   echo "trait-checker-vs-dispatch: a live implementation types and runs ($live); once it is"
-  echo "  deprecated the checker refuses the save with MissingImpl, as dispatch does."
+  echo "  deprecated the checker refuses the save with MissingImpl, as dispatch does; and a saved"
+  echo "  call takes the implementation whose TYPE ARGUMENTS fit, in either authoring order."
 }
 
 # --- trait-choice-survives-rival: a saved call keeps the implementation it was written against ---
