@@ -298,9 +298,14 @@ let fork
             [ [ "child", Sql.uuid childId
                 "parent", Sql.uuid id
                 "cutoff", Sql.int64 cutoff ] ]
-            // The child answers `traces calls <fn>` for the same functions the parent did.
-            "INSERT OR IGNORE INTO trace_fns (trace_id, fn_name)
-             SELECT @child, fn_name FROM trace_fns WHERE trace_id = @parent",
+            // The child answers `traces calls <fn>` for the same functions the parent did, and
+            // carries the HASHES too. Without `fn_hash` the column takes its `DEFAULT ''`, and
+            // `resume` compares those against the store to decide what has been edited since, so
+            // a forked run reported every function it went through as edited, immediately, with
+            // nothing having changed. `trace_fn_calls` above copies its `fn_hash` for the same
+            // reason.
+            "INSERT OR IGNORE INTO trace_fns (trace_id, fn_name, fn_hash)
+             SELECT @child, fn_name, fn_hash FROM trace_fns WHERE trace_id = @parent",
             [ [ "child", Sql.uuid childId; "parent", Sql.uuid id ] ] ]
       // `INSERT ... SELECT` inserts nothing when the parent has gone -- retention runs every
       // ten seconds -- and reporting a child that does not exist sends the person to a resume
