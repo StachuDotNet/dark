@@ -505,6 +505,12 @@ exactly; the loader will not catch it.
 **AOT disables System.Text.Json.** A path that is green on every dev-build test can die only in
 the published binary. Publish before the gates, always; `gates first-day` exists for exactly this.
 
+**Operationally: publish, THEN `gates all`, never the other way round.** `first-day` refuses rather
+than reporting when the published binary is older than something you changed, naming the file, so a
+`gates all` run after an edit ends in `FAILED: first-day` that is the gate protecting itself and not
+a result. It caught the same mistake three times in one night. The sequence that does not waste ten
+minutes is `scripts/build/build-release-cli-exes.sh && scripts/testing/gates all`.
+
 **`branch create` while standing on a branch creates a CHILD of that branch.** Switch to main
 first if you meant a sibling.
 

@@ -570,3 +570,135 @@ DARK
   echo "trait-deprecation-is-per-branch: deprecating an implementation on a branch retires it"
   echo "  there ($on_branch) and leaves main alone ($after_main)."
 }
+
+
+# --- trait-pin-across-branches: a saved call keeps its implementation across a BRANCH boundary ---
+# `trait-choice-survives-rival` proves the pin holds against a newer rival on the same branch. This
+# is the harder half and the one nothing covered: the rival arrives on a DIFFERENT branch, where
+# names resolve through an overlay rather than through main's projection. It was verified by hand
+# and by nothing else, which is how a property stops being true without anyone noticing.
+#
+# Two fixtures, because the three directions want different arrangements and sharing one would make
+# each assertion depend on the last.
+gate_trait_pin_across_branches() {
+  set -euo pipefail
+
+  WORK=rundir/trait-pin-branch
+  rm -rf "$WORK"
+  mkdir -p "$WORK/logs"
+  scripts/testing/_copy-store "$WORK/data.db"
+  # A copied store carries the real relay and its write secret. See the AGENTS.md note.
+  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
+
+  # The runner's binary, not `run-cli`: CI has no debug build and passes the published one in.
+  CLI="$PWD/${CLI:-backend/Build/out/Cli/Debug/net10.0/Cli}"
+
+  export DARK_CONFIG_RUNDIR="$PWD/$WORK"
+  clean() { sed 's/\x1b\[[0-9;]*m//g'; }
+
+  # A field name nobody else would write: a record's hash IS its identity. See the AGENTS.md note.
+  $CLI type Stachu.Pin.Thing "= { gatePinOnly: Int64 }" >/dev/null
+  $CLI trait Stachu.Pin.Tr "<'a> = let go (v: 'a) : Int64" >/dev/null
+  $CLI impl Stachu.PinA - >/dev/null <<'DARK'
+Stachu.Pin.Tr for Stachu.Pin.Thing =
+  let go (v: Stachu.Pin.Thing) : Int64 = 1L
+DARK
+  $CLI impl Stachu.PinB - >/dev/null <<'DARK'
+Stachu.Pin.Tr for Stachu.Pin.Thing =
+  let go (v: Stachu.Pin.Thing) : Int64 = 2L
+DARK
+
+  # B is newer, so a call saved on main pins B.
+  $CLI fn Stachu.Pin.callIt - >/dev/null <<'DARK'
+() : Int64 =
+  Stachu.Pin.Tr.go (Stachu.Pin.Thing { gatePinOnly = 0L })
+DARK
+  pinned=$($CLI eval 'Stachu.Pin.callIt ()' | clean)
+  if [[ "$pinned" != *2* ]]; then
+    echo "trait-pin-across-branches: the saved call did not pin the newer implementation on main,"
+    echo "  so nothing downstream is testing what it says. It answered: $pinned"
+    exit 1
+  fi
+
+  # A branch sees main's items only once they are committed.
+  $CLI commit -m 'gate: the pin fixture' --yes >/dev/null
+  $CLI branch create gate-pin >/dev/null
+
+  # The rival arrives on the branch, newer than both.
+  $CLI impl Stachu.PinC - >/dev/null <<'DARK'
+Stachu.Pin.Tr for Stachu.Pin.Thing =
+  let go (v: Stachu.Pin.Thing) : Int64 = 3L
+DARK
+
+  # A FRESH call on the branch takes the branch's rival: without this the next assertion could pass
+  # against a branch that simply cannot see the new implementation.
+  fresh=$($CLI eval 'Stachu.Pin.Tr.go (Stachu.Pin.Thing { gatePinOnly = 0L })' | clean)
+  if [[ "$fresh" != *3* ]]; then
+    echo "trait-pin-across-branches: the branch's own implementation never became the newest one,"
+    echo "  so the pin was not actually under pressure. A fresh call answered: $fresh"
+    exit 1
+  fi
+
+  # THE PROPERTY: the caller saved on main still runs what it resolved against, on the branch.
+  held=$($CLI eval 'Stachu.Pin.callIt ()' | clean)
+  if [[ "$held" != *2* ]]; then
+    echo "trait-pin-across-branches: a call saved on main changed meaning on a branch. It should"
+    echo "  keep the implementation it was written against (2) while a fresh call takes the"
+    echo "  branch's newer one (3). It answered: $held"
+    exit 1
+  fi
+
+  # --- fixture 2: deprecation inherits down and can be overridden up ---
+  $CLI switch main >/dev/null
+  $CLI type Stachu.Pin.Other "= { gatePinOtherOnly: Int64 }" >/dev/null
+  $CLI impl Stachu.PinD - >/dev/null <<'DARK'
+Stachu.Pin.Tr for Stachu.Pin.Other =
+  let go (v: Stachu.Pin.Other) : Int64 = 10L
+DARK
+  $CLI impl Stachu.PinE - >/dev/null <<'DARK'
+Stachu.Pin.Tr for Stachu.Pin.Other =
+  let go (v: Stachu.Pin.Other) : Int64 = 20L
+DARK
+  $CLI commit -m 'gate: the deprecation fixture' --yes >/dev/null
+
+  other() { $CLI eval 'Stachu.Pin.Tr.go (Stachu.Pin.Other { gatePinOtherOnly = 0L })' | clean; }
+
+  # E is newer, so it runs on main.
+  if [[ "$(other)" != *20* ]]; then
+    echo "trait-pin-across-branches: the second fixture's newer implementation does not run on main."
+    exit 1
+  fi
+
+  $CLI deprecate impl Stachu.PinE.Other.Tr --kind obsolete -m 'gate' --yes >/dev/null
+  if [[ "$(other)" != *10* ]]; then
+    echo "trait-pin-across-branches: deprecating on main did not retire the implementation there."
+    exit 1
+  fi
+
+  # Down: a branch forked after that deprecation sees it.
+  $CLI branch create gate-pin-dep >/dev/null
+  if [[ "$(other)" != *10* ]]; then
+    echo "trait-pin-across-branches: a branch does not inherit a deprecation made on main."
+    echo "  Expected 10, got: $(other)"
+    exit 1
+  fi
+
+  # Up: the branch says "not here", and main is untouched by it.
+  $CLI undeprecate Stachu.PinE.Other.Tr >/dev/null
+  if [[ "$(other)" != *20* ]]; then
+    echo "trait-pin-across-branches: a branch cannot undeprecate what main deprecated."
+    echo "  Expected 20 on the branch, got: $(other)"
+    exit 1
+  fi
+
+  $CLI switch main >/dev/null
+  if [[ "$(other)" != *10* ]]; then
+    echo "trait-pin-across-branches: a branch's undeprecate reached MAIN."
+    echo "  Expected 10 on main, got: $(other)"
+    exit 1
+  fi
+
+  echo "trait-pin-across-branches: a call saved on main keeps its implementation ($held) on a branch"
+  echo "  where a fresh call takes the branch's newer one ($fresh); and a deprecation made on main"
+  echo "  is inherited by a branch, overridable there, and unaffected by that override."
+}
