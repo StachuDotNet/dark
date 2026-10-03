@@ -953,8 +953,12 @@ type ViewFrame =
 /// The key is `(name, arguments)` rather than the `(process, ordinal)` a resume uses, and for
 /// the reason classic had: a view has to survive the code having moved on. Add a call in the
 /// middle and every ordinal after it shifts, so an ordinal-keyed view would go blank from
-/// there; a name-and-arguments key still answers every call you did not touch. Last write wins,
-/// as classic's `DISTINCT ON ... ORDER BY timestamp DESC` did.
+/// there; a name-and-arguments key still answers every call you did not touch.
+///
+/// Classic then took the last write for a key (`DISTINCT ON ... ORDER BY timestamp DESC`). We do
+/// not: a key holds a QUEUE and a lookup consumes one, so the n-th call gets the n-th recorded
+/// answer. Last-write-wins served `Uuid.generate ()` the same value twice, and a run that made
+/// ten uuids showed one of them ten times. The code below says it at more length.
 ///
 /// `collected` is where the values land, keyed by (frame, source expression id). `frames` is
 /// the frame tree the replay walked, which is what turns those values from a flat bag into

@@ -3306,50 +3306,6 @@ let inline private parkOnRead
   forceReg <- reg
 
 
-/// `parkOnRead` over a list of registers, stopping at the first one in flight: what the opcodes
-/// that build a record, an enum or a record update do with their fields.
-///
-/// The list is walked as it is. A `List.map` to get at the registers would allocate on every
-/// record built, which is why there are two of these rather than one over a projection.
-let inline private parkOnFirstRead
-  (vm : VMState)
-  (registers : Dval array)
-  (regs : List<Register>)
-  (retry : bool byref)
-  (force : Task<Dval> byref)
-  (forceReg : int byref)
-  : unit =
-  let mutable rest = regs
-  while not retry && not (List.isEmpty rest) do
-    match rest with
-    | reg :: tail ->
-      (match registers[reg] with
-       | DPromise p -> parkOnRead vm registers reg p &retry &force &forceReg
-       | _ -> ())
-      rest <- tail
-    | [] -> ()
-
-
-/// `parkOnFirstRead` for the named fields of a record or a record update.
-let inline private parkOnFirstNamedRead
-  (vm : VMState)
-  (registers : Dval array)
-  (fields : List<string * Register>)
-  (retry : bool byref)
-  (force : Task<Dval> byref)
-  (forceReg : int byref)
-  : unit =
-  let mutable rest = fields
-  while not retry && not (List.isEmpty rest) do
-    match rest with
-    | (_, reg) :: tail ->
-      (match registers[reg] with
-       | DPromise p -> parkOnRead vm registers reg p &retry &force &forceReg
-       | _ -> ())
-      rest <- tail
-    | [] -> ()
-
-
 /// Run consecutive instructions that need no `await`, without entering the interpreter's computation
 /// expression at all. Returns the counter where it stopped: past the end of the block, or at one of the
 /// five opcodes that must be handled on the async path.
