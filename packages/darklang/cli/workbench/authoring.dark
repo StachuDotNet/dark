@@ -13,7 +13,10 @@ let leafNameOf (src: String) : String =
     |> Stdlib.List.filter (fun t -> t != "")
   let raw = Stdlib.List.getAt toks 1 |> Stdlib.Option.withDefault ""
   let beforeParen = Stdlib.String.split raw "(" |> Stdlib.List.head |> Stdlib.Option.withDefault raw
-  Stdlib.String.split beforeParen ":" |> Stdlib.List.head |> Stdlib.Option.withDefault beforeParen
+  // `trait Show<'a> =` puts the type params on the name, so cut there too.
+  let beforeAngle =
+    Stdlib.String.split beforeParen "<" |> Stdlib.List.head |> Stdlib.Option.withDefault beforeParen
+  Stdlib.String.split beforeAngle ":" |> Stdlib.List.head |> Stdlib.Option.withDefault beforeAngle
 
 /// Save the editor's declaration: the buffer holds a full `let`/`type`/`val` declaration. Derive the leaf name
 /// from it, resolve the target location relative to the current tree spot, then parse → WrittenTypes → PT →
@@ -82,6 +85,26 @@ let saveEditing (state: State) (es: EditingState) : Step =
                   [ LanguageTools.ProgramTypes.PackageOp.AddValue pv
                     LanguageTools.ProgramTypes.PackageOp.SetName (location, LanguageTools.ProgramTypes.Reference.PackageValue pv.hash, Stdlib.Option.Option.None) ]
             | _ -> Stdlib.Result.Result.Error "not a value definition"
+          // A trait and an implementation do NOT build a `SetName` here, unlike the three above.
+          // `traitWithOps` and `implWithOps` return a complete op list, placed: an implementation's
+          // name is derived from the module, the type and the trait rather than typed, so only the
+          // converter knows where it goes. Adding a `SetName` for symmetry would bind the name a
+          // second time, which folds once and looks fine. These are the same converters `dark trait`
+          // and `dark impl` call, so the two surfaces author identically.
+          else if es.kind == "trait" then
+            match sourceFile.declarations |> Stdlib.List.findFirst (fun d -> match d with | Trait _ -> true | _ -> false) with
+            | Some(Trait wt) ->
+              let (_pt, ops, unresolved) = LanguageTools.WrittenTypesToProgramTypes.traitWithOps ctx wt
+              if Stdlib.Bool.not (Stdlib.List.isEmpty unresolved) then Stdlib.Result.Result.Error "unresolved names"
+              else Stdlib.Result.Result.Ok ops
+            | _ -> Stdlib.Result.Result.Error "not a trait definition"
+          else if es.kind == "impl" then
+            match sourceFile.declarations |> Stdlib.List.findFirst (fun d -> match d with | Impl _ -> true | _ -> false) with
+            | Some(Impl wi) ->
+              let (_pi, _fns, ops, unresolved) = LanguageTools.WrittenTypesToProgramTypes.implWithOps ctx wi
+              if Stdlib.Bool.not (Stdlib.List.isEmpty unresolved) then Stdlib.Result.Result.Error "unresolved names"
+              else Stdlib.Result.Result.Ok ops
+            | _ -> Stdlib.Result.Result.Error "not an implementation"
           else
             match sourceFile.declarations |> Stdlib.List.findFirst (fun d -> match d with | Function _ -> true | _ -> false) with
             | Some(Function wf) ->
@@ -135,6 +158,12 @@ let openNewEditor (state: State) (kind: String) (targetModule: List<String>) : S
   let (titleBase, template, nameCol) =
     if kind == "type" then ("New type", "type NewType =\n  { field: Int }", 5)
     else if kind == "value" then ("New value", "val newValue = 1", 4)
+    else if kind == "trait" then
+      ("New trait", "trait NewTrait<'a> =\n  let method (v: 'a) : String", 6)
+    // An implementation's name is derived, so the cursor goes to the TRAIT being implemented
+    // rather than to a name you are about to type.
+    else if kind == "impl" then
+      ("New implementation", "impl NewTrait for SomeType =\n  let method (v: SomeType) : String = \"\"", 5)
     else ("New function", "let newFunction (x: Int): Int =\n  x", 4)
   let where = "  ·  in " + (Stdlib.String.join targetModule ".")
   let buf = Stdlib.Cli.UI.Editor.fromText template
@@ -184,11 +213,15 @@ let openEditExisting (state: State) (item: BodyItem) : Step =
       match results.fns with
       | i :: _ -> Stdlib.Option.Option.Some(("fn", PrettyPrinter.ProgramTypes.packageFn ctx i.entity))
       | [] -> Stdlib.Option.Option.None
+    else if item.kind == "trait" then
+      match results.traits with
+      | i :: _ -> Stdlib.Option.Option.Some(("trait", PrettyPrinter.ProgramTypes.packageTrait ctx i.entity))
+      | [] -> Stdlib.Option.Option.None
+    else if item.kind == "impl" then
+      match results.impls with
+      | i :: _ -> Stdlib.Option.Option.Some(("impl", PrettyPrinter.ProgramTypes.packageImpl ctx i.entity))
+      | [] -> Stdlib.Option.Option.None
     else
-      // `saveEditing` has no trait or impl arm, so opening the editor on one would show you the
-      // source and then refuse to save it. Say which command does, rather than appearing to do
-      // nothing: `e` on a trait row used to fall into the fn arm, find nothing and return the
-      // state unchanged.
       Stdlib.Option.Option.None
   match kindAndSrc with
   | Some((kind, src)) ->
@@ -197,11 +230,4 @@ let openEditExisting (state: State) (item: BodyItem) : Step =
           editing =
             Stdlib.Option.Option.Some
               (EditingState { kind = kind; nameStr = "Editing " + fullName; targetModule = modules; buf = Stdlib.Cli.UI.Editor.fromText (stripDocComments src); err = "" }) }
-  | None ->
-    if item.kind == "trait" || item.kind == "impl" then
-      Step.Continue
-        { state with
-            message =
-              $"the editor does not author {item.kind}s; `dark edit {fullName}` does" }
-    else
-      Step.Continue { state with message = $"nothing to edit at {fullName}" }
+  | None -> Step.Continue { state with message = $"nothing to edit at {fullName}" }

@@ -206,6 +206,13 @@ let handleViewKey
       else Step.Continue state
     | Some "v" ->
       if state.activeView == vMatter then startNew state "value" else Step.Continue state
+    // Shifted, because `t` is already a type and `i` is install in the Apps view. Their letters
+    // match the commands that do the same thing, `dark trait` and `dark impl`, so the two surfaces
+    // agree on what they are called.
+    | Some "T" ->
+      if state.activeView == vMatter then startNew state "trait" else Step.Continue state
+    | Some "I" ->
+      if state.activeView == vMatter then startNew state "impl" else Step.Continue state
     | Some "L" ->
       // Matter: cycle the Lens - the whole tree, values only, then what you've changed. (L, not V, to
       // avoid clashing with v = new value.)
