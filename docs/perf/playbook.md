@@ -329,6 +329,26 @@ Not ruled out, and left alone deliberately: the `backend/Build` volume carrying 
 builds, and the container's own baked environment (a container made from a sibling clone bakes
 that branch's `config/dev`, and this one's `TRACE_DETAIL` default already disagreed with the file).
 
+### A store you copied is a store from a point in time, and the time is before your change
+
+The general rule behind the next section, and the one that has now cost three measurements in a
+day. A store is a snapshot: copying one, exporting one, or reloading one pins the code it
+contains. Measure after a change against a store taken before it and the change reads as having
+done nothing.
+
+- a seed exported mid-session, measured later as if it were clean (the next section)
+- a throwaway rundir seeded with `_copy-store` BEFORE an edit, then used to test the edit. The fix
+  was live in the dev store and absent from the copy, so the first "after" run reproduced the
+  bug exactly
+- the dev store itself, after `git checkout <base>` ran a build that reloaded BASE packages into
+  it. Coming back to the branch does not undo that, and a plain build then says "nothing has
+  changed", so the tree had the fix and the store did not. The measurement that exposed it was a
+  gate taking 129s instead of 12s, because the old code was still being killed by its timeout
+
+The check is the same in all three: before trusting a number, ask what the store was built from and
+WHEN. `scripts/dev/build` after returning from a detached checkout, and re-copy any throwaway store
+after a change you intend to measure.
+
 ### The seed is not automatically clean
 
 "Build a fresh store from `rundir/seed.db`" is only valid if nobody has re-exported the seed since.
