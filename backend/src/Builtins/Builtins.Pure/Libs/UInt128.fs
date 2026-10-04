@@ -109,8 +109,8 @@ let fns () : List<BuiltInFn> =
         [ Param.make "base" TUInt128 ""; Param.make "exponent" TUInt128 "" ]
       returnType = TUInt128
       description =
-        "Raise <param base> to the power of <param exponent>. <param exponent> "
-        + "must to be positive. Overflow wraps around."
+        "Raise <param base> to the power of <param exponent>. Overflow wraps "
+        + "around."
       fn =
         (function
         | _, _, _, [| DUInt128 number; DUInt128 exp |] ->

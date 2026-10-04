@@ -49,7 +49,8 @@ impl Divide for Int128 =
 
 impl Power for Int128 =
   /// Raise <param base> to the power of <param exponent>.
-  /// <param exponent> must to be positive. Overflow wraps around.
+  /// Overflow wraps around.
+  /// Raises an error if <param exponent> is negative.
   let power (``base``: Int128) (exponent: Int128) : Int128 =
     Builtin.int128Power ``base`` exponent
 

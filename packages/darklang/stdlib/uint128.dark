@@ -36,7 +36,7 @@ impl Divide for UInt128 =
 
 impl Power for UInt128 =
   /// Raise <param base> to the power of <param exponent>.
-  /// <param exponent> must to be positive. Overflow wraps around.
+  /// Overflow wraps around.
   let power (``base``: UInt128) (exponent: UInt128) : UInt128 =
     Builtin.uint128Power ``base`` exponent
 

@@ -33,6 +33,8 @@ impl Power for UInt16 =
   /// Raise <param base> to the power of <param exponent>.
   /// Overflow wraps around.
   let power (``base``: UInt16) (exponent: UInt16) : UInt16 =
+    // The signed types push this into the builtin; here the ladder stays, because an
+    // unsigned exponent is never negative, so there is no error case to push.
     if ``base`` == 0us && exponent == 0us then 1us
     else if ``base`` == 0us then 0us
     else if ``base`` == 1us then 1us
