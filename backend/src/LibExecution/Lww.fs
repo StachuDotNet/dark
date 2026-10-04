@@ -8,7 +8,8 @@
 /// Three places apply it: the op-fold (`PackageOpPlayback.applySetNameFrom`), divergence detection
 /// (`SCM.Conflicts.incomingWins`, in Dark) and choosing between two implementations of one trait for
 /// one type (`LibExecution.Traits.select`). Keeping the rule here means the F# copy cannot drift;
-/// `Tests.Lww` holds the Dark one to it.
+/// `Tests.Lww` holds the Dark one to it by running `SCM.Conflicts.incomingWins` over the same table
+/// rows, so the two cannot disagree without a test saying which row.
 ///
 /// It lives in `LibExecution` rather than `LibDB` for the third of those: selection runs in the
 /// interpreter, which `LibDB` is downstream of.

@@ -22,6 +22,7 @@ module Lww = LibExecution.Lww
 module PT = LibExecution.ProgramTypes
 module Inserts = LibDB.Inserts
 module Queries = LibDB.Queries
+module RT = LibExecution.RuntimeTypes
 
 
 /// (newTs, newHash, curTs, curHash, incoming wins?) -- the same rows as the Dark testfile.
@@ -60,6 +61,43 @@ let private agreesWithTheTable =
         (Lww.incomingWins newTs newHash curTs curHash)
         expected
         $"incoming ({newTs}, {newHash}) vs live ({curTs}, {curHash})")
+  }
+
+
+/// The DARK copy of the rule, driven over the SAME rows.
+///
+/// The two tables used to be held in step by a comment telling the next person to change both.
+/// Each suite proved its own side matched its own table, and nothing compared the tables, which
+/// is the one case the pair exists for: change the rule, update the table beside the code you
+/// touched, and the fold and the conflict recorder disagree about who wins with both suites
+/// green. That is the failure this module's header describes, so it is asserted here rather
+/// than asked for in prose.
+///
+/// `Darklang.` in full because this file is parsed with owner `Tests`, and the error goes IN the
+/// failure message because a name-resolution failure names the exact missing module and that is
+/// the whole diagnostic.
+let private darkBinding (ts : string) (hash : string) : string =
+  "(Darklang.SCM.Conflicts.Binding { owner = \"Zz\"; modules = \"Lww\"; "
+  + $"name = \"n\"; itemType = \"fn\"; hash = \"{hash}\"; originTs = \"{ts}\"; "
+  + "author = \"\"; previous = Stdlib.Option.Option.None })"
+
+let private darkAgreesWithTheSameTable =
+  testTask "the Dark rule answers the same table, row for row" {
+    for (newTs, newHash, curTs, curHash, expected) in cases do
+      let code =
+        "Darklang.SCM.Conflicts.incomingWins "
+        + darkBinding newTs newHash
+        + " "
+        + darkBinding curTs curHash
+
+      match! evalDarkExpr code with
+      | Ok(RT.DBool actual) ->
+        Expect.equal
+          actual
+          expected
+          $"Dark: incoming ({newTs}, {newHash}) vs live ({curTs}, {curHash})"
+      | Ok other -> failtest $"expected a Bool from the Dark rule, got: {other}"
+      | Error(rte, _) -> failtest $"the Dark call raised: {rte}"
   }
 
 
@@ -229,6 +267,7 @@ let tests =
   testList
     "Lww"
     [ agreesWithTheTable
+      darkAgreesWithTheSameTable
       winnerAmongRivals
       isStaleAgreesWithTheTable
       theRuleIsAntisymmetric
