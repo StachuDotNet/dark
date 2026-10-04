@@ -206,6 +206,7 @@ module PT =
           (Array.append (header oldUndeprecate) oldUndeprecate))
         (PT.PackageOp.Undeprecate(target, None))
         "an old Undeprecate blob reads as itself, unstamped"
+    }
 
   /// A v1 blob has no `bounds` list after the ceiling. A reader handed a v1 header must stop
   /// there and answer `bounds = []`, or every fn stored before bounds existed becomes unreadable.

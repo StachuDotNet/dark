@@ -713,7 +713,8 @@ let restateReverts
       // same overlay `Queries.getCurrentDeprecationFor` reads. A branch's deprecation never folds,
       // so there is no row to ask instead. Literally the same fold, not a second copy of it: if
       // this and the read disagreed, an op would be dropped as a duplicate of a state the reader
-      // does not think it is in. The kind it carries is for `Queries`; this side keys on content.
+      // does not think it is in. The kind the shared fold carries is for `Queries`; this side
+      // reads past it.
       let deprecationTargets =
         restatable
         |> List.choose (fun op ->
@@ -728,7 +729,7 @@ let restateReverts
             return Map.empty
           else
             let! ops = chainOverlayOps branchId
-            return Deprecations.chainStanding ops |> Map.map (fun _ (_, said) -> said)
+            return Deprecations.chainStanding ops
         }
 
       let mutable mainStanding = Map.empty
@@ -741,7 +742,7 @@ let restateReverts
       let standingFor (target : PT.Reference) =
         let (Hash h) = target.hash
         match Map.tryFind h chainSaid with
-        | Some said -> said
+        | Some(_kind, said) -> said
         | None -> Map.tryFind h mainStanding |> Option.defaultValue None
 
       let saidAgain (op : PT.PackageOp) : bool =
