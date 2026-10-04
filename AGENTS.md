@@ -78,6 +78,15 @@ tell you the tree has moved on rather than silently running a stale binary.
     rundir/logs/packages.log        # .dark reload
     rundir/logs/watch.log           # a detached watcher
 
+**Read the FIRST compiler error, not the last.** F# reports an unclosed construct as a
+cascade: one real error, then an `FS0058` "offside of context started at position (N,c)"
+for every following definition. `tail` on the log shows you the end of that cascade,
+which points at whichever definition came last rather than at the mistake. A dropped
+closing brace at line 123 presented as seventeen errors starting at line 230, and the
+only line that named the real place was the first one, `offside of context started at
+(122:3)`. So sort the errors by line and read the top, or grep the log for the first
+`FS0010`; the `(N,c)` an `FS0058` names is the thing that never closed.
+
 ## Tests
 
     ./scripts/run-backend-tests                       all of them, a few minutes
@@ -228,10 +237,26 @@ script IS your commit: run it over the MERGE BASE and require the output to equa
 side byte for byte. Once it does, run it over main's text and you get main's new cases with
 your change applied, rather than a hand-merge that quietly drops one.
 
-**Reading a resolution twice is not a check; the only check is a build.** A structural
-resolution can leave the tail of the form it replaced sitting underneath, and it reads fine:
-one `if/else` head swapped for a `match` left the old `else` branch in place, calling an op
-with the arity main had just changed. Build after resolving, before the suite.
+**Reading a resolution twice is not a check, and a build is not the whole check either.**
+One rebase of this repo produced four broken resolutions, and reading caught none of them,
+including two that were read twice and reported as done. What caught each is the useful part,
+because the stages are not interchangeable:
+
+- the compiler caught two: a `.fsproj` still listing a file the branch MOVED to another
+  project, and a dropped `}` that left a `test { ... }` block unclosed. Note the second
+  presented as a wall of errors naming the wrong place; see the first-error note above.
+- the SUITE caught one the compiler cannot: a duplicate wrapper around one builtin, left
+  behind when main MOVED that wrapper and the resolution kept both copies. It compiles
+  perfectly. `tests/builtin` is what fails, because a builtin may have exactly one Dark
+  wrapper, and the dead copy still counted as a second reference to it.
+- the fourth surfaced only because the same file conflicted a second time, which showed
+  that a structural resolution had left the tail of the form it replaced sitting underneath:
+  an `if/else` head swapped for a `match`, with the old `else` branch still there, calling
+  an op with the arity main had just changed.
+
+So the order is build, then the full suite, then believe it. A clean build on a rebase that
+deleted or MOVED anything public says less than it looks like it says, and "I read it twice"
+says nothing at all.
 
 ## Directories
 
@@ -338,8 +363,12 @@ the rule: the fold decides which binding survives, and conflict recording decide
 the winner (`SCM.Conflicts.incomingWins`, in Dark, because the recording is in Dark). If those disagree, a
 recorded conflict names a winner the fold did not pick and two instances converge on different content
 with nothing to say so. The F# side has exactly one copy and the fold calls it. The Dark side is held to
-it by matching tables in `Tests/Lww.Tests.fs` and `testfiles/execution/scm/lww.dark`: change one, change
-both, and both test tables. Inverting either tie-break turns those red, which is checked.
+it by `Tests/Lww.Tests.fs`, which asserts the Dark rule against the SAME table rows it asserts the F#
+one against, by evaluating `SCM.Conflicts.incomingWins` through `evalDarkExpr`. So inverting either
+implementation turns the F# suite red, by two different routes, and that is measured rather than hoped:
+before that assertion existed, inverting the F# rule left the Dark table 9 of 9 green and inverting the
+Dark rule left the F# table 6 of 6 green. `testfiles/execution/scm/lww.dark` keeps its own copy of the
+rows, which is a second statement of the same table and still wants changing in step by hand.
 
 **A branch is an overlay, not a copy.** Its ops live in the same table, stored `effective = 0` and tagged in
 `op_branches`. A branch's package manager is main's with those ops layered on top.
