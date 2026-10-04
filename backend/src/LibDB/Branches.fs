@@ -711,7 +711,9 @@ let restateReverts
       // Deprecation is a STATE, so the question is what stands rather than what the branch carries:
       // the chain's own `Deprecate`/`Undeprecate` ops layered over main's projection, which is the
       // same overlay `Queries.getCurrentDeprecationFor` reads. A branch's deprecation never folds,
-      // so there is no row to ask instead.
+      // so there is no row to ask instead. Literally the same fold, not a second copy of it: if
+      // this and the read disagreed, an op would be dropped as a duplicate of a state the reader
+      // does not think it is in. The kind it carries is for `Queries`; this side keys on content.
       let deprecationTargets =
         restatable
         |> List.choose (fun op ->
@@ -726,19 +728,7 @@ let restateReverts
             return Map.empty
           else
             let! ops = chainOverlayOps branchId
-            return
-              ops
-              |> List.fold
-                (fun m op ->
-                  match op with
-                  | PT.PackageOp.Deprecate(target, kind, message, _) ->
-                    let (Hash h) = target.hash
-                    Map.add h (Some(kind, message)) m
-                  | PT.PackageOp.Undeprecate(target, _) ->
-                    let (Hash h) = target.hash
-                    Map.add h None m
-                  | _ -> m)
-                Map.empty
+            return Deprecations.chainStanding ops |> Map.map (fun _ (_, said) -> said)
         }
 
       let mutable mainStanding = Map.empty

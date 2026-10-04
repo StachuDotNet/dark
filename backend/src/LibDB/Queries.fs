@@ -648,29 +648,17 @@ let getDeprecationSets () : Task<DeprecationSets> =
 /// `Undeprecate` is what lets a branch say "not here" about something main deprecated, which is the
 /// ancestor-override the schema comment describes. Main is an ordinary id here with an empty chain,
 /// so both readers below collapse to the plain main read.
-/// The kind travels with the entry because one reader wants only one kind of item
-/// (`getDeprecatedTraitImplHashesFor`) and the others want all of them. Deciding that here
-/// rather than in each reader is the same rule as everywhere else in this branch: one place
-/// answers the question.
+///
+/// The fold itself is `Deprecations.chainStanding`, shared with the authoring side rather than
+/// written again here: it also has to know what stands on a branch, to decide whether the op it is
+/// about to drop as a duplicate says something new. Two copies could disagree, and then what
+/// authoring decides and what this reads are answers about the same branch that do not match.
 let private chainDeprecationOverlay
   (branchId : PT.BranchId)
   : Task<Map<string, PT.ItemKind * Option<PT.DeprecationKind * string>>> =
   task {
     let! ops = Branches.chainOverlayOps branchId
-
-    return
-      ops
-      |> List.fold
-        (fun acc op ->
-          match op with
-          | PT.PackageOp.Deprecate(target, kind, message, _) ->
-            let (Hash h) = target.hash
-            Map.add h (target.kind, Some(kind, message)) acc
-          | PT.PackageOp.Undeprecate(target, _) ->
-            let (Hash h) = target.hash
-            Map.add h (target.kind, None) acc
-          | _ -> acc)
-        Map.empty
+    return Deprecations.chainStanding ops
   }
 
 
