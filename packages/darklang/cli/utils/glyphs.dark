@@ -67,7 +67,7 @@ let sectionHeader (kind: String) : String =
     | "val" -> "Values"
     | "value" -> "Values"
     | "trait" -> "Traits"
-    | "impl" -> "Trait implementations"
+    | "impl" -> "Impls"
     | other -> other
 
   $"{Glyphs.forKind kind} {label}:"

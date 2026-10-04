@@ -152,7 +152,8 @@ let listModule
       |> Stdlib.List.iter (fun entry ->
         let (traitName, typeName, hash, versionsPath) = entry
         let mark = Query.deprecationMarker depSets hash
-        Stdlib.printLine $"  {traitName} for {typeName}{mark}"
+        Stdlib.printLine
+          $"  implementation of trait \"{traitName}\" for type \"{typeName}\"{mark}"
 
         if showVersions then
           printVersionLines versionsPath traitName hash)
