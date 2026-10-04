@@ -225,7 +225,7 @@ let modulePreviewLines (state: State) (item: BodyItem) : List<String> =
       [ Stdlib.Cli.UI.Colors.dimText "  (empty module)", "" ]
     else
       // The one kind order, shared with `dark ls` and `dark tree`. One `flatten`, at the end:
-      // there used to be a second one in front of `kindOrder`, which is a list of strings.
+      // `kindOrder` is a list of strings, so a flatten in front of it has nothing to flatten.
       Darklang.Cli.Glyphs.kindOrder
       |> Stdlib.List.map (fun kind ->
         let label =
