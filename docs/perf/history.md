@@ -50,6 +50,10 @@ is the clearest case of it in the file.
 For the record, both modes on the same commit and a freshly reloaded store: R2R 9.60 MB,
 `dark eval 1L` 276 ms; AOT 10.17 MB, `dark eval 1L` 40 ms.
 
+On the 10.17 MB specifically, trust `docs/perf/playbook.md` over this entry: that reading does
+not reproduce on this box today, and the playbook has the five ways this instrument has reported
+a false negative, plus the conclusion to re-pin the published budget only from CI.
+
 ## 2026-09-29: the schema pass came off every command
 
 10.29 MB to 9.60 MB, which is below where the branch started and 0.17 MB under main's own
