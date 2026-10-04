@@ -117,6 +117,16 @@ The other trap: a filter that matches nothing used to be reported as `0 tests ru
 with exit 0. It fails now. `docs/unittests.md` has the rest, including what the three filter
 flags actually do and why they used to disagree with their own help text.
 
+It fails by PRINTING OVER a success, though, which is its own trap for anyone reading the run
+through a grep. Expecto still emits `EXPECTO! 0 tests run ... Success!`; the runner then explains
+itself and exits 1. So a `grep -oE "[0-9,]+ tests run.*"` captures Expecto's "Success!" and
+throws away both the override and the exit code, and an empty run reads as a passing one. Twice
+in one session that produced a confident, wrong report about the tooling.
+
+**Never report a conclusion about the tooling from matched text alone; show the exit code beside
+it.** Same family as "don't infer build state from logs" above, one level out: that one is about
+reading the wrong file, this one is about reading the right file too narrowly.
+
 ### Sweeping the CLI after a change
 
 A Dark call site is not type-checked until it executes, so a rename or a type change across

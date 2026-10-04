@@ -329,34 +329,45 @@ Not ruled out, and left alone deliberately: the `backend/Build` volume carrying 
 builds, and the container's own baked environment (a container made from a sibling clone bakes
 that branch's `config/dev`, and this one's `TRACE_DETAIL` default already disagreed with the file).
 
-### The 2026-10-03 reading: at budget on a fresh store AND a fresh HOME
+### 2026-10-03, settled: the gate reads 2.1 MB high on a dev store, and HOME is not why
 
-The day after the above, on the rebased branch, the published gate came in green:
+Four readings, same binary (AOT, published from the same commit) and same workload, varying one
+thing at a time. This is the measurement the entry above was missing.
 
-    steady.dark (published) allocated 9.7 MB; budget 9.7 MB, ceiling 10.0 MB   exit 0
+    store                         HOME     recording   allocated   verdict
+    dev rundir                    real     on (stored) 11.8 MB     22.1% over
+    dev rundir                    fresh    on (stored) 11.8 MB     21.7% over
+    dev rundir                    real     off         11.4 MB     17.6% over
+    grown by the published binary fresh    off          9.7 MB     at budget, exit 0
 
-The same binary and workload against the working dev rundir read 11.8 MB, 21.5% over. So the
-branch has not regressed allocation, and a local red here is still a question rather than a
-finding.
+So the 2.1 MB splits three ways, and only one of them was what anybody suspected:
 
-What is new is not the store. The sweep above varied the store three ways and bottomed out at
-11.3 MB; this run reached 9.7, which is 1.6 MB below anything that sweep could produce. The
-variable it never changed is **HOME**: this run set `HOME` to a fresh directory alongside
-`DARK_CONFIG_RUNDIR`, and the sweep kept the real one.
+- **HOME: nothing.** 0.0 MB, rows one and two. The suspicion was `capabilities.bin`, which is
+  keyed on HOME and whose absence makes the host permissive. It was never there to matter:
+  `/home/dark/.darklang/` is EMPTY in these containers, so both runs were already permissive.
+  Worth knowing before anyone spends another experiment on it.
+- **The store's stored `trace.record`: 0.4 MB.** Real, and a gate bug rather than a fact about
+  stores. `gate` set `DARK_CONFIG_TRACE_DETAIL=off` and the ladder in `LibDB/Tracing.fs` puts the
+  STORED setting above the environment, so on any store where somebody ran `dark traces record on`
+  the gate was measuring a recording run. Proven directly: with `TRACE_DETAIL=off` set, one
+  `eval 1L` against the dev store took `traces` from 71 to 72; with `--no-trace` it stayed at 72.
+  `gate` passes `--no-trace` now, which pins the setting and beats both.
+- **Store provenance: 1.7 MB, and the mechanism is NOT identified.** A store grown by the
+  published binary from its own embedded seed reads 9.7; any store this dev tree produced reads
+  11.3 to 11.4 with recording off. It is not size (150 MB fresh against 152 MB dev), not the op
+  count (13,737 against 13,739), not dirt, and not config (the fresh store has zero `config_v0`
+  rows and the dev store has exactly one, the `trace.record` already accounted for above). The
+  three-way sweep in the entry above bottoming out at 11.3 is the same wall: all three of its
+  stores were dev-derived, so none of them could get under it.
 
-That is a suspect rather than a cause, and it is NOT measured. The reason to suspect it is
-written down in `AGENTS.md`: `$HOME/.darklang/capabilities.bin` is keyed on HOME rather than on
-the rundir, and its ABSENCE is what makes the host permissive, so a fresh HOME is a run with no
-capability file to check against. `rundir/policy/policies.bin` was already ruled out above and is
-a different file.
+**CI is in the last row.** It runs `scripts/perf/gate --published` in a fresh container, against a
+store the published binary seeds itself, with no stored `trace.record`. So the budget is reachable,
+CI has been measuring the right thing, and it is the LOCAL readings that have been inflated. Two
+separate conclusions and both are needed: the branch has not regressed allocation, and the local
+instrument was wrong by a fifth of the budget.
 
-One run settles it: the real store with a fresh HOME. If that reads near 9.7 it is HOME; if it
-reads near 11.8 it is the store after all, and the earlier sweep missed a fourth state. Nobody
-has run it, because an allocation number taken while another clone is compiling is worth nothing
-and the box was not free.
-
-Until then, the honest procedure is the one the gate now prints on failure: before believing a
-red, re-run against a store and a HOME that do not exist yet.
+What to do with a local red, in order: pass `--no-trace` (the gate does now), then re-run against a
+store the published binary grows itself, and only then start bisecting.
 
 ### A store you copied is a store from a point in time, and the time is before your change
 

@@ -53,9 +53,19 @@ WORKLOAD="scripts/perf/workloads/steady.dark"
 
 TELEMETRY=$(telemetry_path)
 
-# Trace detail off: a dev shell sets it on, a user's run has it off, and with it on the interpreter
+# Recording off: a dev shell sets it on, a user's run has it off, and with it on the interpreter
 # holds every argument and result alive for the whole run.
-run_workload() { DARK_TELEMETRY=1 DARK_CONFIG_TRACE_DETAIL=off "$EXE" run "$WORKLOAD"; }
+#
+# `--no-trace`, not just the environment variable, and this is load-bearing. The ladder in
+# `LibDB/Tracing.fs` is env, then the store's `trace.record`, then the flag, and a STORED setting
+# beats the environment by design. So on any store where somebody has run `dark traces record on`
+# -- which the walkthrough tells you to do, and which every dev store on this branch therefore has
+# -- the env var below was silently overridden and the gate measured a recording run. That is worth
+# 2.1 MB on this workload, 22% of the budget, and it is why a local red here has looked like a
+# regression all week. The flag pins the setting for the run and beats both.
+run_workload() {
+  DARK_TELEMETRY=1 DARK_CONFIG_TRACE_DETAIL=off "$EXE" --no-trace run "$WORKLOAD"
+}
 
 # One throwaway run first: against an empty store the first invocation seeds it, which on the
 # published binary is an extra ~470 MB that would otherwise be recorded as the budget.
@@ -123,13 +133,13 @@ if measured > ceiling:
     over = (measured / limit - 1) * 100
     print(f"FAIL: {over:.1f}% over budget.")
     print("If the regression is intended, raise the budget in the same commit and say why.")
-    print("Before calling this a regression, re-run against a store and HOME that do not")
-    print("exist yet. Same binary and workload: fresh came in AT budget, the working dev")
-    print("rundir read 21.5% over. (This line used to guess 2.5%.) Which of the two does")
-    print("it is unmeasured; docs/perf/playbook.md has the readings and the one run that")
-    print("would settle it.")
+    print("Before calling this a regression: measured on this box, the same binary and")
+    print("workload reads 2.1 MB higher against a working dev store than against one the")
+    print("published binary grew itself, which is 22% of the budget. CI is in the second")
+    print("case, so re-run there before believing this. Locally:")
     print("  HOME=$(mktemp -d) DARK_CONFIG_RUNDIR=<path that does not exist yet> \\")
     print("    scripts/perf/gate --published")
+    print("docs/perf/playbook.md has the four readings and what each part of the gap was.")
     sys.exit(1)
 
 if measured < limit * (1 - tolerance):
