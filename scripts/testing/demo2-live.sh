@@ -2,8 +2,8 @@
 # Demo 2 in the container: a relay, an editing instance A with live.autopush on, a hosting
 # instance B running the sync daemon and `serve`. A's saves reach B's page a pull later.
 #
-#   scripts/testing/_demo2-live.sh            A edits main, B serves main
-#   scripts/testing/_demo2-live.sh --branch   A edits a branch `site`, B serves `--branch site`
+#   scripts/testing/demo2-live.sh            A edits main, B serves main
+#   scripts/testing/demo2-live.sh --branch   A edits a branch `site`, B serves `--branch site`
 set -uo pipefail
 BRANCH=""
 [ "${1:-}" = "--branch" ] && BRANCH=site

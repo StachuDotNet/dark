@@ -95,6 +95,7 @@ tell you the tree has moved on rather than silently running a stale binary.
     ./scripts/perf/gate                               the same, debug, reported but not gated
     ./scripts/perf/suite                              six workloads, allocation per iteration
     ./scripts/perf/checks                             by-hand interpreter and error-message checks
+    ./scripts/testing/demo2-live.sh                   demo 2 by hand: A edits, B serves, one container
 
 Find what you want before guessing at a filter: `--groups` and `--find` need no
 database and no package reload, and print the exact command for what they found.

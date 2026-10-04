@@ -265,7 +265,7 @@ live.autopush on`; every `fn`/`type`/`val`/`module` save then commits the draft 
 Type errors are committed on purpose: the host keeps its last good version and says why
 in its log, which is the same answer you get locally.
 
-`scripts/testing/_demo2-live.sh` walks it in the container: a relay, A with autopush, B on
+`scripts/testing/demo2-live.sh` walks it in the container: a relay, A with autopush, B on
 the auto-sync daemon (`apps start sync`, every two seconds) and `serve`. Measured: A's save
 is B's page two to five seconds later; the broken save leaves B on the last good page with
 `[live] Demo.Site.router: still on the last good version; the newest has a type error:
