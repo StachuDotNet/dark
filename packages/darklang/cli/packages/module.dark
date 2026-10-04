@@ -30,6 +30,11 @@ let declarationName
   | Type typ -> Stdlib.Option.Option.Some typ.name.name
   | Function fn -> Stdlib.Option.Option.Some fn.name.name
   | Value value -> Stdlib.Option.Option.Some value.name.name
+  | Trait t -> Stdlib.Option.Option.Some t.name.name
+  // An impl's location is `<Type>.<Trait>` beneath the module it is written in
+  | Impl i ->
+    Stdlib.Option.Option.Some
+      ($"{LanguageTools.WrittenTypesToProgramTypes.ImplDeclaration.typeReferenceHeadName i.forType}.{i.trait_.typ.name}")
   | SubModule modul ->
     Stdlib.Option.Option.Some (Stdlib.Tuple2.second modul.name)
   | Expr _ -> Stdlib.Option.Option.None
@@ -205,7 +210,19 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
                   match op with
                   // Three fields, and a two-field pattern silently matches nothing rather than
                   // failing to compile.
-                  | SetName(location, _, _) -> Stdlib.Option.Option.Some location.name
+                  //
+                  // An impl is named `<Type>.<Trait>` by `declarationName`, because that is what
+                  // the author wrote, but its op binds the trait name BENEATH a module named for
+                  // the type, so `location.name` alone is just `<Trait>`. Comparing the two
+                  // reported every impl as not defined right after defining it.
+                  | SetName(location, target, _) ->
+                    match target with
+                    | PackageTraitImpl _ ->
+                      match Stdlib.List.last location.modules with
+                      | Some typeName ->
+                        Stdlib.Option.Option.Some $"{typeName}.{location.name}"
+                      | None -> Stdlib.Option.Option.Some location.name
+                    | _ -> Stdlib.Option.Option.Some location.name
                   | _ -> Stdlib.Option.Option.None)
 
               let count = Stdlib.List.length definedNames

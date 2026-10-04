@@ -476,6 +476,7 @@ let fnNameRef (name: LanguageTools.ProgramTypes.FQFnName.FQFnName) : NameRef =
   match name with
   | Builtin b -> NameRef.Builtin(b.name, Stdlib.Int64.fromInt32 b.version)
   | Package hash -> NameRef.Package hash
+  | TraitMethod tm -> NameRef.TraitMethod(tm.trait_, tm.method_)
 
 /// Represent a resolved value in the report by its builtin name or package hash.
 let valueNameRef

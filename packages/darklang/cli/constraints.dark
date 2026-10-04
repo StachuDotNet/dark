@@ -72,6 +72,14 @@ let toJson (f: SCM.Constraints.Finding) : String =
       $"\"using\":{usingStr},\"current\":{curStr}"
     | PolicyReplaced(was, now, by) ->
       $"\"was\":{Cli.jsonStr (policyName was)},\"now\":{Cli.jsonStr (policyName now)},\"replacedBy\":{Cli.jsonStr by}"
+    | Rivals(self, rival, choice) ->
+      let runs =
+        match choice with
+        | Mine -> SCM.Constraints.fqnOf f.usage
+        | Theirs -> SCM.Constraints.fqnOf rival
+        | Neither -> ""
+
+      $"\"self\":{Cli.jsonStr self},\"rival\":{Cli.jsonStr (SCM.Constraints.fqnOf rival)},\"runs\":{Cli.jsonStr runs}"
 
   $"{{\"id\":{Cli.jsonStr f.id},\"kind\":{k},\"usage\":{u},\"usageKind\":{uk},\"dependency\":{d},\"dependencyKind\":{dk},{detail}}}"
 
@@ -390,6 +398,10 @@ let executeResolve (state: AppState) (args: List<String>) : AppState =
         | PolicyReplaced(_, _, _) ->
           // Nothing to cascade: the finding is that a CHOICE was replaced, and the versions already
           // agree. Acking it is the whole answer.
+          ()
+        | Rivals(_, _, _) ->
+          // `resolutionsFor` offers nothing here, so this arm is not reached; a call already runs
+          // the newer one, and making that permanent is `dark deprecate impl` on the other.
           ()
         Cli.printOk
           $"resolved #{f.id} as \"{resolution}\"  {SCM.Constraints.fqnOf f.usage}")

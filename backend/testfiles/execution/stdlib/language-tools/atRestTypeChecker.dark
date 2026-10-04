@@ -141,6 +141,7 @@ let fnNamed
             { name = n; typ = t; description = "" })
       returnType = returnType
       description = ""
+      bounds = []
       permissionCeiling = Stdlib.Option.Option.None }
 
 let oneArg
@@ -159,7 +160,7 @@ let declared
     { hash = hash name
       declaration =
         Darklang.LanguageTools.ProgramTypes.TypeDeclaration.TypeDeclaration
-          { typeParams = typeParams; definition = definition }
+          { typeParams = typeParams; bounds = []; definition = definition }
       description = "" }
 
 let recordOf
@@ -919,7 +920,8 @@ module Builtins =
               Darklang.LanguageTools.ProgramTypes.FQFnName.Builtin
                 { name = "missing"; version = 0l }
             )
-          )
+          ),
+          []
         ),
         [],
         [ intExpr 12L 1 ]
@@ -1344,7 +1346,7 @@ module Unresolved =
     (oneArg
       (tUnit ())
       (tInt ())
-      (Darklang.LanguageTools.ProgramTypes.Expr.EFnName(1L, unresolved [ "Missing", "fn" ])))) = "incomplete:UnresolvedFunctionName"
+      (Darklang.LanguageTools.ProgramTypes.Expr.EFnName(1L, unresolved [ "Missing", "fn" ], [])))) = "incomplete:UnresolvedFunctionName"
 
   (checkFunctionAst
     []

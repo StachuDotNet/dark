@@ -13,6 +13,8 @@ let itemKindToString (kind: LanguageTools.ProgramTypes.ItemKind) : String =
   | Fn -> "fn"
   | Type -> "type"
   | Value -> "value"
+  | Trait -> "trait"
+  | TraitImpl -> "impl"
 
 /// Parse a string to an ItemKind
 let itemKindFromString (s: String) : Stdlib.Option.Option<LanguageTools.ProgramTypes.ItemKind> =

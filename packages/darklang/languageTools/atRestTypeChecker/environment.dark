@@ -185,7 +185,12 @@ let resolveCallable
   (fn: LanguageTools.ProgramTypes.FQFnName.FQFnName)
   : (Model.Callable * Model.Environment) =
   match fn with
-  | Package _ ->
+  // A trait method takes the same path: `env.functions` is keyed by the whole `FQFnName`, so
+  // if a method's declared signature is ever loaded it is found here, and until then the
+  // lookup misses and the call is `Unavailable`, which reads as Incomplete rather than as a
+  // verdict. Neither case binds, so grouping them is safe.
+  | Package _
+  | TraitMethod _ ->
     match Stdlib.Dict.get env.functions fn with
     | Some signature -> signatureTemplate env signature
     | None -> (Model.Callable.Unavailable, env)
@@ -261,6 +266,11 @@ let functionNameRefs
           |> Stdlib.List.map (fun t -> fromRuntimeType t)
           |> typeListRefs
         | None -> []
+    // A trait method's signature lives on the TRAIT, so that is the declaration to load.
+    // Which implementation runs is not a checking question here: the method's declared
+    // signature is what a call is checked against, whichever impl is selected.
+    | TraitMethod tm ->
+      [ LanguageTools.ProgramTypes.Reference.PackageTrait tm.trait_ ]
   | Error _ -> []
 
 /// Find the package declarations needed to check a value reference: the value
@@ -363,11 +373,11 @@ let exprRefs
     Stdlib.List.append
       (exprRefs env lhs)
       (Stdlib.List.flatten (Stdlib.List.map parts (fun p -> pipeRefs env p)))
-  | EInfix(_, _, lhs, rhs) -> many [ lhs, rhs ]
+  | EInfix(_, _, lhs, rhs, _) -> many [ lhs, rhs ]
   | ELambda(_, _, body) -> exprRefs env body
   | EApply(_, callee, typeArgs, args) ->
     Stdlib.List.flatten [ exprRefs env callee, typeListRefs typeArgs, many args ]
-  | EFnName(_, name) -> functionNameRefs env name
+  | EFnName(_, name, _) -> functionNameRefs env name
   | ERecordUpdate(_, record, updates) ->
     Stdlib.List.append
       (exprRefs env record)
@@ -395,7 +405,7 @@ let pipeRefs
   match pipePart with
   | EPipeVariable(_, _, args) -> many args
   | EPipeLambda(_, _, body) -> exprRefs env body
-  | EPipeInfix(_, _, rhs) -> exprRefs env rhs
+  | EPipeInfix(_, _, rhs, _) -> exprRefs env rhs
   | EPipeFnCall(_, name, typeArgs, args) ->
     Stdlib.List.flatten
       [ functionNameRefs env name, typeListRefs typeArgs, many args ]
@@ -497,3 +507,10 @@ let loadDependency
        { closure with
            fns = Stdlib.Dict.setOverridingDuplicates closure.fns hash fn })
     | None -> ([], closure)
+  // `Closure` has no place to put a trait or an implementation, so nothing is loaded and no
+  // further references are followed. The consequence is deliberate and consistent with
+  // `resolveCallable`: an item that calls a trait method stays Incomplete rather than being
+  // checked against a signature the checker does not hold. Teaching the closure about traits
+  // belongs with the rest of the checker's trait support, not here.
+  | PackageTrait _
+  | PackageTraitImpl _ -> ([], closure)

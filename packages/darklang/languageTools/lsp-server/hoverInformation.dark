@@ -218,6 +218,10 @@ let tryGetFnAndCollectHoverInfo
 
       | None -> Stdlib.Option.Option.None
 
+    // No hover for a trait method yet. `ThingAtPosition` has no case for one, so there is
+    // nothing to render; returning None shows no tooltip rather than the wrong one.
+    | TraitMethod _ -> Stdlib.Option.Option.None
+
   | _ -> Stdlib.Option.Option.None
 
 

@@ -24,7 +24,7 @@ let allDirectDescendants
 let allDirectDescendantNames
   (branchId: Uuid)
   (modulePath: List<String>)
-  : (List<String> * List<String> * List<String> * List<String>) =
+  : (List<String> * List<String> * List<String> * List<String> * List<String> * List<String>) =
   let query =
     LanguageTools.ProgramTypes.Search.SearchQuery
       { currentModule = modulePath
@@ -44,6 +44,8 @@ let allDirectDescendantNamesAndHashes
   (branchId: Uuid)
   (modulePath: List<String>)
   : (List<String> *
+     List<(String * LanguageTools.ProgramTypes.Hash)> *
+     List<(String * LanguageTools.ProgramTypes.Hash)> *
      List<(String * LanguageTools.ProgramTypes.Hash)> *
      List<(String * LanguageTools.ProgramTypes.Hash)> *
      List<(String * LanguageTools.ProgramTypes.Hash)>) =
@@ -185,7 +187,9 @@ let filterDeprecated
       { submodules = results.submodules
         types = results.types |> Stdlib.List.filter (fun i -> Stdlib.Bool.not (isHidden sets i.entity.hash))
         values = results.values |> Stdlib.List.filter (fun i -> Stdlib.Bool.not (isHidden sets i.entity.hash))
-        fns = results.fns |> Stdlib.List.filter (fun i -> Stdlib.Bool.not (isHidden sets i.entity.hash)) }
+        fns = results.fns |> Stdlib.List.filter (fun i -> Stdlib.Bool.not (isHidden sets i.entity.hash))
+        traits = results.traits |> Stdlib.List.filter (fun i -> Stdlib.Bool.not (isHidden sets i.entity.hash))
+        impls = results.impls |> Stdlib.List.filter (fun i -> Stdlib.Bool.not (isHidden sets i.entity.hash)) }
 
 
 /// Deprecation marker rendered after an item name when it's shown despite

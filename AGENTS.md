@@ -326,6 +326,13 @@ Empty is tolerated; non-empty with a missing key crashes at startup with "Packag
 hash not found". After adding a ref:
 `> backend/src/LibExecution/package-ref-hashes.txt && ./scripts/build/reload-packages`
 
+That message misdirects when the ref is one that should not exist yet. `makeRef` raises at
+module init, so a ref declared ahead of the item defining it dies at startup saying the file
+is stale, and regenerating can never fix it. Read the second line: the error names the ref
+(`fqn: trait/Stdlib.Add`), and that name says which of the two it is. Inspect the regenerated
+file rather than the build's exit code; every entry it emits must have a definition in the
+commit you are on.
+
 **Name resolution in test files.** `backend/testfiles/` is parsed with owner "Tests", so
 `Darklang.*` names need full qualification or the `Stdlib.` shortcut. `Stdlib.Json.ParseError.toString`
 and `Darklang.SCM.Branch.mainBranchId` resolve; `SCM.Branch.mainBranchId` doesn't. Impl:

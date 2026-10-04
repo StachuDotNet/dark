@@ -8,16 +8,14 @@ let resolveReplacementName
   (ref: LanguageTools.ProgramTypes.Reference)
   : String =
   let ctx = PrettyPrinter.ProgramTypes.Context.forBranch branchId
-  let hash =
-    match ref with
-    | PackageFn h -> h
-    | PackageType h -> h
-    | PackageValue h -> h
+  let hash = LanguageTools.ProgramTypes.Reference.hash ref
   let locs =
     match ref with
     | PackageFn h -> LanguageTools.PackageManager.Function.locations branchId h
     | PackageType h -> LanguageTools.PackageManager.Type.locations branchId h
     | PackageValue h -> LanguageTools.PackageManager.Value.locations branchId h
+    | PackageTrait h -> LanguageTools.PackageManager.Trait.locations branchId h
+    | PackageTraitImpl h -> LanguageTools.PackageManager.TraitImpl.locations branchId h
   match Darklang.LanguageTools.PackageManager.pickLocation
           (PrettyPrinter.ProgramTypes.Context.toPickContext ctx)
           locs with
@@ -66,6 +64,8 @@ let rawSource
   | Type loc -> sourceOf loc
   | Value loc -> sourceOf loc
   | Function loc -> sourceOf loc
+  | Trait loc -> sourceOf loc
+  | Impl loc -> sourceOf loc
 
 
 /// Print `rawSource`, or say why there is none.
@@ -135,7 +135,8 @@ let entityRows (branchId: Uuid) (location: PackageLocation) : List<String> =
     // Names only. This listing prints each item's name and nothing else, so materializing every matched
     // item's full definition to read `.location.name` is work thrown away. Submodules come back already
     // reduced to the direct children of `path`.
-    let (directSubmodules, typeNames, valueNames, fnNames) =
+    // Traits and impls come back too now; this view does not list them yet.
+    let (directSubmodules, typeNames, valueNames, fnNames, _traitNames, _implNames) =
       Query.allDirectDescendantNames branchId path
 
     let locationStr = Packages.formatLocation location
@@ -269,6 +270,49 @@ let entityRows (branchId: Uuid) (location: PackageLocation) : List<String> =
       ]
 
 
+  | Trait name ->
+    let modulePath = Stdlib.List.append [name.owner] name.modules
+    let results = Query.searchExactMatch branchId modulePath name.name
+
+    match results.traits with
+    | [] ->
+      let locationStr = Packages.formatLocation location
+      [ $"Trait '{locationStr}' not found." ]
+    | item :: _ ->
+      let ctx =
+        { terminalContext branchId (Stdlib.List.push name.modules name.owner) with
+            preferredLocation = Stdlib.Option.Option.Some name }
+      let prettyPrinted = PrettyPrinter.ProgramTypes.packageTrait ctx item.entity
+      let highlighted = SyntaxHighlighting.highlightCode prettyPrinted
+      Stdlib.List.flatten [
+        deprecationHeaderRowsFor
+          branchId
+          item.entity.hash
+          LanguageTools.ProgramTypes.ItemKind.Trait
+        sourceRows highlighted
+      ]
+
+  | Impl name ->
+    let modulePath = Stdlib.List.append [name.owner] name.modules
+    let results = Query.searchExactMatch branchId modulePath name.name
+
+    match results.impls with
+    | [] ->
+      let locationStr = Packages.formatLocation location
+      [ $"Impl '{locationStr}' not found." ]
+    | item :: _ ->
+      let ctx =
+        { terminalContext branchId (Stdlib.List.push name.modules name.owner) with
+            preferredLocation = Stdlib.Option.Option.Some name }
+      let prettyPrinted = PrettyPrinter.ProgramTypes.packageImpl ctx item.entity
+      let highlighted = SyntaxHighlighting.highlightCode prettyPrinted
+      Stdlib.List.flatten [
+        deprecationHeaderRowsFor
+          branchId
+          item.entity.hash
+          LanguageTools.ProgramTypes.ItemKind.TraitImpl
+        sourceRows highlighted
+      ]
 let viewEntity (branchId: Uuid) (location: PackageLocation) : Unit =
   entityRows branchId location |> Stdlib.printLines
 
@@ -347,6 +391,11 @@ let fnAt
   | Type _ -> Stdlib.Result.Result.Error "that's a type; this view is for functions"
   | Value _ ->
     Stdlib.Result.Result.Error "that's a value; this view is for functions"
+  | Trait _ ->
+    Stdlib.Result.Result.Error "that's a trait; this view is for functions"
+  | Impl _ ->
+    Stdlib.Result.Result.Error
+      "that's an implementation; this view is for functions. Name one of its methods."
 
 
 /// The ProgramTypes tree, indented by depth. Node kinds are colored and payloads dimmed, so the shape
@@ -481,7 +530,9 @@ let resolveHashArg
     (match kind with
      | Fn -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Function loc)
      | Type -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Type loc)
-     | Value -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Value loc))
+     | Value -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Value loc)
+     | Trait -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Trait loc)
+     | TraitImpl -> Stdlib.Result.Result.Ok(Packages.PackageLocation.Impl loc))
   | None ->
     Stdlib.Result.Result.Error
       $"no live name binds hash {Stdlib.String.first hash 8} -- `dark show {Stdlib.String.first hash 8}` reads it as an op."

@@ -136,6 +136,11 @@ let modulePathOf (location: PackageLocation) : List<String> =
   | Type t -> Stdlib.List.append [t.owner] t.modules
   | Value v -> Stdlib.List.append [v.owner] v.modules
   | Function f -> Stdlib.List.append [f.owner] f.modules
+  | Trait t -> Stdlib.List.append [t.owner] t.modules
+  // An implementation's methods are ordinary fns in a module named for the implementation, so
+  // the module you are "in" when you are at one INCLUDES its name. Same rule as
+  // `Packages.Traversal.modulePathOf`.
+  | Impl i -> Stdlib.List.append (Stdlib.List.append [i.owner] i.modules) [i.name]
 
 let buildNavItemsFromResults
   (results: LanguageTools.ProgramTypes.Search.SearchResults)

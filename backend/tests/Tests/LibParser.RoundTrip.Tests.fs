@@ -155,6 +155,10 @@ module RoundTripExpect =
         Some $"content {canon (fun w -> Canonical.writeValue Canonical.Normal w v)}"
       | PT.PackageOp.AddFn f ->
         Some $"content {canon (fun w -> Canonical.writeFn Canonical.Normal w f)}"
+      | PT.PackageOp.AddTrait t ->
+        Some $"content {canon (fun w -> Canonical.writeTrait Canonical.Normal w t)}"
+      | PT.PackageOp.AddTraitImpl i ->
+        Some $"content {canon (fun w -> Canonical.writeImpl Canonical.Normal w i)}"
       // `previous` (the hash this binding replaced) is what makes a rebind distinguishable from a
       // fresh one; the round trip does not care which it was.
       | PT.PackageOp.SetName(loc, target, _previous) ->
@@ -163,6 +167,8 @@ module RoundTripExpect =
           | PT.Reference.PackageType _ -> "type"
           | PT.Reference.PackageValue _ -> "value"
           | PT.Reference.PackageFn _ -> "fn"
+          | PT.Reference.PackageTrait _ -> "trait"
+          | PT.Reference.PackageTraitImpl _ -> "impl"
         let path = String.concat "." (loc.owner :: loc.modules)
         Some $"bind {kind} {path}.{loc.name}"
       | _ -> None)
@@ -294,7 +300,7 @@ let t
       if allowUnresolved then
         pmPT
       else
-        pmPT |> PT.PackageManager.withExtras extraTypes extraValues extraFns
+        pmPT |> PT.PackageManager.withExtras extraTypes extraValues extraFns [] []
 
     // Parsing and printing are separate steps, not one `roundOnceAt width src`, because
     // the width sweep below prints one tree several times and has no reason to re-parse
@@ -586,6 +592,7 @@ let person : (PT.PackageType.PackageType * PT.PackageLocation) =
       description = ""
       declaration =
         { typeParams = []
+          bounds = []
           definition =
             PT.TypeDeclaration.Record(
               { head =
@@ -606,6 +613,7 @@ let myString : (PT.PackageType.PackageType * PT.PackageLocation) =
       description = ""
       declaration =
         { typeParams = []
+          bounds = []
           definition = PT.TypeDeclaration.Alias PT.TypeReference.TString } }
   let location : PT.PackageLocation =
     { owner = "Tests"; modules = []; name = "MyString" }
@@ -617,6 +625,7 @@ let pet : (PT.PackageType.PackageType * PT.PackageLocation) =
       description = ""
       declaration =
         { typeParams = []
+          bounds = []
           definition = PT.TypeDeclaration.Alias PT.TypeReference.TString } }
   let location : PT.PackageLocation = { owner = "Tests"; modules = []; name = "Pet" }
   (packageType, location)
@@ -627,6 +636,7 @@ let myEnum : (PT.PackageType.PackageType * PT.PackageLocation) =
       description = ""
       declaration =
         { typeParams = []
+          bounds = []
           definition =
             PT.TypeDeclaration.Enum(
               NEList.ofList
@@ -1480,10 +1490,10 @@ let exprs =
       "list of function calls"
       """[
   Stdlib.Tuple2.second (4L, 5L)
-  Stdlib.Int64.add 1L 2L
+  Stdlib.Int64.remainder 1L 2L
   Stdlib.List.head [1L, 2L]
 ]"""
-      "[\n  Stdlib.Tuple2.second (4L, 5L),\n  Stdlib.Int64.add 1L 2L,\n  Stdlib.List.head [1L, 2L]\n]"
+      "[\n  Stdlib.Tuple2.second (4L, 5L),\n  Stdlib.Int64.remainder 1L 2L,\n  Stdlib.List.head [1L, 2L]\n]"
       []
       []
       []
@@ -1493,12 +1503,12 @@ let exprs =
       "list of function calls -indented"
       """[
   Stdlib.Tuple2.second (4L, 5L)
-  (Stdlib.Int64.add
+  (Stdlib.Int64.remainder
     1L
     2L)
   Stdlib.List.head [1L, 2L]
 ]"""
-      "[\n  Stdlib.Tuple2.second (4L, 5L),\n  Stdlib.Int64.add 1L 2L,\n  Stdlib.List.head [1L, 2L]\n]"
+      "[\n  Stdlib.Tuple2.second (4L, 5L),\n  Stdlib.Int64.remainder 1L 2L,\n  Stdlib.List.head [1L, 2L]\n]"
       []
       []
       []
@@ -1858,8 +1868,8 @@ let exprs =
       false
     t
       "lambda with notable body 2"
-      "fun (str1, str2) -> str1 ++ str2"
-      "(fun (str1, str2) -> str1 ++ str2)"
+      "fun (str1, str2) -> str1 + str2"
+      "(fun (str1, str2) -> str1 + str2)"
       []
       []
       []
@@ -2311,8 +2321,8 @@ else if c > d then c else if e > f then e else if g > h then g else h"""
       false
     t
       "pipe, if head"
-      "(if true then 1L else 2L) |> Stdlib.Int64.add 1L"
-      "(if true then 1L else 2L) |> Stdlib.Int64.add 1L"
+      "(if true then 1L else 2L) |> (+) 1L"
+      "(if true then 1L else 2L) |> (+) 1L"
       []
       []
       []
@@ -2352,8 +2362,8 @@ else if c > d then c else if e > f then e else if g > h then g else h"""
       false
     t
       "pipe, lambda then another stage"
-      "1L |> (fun x -> x + 1L) |> Stdlib.Int64.add 2L"
-      "1L |> (fun x -> x + 1L) |> Stdlib.Int64.add 2L"
+      "1L |> (fun x -> x + 1L) |> (+) 2L"
+      "1L |> (fun x -> x + 1L) |> (+) 2L"
       []
       []
       []
@@ -2366,14 +2376,7 @@ else if c > d then c else if e > f then e else if g > h then g else h"""
       []
       []
       false
-    t
-      "pipe, into fn call"
-      "1L |> Stdlib.Int64.add 2L"
-      "1L |> Stdlib.Int64.add 2L"
-      []
-      []
-      []
-      false
+    t "pipe, into fn call" "1L |> (+) 2L" "1L |> (+) 2L" [] [] [] false
     t
       "pipe, into fn call 2"
       "1L |> Stdlib.Int64.toString"
@@ -2390,14 +2393,7 @@ else if c > d then c else if e > f then e else if g > h then g else h"""
       []
       []
       false
-    t
-      "pipe, into fn call 4"
-      "Stdlib.Int64.add 1L 2L |> Stdlib.Int64.add 1L"
-      "Stdlib.Int64.add 1L 2L |> Stdlib.Int64.add 1L"
-      []
-      []
-      []
-      false
+    t "pipe, into fn call 4" "1L + 2L |> (+) 1L" "1L + 2L |> (+) 1L" [] [] [] false
     t
       "pipe, into fn call 5"
       "[1L, 2L] |> Stdlib.List.last |> Builtin.unwrap"
@@ -2418,7 +2414,7 @@ else if c > d then c else if e > f then e else if g > h then g else h"""
     t "fn call, ==" "1L == 2L" "1L == 2L" [] [] [] false
     t "fn call, !=" "1L != 2L" "1L != 2L" [] [] [] false
     t "fn call, ^" "1L ^ 2L" "1L ^ 2L" [] [] [] false
-    t "fn call, ++" "strVar ++ \"str\"" "strVar ++ \"str\"" [] [] [] false
+    t "fn call, +" "strVar + \"str\"" "strVar + \"str\"" [] [] [] false
     t "fn call, &&" "true && false" "true && false" [] [] [] false
     t "fn call, ||" "true || false" "true || false" [] [] [] false
     t "fn call, and short" "and true false" "and true false" [] [] [] true
@@ -2681,8 +2677,8 @@ let valueDeclarations =
 let functionDeclarations =
   [ t
       "function doc comment"
-      "/// Greets a user\nlet greet (name: String): String = \"Hello \" ++ name"
-      "/// Greets a user\nlet greet (name: String): String =\n  \"Hello \" ++ name"
+      "/// Greets a user\nlet greet (name: String): String = \"Hello \" + name"
+      "/// Greets a user\nlet greet (name: String): String =\n  \"Hello \" + name"
       []
       []
       []
@@ -2746,8 +2742,8 @@ let functionDeclarations =
 
     t
       "multiple param"
-      "let isHigher (a: Int64) (b: Int64) : Bool =\n  Stdlib.Int64.greaterThan a b"
-      "let isHigher (a: Int64) (b: Int64): Bool =\n  Stdlib.Int64.greaterThan a b"
+      "let isHigher (a: Int64) (b: Int64) : Bool =\n  a > b"
+      "let isHigher (a: Int64) (b: Int64): Bool =\n  a > b"
       []
       []
       []
@@ -2773,8 +2769,8 @@ let functionDeclarations =
 
     t
       "package fn call"
-      "let sum (a : Int64) (b : Int64) : Int64 =\n  Stdlib.Int64.add a b"
-      "let sum (a: Int64) (b: Int64): Int64 =\n  Stdlib.Int64.add a b"
+      "let sum (a : Int64) (b : Int64) : Int64 =\n  a + b"
+      "let sum (a: Int64) (b: Int64): Int64 =\n  a + b"
       []
       []
       []
@@ -2794,8 +2790,8 @@ let functionDeclarations =
       false
     t
       "fn declaration with indented body"
-      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting ++ name"
-      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting ++ name"
+      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting + name"
+      "let helloPerson (name: String): String =\n  let greeting = \"Hello \"\n  greeting + name"
       []
       []
       []
@@ -2816,21 +2812,21 @@ let functionDeclarations =
     t
       "self reference, shadowed name"
       """let incr (y: Int64) (z: Int64): Int64 =
-  if Stdlib.Int64.lessThanOrEqualTo z 0L then
+  if z <= 0L then
     y
   else
-    let result = incr y (Stdlib.Int64.subtract z 1L)
-    let incr = (fun x -> Stdlib.Int64.add x 2L)
+    let result = incr y (z - 1L)
+    let incr = (fun x -> x + 2L)
     let lambdaResult = incr z
-    Stdlib.Int64.add result lambdaResult"""
+    result + lambdaResult"""
       """let incr (y: Int64) (z: Int64): Int64 =
-  if Stdlib.Int64.lessThanOrEqualTo z 0L then
+  if z <= 0L then
     y
   else
-    let result = incr y (Stdlib.Int64.subtract z 1L)
-    let incr = (fun x -> Stdlib.Int64.add x 2L)
+    let result = incr y (z - 1L)
+    let incr = (fun x -> x + 2L)
     let lambdaResult = incr z
-    Stdlib.Int64.add result lambdaResult"""
+    result + lambdaResult"""
       []
       []
       []

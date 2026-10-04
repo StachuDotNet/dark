@@ -9,6 +9,9 @@ let modulePathOf (location: Packages.PackageLocation) : List<String> =
   | Type t -> Stdlib.List.append [ t.owner ] t.modules
   | Value v -> Stdlib.List.append [ v.owner ] v.modules
   | Function f -> Stdlib.List.append [ f.owner ] f.modules
+  | Trait t -> Stdlib.List.append [ t.owner ] t.modules
+  // An impl's own name is part of the module path, as in `Packages.Traversal.modulePathOf`.
+  | Impl i -> Stdlib.List.append (Stdlib.List.append [ i.owner ] i.modules) [ i.name ]
 
 /// A one-line, clipped rendering of a value's body for the row description:
 /// `"hello"`, `[1, 2, 3]`. First line only, and no more than `width`

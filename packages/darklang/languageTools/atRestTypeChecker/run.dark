@@ -200,6 +200,12 @@ let loadCandidate
   | PackageFn hash ->
     (LanguageTools.PackageManager.Function.get hash)
     |> Stdlib.Option.map (fun fn -> LanguageTools.ProgramTypes.PackageOp.AddFn fn)
+  | PackageTrait hash ->
+    (LanguageTools.PackageManager.Trait.get hash)
+    |> Stdlib.Option.map (fun t -> LanguageTools.ProgramTypes.PackageOp.AddTrait t)
+  | PackageTraitImpl hash ->
+    (LanguageTools.PackageManager.TraitImpl.get hash)
+    |> Stdlib.Option.map (fun i -> LanguageTools.ProgramTypes.PackageOp.AddTraitImpl i)
 
 /// Load and check each distinct declaration reference. A missing declaration or
 /// a load error produces an Incomplete result for that item; successfully loaded
@@ -241,7 +247,9 @@ let checkBranch (branchId: Uuid) : Report =
         entityTypes = []
         exactMatch = false }
 
-  let (_, types, values, fns) =
+  // Traits and impls come back too now; this sweep collects references to check and does
+  // not need them.
+  let (_, types, values, fns, _traits, _impls) =
     LanguageTools.PackageManager.Search.searchNamesAndHashes branchId query
   let references =
     Stdlib.List.flatten

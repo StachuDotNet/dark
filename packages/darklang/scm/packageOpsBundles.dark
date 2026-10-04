@@ -155,7 +155,7 @@ let branchField (branchId: Uuid) (col: String) (dflt: String) : String =
   | Error _ -> dflt
 
 
-/// The id of the `Add*` op that adds content <param hash> of <param kind> ("fn", "type", "value"). An
+/// The id of the `Add*` op that adds content <param hash> of <param kind> ("fn", "type", "value", "trait", "impl"). An
 /// Add op is identified by what it adds, so the id follows from the two alone.
 let contentOpId (kind: String) (hash: String) : Uuid = Builtin.scmContentOpId kind hash
 

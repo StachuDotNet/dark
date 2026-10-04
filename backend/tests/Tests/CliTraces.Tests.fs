@@ -83,7 +83,7 @@ let private testRunCases =
   testCliEquals
     "run smoke"
     [ "Bool.and", [ "eval"; "Stdlib.Bool.and true false" ], "false"
-      "Int64.add", [ "eval"; "Stdlib.Int64.add 5L 3L" ], "8" ]
+      "Int64.add", [ "eval"; "5L + 3L" ], "8" ]
 
 let private testEvalCases =
   testCliEquals
@@ -658,13 +658,18 @@ let private testTracesLargeTraceListSurvives =
     (fun state ->
       task {
         // Not the multi-MB stress case, but enough to OOM or time out.
+        //
+        // A builtin call rather than `1L + 2L`, because `find` searches recorded fn-call args and
+        // results and an operator on two builtin numerics no longer leaves one: it is answered
+        // directly whether or not tracing is on, so that the number a program gives does not
+        // depend on whether anything is watching.
         for _ in 1..50 do
-          let! _ = runCli state [ "eval"; "1L + 2L" ]
+          let! _ = runCli state [ "eval"; "Stdlib.String.length \"abc\"" ]
           ()
         let! listOut = runCli state [ "traces"; "list"; "20" ]
         Expect.stringContains listOut "Recent traces" "list returns the banner"
         let! findOut = runCli state [ "traces"; "find"; "3" ]
-        // 50 evals of `1L + 2L` all produce DInt64 3.
+        // 50 calls of `String.length "abc"` all record a result of 3.
         Expect.stringContains findOut "Traces matching" "find returns banner"
       })
 
@@ -673,7 +678,9 @@ let private testTracesViewToleratesCorruptedRow =
     "traces view <id> renders the rest of the call tree on a corrupted row"
     (fun state ->
       task {
-        let! _ = runCli state [ "eval"; "Stdlib.Int64.add 1L 2L" ]
+        // A real package call, so the trace has a non-corrupt fn_call row to render.
+        // `1L + 2L` has none: the interpreter answers a builtin numeric pair directly.
+        let! _ = runCli state [ "eval"; "Stdlib.List.length [1L, 2L]" ]
         let! listJson = runCli state [ "traces"; "list"; "1"; "--json" ]
         let tid = parseTraceID listJson
 

@@ -170,6 +170,25 @@ module FQTypeName =
       FQTypeName.Package.fullForReference ctx p
 
 
+module FQTraitName =
+  module Package =
+    let atDefinition
+      (ctx: Context)
+      (hash: LanguageTools.ProgramTypes.FQTraitName.Package)
+      : String =
+      match Darklang.LanguageTools.PackageManager.pickLocation (Context.toPickContext ctx) (LanguageTools.PackageManager.Trait.locations ctx.branchId hash) with
+      | Some l -> l.name
+      | None -> shortHash hash
+
+    let fullForReference
+      (ctx: Context)
+      (hash: LanguageTools.ProgramTypes.FQTraitName.Package)
+      : String =
+      match Darklang.LanguageTools.PackageManager.pickLocation (Context.toPickContext ctx) (LanguageTools.PackageManager.Trait.locations ctx.branchId hash) with
+      | Some l -> packageNameWithContext ctx l.owner l.modules l.name
+      | None -> shortHash hash
+
+
 module FQValueName =
   module Builtin =
     let fullForReference
@@ -261,6 +280,8 @@ module FQFnName =
       FQFnName.Builtin.fullForReference b
     | Package p ->
       FQFnName.Package.fullForReference ctx p
+    | TraitMethod tm ->
+      $"{FQTraitName.Package.fullForReference ctx tm.trait_}.{tm.method_}"
 
 
 /// Display helpers for NameResolution.
@@ -283,6 +304,19 @@ module NameResolution =
         | None -> Darklang.LanguageTools.ProgramTypes.hashToString hash
     | Error _ -> NameResolutionError.source nr.originalName
 
+  let traitName
+    (ctx: Context)
+    (nr: LanguageTools.ProgramTypes.NameResolution<LanguageTools.ProgramTypes.FQTraitName.FQTraitName>)
+    : String =
+    match nr.resolved with
+    | Ok r ->
+      match r.name with
+      | Package hash ->
+        match r.location with
+        | Some loc -> packageNameWithContext ctx loc.owner loc.modules loc.name
+        | None -> Darklang.LanguageTools.ProgramTypes.hashToString hash
+    | Error _ -> NameResolutionError.source nr.originalName
+
   let fnName
     (ctx: Context)
     (nr: LanguageTools.ProgramTypes.NameResolution<LanguageTools.ProgramTypes.FQFnName.FQFnName>)
@@ -295,6 +329,15 @@ module NameResolution =
         match r.location with
         | Some loc -> packageNameWithContext ctx loc.owner loc.modules loc.name
         | None -> Darklang.LanguageTools.ProgramTypes.hashToString hash
+      | TraitMethod tm ->
+        // The location is the TRAIT's; the method is a field of it. Which implementation it
+        // resolved to is not printed: the source said `Show.show`, and that is still what it
+        // means; `dark view --resolved` is where a hash belongs.
+        match r.location with
+        | Some loc ->
+          (packageNameWithContext ctx loc.owner loc.modules loc.name) ++ "." ++ tm.method_
+        | None ->
+          (Darklang.LanguageTools.ProgramTypes.hashToString tm.trait_) ++ "." ++ tm.method_
     | Error _ -> NameResolutionError.source nr.originalName
 
   let valueName
@@ -632,7 +675,7 @@ let pipeExprDoc (ctx: Context) (p: LanguageTools.ProgramTypes.PipeExpr) : Stdlib
     parens (
       Stdlib.Pretty.hang 2 (txt $"fun {argsPart} ->") [ exprDoc ctx body ])
 
-  | EPipeInfix(_id, infixOp, e) ->
+  | EPipeInfix(_id, infixOp, e, _) ->
     Stdlib.Pretty.concat (txt $"({infix infixOp}) ") (applyArg ctx e)
 
   | EPipeFnCall(_id, fnName, typeArgs, args) ->
@@ -707,7 +750,7 @@ let infixPower (i: LanguageTools.ProgramTypes.Infix) : (Int * Bool) =
 /// wrong by bracketing every operand unconditionally.
 let exprPower (e: LanguageTools.ProgramTypes.Expr) : Int =
   match e with
-  | EInfix(_, op, _, _) ->
+  | EInfix(_, op, _, _, _) ->
     let (p, _) = infixPower op
     p
   | EIf(_, _, _, _) -> 0
@@ -743,9 +786,9 @@ let infixOperandNeedsParens
 /// Does printing `e` leave a bitwise-or bare in a match-arm body?
 let hasBareBitwiseOr (e: LanguageTools.ProgramTypes.Expr) : Bool =
   match e with
-  | EInfix(_, InfixFnCall BitwiseOr, _, _) -> true
+  | EInfix(_, InfixFnCall BitwiseOr, _, _, _) -> true
 
-  | EInfix(_, op, left, right) ->
+  | EInfix(_, op, left, right, _) ->
     let (power, rightAssoc) = infixPower op
 
     let bareSide (operand: LanguageTools.ProgramTypes.Expr) (isRight: Bool) : Bool =
@@ -921,7 +964,7 @@ let exprDoc (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : Stdlib.Pretty.
   // Parenthesise only where precedence or associativity requires it. The old printer wrapped both
   // operands unconditionally, which turned `n * (factorial n - 1L)` into `(n) * ((factorial n) - (1L))`
   // and meant printing its own output kept adding brackets.
-  | EInfix(_id, infixOp, left, right) ->
+  | EInfix(_id, infixOp, left, right, _) ->
     let (power, rightAssoc) = infixPower infixOp
 
     let side (e: LanguageTools.ProgramTypes.Expr) (isRight: Bool) : Stdlib.Pretty.Doc =
@@ -1168,7 +1211,7 @@ let exprString (ctx: Context) (e: LanguageTools.ProgramTypes.Expr) : String =
 
     $"(fun {patsPart} ->\n{PrettyPrinter.indent bodyPart})"
 
-  | EFnName(_id, fnName) ->
+  | EFnName(_id, fnName, _) ->
     NameResolution.fnName ctx fnName
 
   // LanguageTools.ID *
@@ -1339,6 +1382,36 @@ let db
       [ typeReferenceDoc ctx db.typ ]
   Stdlib.Pretty.render ctx.width doc
 
+
+
+let typeParamsWithBounds
+  (ctx: Context)
+  (typeParams: List<String>)
+  (bounds: List<LanguageTools.ProgramTypes.Bound>)
+  : String =
+  match typeParams with
+  | [] -> ""
+  | _ ->
+    typeParams
+    |> Stdlib.List.map (fun typeParam ->
+      let own =
+        bounds
+        |> Stdlib.List.filter (fun b -> b.param == typeParam)
+        |> Stdlib.List.map (fun b ->
+          let name = NameResolution.traitName ctx b.trait_.trait_
+          match b.trait_.typeArgs with
+          | [] -> name
+          | args ->
+            let argsPart =
+              args
+              |> Stdlib.List.map (fun a -> typeReference ctx a)
+              |> Stdlib.String.join ", "
+            $"{name}<{argsPart}>")
+      match own with
+      | [] -> $"'{typeParam}"
+      | _ -> $"'{typeParam}: " ++ (Stdlib.String.join own " + "))
+    |> Stdlib.String.join ", "
+    |> fun parts -> $"<{parts}>"
 
 
 let packageType
@@ -1595,6 +1668,15 @@ module PackageOp =
       // actually is — content added here, name bound to it there — rather than a list of unrelated lines.
       $"AddValue {name} = {source}  [{LanguageTools.ProgramTypes.hashToShort value.hash}]"
 
+    | AddTrait t ->
+      let name = FQTraitName.Package.atDefinition ctx t.hash
+      let methods = t.methods |> Stdlib.List.map (fun m -> m.name) |> Stdlib.String.join ", "
+      $"AddTrait {name} ({methods})  [{LanguageTools.ProgramTypes.hashToShort t.hash}]"
+
+    | AddTraitImpl i ->
+      let traitName = NameResolution.traitName ctx i.trait_
+      $"AddTraitImpl {traitName} for {typeReference ctx i.self}  [{LanguageTools.ProgramTypes.hashToShort i.hash}]"
+
     | SetName(loc, target, _) ->
       let path = PackageLocation.packageLocation loc
       let kind =
@@ -1602,6 +1684,8 @@ module PackageOp =
         | PackageType _ -> "Type"
         | PackageValue _ -> "Value"
         | PackageFn _ -> "Fn"
+        | PackageTrait _ -> "Trait"
+        | PackageTraitImpl _ -> "Impl"
       // Name the hash it binds. "SetName Fn -> Some.Path" said which name changed but not what it now means,
       // so an Add and the SetName that named it were two lines with nothing tying them together.
       let hash = LanguageTools.ProgramTypes.Reference.hash target
@@ -1682,3 +1766,105 @@ module PackageOp =
       let who = Darklang.SCM.PackageOps.branchName eventBranchId
 
       $"BranchEvent {who} {what}"
+
+
+/// `trait Show<'a> =` then one method signature per line.
+let packageTrait
+  (ctx: Context)
+  (t: LanguageTools.ProgramTypes.Trait.Trait)
+  : String =
+  let namePart = FQTraitName.Package.atDefinition ctx t.hash
+  let typeParamPart = typeParamsWithBounds ctx t.typeParams t.bounds
+  let methods =
+    t.methods
+    |> Stdlib.List.map (fun m ->
+      let params =
+        m.parameters
+        |> Stdlib.List.map (fun p -> $"({p.name}: {typeReference ctx p.typ})")
+        |> Stdlib.String.join " "
+      let ownTypeParams = typeParamsWithBounds ctx m.typeParams []
+      let doc = formatDocComment m.description
+      $"{doc}let {m.name}{ownTypeParams} {params} :{LanguageTools.Permissions.ceilingRow m.permissionCeiling} {typeReference ctx m.returnType}")
+    |> Stdlib.String.join "\n"
+  let docComment = formatDocComment t.description
+  $"{docComment}trait {namePart}{typeParamPart} =\n{PrettyPrinter.indent methods}"
+
+
+/// `impl<'a: Show> Show<Args> for List<'a> =`, then each method: the declaration itself when the
+/// method's fn was written in the block, and `let m = Some.Fn` when it names one that already
+/// existed. Both round-trip.
+let packageImpl
+  (ctx: Context)
+  (i: LanguageTools.ProgramTypes.TraitImpl.TraitImpl)
+  : String =
+  let typeParamPart = typeParamsWithBounds ctx i.typeParams i.bounds
+  let traitPart =
+    let name = NameResolution.traitName ctx i.trait_
+    match i.traitTypeArgs with
+    | [] -> name
+    | args ->
+      let argsPart = args |> Stdlib.List.map (fun a -> typeReference ctx a) |> Stdlib.String.join ", "
+      $"{name}<{argsPart}>"
+  // A method declared in the block lives beneath the impl's own path and prints
+  // bare; an alias of a fn elsewhere prints in full, so `let append = append`
+  // cannot happen when the target is `Stdlib.String.append`.
+  let implPath =
+    match Darklang.LanguageTools.PackageManager.pickLocation (Context.toPickContext ctx) (LanguageTools.PackageManager.TraitImpl.locations ctx.branchId i.hash) with
+    | Some l -> Stdlib.List.flatten [ [ l.owner ], l.modules, [ l.name ] ]
+    | None -> []
+  // A method whose fn lives under the impl's own path was WRITTEN here, so it prints as the
+  // declaration the author wrote. Printing the alias line for those would give `let d = d`,
+  // which says nothing and does not parse back. A method that names a fn elsewhere prints as that alias.
+  let methods =
+    i.methods
+    |> Stdlib.List.map (fun (name, fn) ->
+      match fn.resolved with
+      | Ok r ->
+        let declaredHere =
+          match r.location with
+          | Some loc -> (Stdlib.List.append [ loc.owner ] loc.modules) == implPath
+          | None -> false
+
+        if declaredHere then
+          match r.name with
+          | Package hash ->
+            (match LanguageTools.PackageManager.Function.get hash with
+             | Some f -> packageFn ctx f
+             | None -> $"let {name} = {NameResolution.fnName ctx fn}")
+          | _ -> $"let {name} = {NameResolution.fnName ctx fn}"
+        else
+          $"let {name} = {NameResolution.fnName { ctx with currentModule = [] } fn}"
+      | Error _ -> $"let {name} = <unresolved: {NameResolution.fnName ctx fn}>")
+    |> Stdlib.String.join "\n\n"
+  let docComment = formatDocComment i.description
+  $"{docComment}impl{typeParamPart} {traitPart} for {typeReference ctx i.self} =\n{PrettyPrinter.indent methods}"
+
+
+/// The source of one stored item, whichever kind it is. `None` means the store does not have it;
+/// the wording for that is the caller's, since a browser says "not stored here" and a CLI screen
+/// says "not stored locally".
+///
+/// Every screen that shows an item used to ask this for itself, five copies of fetch-by-kind and
+/// print-with-the-matching-printer. Three of the five had three arms, so the LSP refused to open a
+/// trait's file, `v` on a trait row in `dark propagate` raised, and the package server answered 500.
+let sourceOf
+  (ctx: Context)
+  (kind: LanguageTools.ProgramTypes.ItemKind)
+  (hash: LanguageTools.ProgramTypes.Hash)
+  : Stdlib.Option.Option<String> =
+  match kind with
+  | Type ->
+    LanguageTools.PackageManager.Type.get hash
+    |> Stdlib.Option.map (fun t -> PrettyPrinter.ProgramTypes.packageType ctx t)
+  | Fn ->
+    LanguageTools.PackageManager.Function.get hash
+    |> Stdlib.Option.map (fun f -> PrettyPrinter.ProgramTypes.packageFn ctx f)
+  | Value ->
+    LanguageTools.PackageManager.Value.get hash
+    |> Stdlib.Option.map (fun v -> PrettyPrinter.ProgramTypes.packageValue ctx v)
+  | Trait ->
+    LanguageTools.PackageManager.Trait.get hash
+    |> Stdlib.Option.map (fun t -> PrettyPrinter.ProgramTypes.packageTrait ctx t)
+  | TraitImpl ->
+    LanguageTools.PackageManager.TraitImpl.get hash
+    |> Stdlib.Option.map (fun i -> PrettyPrinter.ProgramTypes.packageImpl ctx i)

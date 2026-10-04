@@ -120,6 +120,8 @@ let toModuleDeclaration
   | Type typ -> WrittenTypes.ModuleDeclaration.Declaration.Type typ
   | Function fn -> WrittenTypes.ModuleDeclaration.Declaration.Function fn
   | Value value -> WrittenTypes.ModuleDeclaration.Declaration.Value value
+  | Trait t -> WrittenTypes.ModuleDeclaration.Declaration.Trait t
+  | Impl i -> WrittenTypes.ModuleDeclaration.Declaration.Impl i
   | Module modul -> WrittenTypes.ModuleDeclaration.Declaration.SubModule modul
 
 

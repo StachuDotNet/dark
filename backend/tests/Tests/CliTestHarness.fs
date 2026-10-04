@@ -131,7 +131,20 @@ let executionState (target : Target) : RT.ExecutionState =
 /// A command reading stdin with nobody there waits rather than fails, and its output is being
 /// captured, so the hang is silent and the log names no culprit. Generous on purpose: this turns
 /// "forever" into a named failure, it does not police speed.
-let private runCliTimeout = System.TimeSpan.FromMinutes 2.0
+///
+/// Five minutes, not two. `dark typecheck` walks every package item and measures 107s on an idle
+/// box, twice, 0.6s apart. Two minutes left 13s of headroom, and the suite runs tests
+/// concurrently, so it crossed the line and aborted the whole run -- which is the failure this
+/// constant exists to PREVENT being silent, now caused by the constant itself. A ceiling that
+/// fires on a command doing its job is policing speed, which this is documented not to do.
+///
+/// Temporary, and it can come back out. TWO tests invoke a bare full-store audit: the contract
+/// test `typecheckAnswersWithItsCounts` in `CliJson.Tests.fs`, and the registry-driven sweep in
+/// `CliSurface.Tests.fs`, which runs every command not in `notSweepable` bare and so runs this
+/// one too. The typecheck-scope change addresses both, by narrowing the first to one module and
+/// adding this command to `notSweepable` for the second. Until it lands, this raise is what keeps
+/// this branch green standing alone rather than assuming a merge order.
+let private runCliTimeout = System.TimeSpan.FromMinutes 5.0
 
 /// Run work on another thread so the timeout also covers synchronous code.
 /// None means it is still running. Stop before another test shares its state.

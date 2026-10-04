@@ -275,6 +275,18 @@ let locationHandlerFn (req: HttpRequest) : HttpResponse =
               let json = v |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.PackageValue.PackageValue>
               Stdlib.Http.responseWithJson json 200
             | None -> Stdlib.Http.notFound ()
+          | Trait ->
+            match LanguageTools.PackageManager.Trait.get hash with
+            | Some t ->
+              let json = t |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.Trait.Trait>
+              Stdlib.Http.responseWithJson json 200
+            | None -> Stdlib.Http.notFound ()
+          | TraitImpl ->
+            match LanguageTools.PackageManager.TraitImpl.get hash with
+            | Some i ->
+              let json = i |> Stdlib.Json.serialize<LanguageTools.ProgramTypes.TraitImpl.TraitImpl>
+              Stdlib.Http.responseWithJson json 200
+            | None -> Stdlib.Http.notFound ()
         | None ->
           // Not a leaf — treat the whole path as a module to browse.
           let searchQuery =
