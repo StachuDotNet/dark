@@ -122,6 +122,13 @@ exits in a second with no CLI to run, and `first-day` refuses because the publis
 older than the tree. Build Debug first, or pass `CLI=<path>` the way the CI step does.
 
 **Two ways to make every gate fail for a reason that is not there, both of them sequencing.**
+**In a gates summary, 0 seconds means it never ran.** A gate that fails fast and a gate whose
+prerequisites were already broken look identical in the `FAILED:` line, and the elapsed time is
+the only thing that separates them: four trait gates reported `0m00s` and `0m01s` once because a
+stale published artifact meant nothing they invoked could start. Read the per-gate times before
+believing a gate tested anything, and read the FIRST failure rather than the list at the end,
+because one broken prerequisite reports as a dozen unrelated gates.
+
 `gates all` re-execs `$0 <name>` once per gate, so editing `scripts/testing/gates` or a
 `_gates-*` file while a run is in flight breaks every invocation that starts after the edit,
 with a bash syntax error and no gate output at all. And the gates run the binary directly
@@ -539,10 +546,24 @@ and `Darklang.SCM.Branch.mainBranchId` resolve; `SCM.Branch.mainBranchId` doesn'
 "Function <hash> couldn't be found", because reloading packages regenerates the pinned ref hashes but does
 NOT re-export `rundir/seed.db`, and a binary built on that seed can't produce the refs it was pinned to. It
 only fails outside the source tree, since inside it the working store answers.
-`scripts/build/check-seed-carries-refs` names it in one run; fix with
-`scripts/run-local-exec export-seed rundir/seed.db` and rebuild. `gates first-day` and
-`scripts/perf/gate --published` refuse an artifact older than the tree rather than
-reporting on it.
+Fix it with `scripts/run-local-exec export-seed rundir/seed.db` and rebuild. `gates first-day`
+and `scripts/perf/gate --published` refuse an artifact older than the tree rather than reporting
+on it.
+
+**`check-seed-carries-refs` answers about the TREE, not about an artifact.** It compares
+`rundir/seed.db` against the ref file as it stands NOW, so it says "ok, N refs, all carried by
+the seed" while a binary published ten minutes earlier cannot resolve its own refs: that binary
+was pinned against a ref file the seed has since caught up with. Nothing short of running an
+artifact tells you about THAT artifact, and the symptom is `Function <hash> couldn't be found` on
+every command. So the order matters and is not interchangeable: reload, then export the seed,
+then build, then publish. Re-exporting after a publish checks out clean and fixes nothing.
+
+The build does catch it, in the one place that can: `Cli.fsproj` fails with
+`error : rundir/seed.db cannot produce this binary's package refs`. Note the shape of that line,
+because it defeats the obvious filter -- it is `error :` with no FS code, and the summary says
+`Failed in 60.16s` rather than `FAILED`, so a `grep -E 'error FS|FAILED'` over the build output
+matches neither and prints nothing. Ask `scripts/dev/status`, which reads `build-state.json` and
+said `failedAction: backend_full_build` throughout.
 
 **No `PACKAGE.` source prefix.** `PACKAGE.` is internal runtime/debug notation, not a
 Dark namespace. Write `Stdlib.List.map` or `Darklang.Stdlib.List.map`, never

@@ -102,6 +102,17 @@ let listModule
     impls
     |> Stdlib.List.map (fun (traitName, hash) -> (traitName, selfType, hash, modulePath))
 
+  // Measured, because choosing a module-level section was made conditional on this being cheap
+  // and the measurement had not been done: `ls Stdlib` 1051ms, `Stdlib.Int64` 1074ms,
+  // `Stdlib.List` 1081ms, `Stdlib.AltJson` (no impls, the control) 1083ms, three runs each.
+  // Flat, and the control is the slowest, so the spread is noise on a ~1050ms startup.
+  //
+  // The reason it is flat is the filter below rather than luck: the fan-out is one query per type
+  // that is ALSO a submodule, meaning a type that actually carries implementations, not one per
+  // type in the module. `ls Stdlib` renders no impl section at all, because Stdlib's children are
+  // modules. Nothing in the tree has more than one impl-carrying type in a module, so the shape
+  // that could still cost something is a module holding many of them, which does not exist here
+  // and would want measuring if it ever does.
   let childImplEntries =
     types
     |> Stdlib.List.map (fun (typeName, _hash) -> typeName)

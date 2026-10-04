@@ -52,6 +52,11 @@ GATES=(
 #
 # Measured locally, for comparison with the 5m per-gate bound CI applies:
 #   relay-routes 5s, workbench-views 14s, first-day 24s, workbench-scm 35s, lsp-branches 12s
+#   trait-choice-survives-rival 6s, trait-deprecation-is-per-branch 10s,
+#   trait-checker-vs-dispatch 16s, trait-pin-across-branches 21s
+# These are durations, so they drift with whatever else is on the box; the trait four were taken
+# while another clone was running perf experiments. Treat them as orders of magnitude against the
+# 5m bound, not as a budget. A gate reporting 0s has not run at all.
 CI_GATES=(relay-routes workbench-scm workbench-views lsp-branches
           trait-choice-survives-rival trait-checker-vs-dispatch
           trait-deprecation-is-per-branch trait-pin-across-branches)
