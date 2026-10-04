@@ -123,7 +123,13 @@ if measured > ceiling:
     over = (measured / limit - 1) * 100
     print(f"FAIL: {over:.1f}% over budget.")
     print("If the regression is intended, raise the budget in the same commit and say why.")
-    print("If the store above is not a freshly loaded one, that alone accounts for about 2.5%.")
+    print("Before calling this a regression, re-run against a store and HOME that do not")
+    print("exist yet. Same binary and workload: fresh came in AT budget, the working dev")
+    print("rundir read 21.5% over. (This line used to guess 2.5%.) Which of the two does")
+    print("it is unmeasured; docs/perf/playbook.md has the readings and the one run that")
+    print("would settle it.")
+    print("  HOME=$(mktemp -d) DARK_CONFIG_RUNDIR=<path that does not exist yet> \\")
+    print("    scripts/perf/gate --published")
     sys.exit(1)
 
 if measured < limit * (1 - tolerance):

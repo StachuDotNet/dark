@@ -329,6 +329,35 @@ Not ruled out, and left alone deliberately: the `backend/Build` volume carrying 
 builds, and the container's own baked environment (a container made from a sibling clone bakes
 that branch's `config/dev`, and this one's `TRACE_DETAIL` default already disagreed with the file).
 
+### The 2026-10-03 reading: at budget on a fresh store AND a fresh HOME
+
+The day after the above, on the rebased branch, the published gate came in green:
+
+    steady.dark (published) allocated 9.7 MB; budget 9.7 MB, ceiling 10.0 MB   exit 0
+
+The same binary and workload against the working dev rundir read 11.8 MB, 21.5% over. So the
+branch has not regressed allocation, and a local red here is still a question rather than a
+finding.
+
+What is new is not the store. The sweep above varied the store three ways and bottomed out at
+11.3 MB; this run reached 9.7, which is 1.6 MB below anything that sweep could produce. The
+variable it never changed is **HOME**: this run set `HOME` to a fresh directory alongside
+`DARK_CONFIG_RUNDIR`, and the sweep kept the real one.
+
+That is a suspect rather than a cause, and it is NOT measured. The reason to suspect it is
+written down in `AGENTS.md`: `$HOME/.darklang/capabilities.bin` is keyed on HOME rather than on
+the rundir, and its ABSENCE is what makes the host permissive, so a fresh HOME is a run with no
+capability file to check against. `rundir/policy/policies.bin` was already ruled out above and is
+a different file.
+
+One run settles it: the real store with a fresh HOME. If that reads near 9.7 it is HOME; if it
+reads near 11.8 it is the store after all, and the earlier sweep missed a fourth state. Nobody
+has run it, because an allocation number taken while another clone is compiling is worth nothing
+and the box was not free.
+
+Until then, the honest procedure is the one the gate now prints on failure: before believing a
+red, re-run against a store and a HOME that do not exist yet.
+
 ### A store you copied is a store from a point in time, and the time is before your change
 
 The general rule behind the next section, and the one that has now cost three measurements in a
