@@ -514,11 +514,13 @@ let private placeholderHashTests =
               .ToLowerInvariant()
           )
         let (PT.Hash h) = hash
-        // The exact digest, not its length. Every SHA-256 is 64 hex characters by construction, so
-        // a length assertion passes whatever `toFQN` returned and whatever case the encoding used;
-        // it tests `System.Security.Cryptography` rather than anything of ours. This vector is the
-        // SHA-256 of the string `toFQN` is supposed to produce for that location, lowercase, so it
-        // fails if the name, the separator or the case changes.
+        // The exact digest, not its length. Every SHA-256 is 64 hex characters
+        // by construction, so a length assertion passes whatever `toFQN` returned
+        // and whatever case the hex came out in; it tests
+        // `System.Security.Cryptography` rather than anything of ours. This vector
+        // is the SHA-256 of the string `toFQN` should produce for that location,
+        // encoded as lowercase hex, so it fails if the name, the separator or the
+        // case changes.
         Expect.equal
           h
           "190a5ec0f6b1f322ac0e88809af69c4142aab838abd67481633f5fb8cda305dc"

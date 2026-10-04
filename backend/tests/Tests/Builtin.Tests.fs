@@ -219,11 +219,12 @@ let private countReferences (builtinName : string) : int =
 
 /// Every name excluded as infix-dispatched is still a registered builtin.
 ///
-/// `infixDispatched` is an exclusion list, and an exclusion nobody revisits is how a sweep quietly
-/// stops covering the thing it was written for: rename or retire a builtin and its name sits here
-/// forever, excusing nothing and hiding nothing, while the sweep it was carved out of no longer
-/// has a reason to skip anything. `notSweepable` in `CliSurface.Tests.fs` has had this check for
-/// the same reason; this is the second list learning it.
+/// `infixDispatched` is an exclusion list, and an exclusion nobody revisits is how
+/// a sweep quietly stops covering the thing it was written for: rename or retire a
+/// builtin and its name sits here forever, excusing nothing and hiding nothing,
+/// while the sweep it was carved out of no longer has a reason to skip anything.
+/// `notSweepable` in `CliSurface.Tests.fs` has had this check for the same reason;
+/// this is the second list learning it.
 let everyInfixExclusionIsReal =
   test "every infix-dispatched exclusion is still a builtin" {
     let registered = allBuiltinNames () |> Set.ofList

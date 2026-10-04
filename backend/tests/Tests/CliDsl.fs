@@ -118,11 +118,12 @@ let shows
   }
 
 /// This command's output does NOT contain `unexpected`.
-/// A negative assertion is vacuous against output that is not there: a command that printed
-/// NOTHING contains nothing, so `lacks` passes however badly it went. `run` discards what a verb
-/// printed, so a step whose authoring silently refused leaves the next `lacks` claiming something
-/// it never observed. Requiring output is the cheapest thing that makes the claim mean what it
-/// says; it does not check the command SUCCEEDED, only that it spoke.
+/// A negative assertion is vacuous against output that is not there: a command
+/// that printed NOTHING contains nothing, so `lacks` passes however badly it
+/// went. `run` discards what a verb printed, so a step whose authoring silently
+/// refused leaves the next `lacks` claiming something it never observed.
+/// Requiring output is the cheapest thing that makes the claim mean what it says;
+/// it does not check the command SUCCEEDED, only that it spoke.
 let private mustHaveSpoken (args : List<string>) (out : string) : unit =
   if out.Trim() = "" then
     Tests.failtestf
