@@ -126,3 +126,7 @@ let filterMap
     | None -> Option.Option.None
     | Some newValue -> Option.Option.Some ((k, newValue)))
   |> Dict.fromListOverwritingDuplicates
+
+
+impl Stdlib.Zero for Dict<'k, 'v> =
+  let zero () : Dict<'k, 'v> = Dict { }

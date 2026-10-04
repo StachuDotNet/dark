@@ -604,3 +604,7 @@ let splitLast (l: List<'a>) : Option.Option<(List<'a> * 'a)> =
   match reverse l with
   | [] -> Option.Option.None
   | head :: tail -> Option.Option.Some((reverse tail, head))
+
+
+impl Stdlib.Zero for List<'a> =
+  let zero () : List<'a> = []

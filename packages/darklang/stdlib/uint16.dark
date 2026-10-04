@@ -187,3 +187,99 @@ let shiftLeft (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16ShiftLeft a b
 
 /// Bitwise right shift of a <type UInt16> value
 let shiftRight (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16ShiftRight a b
+
+
+impl Modulo for UInt16 =
+  /// Returns the result of wrapping <param a> around so that {{0 <= res < b}}.
+  /// The modulus <param b> must be greater than 0.
+  /// Use <fn UInt16.remainder> if you want the remainder after division, which has
+  /// a different behavior for negative numbers.
+  let modulo (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16Mod a b
+
+
+impl Add for UInt16 =
+  /// Adds two 16-bit unsigned integers together (wraps on overflow)
+  let add (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16Add a b
+
+
+impl Subtract for UInt16 =
+  /// Subtracts two 16-bit unsigned  integers (wraps on overflow)
+  let subtract (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16Subtract a b
+
+
+impl Multiply for UInt16 =
+  /// Multiplies two 16-bit unsigned  integers (wraps on overflow)
+  let multiply (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16Multiply a b
+
+
+impl Power for UInt16 =
+  /// Raise <param base> to the power of <param exponent>.
+  /// Overflow wraps around.
+  let power (``base``: UInt16) (exponent: UInt16) : UInt16 =
+    // The signed types push this into the builtin; here the ladder stays, because an
+    // unsigned exponent is never negative, so there is no error case to push.
+    if ``base`` == 0us && exponent == 0us then 1us
+    else if ``base`` == 0us then 0us
+    else if ``base`` == 1us then 1us
+    else Builtin.uint16Power ``base`` exponent
+
+
+impl Divide for UInt16 =
+  /// Divides two 16-bit unsigned integers
+  let divide (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16Divide a b
+
+
+impl Compare for UInt16 =
+  /// Returns {{true}} if <param a> is less than <param b>
+  let lessThan (a: UInt16) (b: UInt16) : Bool = Builtin.uint16LessThan a b
+  /// Returns {{true}} if <param a> is less than or equal to <param b>
+  let lessThanOrEqualTo (a: UInt16) (b: UInt16) : Bool =
+    Builtin.uint16LessThanOrEqualTo a b
+  /// Returns {{true}} if <param a> is greater than <param b>
+  let greaterThan (a: UInt16) (b: UInt16) : Bool = Builtin.uint16GreaterThan a b
+  /// Returns {{true}} if <param a> is greater than or equal to <param b>
+  let greaterThanOrEqualTo (a: UInt16) (b: UInt16) : Bool =
+    Builtin.uint16GreaterThanOrEqualTo a b
+
+
+impl BitwiseAnd for UInt16 =
+  /// Bitwise AND on two <type UInt16> values
+  let bitwiseAnd (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16BitwiseAnd a b
+
+
+impl BitwiseOr for UInt16 =
+  /// Bitwise OR on two <type UInt16> values
+  let bitwiseOr (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16BitwiseOr a b
+
+
+impl BitwiseXor for UInt16 =
+  /// Bitwise XOR on two <type UInt16> values
+  let bitwiseXor (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16BitwiseXor a b
+
+
+impl BitwiseNot for UInt16 =
+  /// Bitwise NOT on a <type UInt16> value
+  let bitwiseNot (a: UInt16) : UInt16 = Builtin.uint16BitwiseNot a
+
+
+impl ShiftLeft for UInt16 =
+  /// Bitwise left shift of a <type UInt16> value
+  let shiftLeft (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16ShiftLeft a b
+
+
+impl ShiftRight for UInt16 =
+  /// Bitwise right shift of a <type UInt16> value
+  let shiftRight (a: UInt16) (b: UInt16) : UInt16 = Builtin.uint16ShiftRight a b
+
+
+impl ToString for UInt16 =
+  /// Stringify <param uint16>
+  let toString (uint16: UInt16) : String = Builtin.uint16ToString uint16
+
+
+impl Zero for UInt16 =
+  let zero () : UInt16 = 0us
+
+
+impl One for UInt16 =
+  let one () : UInt16 = 1us

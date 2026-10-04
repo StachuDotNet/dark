@@ -204,3 +204,100 @@ let shiftLeft (a: Int32) (b: Int32) : Int32 = Builtin.int32ShiftLeft a b
 
 /// Bitwise right shift of an <type Int32> value
 let shiftRight (a: Int32) (b: Int32) : Int32 = Builtin.int32ShiftRight a b
+
+
+impl Modulo for Int32 =
+  /// Returns the result of wrapping <param a> around so that {{0 <= res < b}}.
+  /// The modulus <param b> must be greater than 0
+  /// Use <fn Int32.remainder> if you want the remainder after division, which has
+  /// a different behavior for negative numbers.
+  let modulo (a: Int32) (b: Int32) : Int32 = Builtin.int32Mod a b
+
+
+impl Add for Int32 =
+  /// Adds two integers together (wraps on overflow)
+  let add (a: Int32) (b: Int32) : Int32 = Builtin.int32Add a b
+
+
+impl Subtract for Int32 =
+  /// Subtracts two integers (wraps on overflow)
+  let subtract (a: Int32) (b: Int32) : Int32 = Builtin.int32Subtract a b
+
+
+impl Multiply for Int32 =
+  /// Multiplies two integers (wraps on overflow)
+  let multiply (a: Int32) (b: Int32) : Int32 = Builtin.int32Multiply a b
+
+
+impl Divide for Int32 =
+  /// Divides two integers
+  let divide (a: Int32) (b: Int32) : Int32 = Builtin.int32Divide a b
+
+
+impl Power for Int32 =
+  /// Raise <param base> to the power of <param exponent>.
+  /// Overflow wraps around.
+  /// Raises an error if <param exponent> is negative.
+  let power (``base``: Int32) (exponent: Int32) : Int32 =
+    Builtin.int32Power ``base`` exponent
+
+
+impl Negate for Int32 =
+  /// Returns the negation of <param a>, {{-a}}. Negating the minimum value wraps back to itself.
+  let negate (a: Int32) : Int32 = Builtin.int32Negate a
+
+
+impl Compare for Int32 =
+  /// Returns {{true}} if <param a> is less than <param b>
+  let lessThan (a: Int32) (b: Int32) : Bool = Builtin.int32LessThan a b
+  /// Returns {{true}} if <param a> is less than or equal to <param b>
+  let lessThanOrEqualTo (a: Int32) (b: Int32) : Bool =
+    Builtin.int32LessThanOrEqualTo a b
+  /// Returns {{true}} if <param a> is greater than <param b>
+  let greaterThan (a: Int32) (b: Int32) : Bool = Builtin.int32GreaterThan a b
+  /// Returns {{true}} if <param a> is greater than or equal to <param b>
+  let greaterThanOrEqualTo (a: Int32) (b: Int32) : Bool =
+    Builtin.int32GreaterThanOrEqualTo a b
+
+
+impl BitwiseAnd for Int32 =
+  /// Bitwise AND on two <type Int32> values
+  let bitwiseAnd (a: Int32) (b: Int32) : Int32 = Builtin.int32BitwiseAnd a b
+
+
+impl BitwiseOr for Int32 =
+  /// Bitwise OR on two <type Int32> values
+  let bitwiseOr (a: Int32) (b: Int32) : Int32 = Builtin.int32BitwiseOr a b
+
+
+impl BitwiseXor for Int32 =
+  /// Bitwise XOR on two <type Int32> values
+  let bitwiseXor (a: Int32) (b: Int32) : Int32 = Builtin.int32BitwiseXor a b
+
+
+impl BitwiseNot for Int32 =
+  /// Bitwise NOT on an <type Int32> value
+  let bitwiseNot (a: Int32) : Int32 = Builtin.int32BitwiseNot a
+
+
+impl ShiftLeft for Int32 =
+  /// Bitwise left shift of an <type Int32> value
+  let shiftLeft (a: Int32) (b: Int32) : Int32 = Builtin.int32ShiftLeft a b
+
+
+impl ShiftRight for Int32 =
+  /// Bitwise right shift of an <type Int32> value
+  let shiftRight (a: Int32) (b: Int32) : Int32 = Builtin.int32ShiftRight a b
+
+
+impl ToString for Int32 =
+  /// Stringify <param int>
+  let toString (int: Int32) : String = Builtin.int32ToString int
+
+
+impl Zero for Int32 =
+  let zero () : Int32 = 0l
+
+
+impl One for Int32 =
+  let one () : Int32 = 1l

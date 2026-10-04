@@ -134,3 +134,15 @@ let millisecond (date: DateTime) : Int =
 /// Returns the difference of the two dates, in milliseconds
 let subtractMs (d1: DateTime) (d2: DateTime) : Int =
   Builtin.dateTimeSubtractMs d1 d2
+
+
+impl ToString for DateTime =
+  /// Stringify <param date> to the ISO 8601 format {{YYYY-MM-DD'T'hh:mm:ss'Z'}}
+  let toString (date: DateTime) : String = Builtin.dateTimeToString date
+
+
+impl Compare for DateTime =
+  let lessThan = Stdlib.DateTime.lessThan
+  let lessThanOrEqualTo = Stdlib.DateTime.lessThanOrEqualTo
+  let greaterThan = Stdlib.DateTime.greaterThan
+  let greaterThanOrEqualTo = Stdlib.DateTime.greaterThanOrEqualTo

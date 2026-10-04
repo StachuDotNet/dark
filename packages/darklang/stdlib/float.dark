@@ -161,3 +161,61 @@ let toInt (a: Float) : Int = Stdlib.Float.roundTowardsZero a
 
 /// Return <param a>'s IEEE 754 binary64 bits as a signed 64-bit value.
 let toBits (a: Float) : Int = Builtin.floatToBits a
+
+
+impl Negate for Float =
+  /// Returns the negation of <param a>, {{-a}}
+  let negate (a: Float) : Float = a * -1.0
+
+
+impl Add for Float =
+  /// Add <type Float> <param a> to <type Float> <param b>
+  let add (a: Float) (b: Float) : Float = Builtin.floatAdd a b
+
+
+impl Subtract for Float =
+  /// Subtract <type Float> <param b> from <type Float> <param a>
+  let subtract (a: Float) (b: Float) : Float = Builtin.floatSubtract a b
+
+
+impl Multiply for Float =
+  /// Multiply <type Float> <param a> by <type Float> <param b>
+  let multiply (a: Float) (b: Float) : Float = Builtin.floatMultiply a b
+
+
+impl Power for Float =
+  /// Returns <param base> raised to the power of <param exponent>
+  let power (``base``: Float) (exponent: Float) : Float =
+    Builtin.floatPower ``base`` exponent
+
+
+impl Divide for Float =
+  /// Divide <type Float> <param a> by <type Float> <param b>
+  let divide (a: Float) (b: Float) : Float = Builtin.floatDivide a b
+
+
+impl Compare for Float =
+  /// Returns true if a is less than b
+  let lessThan (a: Float) (b: Float) : Bool = Builtin.floatLessThan a b
+  /// Returns true if a is less than or equal to b
+  let lessThanOrEqualTo (a: Float) (b: Float) : Bool =
+    Builtin.floatLessThanOrEqualTo a b
+  /// Returns true if a is greater than b
+  let greaterThan (a: Float) (b: Float) : Bool = Builtin.floatGreaterThan a b
+  /// Returns true if a is greater than or equal to b
+  let greaterThanOrEqualTo (a: Float) (b: Float) : Bool =
+    Builtin.floatGreaterThanOrEqualTo a b
+
+
+impl ToString for Float =
+  /// Stringify <param float> as the shortest decimal that parses back to the same value, e.g. `1.5`,
+  /// `0.30000000000000004`, `1e+16`, `1e-5`.
+  let toString (a: Float) : String = Builtin.floatToString a
+
+
+impl Zero for Float =
+  let zero () : Float = 0.0
+
+
+impl One for Float =
+  let one () : Float = 1.0
