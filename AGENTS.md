@@ -198,6 +198,41 @@ namespace, network and `rundir`.
 
 Logs go to `rundir/logs/fsharp-tests.log`.
 
+## Rebasing onto main
+
+**A clean rebase can still fail at run time, and git cannot tell you.** Dark resolves names
+when a call EXECUTES, so deleting a public fn breaks every caller silently. Git only marks a
+conflict where both sides changed the same lines; where main ADDED a call to a fn your branch
+deleted, your branch has no text there, so it merges with no marker and no warning. A green
+build says nothing either, because nothing type-checks a Dark call site until it runs. The
+first you hear of it is a red testfile you did not touch.
+
+So after any rebase that deletes or renames a public fn, sweep for the class rather than
+fixing the ones you trip over:
+
+1. For each module, list the top-level `let`s in the MERGE BASE and in your tree; the
+   difference is what your branch removes.
+2. Grep the merged tree for each removed name, qualified (`Stdlib.<Module>.<fn>`), across
+   `packages/`, `backend/` and `docs/`.
+3. Eyeball the hits. Prose mentions in docs and comments quoting an error message are
+   fine and will show up; a call in a `.dark` testfile is a real break.
+
+One rebase of a branch that deleted the per-type arithmetic fns had two of these, both
+`Stdlib.*.divide` in `testfiles/execution/stdlib/list.dark`, in cases main had added. Same
+root cause as the CLI sweep above: the bugs are found by running, not by reading.
+
+**Check a mechanical resolution by replaying it against the base.** When a commit applies one
+transformation across many files (an operator rewrite, a rename) and the rebase conflicts in
+all of them, write the transformation as a script instead of hand-editing. Then prove the
+script IS your commit: run it over the MERGE BASE and require the output to equal your own
+side byte for byte. Once it does, run it over main's text and you get main's new cases with
+your change applied, rather than a hand-merge that quietly drops one.
+
+**Reading a resolution twice is not a check; the only check is a build.** A structural
+resolution can leave the tail of the form it replaced sitting underneath, and it reads fine:
+one `if/else` head swapped for a `match` left the old `else` branch in place, calling an op
+with the arity main had just changed. Build after resolving, before the suite.
+
 ## Directories
 
     backend/src/          # F# source
