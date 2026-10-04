@@ -127,6 +127,14 @@ in one session that produced a confident, wrong report about the tooling.
 it.** Same family as "don't infer build state from logs" above, one level out: that one is about
 reading the wrong file, this one is about reading the right file too narrowly.
 
+**And a claim about `main` needs `main`, not the tree you are standing in.** `git grep <pattern>
+upstream/main -- <path>` costs nothing and settles it. A clone is a branch, and the interesting
+branches here are the ones that change defaults: this one flips `DARK_CONFIG_TRACE_DETAIL` in
+`config/dev` from `off` to `on`, adds a stored `trace.record` that beats the environment, and
+renames flags that never existed upstream. Grep the working tree for any of those and you will
+report your own branch as though it were the world. Three times in one session, each time while
+deciding whether something was separable, which is the decision that depends on it most.
+
 ### Sweeping the CLI after a change
 
 A Dark call site is not type-checked until it executes, so a rename or a type change across
