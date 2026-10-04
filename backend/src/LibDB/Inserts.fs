@@ -288,8 +288,11 @@ let rec insertAndApplyOpsWith
       // `SetName` becomes a `Decision`, and a stamped op is a new op id, so none is ignored again.
       let! toRestateNames =
         Telemetry.timeTask "author.notBound" [] (fun () -> notCurrentlyBound ignored)
-      let! toRestateDocs = docsNotCurrentlySaid ignored
-      let! toRestateDeprecations = deprecationsNotInEffect ignored
+      let! toRestateDocs =
+        Telemetry.timeTask "author.notSaid" [] (fun () -> docsNotCurrentlySaid ignored)
+      let! toRestateDeprecations =
+        Telemetry.timeTask "author.notInEffect" [] (fun () ->
+          deprecationsNotInEffect ignored)
       let toRestate = toRestateNames @ toRestateDocs @ toRestateDeprecations
       let! restated =
         if List.isEmpty toRestate then

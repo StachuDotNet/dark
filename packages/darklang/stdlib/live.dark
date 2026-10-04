@@ -135,6 +135,14 @@ let unknownChange () : Change =
 /// moves the counter too, and those are not changes to what runs. The one exception is `show`: a
 /// moved `live.show` is answered as a change that touched nothing, so a host can read `shown`.
 ///
+/// What a batch of ops touched, with duplicates collapsed.
+///
+/// Keyed on location AND kind, because one name can be bound as a fn and as a type and those are
+/// two things for a host to reload. Keyed on location alone the second one vanishes, and a touched
+/// name that vanishes is a host left running stale code with nothing on screen to say so.
+let dedupeTouched (touched: List<Touched>) : List<Touched> =
+  touched |> Stdlib.List.uniqueBy (fun t -> (t.location, t.kind))
+
 /// When something did land, the name caches are dropped BEFORE the change is reported, so the caller's
 /// next name lookup sees the store as it is. That is the whole reload: nothing else has to happen for a
 /// name resolved after this to answer with the new hash.
@@ -184,7 +192,7 @@ let poll (w: Watch) : (Watch * Stdlib.Option.Option<Change>) =
               | Some op -> touchedBy op
               | None -> [])
             |> Stdlib.List.flatten
-            |> Stdlib.List.uniqueBy (fun t -> (t.location, t.kind))
+            |> dedupeTouched
 
           Change { ops = landed; touched = touched; unknown = false }
 
