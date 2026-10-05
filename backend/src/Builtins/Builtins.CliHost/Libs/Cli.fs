@@ -710,7 +710,9 @@ let execute
       pmRT
       |> PackageManager.withExtras
         (branchTypes @ types)
-        values
+        // `values` is bound as PT here, since the only other use of it wants that form;
+        // `withExtras` takes RT, so convert at the call rather than changing the binding.
+        (values |> List.map (PT2RT.PackageValue.toRT parentState.values.builtIn))
         (branchFns @ fns)
         (branchTraits @ traits)
       |> PackageManager.withExtraImpls scriptImpls
