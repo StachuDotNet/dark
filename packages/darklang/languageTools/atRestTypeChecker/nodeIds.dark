@@ -152,7 +152,19 @@ let findDuplicate
 /// How deeply a declaration's body or declared types may nest before it is reported
 /// Incomplete. The shape a declaration may HAVE; `Solve.maxUnifyDepth` is how far the
 /// solver will chase one.
-val maxDeclarationDepth = 1000L
+/// A nullary FUNCTION rather than a `val`, deliberately, and this is not a style choice.
+///
+/// The at-rest checker runs during `reloadPackages`, which authors `packages/` from disk and
+/// then asks the checker what each call resolves to, BEFORE `evaluateAllValues` has run. A
+/// package `val` does not exist yet at that moment, so reading one raises `ValueNotFound`.
+/// `guarded` catches that for the WHOLE batch and returns a report with no items, so the reload
+/// recorded no trait-call choices at all and said `Success`. Every package body then resolved
+/// its trait calls at run time, where the newest implementation wins, and one orphan
+/// `impl ToString for Int` could rewire the CLI's own output.
+///
+/// So: nothing on the checker's path may be a package `val`. The literal is rebuilt per call,
+/// which for an Int64 is nothing against being wrong.
+let maxDeclarationDepth () : Int64 = 1000L
 
 /// Whether the tree nests deeper than <param limit>, a level at a time so that measuring
 /// cannot exhaust the stack the limit protects.
@@ -174,7 +186,7 @@ let deeperThan (limit: Int64) (depth: Int64) (level: List<Node>) : Bool =
 let tooDeep
   (body: LanguageTools.ProgramTypes.Expr)
   : Stdlib.Option.Option<Model.Finding> =
-  if deeperThan maxDeclarationDepth 0L [ Node.Expression body ] then
+  if deeperThan (maxDeclarationDepth ()) 0L [ Node.Expression body ] then
     Stdlib.Option.Option.Some(
       Types.warning
         IssueCode.UnsupportedConstruct
@@ -219,7 +231,7 @@ let typeDeeperThan
 let typeTooDeep
   (types: List<LanguageTools.ProgramTypes.TypeReference>)
   : Stdlib.Option.Option<Model.Finding> =
-  if typeDeeperThan maxDeclarationDepth 0L types then
+  if typeDeeperThan (maxDeclarationDepth ()) 0L types then
     Stdlib.Option.Option.Some(
       Types.warning
         IssueCode.UnsupportedConstruct

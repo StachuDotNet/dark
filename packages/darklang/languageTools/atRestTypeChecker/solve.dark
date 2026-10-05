@@ -153,7 +153,19 @@ let markAllUnknownsAsError (s: State) (tys: List<Model.Ty>) : State =
 /// How deep a type comparison may go before the declaration is reported Incomplete.
 /// Comparing walks both types in lockstep, so nesting costs a call per level. Bounded here
 /// rather than by the native stack running out. `NodeIds.maxDeclarationDepth` bounds input.
-val maxUnifyDepth = 1000L
+/// A nullary FUNCTION rather than a `val`, deliberately, and this is not a style choice.
+///
+/// The at-rest checker runs during `reloadPackages`, which authors `packages/` from disk and
+/// then asks the checker what each call resolves to, BEFORE `evaluateAllValues` has run. A
+/// package `val` does not exist yet at that moment, so reading one raises `ValueNotFound`.
+/// `guarded` catches that for the WHOLE batch and returns a report with no items, so the reload
+/// recorded no trait-call choices at all and said `Success`. Every package body then resolved
+/// its trait calls at run time, where the newest implementation wins, and one orphan
+/// `impl ToString for Int` could rewire the CLI's own output.
+///
+/// So: nothing on the checker's path may be a package `val`. The literal is rebuilt per call,
+/// which for an Int64 is nothing against being wrong.
+let maxUnifyDepth () : Int64 = 1000L
 
 /// Require actual to agree with expected, assigning unknowns where possible.
 /// Use at and site to locate and explain any mismatch.
@@ -172,7 +184,7 @@ let unify
 
   if expected == actual then
     s
-  else if s.unifyDepth >= maxUnifyDepth then
+  else if s.unifyDepth >= maxUnifyDepth () then
     // Recorded once: every sibling comparison below here is also too deep.
     if s.gaveUpOnDepth then
       s

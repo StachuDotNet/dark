@@ -260,10 +260,38 @@ gate_reload_is_reproducible() {
       "SELECT id FROM package_ops WHERE id NOT IN (SELECT op_id FROM op_branches) ORDER BY id"
   }
 
-  ./scripts/build/reload-packages > /dev/null 2>&1
+  ./scripts/build/reload-packages > "$WORK/logs/reload-1.log" 2>&1
   first=$(ids)
-  ./scripts/build/reload-packages > /dev/null 2>&1
+  ./scripts/build/reload-packages > "$WORK/logs/reload-2.log" 2>&1
   second=$(ids)
+
+  # The reload must have RECORDED something, not merely finished. Save-time trait-call
+  # resolution runs here, and when it fails it fails for the whole batch and leaves a report
+  # with no items, so the reload prints `0 op(s) moved` and then prints Success. Everything was
+  # green for a day with it at zero: no gate, no test and neither walkthrough asserted that the
+  # pre-pass had done anything at all. One package `val` on the checker's path was enough,
+  # because the checker runs before `evaluateAllValues` and reading a value raised
+  # `ValueNotFound`. Package bodies then resolved at run time, where the newest implementation
+  # wins, which is the opposite of what saving a call is for.
+  #
+  # Asserted here rather than in a new gate because this one already pays for two reloads. A
+  # floor rather than an exact count: the number moves whenever the tree does, and what matters
+  # is that it is not zero.
+  # The line goes to the reload's OWN log under this gate's rundir, not to its stdout.
+  moved=$(grep -oE 'Resolved trait calls: [0-9]+ op' "$WORK/logs/packages.log" \
+            | tail -1 | grep -oE '[0-9]+' || true)
+  if [[ -z "$moved" ]]; then
+    echo "reload-is-reproducible: the reload printed no 'Resolved trait calls:' line at all."
+    echo "  Either the pre-pass did not run or its output moved; both want looking at."
+    exit 1
+  fi
+  if [[ "$moved" -lt 100 ]]; then
+    echo "reload-is-reproducible: the reload pinned $moved trait call op(s), which is too few."
+    echo "  A whole-tree reload resolves thousands. Zero or a handful means the checker failed"
+    echo "  over the batch and reported nothing. Look in $WORK/logs/packages.log for the line"
+    echo "  saying the at-rest checker failed over a whole batch."
+    exit 1
+  fi
 
   n=$(wc -l <<<"$second")
   differ=$(comm -3 <(echo "$first") <(echo "$second") | wc -l)
@@ -271,7 +299,8 @@ gate_reload_is_reproducible() {
     echo "reload-is-reproducible: $differ of $n op ids differ between two reloads of one tree"
     exit 1
   fi
-  echo "reload-is-reproducible: two reloads of one tree agree on all $n op ids."
+  echo "reload-is-reproducible: two reloads of one tree agree on all $n op ids,"
+  echo "  and the second pinned $moved trait call op(s)."
 }
 
 # --- trait-checker-vs-dispatch: the checker and dispatch agree on which impls exist ---

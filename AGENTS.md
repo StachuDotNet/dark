@@ -1027,6 +1027,24 @@ each level and can fail with "Out of stack". Use direct recursion or an explicit
 **`let f () = <a literal>` rebuilds it on every call.** A nullary function whose body is a constant is
 not a constant; `val` is evaluated once. If the body doesn't depend on anything, make it a `val`.
 
+**With one exception, and it cost a day: NOTHING ON THE AT-REST CHECKER'S PATH MAY BE A PACKAGE
+`val`.** The checker runs inside `reloadPackages`, which authors `packages/` from disk and then
+asks the checker what each trait call resolves to. That happens BEFORE `evaluateAllValues`, so a
+package `val` does not exist yet and reading one raises `ValueNotFound`. `guarded` in
+`atRestTypeChecker.dark` catches that for the WHOLE BATCH and returns a report with no items, so
+the reload recorded no choices at all, printed `Resolved trait calls: 0 op(s) moved`, and then
+printed Success. Every package body consequently resolved its trait calls at run time, where the
+newest implementation wins, which made `Stdlib.max "apple" "banana"` fail and let one orphan
+`impl ToString for Int` change the CLI's own error text.
+
+Two `val`s on that path did it, `maxDeclarationDepth` and `maxUnifyDepth`, both added by someone
+reasonably following the advice directly above this. They are nullary functions now. The cost of
+rebuilding an `Int64` literal per call is nothing against the cost of being wrong.
+
+The general shape is worth more than the instance: anything the checker touches runs at a point
+in the load where most of the store is not ready yet, so prefer a function, and if you must have
+a value, convince yourself it is evaluated before the checker asks.
+
 **Value bindings take no type annotation.** `let xs = [...]`, not `let xs : List<String> = [...]`,
 which fails with "Value annotations are not supported". Function bindings do take them, and
 nested functions require them.
