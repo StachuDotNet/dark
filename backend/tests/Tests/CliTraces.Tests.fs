@@ -913,7 +913,7 @@ let private testExitCodes =
         path
 
       let good = script "exit-ok.dark" "Stdlib.printLine \"fine\"\n"
-      let raises = script "exit-raise.dark" "Stdlib.Int64.divide 1L 0L\n"
+      let raises = script "exit-raise.dark" "(1L / 0L)\n"
 
       try
         let cases =
@@ -927,7 +927,7 @@ let private testExitCodes =
             1,
             "a script that is not there"
             [ "eval"; "1L + 1L" ], 0, "an expression that answered"
-            [ "eval"; "Stdlib.Int64.divide 1L 0L" ], 1, "an expression that raised"
+            [ "eval"; "(1L / 0L)" ], 1, "an expression that raised"
 
             // Naming something that is not there is a refusal, whatever printed.
             [ "traces"; "inspect"; "zzzzzzzz" ], 1, "a run id nothing matches"
@@ -1019,7 +1019,7 @@ let private testReplayDistinguishesDriftFromARaise =
         do!
           author
             "Tests.DriftT.inner"
-            "(n: Int64): Int64 = Stdlib.Int64.multiply n 2L"
+            "(n: Int64): Int64 = (n * 2L)"
         do! author "Tests.DriftT.outer" "(n: Int64): Int64 = Tests.DriftT.inner n"
 
         let! _ = runCli state [ "eval"; "Tests.DriftT.outer 5L" ]
@@ -1085,7 +1085,7 @@ let private testReplayDistinguishesDriftFromARaise =
 
         // A genuine raise must NOT be called drift, or the label means nothing.
         do!
-          author "Tests.RaiseT.boom" "(n: Int64): Int64 = Stdlib.Int64.divide n 0L"
+          author "Tests.RaiseT.boom" "(n: Int64): Int64 = (n / 0L)"
         let! _ = runCli state [ "eval"; "Tests.RaiseT.boom 5L" ]
         let! raiseList = runCli state [ "traces"; "list"; "1"; "--json" ]
         let rid = (parseTraceID raiseList).Substring(0, 8)
@@ -1224,7 +1224,7 @@ let private testTracesTruncatedStillShowsRoot =
               runCli
                 state
                 [ "eval"
-                  "Stdlib.List.length (Stdlib.List.map (Stdlib.List.range 1 40) (fun x -> Stdlib.printLine (Stdlib.Int.toString x)))" ]
+                  "Stdlib.List.length (Stdlib.List.map (Stdlib.List.range 1 40) (fun x -> Stdlib.printLine (Stdlib.toString x)))" ]
             Expect.stringContains evalOut "40" "the eval itself succeeded"
             let! listJson = runCli state [ "traces"; "list"; "1"; "--json" ]
             let tid = parseTraceID listJson

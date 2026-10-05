@@ -434,7 +434,7 @@ module Basics =
 
   (check "let f (value: Int) : String = value" "f") = "failed:TypeMismatch"
 
-  (check "let f (x: Int) : String = x |> Stdlib.Int.toString" "f") = "checked:"
+  (check "let f (x: Int) : String = x |> Stdlib.toString" "f") = "checked:"
 
   (check "let f (x: Int) : Int = Stdlib.String.length x" "f") = "failed:TypeMismatch"
 
@@ -2136,8 +2136,8 @@ module Batches =
     Stdlib.List.map (Stdlib.List.range 0 1999) (fun i ->
       let field =
         if i == 1999 then tInt ()
-        else custom $"link-{Stdlib.Int.toString (i + 1)}" []
-      declared $"link-{Stdlib.Int.toString i}" [] (recordOf [ ("next", field) ]))
+        else custom $"link-{Stdlib.toString (i + 1)}" []
+      declared $"link-{Stdlib.toString i}" [] (recordOf [ ("next", field) ]))
    let holder =
      declared
        "holder"
@@ -2193,9 +2193,9 @@ module Batches =
     Stdlib.List.map (Stdlib.List.range 0 99) (fun i ->
       let target =
         if i == 99 then tInt ()
-        else tList (custom $"alias-{Stdlib.Int.toString (i + 1)}" [])
+        else tList (custom $"alias-{Stdlib.toString (i + 1)}" [])
       declared
-        $"alias-{Stdlib.Int.toString i}"
+        $"alias-{Stdlib.toString i}"
         []
         (Darklang.LanguageTools.ProgramTypes.TypeDeclaration.Definition.Alias target))
    checkPackageOpsSummary
@@ -2205,9 +2205,9 @@ module Batches =
     Stdlib.List.map (Stdlib.List.range 0 4999) (fun i ->
       let target =
         if i == 4999 then tInt ()
-        else tList (custom $"alias-{Stdlib.Int.toString (i + 1)}" [])
+        else tList (custom $"alias-{Stdlib.toString (i + 1)}" [])
       declared
-        $"alias-{Stdlib.Int.toString i}"
+        $"alias-{Stdlib.toString i}"
         []
         (Darklang.LanguageTools.ProgramTypes.TypeDeclaration.Definition.Alias target))
    let answer =
@@ -2228,7 +2228,7 @@ module Batches =
    let fns =
      Stdlib.List.map (Stdlib.List.range 1 300) (fun i ->
        fnNamed
-         $"batch-{Stdlib.Int.toString i}"
+         $"batch-{Stdlib.toString i}"
          []
          [ ("payload", custom "batch-payload" []) ]
          (custom "batch-payload" [])
