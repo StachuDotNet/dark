@@ -177,7 +177,7 @@ let environmentWith
   let env =
     Stdlib.List.fold
       types
-      (Darklang.LanguageTools.AtRestTypeChecker.Environment.builtins ())
+      (Darklang.LanguageTools.AtRestTypeChecker.Environment.builtins Darklang.SCM.Branch.mainBranchId)
       (fun env t -> Darklang.LanguageTools.AtRestTypeChecker.Items.addType env t)
   Darklang.LanguageTools.AtRestTypeChecker.Declarations.prepareDeclarations env
 
@@ -919,7 +919,8 @@ module Builtins =
               Darklang.LanguageTools.ProgramTypes.FQFnName.Builtin
                 { name = "missing"; version = 0l }
             )
-          )
+          ),
+          []
         ),
         [],
         [ intExpr 12L 1 ]
@@ -949,7 +950,7 @@ module PostfixUnwrap =
     Darklang.LanguageTools.ProgramTypes.TypeReference.TCustomType(
       resolved (
         Darklang.LanguageTools.ProgramTypes.FQTypeName.FQTypeName.Package(
-          (Darklang.LanguageTools.AtRestTypeChecker.Environment.builtins ()).optionType
+          (Darklang.LanguageTools.AtRestTypeChecker.Environment.builtins Darklang.SCM.Branch.mainBranchId).optionType
         )
       ),
       [ inner ]
@@ -1344,7 +1345,11 @@ module Unresolved =
     (oneArg
       (tUnit ())
       (tInt ())
-      (Darklang.LanguageTools.ProgramTypes.Expr.EFnName(1L, unresolved [ "Missing", "fn" ])))) = "incomplete:UnresolvedFunctionName"
+      (Darklang.LanguageTools.ProgramTypes.Expr.EFnName(
+        1L,
+        unresolved [ "Missing", "fn" ],
+        []
+      )))) = "incomplete:UnresolvedFunctionName"
 
   (checkFunctionAst
     []
