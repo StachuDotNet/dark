@@ -1543,14 +1543,10 @@ let packageFn
   // TODO: handle `deprecated`
   let namePart = FQFnName.Package.atDefinition ctx p.hash
 
-  let typeParamPart =
-    match p.typeParams with
-    | [] -> ""
-    | _ ->
-      p.typeParams
-      |> Stdlib.List.map (fun typeParam -> $"'{typeParam}")
-      |> Stdlib.String.join ", "
-      |> fun parts -> $"<{parts}>"
+  // `typeParamsWithBounds`, not a bare type-param list: a fn's bounds are stored on it and
+  // printing `<'a>` where the author wrote `<'a: Show>` loses the constraint from every
+  // rendering, which reads as the bound not having been saved at all.
+  let typeParamPart = typeParamsWithBounds ctx p.typeParams p.bounds
 
   // Group the whole header so parameters and the return type break together.
   let headerDoc =
