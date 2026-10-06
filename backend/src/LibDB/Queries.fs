@@ -183,6 +183,17 @@ let getDependencies (itemHash : Hash) : Task<List<PackageDep>> =
   }
 
 
+/// The names an item has LEFT: where one of <param hashes> was once bound and nothing is bound now.
+/// Propagation treats these as the source's former names, so a caller that still names one (an
+/// item renamed with its content unchanged) follows an edit made at the new name.
+///
+/// A name that is bound to something else now is NOT a former name, whatever it once held.
+/// Content-addressing makes the difference ordinary: `x + 1L` written as `Tz.A.g` and again as
+/// `Tz.B.same` is one item, so after `g` is edited its first version's row still records that hash.
+/// Without the second condition, editing `same` counted `Tz.A.g` as one of `same`'s old names,
+/// and every caller of `g` was rewritten to call `same` and reported as an ordinary follow; a save
+/// of `same` with nothing changed reverted them to `g`'s first body. Any binding at the name
+/// counts, of any kind, because one name holds one item (see the `SetName` fold).
 let getUnlistedLocationsForRefs
   (itemKind : PT.ItemKind)
   (hashes : List<Hash>)
@@ -203,11 +214,18 @@ let getUnlistedLocationsForRefs
       return!
         Sql.query
           $"""
-          SELECT DISTINCT owner, modules, name
-          FROM locations
-          WHERE item_hash IN ({hashInClause})
-            AND item_type = @item_type
-            AND unlisted_at IS NOT NULL
+          SELECT DISTINCT l.owner, l.modules, l.name
+          FROM locations l
+          WHERE l.item_hash IN ({hashInClause})
+            AND l.item_type = @item_type
+            AND l.unlisted_at IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM locations bound
+              WHERE bound.owner = l.owner
+                AND bound.modules = l.modules
+                AND bound.name = l.name
+                AND bound.unlisted_at IS NULL
+            )
           """
         |> Sql.parameters (
           [ "item_type", Sql.string (itemKind.toString ()) ] @ hashParams

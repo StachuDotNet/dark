@@ -844,6 +844,81 @@ let aFailedModuleSaveDoesNotEndOnATick =
     })
 
 
+/// Editing an item must not repoint a caller of a DIFFERENT name that once held the same content.
+///
+/// Content-addressing makes the collision ordinary: `g`'s first version and `same` are one item,
+/// because their bodies are identical. `g` has since moved on, and `f` follows `g`. Editing `same`
+/// used to treat `Tz.A.g` as one of `same`'s former names (it once held `same`'s old hash), so `f`
+/// was rewritten to call `same`'s new body and the save reported it as an ordinary follow.
+let anEditDoesNotRepointACallerOfAnotherNameWithTheSameOldContent =
+  instanceTest
+    "editing an item leaves alone a caller of another name that once held the same content"
+    (fun state ->
+      task {
+        do! start state
+        do! fn state "Tests.CrossA.g" "(x: Int64) : Int64 = x + 7461L"
+        do! fn state "Tests.CrossA.f" "(x: Int64) : Int64 = Tests.CrossA.g x"
+        do! fn state "Tests.CrossA.g" "(x: Int64) : Int64 = x + 7465L"
+        do! evals state "Tests.CrossA.f 1L" "7466" "f follows g's edit"
+
+        // Same body as g's FIRST version, so the same item, at an unrelated name.
+        do! fn state "Tests.CrossB.same" "(x: Int64) : Int64 = x + 7461L"
+        do! fn state "Tests.CrossB.same" "(x: Int64) : Int64 = x + 7499L"
+        do!
+          evals
+            state
+            "Tests.CrossA.f 1L"
+            "7466"
+            "f still runs g: editing an unrelated item that once shared g's content moved nothing"
+        do! discardAll state
+      })
+
+/// The same cross-wire, with no edit at all: a save that says nothing changed must change nothing.
+let anUnchangedSaveDoesNotRepointACallerOfAnotherName =
+  instanceTest
+    "re-saving an item unchanged leaves alone a caller of another name with the same old content"
+    (fun state ->
+      task {
+        do! start state
+        do! fn state "Tests.CrossC.g" "(x: Int64) : Int64 = x + 7471L"
+        do! fn state "Tests.CrossC.f" "(x: Int64) : Int64 = Tests.CrossC.g x"
+        do! fn state "Tests.CrossC.g" "(x: Int64) : Int64 = x + 7475L"
+        do! fn state "Tests.CrossD.same" "(x: Int64) : Int64 = x + 7471L"
+        do! evals state "Tests.CrossC.f 1L" "7476" "f follows g's edit"
+
+        do! fn state "Tests.CrossD.same" "(x: Int64) : Int64 = x + 7471L"
+        do!
+          evals
+            state
+            "Tests.CrossC.f 1L"
+            "7476"
+            "f still runs g's current body, not the old body it shared with same"
+        do! discardAll state
+      })
+
+/// What the former-names lookup is for, so the fix above does not take it away: after a rename, a
+/// caller still names the OLD location, and an edit at the new name must still reach it.
+let anEditAfterARenameStillMovesTheCaller =
+  instanceTest
+    "after a rename, editing the item at its new name still moves its caller"
+    (fun state ->
+      task {
+        do! start state
+        do! fn state "Tests.CrossRen.callee" "(x: Int64) : Int64 = x + 7481L"
+        do! fn state "Tests.CrossRen.caller" "(x: Int64) : Int64 = Tests.CrossRen.callee x"
+        do! commit state "cross-wire rename fixture"
+        do!
+          run state [ "rename"; "Tests.CrossRen.callee"; "Tests.CrossRen.renamed" ]
+        do! fn state "Tests.CrossRen.renamed" "(x: Int64) : Int64 = x + 7489L"
+        do!
+          evals
+            state
+            "Tests.CrossRen.caller 1L"
+            "7490"
+            "the caller follows the renamed item's edit"
+        do! discardAll state
+      })
+
 let tests : List<Test> =
   [ aTypeIsUsableByAFunctionAuthoredAfterIt
     traitsAreAuthoredListedAndDisambiguated
@@ -858,4 +933,7 @@ let tests : List<Test> =
     aRefusedImplementationOrBoundSavesNothing
     commitRefusesABoundThatNamesNothing
     aMismatchedImplementationIsReportedAtSave
-    aFailedModuleSaveDoesNotEndOnATick ]
+    aFailedModuleSaveDoesNotEndOnATick
+    anEditDoesNotRepointACallerOfAnotherNameWithTheSameOldContent
+    anUnchangedSaveDoesNotRepointACallerOfAnotherName
+    anEditAfterARenameStillMovesTheCaller ]
