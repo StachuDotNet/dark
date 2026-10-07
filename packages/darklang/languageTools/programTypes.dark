@@ -508,6 +508,10 @@ module PackageFn =
       typ: TypeReference
       description: String }
 
+  type Purity =
+    | Pure
+    | Impure
+
   type PackageFn =
     { hash: FQFnName.Package
       body: Expr
@@ -528,7 +532,9 @@ module PackageFn =
       permissionCeiling: Option<List<LanguageTools.Permissions.Effect>>
       /// `'a: Show + Compare` on the type params; part of the content hash. Checked
       /// at fn entry by the interpreter and statically by the at-rest checker.
-      bounds: List<Bound> }
+      bounds: List<Bound>
+      /// Decided when the fn is saved; `None` when that could not tell. See the F# mirror.
+      purity: Stdlib.Option.Option<Purity> }
 
 
 /// A trait: a set of fn signatures over one open type. Its own item kind.

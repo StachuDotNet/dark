@@ -109,9 +109,23 @@ module HandleCommand =
           PM.pt
           true
           ops
+      Builtins.Matter.Libs.PM.PurityAtSave.closureSizes.Clear()
+      let purityTimer = System.Diagnostics.Stopwatch.StartNew()
+      let! judged =
+        Builtins.Matter.Libs.PM.PurityAtSave.decide
+          exeState.fns.builtIn
+          PM.pt
+          pinned
+      let purityElapsed = purityTimer.Elapsed.TotalSeconds
+      let sizes =
+        Builtins.Matter.Libs.PM.PurityAtSave.closureSizes |> Seq.sort |> Array.ofSeq
+      let at (q : float) = sizes[int (q * float (sizes.Length - 1))]
+      print
+        $"Purity at save, closures: {sizes.Length} fns, median {at 0.5}, p90 {at 0.9}, p99 {at 0.99}, max {at 1.0}, total {Array.sum sizes}"
+
       // The pins are written at the hashes in hand, then moved by the rehash, exactly as the
       // authoring path does it.
-      let resolved = LibDB.HashStabilization.computeRealHashes pinned
+      let resolved = LibDB.HashStabilization.computeRealHashes judged
       // Ops, not items: recording the implementation changes the item's content hash, and every
       // caller's hash moves with it, so the count is larger than the number of calls pinned.
       let changed (after : List<PackageOp>) =
@@ -126,6 +140,46 @@ module HandleCommand =
         |> List.length
       print
         $"Resolved trait calls: {changed resolved} op(s) moved; {changed pinned} of {bodies} bodies pinned in {checkTimer.Elapsed.TotalSeconds:F1}s"
+      // What the purity verdicts move on top of the pins: the same tree hashed with and without.
+      let pinsOnly = LibDB.HashStabilization.computeRealHashes pinned
+      let verdictsMoved =
+        List.zip pinsOnly resolved |> List.filter (fun (a, b) -> a <> b) |> List.length
+      let fns =
+        judged
+        |> List.choose (function
+          | PackageOp.AddFn fn -> Some fn
+          | _ -> None)
+      let count p = fns |> List.filter (fun fn -> fn.purity = p) |> List.length
+      let undecidedReadingValues =
+        fns
+        |> List.filter (fun fn ->
+          fn.purity = None
+          && not (Set.isEmpty (LibExecution.CallGraph.valueRefs fn.body)))
+        |> List.length
+      // Measurement only: what a host that classified these builtins as refused would have hashed.
+      match System.Environment.GetEnvironmentVariable "DARK_PURITY_ALSO_REFUSED" with
+      | null
+      | "" -> ()
+      | names ->
+        let alsoRefused = names.Split(',') |> Set.ofArray
+        let! other =
+          Builtins.Matter.Libs.PM.PurityAtSave.decideWith
+            alsoRefused
+            exeState.fns.builtIn
+            PM.pt
+            pinned
+        let flipped =
+          List.zip judged other
+          |> List.filter (fun (a, b) -> a <> b)
+          |> List.length
+        let otherMoved =
+          List.zip resolved (LibDB.HashStabilization.computeRealHashes other)
+          |> List.filter (fun (a, b) -> a <> b)
+          |> List.length
+        print
+          $"Purity at save, with {Set.count alsoRefused} builtin(s) also refused: {flipped} verdict(s) differ, {otherMoved} op(s) hash differently"
+      print
+        $"Purity at save: {verdictsMoved} op(s) moved beyond the pins; {List.length fns} fns: {count (Some Purity.Pure)} pure, {count (Some Purity.Impure)} impure, {count None} undecided ({undecidedReadingValues} of them read a package value); decided in {purityElapsed:F1}s"
       if resolved <> ops then
         do! fill true resolved
       else

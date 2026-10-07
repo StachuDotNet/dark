@@ -124,6 +124,7 @@ let private ceilingFn
     returnType = PT.TInt
     body = body
     description = ""
+    purity = None
     permissionCeiling = ceiling
     bounds = [] }
 
@@ -667,6 +668,7 @@ let private genericMapWrapper
     returnType = PT.TList b
     body = eApply (eBuiltinFn "listMap" 0) [] [ eVar "list"; eVar "fn" ]
     description = ""
+    purity = None
     permissionCeiling = ceiling
     bounds = [] }
 

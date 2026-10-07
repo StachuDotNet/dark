@@ -707,6 +707,7 @@ let pm : PT.PackageManager =
         returnType = PT.TVariable "x"
         body = eVar "x"
         description = "TODO"
+        purity = None
         permissionCeiling = None
         bounds = [] }
 
@@ -727,6 +728,7 @@ let pm : PT.PackageManager =
               [ eStr [ strText "hi" ]; eBool true ])
             (eVar "x")
         description = "TODO"
+        purity = None
         permissionCeiling = None
         bounds = [] }
 
@@ -740,6 +742,7 @@ let pm : PT.PackageManager =
         returnType = PT.TInt64
         body = eApply (eBuiltinFn "int64Add" 0) [] [ eVar "a"; eVar "b" ]
         description = "TODO"
+        purity = None
         permissionCeiling = None
         bounds = [] }
 
@@ -765,6 +768,7 @@ let pm : PT.PackageManager =
             ))
 
         description = "TODO"
+        purity = None
         permissionCeiling = None
         bounds = [] }
 
@@ -798,6 +802,7 @@ let pm : PT.PackageManager =
                         [ eVar "n"; eInt64 1L ] ]) ]
             ))
         description = "TODO"
+        purity = None
         permissionCeiling = None
         bounds = [] }
 
@@ -814,6 +819,7 @@ let pm : PT.PackageManager =
         returnType = PT.TInt64
         body = eApply (eVar "fn") [] [ eVar "x" ]
         description = "TODO"
+        purity = None
         permissionCeiling = None
         bounds = [] }
 
@@ -825,6 +831,7 @@ let pm : PT.PackageManager =
         returnType = PT.TUnit
         body = eUnit ()
         description = "TODO"
+        purity = None
         permissionCeiling = None
         bounds = [] }
 

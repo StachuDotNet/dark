@@ -1538,7 +1538,8 @@ module FunctionDeclaration =
             names
             |> Stdlib.List.filterMap (fun (_range, case) ->
               LanguageTools.Permissions.effectOfCase case))
-        body = body },
+        body = body
+        purity = Stdlib.Option.Option.None },
       unresolvedNames)
 
 

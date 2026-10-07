@@ -44,6 +44,7 @@ let private unitFn (hash : string) (body : PT.Expr) : PT.PackageFn.PackageFn =
     parameters = NEList.singleton { name = "unit"; typ = PT.TUnit; description = "" }
     returnType = PT.TInt
     description = ""
+    purity = None
     permissionCeiling = None
     bounds = [] }
 

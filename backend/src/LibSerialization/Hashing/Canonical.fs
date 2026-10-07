@@ -698,6 +698,11 @@ let writeFn (mode : HashRefMode) (w : BinaryWriter) (fn : PT.PackageFn.PackageFn
     w.Write(1uy)
     LibSerialization.Binary.Serializers.Effects.write w effects
   writeBounds mode w fn.bounds
+  // Nothing when undecided, so a fn saving could not judge keeps the hash it had.
+  match fn.purity with
+  | None -> ()
+  | Some PT.Purity.Pure -> w.Write(1uy)
+  | Some PT.Purity.Impure -> w.Write(2uy)
 
 /// Write a PackageValue's hash-relevant content: its body.
 let writeValue

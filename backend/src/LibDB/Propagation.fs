@@ -315,7 +315,8 @@ let private fetchAffected
     | PT.ItemKind.Fn ->
       let! item = Ply.toTask (PMTypes.Fn.get hash)
       match item with
-      | Some f -> return Ok(AffectedFn(fqn, f, hash, loc))
+      // What it calls is changing under it, so the purity it was saved with no longer holds.
+      | Some f -> return Ok(AffectedFn(fqn, { f with purity = None }, hash, loc))
       | None -> return Error $"Fn at {hash} not found"
     | PT.ItemKind.Value ->
       let! item = Ply.toTask (PMTypes.Value.get hash)

@@ -1216,6 +1216,7 @@ module PackageFn =
           body = body
           typeParams = allTypeParams
           bounds = bounds
+          purity = None
           permissionCeiling = ceilingOf fn.effects }
     }
 

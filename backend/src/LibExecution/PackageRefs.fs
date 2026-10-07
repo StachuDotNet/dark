@@ -513,6 +513,7 @@ module Type =
         let private p addl = p ("PackageFn" :: addl)
         let parameter = p [] "Parameter"
         let packageFn = p [] "PackageFn"
+        let purity = p [] "Purity"
 
       module Search =
         let private p addl = p ("Search" :: addl)

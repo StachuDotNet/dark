@@ -1753,6 +1753,7 @@ module PackageFn =
           parameters = params' |> NEList.ofListUnsafe "" []
           returnType = returnType
           description = "TODO"
+          purity = None
           permissionCeiling = None
           bounds = [] }
 

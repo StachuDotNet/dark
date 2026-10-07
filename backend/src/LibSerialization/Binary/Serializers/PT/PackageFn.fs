@@ -9,6 +9,8 @@ open LibExecution.ProgramTypes
 open LibSerialization.Binary.Serializers.Common
 open LibSerialization.Binary.Serializers.PT.Common
 
+module PT = LibExecution.ProgramTypes
+
 
 module Parameter =
   let write (w : BinaryWriter) (p : PackageFn.Parameter) : unit =
@@ -21,6 +23,19 @@ module Parameter =
     let typ = TypeReference.read r
     let description = String.read r
     { name = name; typ = typ; description = description }
+
+
+module Purity =
+  let write (w : BinaryWriter) (p : PT.Purity) : unit =
+    match p with
+    | PT.Purity.Pure -> w.Write(0uy)
+    | PT.Purity.Impure -> w.Write(1uy)
+
+  let read (r : BinaryReader) : PT.Purity =
+    match r.ReadByte() with
+    | 0uy -> PT.Purity.Pure
+    | 1uy -> PT.Purity.Impure
+    | b -> raiseFormatError $"Invalid Purity tag: {b}"
 
 
 let write (w : BinaryWriter) (p : PackageFn.PackageFn) : unit =
@@ -38,6 +53,7 @@ let write (w : BinaryWriter) (p : PackageFn.PackageFn) : unit =
     w
     TypeReference.Bound.write
     p.bounds
+  Option.write w Purity.write p.purity
 
 let read (version : uint32) (r : BinaryReader) : PackageFn.PackageFn =
   let hash = Hash.read r
@@ -49,6 +65,7 @@ let read (version : uint32) (r : BinaryReader) : PackageFn.PackageFn =
   let permissionCeiling =
     Option.read r LibSerialization.Binary.Serializers.Effects.read
   let bounds = TypeReference.Bound.readList version r
+  let purity = if version >= 6u then Option.read r Purity.read else None
   { hash = hash
     body = body
     typeParams = typeParams
@@ -56,4 +73,5 @@ let read (version : uint32) (r : BinaryReader) : PackageFn.PackageFn =
     returnType = returnType
     description = description
     permissionCeiling = permissionCeiling
-    bounds = bounds }
+    bounds = bounds
+    purity = purity }

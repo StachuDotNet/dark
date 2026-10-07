@@ -233,6 +233,7 @@ let testUnapprovedPackageFnInValueBodyIsRefused =
         returnType = PT.TInt
         body = clockCall
         description = ""
+        purity = None
         permissionCeiling = None
         bounds = [] }
     let! (_ : int64) =

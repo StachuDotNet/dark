@@ -84,6 +84,7 @@ let testPackageFn
         (fun p -> { name = p; typ = PT.TVariable "b"; description = "test" })
         parameters
     returnType = returnType
+    purity = None
     permissionCeiling = None
     bounds = [] }
 

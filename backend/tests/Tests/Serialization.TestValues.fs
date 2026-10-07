@@ -747,6 +747,7 @@ module ProgramTypes =
           { name = "param"; typ = typeReference; description = "desc" }
       returnType = typeReference
       description = "test"
+      purity = None
       permissionCeiling = Some(Set.singleton LibExecution.Effects.Effect.Clock)
       bounds = [] }
 
@@ -795,6 +796,7 @@ module ProgramTypes =
         NEList.singleton { name = "value"; typ = TVariable "a"; description = "" }
       returnType = TString
       description = "bounded"
+      purity = None
       permissionCeiling = None
       bounds = [ { param = "a"; trait_ = showRef }; { param = "a"; trait_ = eqRef } ] }
 

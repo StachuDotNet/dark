@@ -1587,6 +1587,28 @@ module PackageFn =
       | _ -> Exception.raiseInternal "Invalid PackageFn.Parameter" []
 
 
+  module Purity =
+    let typeName () =
+      FQTypeName.fqPackage (
+        PackageRefs.Type.LanguageTools.ProgramTypes.PackageFn.purity ()
+      )
+
+    let knownType () = KTCustomType(typeName (), [])
+
+    let toDT (p : PT.Purity) : Dval =
+      let caseName =
+        match p with
+        | PT.Purity.Pure -> "Pure"
+        | PT.Purity.Impure -> "Impure"
+      DEnum(typeName (), typeName (), [], caseName, [])
+
+    let fromDT (d : Dval) : PT.Purity =
+      match d with
+      | DEnum(_, _, [], "Pure", []) -> PT.Purity.Pure
+      | DEnum(_, _, [], "Impure", []) -> PT.Purity.Impure
+      | _ -> Exception.raiseInternal "Invalid Purity" []
+
+
   let typeName () =
     FQTypeName.fqPackage (
       PackageRefs.Type.LanguageTools.ProgramTypes.PackageFn.packageFn ()
@@ -1608,7 +1630,11 @@ module PackageFn =
          p.permissionCeiling
          |> Option.map Effects2DT.toDT
          |> Dval.option (Effects2DT.knownType ()))
-        ("bounds", Bound.listToDT p.bounds) ]
+        ("bounds", Bound.listToDT p.bounds)
+        ("purity",
+         p.purity
+         |> Option.map Purity.toDT
+         |> Dval.option (Purity.knownType ())) ]
 
     DRecord(typeName (), typeName (), [], Map fields)
 
@@ -1630,7 +1656,8 @@ module PackageFn =
           fields
           |> D.field "permissionCeiling"
           |> C2DT.Option.fromDT Effects2DT.fromDT
-        bounds = fields |> D.field "bounds" |> D.list Bound.fromDT }
+        bounds = fields |> D.field "bounds" |> D.list Bound.fromDT
+        purity = fields |> D.field "purity" |> C2DT.Option.fromDT Purity.fromDT }
     | _ -> Exception.raiseInternal "Invalid PackageFn" []
 
 

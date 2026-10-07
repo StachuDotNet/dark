@@ -18,8 +18,9 @@ open System
 /// v5 (2026-10): `EPipeFnCall` carries what the caller worked out for the callee's bounds, as
 /// `EFnName` has since v4. A v4 blob ends after the args and reads `boundImpls = []`, so a piped
 /// call into a bounded generic resolves at run time until it is re-authored.
+/// v6 (2026-10): a `PackageFn` ends with its purity as decided at save; a v5 blob reads `None`.
 [<Literal>]
-let CurrentVersion = 5u
+let CurrentVersion = 6u
 
 /// The oldest version this binary still reads.
 [<Literal>]

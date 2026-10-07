@@ -756,6 +756,15 @@ module PackageValue =
     { hash : FQValueName.Package; description : string; body : Expr }
 
 
+/// Whether anything a package fn reaches takes an effect ordinal, decided when it was saved
+/// (`PurityAtSave`), given that whatever callables and bound implementations its caller hands it
+/// are pure. Only a prediction: it was worked out against the builtins of the host that saved it.
+[<RequireQualifiedAccess>]
+type Purity =
+  | Pure
+  | Impure
+
+
 module PackageFn =
   type Parameter = { name : string; typ : TypeReference; description : string }
 
@@ -785,6 +794,9 @@ module PackageFn =
       /// the interpreter (like every other declared parameter type) and statically
       /// by the at-rest checker.
       bounds : List<Bound>
+
+      /// `None` when saving could not tell. Hashed only when present.
+      purity : Option<Purity>
     }
 
 

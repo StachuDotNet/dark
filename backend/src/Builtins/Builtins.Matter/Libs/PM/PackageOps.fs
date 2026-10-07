@@ -95,8 +95,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             let ptOps = ops |> List.choose PT2DT.PackageOp.fromDT
             let! resolved =
               TraitCalls.resolveTraitCalls exeState exeState.branchId pm false ptOps
+            let! judged = PurityAtSave.decide exeState.fns.builtIn pm resolved
             return
-              Dval.list (packageOpKT ()) (resolved |> List.map PT2DT.PackageOp.toDT)
+              Dval.list (packageOpKT ()) (judged |> List.map PT2DT.PackageOp.toDT)
           }
         | _ -> incorrectArgs ())
       sqlSpec = NotQueryable
