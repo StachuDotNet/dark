@@ -423,6 +423,15 @@ let insertUntrustedOps (ops : List<PT.PackageOp>) : Task<Result<int64, string>> 
 let draftWhere =
   "effective = 1 AND commit_hash IS NULL AND id NOT IN (SELECT op_id FROM op_branches)"
 
+/// Which `package_ops` rows are main's whole log, committed or not. The read
+/// (`Queries.getMainOpsWithIds`), the delete (`wholeMainDeletes`) and the check between them
+/// (`rewriteMainIfUnchanged`) all use this one clause, for the same reason as `draftWhere`.
+///
+/// Branch-tagged ops are a branch's pending state, and sweeping them in would re-insert them into main
+/// effective and fold them. `effective = 1` leaves out the ops a client pushed to this store, which it
+/// only holds for someone else.
+let mainWhere = "effective = 1 AND id NOT IN (SELECT op_id FROM op_branches)"
+
 let draftDeletes : List<string> =
   [ $"DELETE FROM locations WHERE source <> 'resolution'
       AND op_id IN (SELECT id FROM package_ops WHERE {draftWhere})"
@@ -451,28 +460,7 @@ let wholeMainDeletes (keep : Set<System.Guid>) : List<string> =
     //
     // Main only. A branch's rows are keyed by its own id, and no main rewrite may touch them.
     $"DELETE FROM propagation_policy WHERE branch_id = '{PT.BranchId.Main}'"
-    // `effective = 1`: excludes client-pushed inert ops; see `draftDeletes`.
-    $"DELETE FROM package_ops WHERE effective = 1 AND id NOT IN (SELECT op_id FROM op_branches){keepUnreadable}" ]
-
-/// Main's op ids this build cannot decode. What `wholeMainDeletes` keeps.
-let unreadableMainOpIds () : Task<Set<System.Guid>> =
-  task {
-    let! rows =
-      Sql.query
-        """
-        SELECT id, op_blob
-        FROM package_ops
-        WHERE effective = 1
-          AND id NOT IN (SELECT op_id FROM op_branches)
-        """
-      |> Sql.executeAsync (fun read ->
-        let opId = read.uuid "id"
-        let readable =
-          (BS.PT.PackageOp.tryDeserialize opId (read.bytes "op_blob"))
-          |> Option.isSome
-        (opId, readable))
-    return rows |> List.filter (snd >> not) |> List.map fst |> Set.ofList
-  }
+    $"DELETE FROM package_ops WHERE {mainWhere}{keepUnreadable}" ]
 
 /// Delete, re-insert and re-fold as ONE transaction. `deletes` run first, in order; then every op is
 /// inserted (or, if its row survived the deletes at `effective = 0`, flipped effective and untagged, as
@@ -485,7 +473,7 @@ let unreadableMainOpIds () : Task<Set<System.Guid>> =
 /// it is handed, which is what lets it run inside this transaction; a Fumble call in here would open a
 /// second connection and wait on the lock this one holds.
 let private rewriteOpsAtomicallyIf
-  (draftAsRead : Option<List<System.Guid>>)
+  (asRead : Option<string * List<System.Guid>>)
   (deletes : List<string>)
   (tsFor : System.Guid -> string)
   (commitFor : System.Guid -> string option)
@@ -505,13 +493,13 @@ let private rewriteOpsAtomicallyIf
     let ctx = PreparedBatch.newCtx conn
     try
       let! unchanged =
-        match draftAsRead with
+        match asRead with
         | None -> Task.FromResult true
-        | Some expected ->
+        | Some(where, expected) ->
           task {
             use cmd = conn.CreateCommand()
             cmd.CommandText <-
-              $"SELECT id FROM package_ops WHERE {draftWhere}
+              $"SELECT id FROM package_ops WHERE {where}
                 ORDER BY created_at ASC, rowid ASC"
             use! reader = cmd.ExecuteReaderAsync()
             let current = ResizeArray<System.Guid>()
@@ -577,7 +565,34 @@ let rewriteDraftIfUnchanged
   (tsFor : System.Guid -> string)
   (ops : List<PT.PackageOp>)
   : Task<Option<int64>> =
-  rewriteOpsAtomicallyIf (Some draftAsRead) draftDeletes tsFor (fun _ -> None) "op" ops
+  rewriteOpsAtomicallyIf
+    (Some(draftWhere, draftAsRead))
+    draftDeletes
+    tsFor
+    (fun _ -> None)
+    "op"
+    ops
+
+/// Replace main's whole log with `ops`, sparing `unreadable` by id, but only if main still holds
+/// exactly the rows `mainAsRead` lists, checked under the write lock. The draft version's reasoning,
+/// over the whole log: a pull or an author landing after the read would otherwise be deleted and
+/// never put back, committed or undecodable alike. `None` means main moved and nothing was written.
+let rewriteMainIfUnchanged
+  (mainAsRead : List<System.Guid>)
+  (unreadable : Set<System.Guid>)
+  (tsFor : System.Guid -> string)
+  (commitFor : System.Guid -> string option)
+  (ops : List<PT.PackageOp>)
+  : Task<Option<int64>> =
+  // A whole-main rewrite re-folds bindings that were authored, propagated or resolved alike, and the
+  // op alone does not say which. 'op' is the honest default.
+  rewriteOpsAtomicallyIf
+    (Some(mainWhere, mainAsRead))
+    (wholeMainDeletes unreadable)
+    tsFor
+    commitFor
+    "op"
+    ops
 
 
 /// Bulk-import synced ops (id, op_blob-as-hex, origin_ts) in ONE transaction, committed into
