@@ -417,16 +417,16 @@ let insertUntrustedOps (ops : List<PT.PackageOp>) : Task<Result<int64, string>> 
       return Ok count
   }
 
+/// Which `package_ops` rows are main's draft. The read (`Queries.getDraftOps`), the delete
+/// (`draftDeletes`) and the check between them (`rewriteDraftIfUnchanged`) all use this one clause:
+/// if the set read and the set deleted ever differ, the difference is deleted and never put back.
+let draftWhere =
+  "effective = 1 AND commit_hash IS NULL AND id NOT IN (SELECT op_id FROM op_branches)"
+
 let draftDeletes : List<string> =
-  [ "DELETE FROM locations WHERE source <> 'resolution'
-     AND op_id IN (SELECT id FROM package_ops
-                   WHERE effective = 1
-                     AND commit_hash IS NULL
-                     AND id NOT IN (SELECT op_id FROM op_branches))"
-    "DELETE FROM package_ops
-     WHERE effective = 1
-       AND commit_hash IS NULL
-       AND id NOT IN (SELECT op_id FROM op_branches)" ]
+  [ $"DELETE FROM locations WHERE source <> 'resolution'
+      AND op_id IN (SELECT id FROM package_ops WHERE {draftWhere})"
+    $"DELETE FROM package_ops WHERE {draftWhere}" ]
 
 /// Every main op and what it wrote, EXCEPT the ids in `keep`: the ops this build cannot decode, which
 /// the caller has read by id. Deleting those would delete a peer's committed op for good because this
@@ -484,13 +484,14 @@ let unreadableMainOpIds () : Task<Set<System.Guid>> =
 /// all of it back and the store is exactly as it was. The fold opens nothing of its own on a connection
 /// it is handed, which is what lets it run inside this transaction; a Fumble call in here would open a
 /// second connection and wait on the lock this one holds.
-let rewriteOpsAtomically
+let private rewriteOpsAtomicallyIf
+  (draftAsRead : Option<List<System.Guid>>)
   (deletes : List<string>)
   (tsFor : System.Guid -> string)
   (commitFor : System.Guid -> string option)
   (source : string)
   (ops : List<PT.PackageOp>)
-  : Task<int64> =
+  : Task<Option<int64>> =
   task {
     use conn = new Microsoft.Data.Sqlite.SqliteConnection(LibDB.Sqlite.connString)
     do! conn.OpenAsync()
@@ -503,6 +504,24 @@ let rewriteOpsAtomically
     // After BeginTransaction: a command created on the connection now carries the transaction.
     let ctx = PreparedBatch.newCtx conn
     try
+      let! unchanged =
+        match draftAsRead with
+        | None -> Task.FromResult true
+        | Some expected ->
+          task {
+            use cmd = conn.CreateCommand()
+            cmd.CommandText <-
+              $"SELECT id FROM package_ops WHERE {draftWhere}
+                ORDER BY created_at ASC, rowid ASC"
+            use! reader = cmd.ExecuteReaderAsync()
+            let current = ResizeArray<System.Guid>()
+            while reader.Read() do
+              current.Add(System.Guid.Parse(reader.GetString 0))
+            return List.ofSeq current = expected
+          }
+      if not unchanged then
+        return None
+      else
       for d in deletes do
         do! PreparedBatch.exec ctx d (fun _ -> ())
 
@@ -532,10 +551,33 @@ let rewriteOpsAtomically
         PackageOpPlayback.applyOpsOnConnectionFrom conn source (List.ofSeq inserted)
       tx.Commit()
       Caching.invalidateAll ()
-      return int64 inserted.Count
+      return Some(int64 inserted.Count)
     finally
       PreparedBatch.disposeCtx ctx
   }
+
+let rewriteOpsAtomically
+  (deletes : List<string>)
+  (tsFor : System.Guid -> string)
+  (commitFor : System.Guid -> string option)
+  (source : string)
+  (ops : List<PT.PackageOp>)
+  : Task<int64> =
+  task {
+    let! n = rewriteOpsAtomicallyIf None deletes tsFor commitFor source ops
+    return Option.defaultValue 0L n
+  }
+
+/// Replace main's draft with `ops`, but only if the draft still holds exactly the rows `draftAsRead`
+/// lists, checked under the write lock. A caller that read the draft, worked on it, and then deleted it
+/// would otherwise delete whatever another author added in between and never put it back. `None` means
+/// the draft moved and nothing was written; read it again.
+let rewriteDraftIfUnchanged
+  (draftAsRead : List<System.Guid>)
+  (tsFor : System.Guid -> string)
+  (ops : List<PT.PackageOp>)
+  : Task<Option<int64>> =
+  rewriteOpsAtomicallyIf (Some draftAsRead) draftDeletes tsFor (fun _ -> None) "op" ops
 
 
 /// Bulk-import synced ops (id, op_blob-as-hex, origin_ts) in ONE transaction, committed into

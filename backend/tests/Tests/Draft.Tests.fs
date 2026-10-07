@@ -517,6 +517,44 @@ let aFailedRewriteLeavesTheDraftIntact =
     do! cleanup m
   }
 
+/// `WipRefresh.refresh` reads the draft, works on it, then deletes and re-inserts it. Another author
+/// (another process on the same store, or the parallel test phase) can land in between, and its op is
+/// in the set the delete covers but not in the set that was read. The window is opened by hand here:
+/// a whole second author, insert and refresh, runs after the first refresh's read.
+let aRefreshDoesNotEatAnAuthorThatLandedMidway =
+  testTask "an author that lands inside another refresh's window survives it" {
+    let m = "DraftTestRefreshWindow"
+    do! cleanup m
+
+    let! _ =
+      authorIntoMain
+        $"module Darklang.{m}\n\nlet caller () : Int64 = Darklang.{m}.callee () + 1L"
+
+    let mutable opened = 0
+    let! _ =
+      LibDB.WipRefresh.refreshWith
+        (fun () ->
+          task {
+            opened <- opened + 1
+            if opened = 1 then
+              let! _ =
+                authorIntoMain $"module Darklang.{m}\n\nlet callee () : Int64 = 41L"
+              ()
+          })
+        pmPT
+    Expect.equal opened 2 "the first attempt saw the draft move, and went round again"
+
+    let! callee = liveHash m "callee"
+    Expect.isSome callee "the author that landed midway is still bound"
+    let! r = evalDarkExpr $"Darklang.{m}.caller ()"
+    match r with
+    | Ok(RT.DInt64 n) -> Expect.equal n 42L "and the caller runs"
+    | Ok other -> failtest $"the caller answered {other}"
+    | Error(rte, _) -> failtest $"the caller did not run: %A{rte}"
+
+    do! cleanup m
+  }
+
 let tests =
   // The draft is SHARED: `discard` drops every uncommitted op on main, which includes whatever a
   // concurrently-running test just authored. Anything that drops the draft has to run alone, so
@@ -534,4 +572,5 @@ let tests =
       keepsAnOpItCannotRead
       discardNameDropsOneAndKeepsTheRest
       discardNameKeepsContentSomethingElseNeeds
-      aFailedRewriteLeavesTheDraftIntact ]
+      aFailedRewriteLeavesTheDraftIntact
+      aRefreshDoesNotEatAnAuthorThatLandedMidway ]

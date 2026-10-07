@@ -391,22 +391,25 @@ let getDependentHashesByTargets
 /// hash-stabilization it feeds keys items by name and keeps ONE version per name. That is right for
 /// a draft, whose newest edit is the one that counts, and it destroys history the moment committed
 /// ops go through it: every earlier committed version of every name disappears from the log.
-let getDraftOps () : Task<List<PT.PackageOp>> =
+///
+/// Also returns the id of every row read, decodable or not, which is what
+/// `Inserts.rewriteDraftIfUnchanged` checks the draft against.
+let getDraftOpsWithIds () : Task<List<System.Guid> * List<PT.PackageOp>> =
   task {
     let! rows =
       Sql.query
-        """
-        SELECT id, op_blob
-        FROM package_ops
-        -- effective = 1: excludes client-pushed inert ops; see Inserts.draftDeletes.
-        WHERE effective = 1
-          AND commit_hash IS NULL
-          AND id NOT IN (SELECT op_id FROM op_branches)
-        ORDER BY created_at ASC, rowid ASC
-        """
+        $"SELECT id, op_blob FROM package_ops WHERE {Inserts.draftWhere}
+          ORDER BY created_at ASC, rowid ASC"
       |> Sql.executeAsync (fun read ->
-        BS.PT.PackageOp.tryDeserialize (read.uuid "id") (read.bytes "op_blob"))
-    return rows |> List.choose (fun o -> o)
+        let id = read.uuid "id"
+        (id, BS.PT.PackageOp.tryDeserialize id (read.bytes "op_blob")))
+    return (List.map fst rows, List.choose snd rows)
+  }
+
+let getDraftOps () : Task<List<PT.PackageOp>> =
+  task {
+    let! (_, ops) = getDraftOpsWithIds ()
+    return ops
   }
 
 

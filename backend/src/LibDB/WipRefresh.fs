@@ -156,16 +156,19 @@ let private reResolveAllItems
 ///    item's NRs only to throw the older copies away).
 /// 3. Re-resolve unresolved NameResolutions using current PM
 /// 4. Run HashStabilization.computeRealHashes
-/// 5. If the ops changed at all, discard old WIP and re-insert
-/// 6. Return count of changed items
-let refresh (pm : PT.PackageManager) : Task<int64> =
-  Telemetry.timeTask "author.wipRefresh" [] (fun () ->
+/// 5. If the ops changed at all, discard old WIP and re-insert, unless the draft moved since step 1
+/// 6. Return count of changed items, or `None` if the draft moved and nothing was written
+let private refreshOnce
+  (afterRead : unit -> Task<unit>)
+  (pm : PT.PackageManager)
+  : Task<Option<int64>> =
     task {
       // 1. Get the draft. Not `getWipOps`, which returns committed ops too; see the module doc.
-      let! wipOps = Queries.getDraftOps ()
+      let! (draftIds, wipOps) = Queries.getDraftOpsWithIds ()
+      do! afterRead ()
 
       if List.isEmpty wipOps then
-        return 0L
+        return Some 0L
       else
         // 2. Compact superseded edits. Required for correctness (see compactWipOps), and
         // doing it before re-resolution avoids re-resolving copies about to be dropped.
@@ -179,7 +182,7 @@ let refresh (pm : PT.PackageManager) : Task<int64> =
         // after an SCC rehash of the whole log. Skip it; any dependent that exists
         // re-resolves to a new hash and takes the full path.
         if reResolvedOps = compactedOps then
-          return 0L
+          return Some 0L
         else
 
           // 4. Stabilize hashes (SCC-aware)
@@ -194,7 +197,7 @@ let refresh (pm : PT.PackageManager) : Task<int64> =
           if
             oldHashes = newHashes && List.length stabilizedOps = List.length wipOps
           then
-            return 0L
+            return Some 0L
           else
             // Count changed items (items that got a new hash)
             let changedCount =
@@ -206,17 +209,47 @@ let refresh (pm : PT.PackageManager) : Task<int64> =
             //    stamp rather than a fresh one. No commit: nothing here is committed, by construction.
             //    A failure raises into the author's `try/with` rather than reporting 0 changed.
             let! preserveTs = Queries.getWipOpOriginTs ()
-            let! _ =
-              Inserts.rewriteOpsAtomically
-                Inserts.draftDeletes
+            match!
+              Inserts.rewriteDraftIfUnchanged
+                draftIds
                 (fun opId ->
                   match Map.tryFind opId preserveTs with
                   | Some ts -> ts
                   | None -> Inserts.nextOriginTs ())
-                (fun _ -> None)
-                "op"
                 stabilizedOps
-            return changedCount
+            with
+            | Some _ -> return Some changedCount
+            | None -> return None
     }
 
-  )
+/// `afterRead` runs between reading the draft and rewriting it, so a test can land an author there.
+let refreshWith
+  (afterRead : unit -> Task<unit>)
+  (pm : PT.PackageManager)
+  : Task<int64> =
+  Telemetry.timeTask "author.wipRefresh" [] (fun () ->
+    task {
+      // Another author moving the draft mid-refresh is the only reason to go round again, and an
+      // attempt is short, so ten misses in a row is not ordinary contention.
+      let mutable result = None
+      let mutable attempts = 0
+      while Option.isNone result && attempts < 10 do
+        attempts <- attempts + 1
+        let! r = refreshOnce afterRead pm
+        result <- r
+      match result with
+      | Some n -> return n
+      | None ->
+        // The caller's ops are already stored by now; only re-resolving the draft around them
+        // is missing. The CLI prints this after "Could not save <item>:", hence how it starts.
+        return
+          Exception.raiseInternal
+            ("it is stored, but the draft kept changing while names across it were "
+             + $"being re-resolved ({attempts} tries), usually another save or your own "
+             + "editor, so references waiting on it may not be linked yet. Run the same "
+             + "save again to finish.")
+            []
+    })
+
+let refresh (pm : PT.PackageManager) : Task<int64> =
+  refreshWith (fun () -> Task.FromResult()) pm
