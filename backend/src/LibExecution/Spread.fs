@@ -70,19 +70,30 @@ let mutable spreads = 0L
 /// How many spreads fell back to running serially from some chunk on.
 let mutable fallbacks = 0L
 
+/// Which callable a spread fell back from: a lambda by its expression, a named fn by its name.
+[<Struct>]
+type CallableKey =
+  | Lambda of exprId : int64
+  | Named of name : FQFnName.FQFnName
+
 /// Callables a spread has fallen back from once. Not tried again in this process: a body that
 /// reached an effect will very likely reach it again, and a spread that falls back has paid for
 /// its chunks and gained nothing.
+///
+/// Keyed by the name itself rather than by a string of it. `string` on an `FQFnName` has no
+/// override to call, so F# prints the union through reflection, and `eligible` asks on every
+/// list op over a named fn: that one `string` was most of the reflection in a whole-tree
+/// `dark typecheck`.
 let private fellBack =
-  System.Collections.Concurrent.ConcurrentDictionary<struct (bool * int64 * string), byte>()
+  System.Collections.Concurrent.ConcurrentDictionary<CallableKey, byte>()
 
 /// For tests: forget which callables have fallen back.
 let forgetFallbacks () = fellBack.Clear()
 
-let private keyOf (app : Applicable) : struct (bool * int64 * string) =
+let private keyOf (app : Applicable) : CallableKey =
   match app with
-  | AppLambda l -> struct (true, int64 l.exprId, null)
-  | AppNamedFn n -> struct (false, 0L, string n.name)
+  | AppLambda l -> CallableKey.Lambda(int64 l.exprId)
+  | AppNamedFn n -> CallableKey.Named n.name
 
 /// Whether a list op over `app` may spread at all, under this state. Cheap: called once per list
 /// op with more than one element.

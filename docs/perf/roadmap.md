@@ -341,6 +341,42 @@ got essentially all of it. Low priority; recorded so nobody re-probes it.
 per handler tested. Fixing it needs public stdlib API (a `makeRouter`, or a parsed field on
 `Handler`), so it is a design decision rather than an optimisation.
 
+### `dark typecheck`: interpreted calls per syntax node, with no single lever
+
+Whole-tree `dark typecheck` allocates 9.8 GB on AOT, 7,509 items (15.0 GB before `Spread.keyOf`
+stopped printing an `FQFnName` through reflection on every list op over a named fn). 93% of it is
+the at-rest checker's own inference, interpreted Dark.
+
+The cost is linear in item size, not quadratic: about 21 KB per syntax node on AOT, flat from 16
+nodes to 256+. The deferred-constraint loops (`queueDeferred`, `solvePendingConstraints`) look
+quadratic and are not, because the waiting list averages 0 to 3 entries. Per node the checker runs
+about 572 instructions and 77 Dark calls; `Apply` is 65% of the bytes, enum construction 17%,
+lambda creation 9%.
+
+What making a piece of it free would buy, measured on AOT by charging every byte allocated while a
+watched fn is on the stack to its outermost call (verdicts unchanged, since nothing is stubbed):
+
+| made free | serial checker loop, 1,441 Stdlib fns (438 MB) | whole-tree `typecheck` (9.8 GB) |
+|---|---|---|
+| `walk`, `occurs`, `zonk`, `freeVars`, `substitute` and their helpers | 26 MB, 6% | 322 MB, 3% |
+| all 47 fns in `AtRestTypeChecker.Types` | 101 MB, 23% at most | 1.80 GB, 18% |
+
+So porting the type walks to F# is not the next thing to do.
+
+Read the table as a floor, not a point estimate. The serial rows balance (217,840 pushes and
+pops); the whole-tree rows under-count slightly, because pops ran 1.4% ahead of pushes there,
+which closes a bracket early. Neither row counts the caller's `Apply`, which a native builtin would
+still partly pay. Both push the true figure up a little, and even generously it is not next.
+
+**Ranking a native port from a Debug profile overstates it: the five walks read 11% of this loop
+in Debug and 6% in AOT, measured on the same workload.** The same effort found a closure at 19% of
+Debug allocation (`noteValue` in the interpreter loop) that does not exist in Release at all. Rank
+from AOT.
+
+What is left is spread across the call count itself. A real reduction means fewer interpreted calls
+per node, either a cheaper call or a checker that makes fewer of them, rather than any one
+function moving native.
+
 ### Compile-time type checking -- owned elsewhere
 
 Ablation put the prize at -20% allocation and -14% wall, measured before much of the same work was
@@ -492,6 +528,8 @@ self-merge, but the fix is now a four-site change.
   allocation and wrong to stop there: a warm package call allocates nothing, but a forwarder cost
   2.5 us of frame in *time*. Eliding it took a view build 76 -> 66 ms. Allocation-only conclusions
   should not close time questions.
+- **Porting the at-rest checker's type walks to F#.** About 30% of the checker's calls, but 3 to 6%
+  of its allocation on AOT. Measured, not estimated; see the `dark typecheck` item above.
 - **Calling a polymorphic builtin.** Claimed 7,470 B from a residual across two probe scripts;
   actually 192 B. Retracted.
 - **A 2x between two record types.** Was the hash collision described below: the two rows were not
