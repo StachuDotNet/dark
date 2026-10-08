@@ -184,6 +184,27 @@ let private effectsKeepOrder =
     Expect.equal (expectOk spread) (expectOk serial) "the same list"
   }
 
+/// A spread remembers a NAMED fn it fell back from, by the name, and does not try it again. The
+/// fn is handed over by name rather than wrapped in a lambda, so the second map can only be
+/// recognised through the fall-back table's key: a key that stops matching spreads and falls back
+/// a second time, which is what this counts.
+let private namedFallbackIsRemembered =
+  testTask "a named fn that fell back once is not spread again" {
+    let! state = executionStateFor pmPT false Map.empty
+    Trace.take () |> ignore<List<string>>
+    let code =
+      "(let xs = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\"] in (let _ = Stdlib.List.map xs Builtin.testTrace in Stdlib.List.map xs Builtin.testTrace))"
+    let! ((result, started), fellBack) =
+      delta fallbacks (fun () -> delta spreads (fun () -> run state code))
+    expectOk result |> ignore<RT.Dval>
+    Expect.equal started 1L "only the first map spread"
+    Expect.equal fellBack 1L "and only it fell back"
+    Expect.equal
+      (Trace.take ())
+      [ "a"; "b"; "c"; "d"; "e"; "f"; "a"; "b"; "c"; "d"; "e"; "f" ]
+      "every effect once, in order"
+  }
+
 /// Inner maps run in the outer map's chunks, where nothing spreads. The outer probe's first answer
 /// comes after three elements (one to warm up, two measured), which run in the original process,
 /// so THEIR inner maps spread: four in all, the outer and three inner, never one per element.
@@ -442,6 +463,7 @@ let tests =
         errorAsSerial
         earliestErrorWins
         effectsKeepOrder
+        namedFallbackIsRemembered
         nestingIsBounded
         watchedRunsDoNotSpread
         cancelledLeavesNothing
