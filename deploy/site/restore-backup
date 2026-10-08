@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Put a copy made by `pull-backup` back into a running site, then restart it.
+#
+#   deploy/site/restore-backup --docker <container> <backup-dir>
+#   deploy/site/restore-backup --fly <app> <backup-dir>
+#
+# Replaces the site's store with the copy's, and its stored secrets too when the copy carries any.
+# `dark backups import` copies both aside first (into the store's `backups/`), so a restore can itself
+# be undone with `dark backups restore`. The site restarts afterwards, since a running server still
+# holds what it read from the old store. The `--fly` path has not been run against a real app.
+set -euo pipefail
+
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[[ $# -eq 3 ]] || usage
+MODE=$1; TARGET=$2; COPY=${3%/}
+case "$MODE" in --docker|--fly) ;; *) usage ;; esac
+[[ -s "$COPY/data.db" ]] || { echo "no data.db in $COPY" >&2; exit 2; }
+
+REMOTE=/data/import-$(date -u +%Y%m%dT%H%M%SZ)
+
+if [[ $MODE == --docker ]]; then
+  # Through tar as the container's own user: `docker cp` would leave a 0600 credentials.db owned by
+  # root, which the site cannot read.
+  docker exec "$TARGET" mkdir -p "$REMOTE"
+  tar -C "$COPY" -cf - . | docker exec -i "$TARGET" tar -C "$REMOTE" -xf -
+  docker exec "$TARGET" /home/dark/bin/dark backups import "$REMOTE" -y
+  docker exec "$TARGET" rm -rf "$REMOTE"
+  docker restart "$TARGET" > /dev/null
+else
+  fly ssh console -a "$TARGET" -C "mkdir -p $REMOTE"
+  for f in data.db credentials.db; do
+    [[ -f "$COPY/$f" ]] && fly ssh sftp put -a "$TARGET" "$COPY/$f" "$REMOTE/$f"
+  done
+  fly ssh console -a "$TARGET" -C "/home/dark/bin/dark backups import $REMOTE -y"
+  fly ssh console -a "$TARGET" -C "rm -rf $REMOTE"
+  fly apps restart "$TARGET"
+fi
+echo "restored $COPY into $TARGET and restarted it."

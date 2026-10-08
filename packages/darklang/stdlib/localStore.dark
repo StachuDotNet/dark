@@ -44,3 +44,15 @@ let backupTo (path: String) : Stdlib.Result.Result<Unit, String> =
 /// memory is still the OLD store, though, so the caller should say to restart.
 let restoreFrom (path: String) : Stdlib.Result.Result<Unit, String> =
   Builtin.localDbRestoreFrom path
+
+
+/// Copy this instance's stored secrets (the relay write secrets, kept beside the store in
+/// `credentials.db`) to <param path>, answering how many. Writes nothing when there are none.
+let credentialsBackupTo (path: String) : Stdlib.Result.Result<Int, String> =
+  Builtin.localCredentialsBackupTo path
+
+
+/// Replace this instance's stored secrets with the copy at <param path>, answering how many there
+/// now are. No file there means the copy held none, and these are left alone.
+let credentialsRestoreFrom (path: String) : Stdlib.Result.Result<Int, String> =
+  Builtin.localCredentialsRestoreFrom path

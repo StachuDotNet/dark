@@ -124,17 +124,27 @@ let private hasEmbeddedResource (resourceName : string) : bool =
 /// can be missing what was last committed. One per build it upgrades TO, and an existing one is kept:
 /// a start that retries after a failed step must not replace the store as it was with the store as
 /// the failure left it.
+///
+/// The stamp comes before the build in the name because `dark backups` orders and prunes by the
+/// digits in a name, and a build hash's digits are not a date.
 let private backupBeforeUpgrade
   (dbPath : string)
   (build : string)
   : Result<string, string> =
   let dir = Path.Combine(Path.GetDirectoryName(dbPath), "backups")
   let tag = if build.Length > 12 then build.Substring(0, 12) else build
-  let target = Path.Combine(dir, $"data.db.before-upgrade-to-{tag}")
-  if File.Exists target then
-    Ok target
+  let existing =
+    if Directory.Exists dir then
+      Directory.GetFiles(dir, $"data.db.before-upgrade-*-to-{tag}")
+    else
+      [||]
+  if existing.Length > 0 then
+    Ok existing[0]
   else
-    let partial = target + ".partial"
+    let stamp = System.DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'")
+    let target = Path.Combine(dir, $"data.db.before-upgrade-{stamp}-to-{tag}")
+    // Not named like a backup, so a copy cut short is never listed or offered for restore.
+    let partial = Path.Combine(dir, $".upgrade-to-{tag}.partial")
     try
       Directory.CreateDirectory(dir) |> ignore<DirectoryInfo>
       if File.Exists partial then File.Delete partial

@@ -108,6 +108,50 @@ let fns () : List<BuiltInFn> =
       callEffects = set [ Effect.PackageWrite ]
       deprecated = NotDeprecated }
 
+    // The credential store, copied out and back with the store for an export (`dark backups
+    // export`/`import`). First-party only, for the reason the two above are.
+    { name = fn "localCredentialsBackupTo" 0
+      typeParams = []
+      parameters = [ Param.make "path" TString "where to write the copy" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Copies this instance's stored secrets to <param path> and answers how many. Writes nothing when there are none."
+      fn =
+        (function
+        | state, vm, _, [| DString path |] ->
+          uply {
+            requireBundledCaller state vm "localCredentialsBackupTo"
+            match LibDB.Config.Credentials.backupTo path with
+            | Ok n -> return Dval.resultOk KTInt KTString (Dval.int (bigint n))
+            | Error e -> return Dval.resultError KTInt KTString (DString e)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.PackageRead ]
+      deprecated = NotDeprecated }
+
+    { name = fn "localCredentialsRestoreFrom" 0
+      typeParams = []
+      parameters = [ Param.make "path" TString "the copy to restore" ]
+      returnType = TypeReference.result TInt TString
+      description =
+        "Replaces this instance's stored secrets with <param path>'s and answers how many there now are."
+      fn =
+        (function
+        | state, vm, _, [| DString path |] ->
+          uply {
+            requireBundledCaller state vm "localCredentialsRestoreFrom"
+            match LibDB.Config.Credentials.restoreFrom path with
+            | Ok n -> return Dval.resultOk KTInt KTString (Dval.int (bigint n))
+            | Error e -> return Dval.resultError KTInt KTString (DString e)
+          }
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.PackageWrite ]
+      deprecated = NotDeprecated }
+
     // Whether a write secret is stored for a relay, WITHOUT handing it over.
     //
     // `dark sync setup` needs to know if one is already there, so that pressing Enter keeps it rather

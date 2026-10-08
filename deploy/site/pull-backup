@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Copy a running site's store off the machine: every row it holds, and its stored secrets if it has any.
+#
+#   deploy/site/pull-backup --docker <container> [<dest-dir>]
+#   deploy/site/pull-backup --fly <app> [<dest-dir>]
+#
+# Pull, not push: the host holds no credential for anywhere else and runs nothing on a schedule. Run
+# this from your own machine, by hand or from cron. Each run makes `<dest-dir>/<name>-<stamp>/`
+# (`<dest-dir>` defaults to `site-backups`), holding `data.db` and, when the site stored secrets,
+# `credentials.db`. Put one back with `deploy/site/restore-backup`.
+#
+# The export is written inside the container beside the store, not in its `backups/`, so no
+# retention rule there touches it, and it is deleted there once copied. It briefly needs room for a
+# second copy of the store on the volume. The `--fly` path has not been run against a real app.
+set -euo pipefail
+
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[[ $# -ge 2 ]] || usage
+MODE=$1; TARGET=$2; DEST=${3:-site-backups}
+case "$MODE" in --docker|--fly) ;; *) usage ;; esac
+
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+REMOTE=/data/export-$STAMP
+OUT=$DEST/$TARGET-$STAMP
+mkdir -p "$OUT"
+
+on_host() {
+  if [[ $MODE == --docker ]]; then
+    docker exec "$TARGET" sh -c "$1"
+  else
+    fly ssh console -a "$TARGET" -C "sh -c '$1'"
+  fi
+}
+
+on_host "mkdir -p $REMOTE && /home/dark/bin/dark backups export $REMOTE"
+
+if [[ $MODE == --docker ]]; then
+  docker cp "$TARGET:$REMOTE/." "$OUT/"
+else
+  fly ssh sftp get -a "$TARGET" "$REMOTE/data.db" "$OUT/data.db"
+  if on_host "test -f $REMOTE/credentials.db"; then
+    fly ssh sftp get -a "$TARGET" "$REMOTE/credentials.db" "$OUT/credentials.db"
+  fi
+fi
+on_host "rm -rf $REMOTE"
+
+[[ -s "$OUT/data.db" ]] || { echo "the copy of the store did not arrive in $OUT" >&2; exit 1; }
+if [[ -f "$OUT/credentials.db" ]]; then
+  chmod 700 "$OUT"; chmod 600 "$OUT"/*
+  echo "pulled to $OUT: the store and its write secrets. THIS COPY IS A SECRET; keep it like a key."
+else
+  echo "pulled to $OUT: the store. It holds no secrets."
+fi

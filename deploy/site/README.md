@@ -20,7 +20,21 @@ At every start the image runs `start-site` against the store on the volume. It a
 
 - **Rows live in the store on the volume, and nowhere else.** They are not in git, not in sync and not in the image.
 - **A restart keeps them, and so does a redeploy**, because it mounts the same volume.
-- **Losing the volume loses them.** Nothing in this directory backs them up. Fly's volume snapshots are the only copy beyond the volume itself.
+- **Losing the volume loses them, unless you have pulled a copy.** `pull-backup` copies the store off the machine and `restore-backup` puts one back; nothing pulls on its own.
+
+## Backups
+
+A copy leaves the machine because you pull it; the host holds no credential for anywhere else and runs nothing on a schedule.
+
+    deploy/site/pull-backup --fly <app>                  # into site-backups/<app>-<stamp>/
+    deploy/site/restore-backup --fly <app> site-backups/<app>-<stamp>
+
+- **A copy holds every row**, through SQLite's backup API, so nothing still in the WAL is missed.
+- **It holds the site's stored secrets only if it has any.** Those are the relay write secrets, set by `dark connect --secret`; a site that never syncs has none.
+  - A copy with one prints so, and is made readable only by you: treat it like a key.
+  - Secrets set as Fly secrets live in Fly, not in the store, and are not in any copy.
+- **A restore keeps what it replaces.** The site's store and secrets are copied aside into its `backups/` first, so `dark backups restore` there undoes it.
+- **Nothing here touches the store's own `backups/`.** That directory holds the copies an upgrade takes before it changes the store, and `dark backups prune` manages them.
 
 ## Before it ships: the check
 
@@ -67,6 +81,11 @@ Everything up to step 4 is local and was run here. Everything after it touches y
    - add the records it prints at the registrar (Squarespace for stachu.net, Name.com for darklang.com);
    - `fly certs show <domain> -a <app>` until it says issued.
 10. **Every later deploy** is steps 2 and 6 with a new tag. Keep the previous tag.
+11. **Pull a copy, and restore one once, before anything you care about lives there.** Unverified against Fly: it uses `fly ssh console` and `fly ssh sftp`.
+    - `deploy/site/pull-backup --fly <app>`, then check it says what you expect about secrets.
+    - Restore it into the same app with `deploy/site/restore-backup --fly <app> <copy>` and look at a page.
+    - A copy nobody has restored is a belief.
+12. **Pull on a schedule from your own machine**, from cron or a systemd timer, and keep the copies somewhere that is not that machine's only disk either.
 
 If a start fails on the host:
 - `fly logs -a <app>` shows `start-site`'s own lines.
