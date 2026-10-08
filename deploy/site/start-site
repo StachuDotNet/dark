@@ -1,0 +1,71 @@
+#!/bin/sh
+# What a site's container runs at every start, against the store on the volume (DARK_CONFIG_RUNDIR).
+# The steps at the bottom run in order and the first that fails stops the start: a container that
+# exits is one Fly reports, and one serving something half set up is not.
+set -eu
+
+DARK=${DARK:-/home/dark/bin/dark}
+SITE=${SITE:-/home/dark/site}
+PORT=${PORT:-8080}
+
+# shellcheck source=/dev/null  # provided per site at runtime, not in this repo
+. "$SITE/site.conf"
+: "${ROUTER:?site.conf must set ROUTER}"
+
+say() { echo "start-site: $*" >&2; }
+
+# Content-addressed: an unchanged file saves to the same hashes and changes nothing.
+author_source() {
+  for file in "$SITE"/src/*.dark; do
+    [ -e "$file" ] || continue
+    module=$(basename "$file" .dark)
+    say "authoring /$module from $(basename "$file")"
+    "$DARK" module "/$module" - < "$file"
+  done
+}
+
+# A DB declaration does not travel with code, so it comes from site.conf. Rows already on the
+# volume are kept. Decided by what `dark db` prints, so "already exists" is never read as created.
+create_missing_dbs() {
+  for decl in ${DBS:-}; do
+    name=${decl%%=*}
+    type=${decl#*=}
+    out=$("$DARK" db "$name" "$type" < /dev/null 2>&1) || true
+    case "$out" in
+      *"Created database"*) say "created DB $name ($type)" ;;
+      *"already exists"*) say "DB $name is already there; its rows are kept" ;;
+      *) say "could not create DB $name: $out"; exit 1 ;;
+    esac
+  done
+}
+
+# Refuses a definite type error, which stops the start.
+commit_draft() {
+  if "$DARK" status --json < /dev/null | grep -q '"draftOps":0'; then
+    say "the store already holds this code"
+  else
+    "$DARK" commit "deployed $(date -u +%Y-%m-%dT%H:%M:%SZ)" -y < /dev/null
+  fi
+}
+
+# Every start: an approval belongs to one version of the router, and any edit to it is a new one.
+# Without this the new code serves and every route that touches a DB is refused. Measured.
+grant_and_approve() {
+  "$DARK" permissions allow http-server "$PORT" < /dev/null > /dev/null
+  printf '%s\n' "${ALLOW:-}" | while IFS= read -r rule; do
+    [ -n "$rule" ] || continue
+    say "granting $rule"
+    # Word-split on purpose: a rule is several arguments (`http GET https://...`).
+    # shellcheck disable=SC2086
+    "$DARK" permissions allow $rule < /dev/null > /dev/null
+  done
+  "$DARK" permissions approve "$ROUTER" -y < /dev/null
+}
+
+author_source
+create_missing_dbs
+commit_draft
+grant_and_approve
+# Pinned, not `--live`: a change reaches the site as a new image and a restart.
+say "serving $ROUTER on $PORT"
+exec "$DARK" serve "$ROUTER" --port "$PORT"

@@ -32,11 +32,12 @@ the same view is a pane and a web page. Ctrl-S saves the model as a `val`;
 
 ## A live server
 
-  serve My.router               every request runs the newest router that
+  serve My.router               pin the version resolved at start; an edit
+                                reaches it only by restarting the server
+  serve My.router --live        every request runs the newest router that
                                 passes its checks; a broken save keeps the
-                                previous one serving and logs why
-  serve My.router --live        follow edits; the open page reloads when its code changes
-  serve My.router               pin the version resolved at start
+                                previous one serving and logs why, and the
+                                open page reloads when its code changes
 
 Each request is a process: a slow handler holds up nobody, one past
 `http.requestTimeoutMs` is cancelled with a 504, one that raises answers 500
@@ -52,7 +53,7 @@ untouched. Not for production, and `docs/live.md` has the mechanism.
 
   # there
   dark --branch feature apps enable sync    pull the branch on an interval
-  dark --branch feature serve My.router
+  dark --branch feature serve My.router --live
   # here
   config set live.autopush on               every save commits and pushes
   # ... edit, save; the page there changes a few seconds later

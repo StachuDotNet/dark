@@ -78,6 +78,48 @@ let private setCredential (key : string) (value : string) : unit =
   cmd.ExecuteNonQuery() |> ignore<int>
 
 
+/// The credential store copied out and back, for an export that has to bring the secrets with it.
+/// Through SQLite's backup API, like the store's own (`LibDB.Sqlite.Backup`). Each answers how many
+/// secrets it moved; keys are counted, values are never read here.
+module Credentials =
+  let private count (conn : SqliteConnection) : int =
+    use cmd = conn.CreateCommand()
+    cmd.CommandText <- "SELECT COUNT(*) FROM credentials_v0"
+    cmd.ExecuteScalar() |> System.Convert.ToInt32
+
+  /// Nothing is written when there are no secrets, so a copy without any is not itself a secret.
+  let backupTo (path : string) : Result<int, string> =
+    try
+      if not (System.IO.File.Exists(credentialsPath ())) then
+        Ok 0
+      else
+        use source = credentialsConn ()
+        match count source with
+        | 0 -> Ok 0
+        | n ->
+          use destination = new SqliteConnection($"Data Source={path};Pooling=False")
+          destination.Open()
+          source.BackupDatabase destination
+          Ok n
+    with e ->
+      Error e.Message
+
+  /// Replaces this instance's credentials with the copy at <param path>. No file there is what
+  /// `backupTo` leaves when there were no secrets, so that answers 0 and leaves these alone.
+  let restoreFrom (path : string) : Result<int, string> =
+    try
+      if not (System.IO.File.Exists path) then
+        Ok 0
+      else
+        use source = new SqliteConnection($"Data Source={path};Pooling=False")
+        source.Open()
+        use destination = credentialsConn ()
+        source.BackupDatabase destination
+        Ok(count destination)
+    with e ->
+      Error e.Message
+
+
 /// The value for `key`, or None if unset. Secret keys come from the credential store, everything
 /// else from `config_v0`; callers do not choose.
 let get (key : string) : Task<string option> =

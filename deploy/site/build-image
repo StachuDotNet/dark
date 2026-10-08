@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Build a Docker image that serves one Dark site, from this checkout. Runs on the host (it needs docker);
+# the binary is published inside the dev container the usual way.
+#
+#   deploy/site/build-image <site-dir> [--tag <image>] [--cli <published dark binary>] [--no-check]
+#
+# <site-dir> holds `site.conf` (the router, the DBs, any extra grants) and `src/<Owner.Module>.dark`, one
+# file per module; `deploy/site/example` is one. Without --cli this publishes the binary first, in the
+# shipping mode (AOT here). The image is tagged `dark-site-<dir name>` unless --tag says otherwise.
+#
+# Then it starts the image once against an empty volume and waits for `/ping`, so a site whose code
+# will not commit fails HERE, not on the host. --no-check skips that.
+#
+# What the image does at every start is in `start-site`. Deploying it, and the volume it needs, is in
+# `deploy/site/README.md`.
+set -euo pipefail
+
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[[ $# -ge 1 ]] || usage
+SITE_DIR=${1%/}; shift
+TAG=""; CLI=""; CHECK=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tag) TAG=$2; shift 2 ;;
+    --cli) CLI=$2; shift 2 ;;
+    --no-check) CHECK=0; shift ;;
+    *) usage ;;
+  esac
+done
+
+[[ -f "$SITE_DIR/site.conf" ]] || { echo "no site.conf in $SITE_DIR" >&2; exit 2; }
+compgen -G "$SITE_DIR/src/*.dark" > /dev/null || { echo "no src/*.dark in $SITE_DIR" >&2; exit 2; }
+NAME=$(basename "$SITE_DIR")
+TAG=${TAG:-dark-site-$NAME}
+
+if [[ -z "$CLI" ]]; then
+  scripts/build/build-release-cli-exes.sh
+  # By exact name: the script leaves earlier builds in clis/, and taking "the first one" picks one of
+  # those as readily as this one.
+  CLI=clis/darklang-alpha-$(git rev-parse --short=10 HEAD)-linux-x64
+fi
+[[ -x "$CLI" ]] || { echo "no published dark at $CLI" >&2; exit 2; }
+
+CTX=rundir/site-image/$NAME
+rm -rf "$CTX"; mkdir -p "$CTX"
+cp "$CLI" "$CTX/dark"
+cp deploy/site/Dockerfile deploy/site/start-site "$CTX/"
+cp -r "$SITE_DIR" "$CTX/site"
+
+docker build -t "$TAG" "$CTX"
+echo
+echo "built $TAG from $CLI ($(cat "$CLI.mode" 2>/dev/null || echo "mode unknown"))"
+
+if [[ $CHECK -eq 1 ]]; then
+  # A start from nothing, as a first deploy does it: author, create the DBs, commit, approve, serve.
+  probe="dark-site-check-$NAME-$$"
+  trap 'docker rm -f "$probe" > /dev/null 2>&1; docker volume rm "$probe" > /dev/null 2>&1' EXIT
+  docker run -d --name "$probe" -p 127.0.0.1::8080 -v "$probe:/data" "$TAG" > /dev/null
+  hostport=$(docker port "$probe" 8080/tcp | head -1 | sed 's/.*://')
+  verdict=""
+  for _ in $(seq 1 180); do
+    if [[ "$(docker inspect -f '{{.State.Running}}' "$probe")" != true ]]; then
+      verdict="stopped"; break
+    fi
+    if [[ "$(curl -s --max-time 2 "http://127.0.0.1:$hostport/ping" || true)" == pong ]]; then
+      verdict="up"; break
+    fi
+    sleep 1
+  done
+  if [[ "$verdict" != up ]]; then
+    echo
+    echo "the image did not come up from an empty volume (${verdict:-timed out}); its start said:" >&2
+    docker logs "$probe" 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tail -25 >&2
+    # Untagged, so the image that just failed is not the one a later `fly deploy --image` picks up.
+    docker rmi "$TAG" > /dev/null
+    echo "$TAG was removed; fix the site and build again" >&2
+    exit 1
+  fi
+  echo "checked: it starts from an empty volume and serves"
+fi
+echo "try it here, with a volume, the way Fly will run it:"
+echo "  docker run -d --name $NAME -p 8080:8080 -v $NAME-data:/data $TAG"

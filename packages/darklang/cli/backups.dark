@@ -2,9 +2,12 @@ module Darklang.Cli.Backups
 
 // `dark backups`: see, make, and prune the copies of the store.
 //
-// The upgrade path writes one aside before it folds a new seed (one per calendar day, kept next to the
-// store), and nothing else prunes them. So the answer to "if this goes wrong, what can I go back to?"
-// lives here rather than in `ls`, and so does the pruning.
+// The upgrade path writes one aside before it changes the store (one per build it upgrades to, kept
+// next to the store), and nothing else prunes them. So the answer to "if this goes wrong, what can I
+// go back to?" lives here rather than in `ls`, and so does the pruning.
+//
+// `export` and `import` are the other thing: a copy meant to leave the machine, written to a directory
+// the caller names rather than into `backups/`, so no retention rule here ever touches one.
 
 /// Where the upgrade path puts them: a `backups` directory beside the store.
 let backupDir () : String =
@@ -175,6 +178,76 @@ let executePrune (state: AppState) (keepArg: String) (autoConfirm: Bool) : AppSt
         Cli.exitWith state (Stdlib.List.length deleted == Stdlib.List.length doomed)
 
 
+/// `dark backups export <dir>`. The store and its stored secrets, into an existing directory, for
+/// copying off the machine. A copy that holds a secret is one: it can push to that relay.
+let executeExport (state: AppState) (dir: String) : AppState =
+  match Stdlib.LocalStore.backupTo $"{dir}/data.db" with
+  | Error e ->
+    Cli.printErr $"couldn't write {dir}/data.db: {e}"
+    { state with exitCode = 1 }
+  | Ok _ ->
+    match Stdlib.LocalStore.credentialsBackupTo $"{dir}/credentials.db" with
+    | Error e ->
+      Cli.printErr $"copied the store, but not its secrets ({e}); don't rely on {dir} alone."
+      { state with exitCode = 1 }
+    | Ok n when n == 0 ->
+      Cli.printOk $"exported the store to {dir}. It holds no secrets."
+      state
+    | Ok n ->
+      Cli.printOk $"""exported the store and {Cli.Text.plural n "write secret"} to {dir}."""
+      Cli.Stderr.line (
+        Stdlib.Cli.UI.Colors.warning
+          "  THIS COPY IS A SECRET: whoever holds it can push to that relay. Keep it like a key."
+      )
+      state
+
+/// `dark backups import <dir> [-y]`. Puts an export back: the store, and its secrets if it carried
+/// any. Both are copied aside first, like `restore`, so an import is undoable.
+let executeImport (state: AppState) (dir: String) (autoConfirm: Bool) : AppState =
+  Cli.Stderr.line (Stdlib.Cli.UI.Colors.warning $"  IMPORTING {dir} replaces the store.")
+
+  let confirmed =
+    Cli.Prompt.confirmExplicit autoConfirm (Stdlib.Cli.UI.Colors.warning "\n  Import it? [y/N]: ")
+
+  if Stdlib.Bool.not confirmed then
+    Cli.Stderr.ok "  kept. (`dark backups import <dir> -y` if you mean it -- a piped stdin can't answer this.)"
+    Cli.exitWith state false
+  else
+    let stamp = Stdlib.DateTime.toStringISO8601BasicDateTime (Stdlib.DateTime.now ())
+    let _ = Stdlib.Cli.Dir.createRecursive (backupDir ())
+    let aside = $"{backupDir ()}/data.db.pre-restore-{stamp}"
+    let secretsAside = $"{backupDir ()}/credentials.db.pre-restore-{stamp}"
+
+    // Both copies before anything is replaced: an import that overwrote the store and then could not
+    // keep what it replaced would lose the thing a backup exists to protect.
+    match (Stdlib.LocalStore.backupTo aside, Stdlib.LocalStore.credentialsBackupTo secretsAside) with
+    | (Error e, _) ->
+      Cli.printErr $"couldn't copy the current store aside to {aside} ({e}); nothing imported."
+      { state with exitCode = 1 }
+    | (_, Error e) ->
+      Cli.printErr $"couldn't copy the current secrets aside to {secretsAside} ({e}); nothing imported."
+      { state with exitCode = 1 }
+    | (Ok _, Ok _) ->
+      match Stdlib.LocalStore.restoreFrom $"{dir}/data.db" with
+      | Error e ->
+        Cli.printErr $"couldn't import {dir}/data.db ({e}). The store is unchanged; a copy is at {aside}."
+        { state with exitCode = 1 }
+      | Ok _ ->
+        match Stdlib.LocalStore.credentialsRestoreFrom $"{dir}/credentials.db" with
+        | Error e ->
+          Cli.printErr $"imported the store, but not the secrets ({e}). The store as it was is at {aside}."
+          { state with exitCode = 1 }
+        | Ok n ->
+          if n == 0 then
+            Cli.printOk
+              $"imported {dir}: the store. It carried no secrets, so this instance's are unchanged. The store as it was is at {aside}."
+          else
+            Cli.printOk
+              $"""imported {dir}: the store, and {Cli.Text.plural n "write secret"}. The store as it was is at {aside}."""
+          Cli.printHint "  start `dark` again: this process is still holding the old store."
+          state
+
+
 let execute (state: AppState) (args: List<String>) : AppState =
   match args with
   | [] -> executeList state
@@ -186,6 +259,10 @@ let execute (state: AppState) (args: List<String>) : AppState =
   | [ "restore", name ] -> executeRestore state name false
   | [ "restore", name, "-y" ]
   | [ "restore", name, "--yes" ] -> executeRestore state name true
+  | [ "export", dir ] -> executeExport state dir
+  | [ "import", dir ] -> executeImport state dir false
+  | [ "import", dir, "-y" ]
+  | [ "import", dir, "--yes" ] -> executeImport state dir true
   | [ "restore" ] ->
     Cli.printErr "restore needs a backup's name: `dark backups restore <name>`."
     Cli.printHint "  `dark backups` lists them."
@@ -195,7 +272,7 @@ let execute (state: AppState) (args: List<String>) : AppState =
     Cli.exitWith state false
   | _ ->
     Cli.printErr $"""`dark backups {Stdlib.String.join args " "}` isn't a form of this command."""
-    Cli.printHint "  dark backups | dark backups now | dark backups restore <name> | dark backups prune <n>"
+    Cli.printHint "  dark backups | now | restore <name> | prune <n> | export <dir> | import <dir>"
     Cli.exitWith state false
 
 
@@ -205,10 +282,13 @@ let help (_state: AppState) : String =
     "  dark backups now                  take one now"
     "  dark backups restore <name> [-y]  put one in place of the store (asks first)"
     "  dark backups prune <n> [-y]       keep the newest n, delete the rest (asks first)"
+    "  dark backups export <dir>         the store and its secrets, into <dir>, to copy elsewhere"
+    "  dark backups import <dir> [-y]    put an export back (asks first)"
     ""
-    "  A backup is taken automatically before an upgrade folds a new seed:"
-    "  one per calendar day, kept next to the store. Nothing prunes them for"
-    "  you, which is why `prune` is here."
+    "  A backup is taken automatically before an upgrade changes the store:"
+    "  one per build it upgrades to, kept next to the store. Nothing prunes them"
+    "  for you, which is why `prune` is here. A backup holds no secrets; an"
+    "  export holds them when the store has any, and is then a secret itself."
     "" ]
   |> Stdlib.String.join "\n"
 
@@ -218,5 +298,7 @@ let complete
   (args: List<String>)
   : List<Completion.CompletionItem> =
   match args with
-  | [] -> [ "list", "now", "prune", "restore" ] |> Stdlib.List.map Completion.simple
+  | [] ->
+    [ "list", "now", "prune", "restore", "export", "import" ]
+    |> Stdlib.List.map Completion.simple
   | _ -> []

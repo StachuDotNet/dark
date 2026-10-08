@@ -1,0 +1,38 @@
+# A Dark site on Fly, as one machine with one disk. Copied from the relay's `deploy/fly.toml`, for the same
+# reason: SQLite wants exactly one writer on a real filesystem, so one machine, no autoscaling, and a volume.
+#
+# No `app` here: pass it at deploy time (`fly deploy --config deploy/site/fly.toml -a <app>
+# --image <tag>`), so the same file serves any site and a public repo names nobody's app.
+primary_region = "iad"
+
+[env]
+  DARK_CONFIG_RUNDIR = "/data"
+  PORT = "8080"
+
+# The store, and every row the site has written. THE ONLY COPY unless you pull one (`pull-backup`):
+# rows never sync, and a redeploy keeps them only because it mounts the same volume.
+[[mounts]]
+  source = "site_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  # ONE. Two machines would be two writers against one SQLite file, each with its own volume.
+  min_machines_running = 1
+  max_machines_running = 1
+
+  # The router has to answer this one; the example's does. The first start authors the site and folds
+  # the store, so it gets longer than the relay's 30s.
+  [[http_service.checks]]
+    grace_period = "120s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/ping"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

@@ -1,0 +1,32 @@
+/// Two sites behind one router, told apart by the Host header: a notes page that keeps what is
+/// posted to it, and a landing page for every other name. `/ping` is the health check.
+
+type Note = { exampleSitesNote: String }
+
+let hostOf (req: Stdlib.Http.Request) : String =
+  match Stdlib.List.findFirst req.headers (fun (k, _) -> Stdlib.String.toLowercase k == "host") with
+  | Some((_, v)) ->
+    match Stdlib.List.head (Stdlib.String.split v ":") with
+    | Some host -> host
+    | None -> v
+  | None -> ""
+
+let notes (req: Stdlib.Http.Request) : Stdlib.Http.Response =
+  match Stdlib.HttpServer.getMethod req with
+  | "POST" ->
+    let note = Stdlib.String.fromBlobWithReplacement req.body
+    let _ = Stdlib.DB.set (Note { exampleSitesNote = note }) (Stdlib.DB.generateKey ()) ExampleSitesNotes
+    Stdlib.Http.responseWithText $"kept, {Stdlib.toString (Stdlib.DB.count ExampleSitesNotes)} so far" 201
+  | _ ->
+    Stdlib.DB.getAll ExampleSitesNotes
+    |> Stdlib.List.map (fun n -> n.exampleSitesNote)
+    |> Stdlib.List.sort
+    |> (fun all -> Stdlib.Http.responseWithText (Stdlib.String.join all "\n") 200)
+
+let router (req: Stdlib.Http.Request) : Stdlib.Http.Response =
+  if Stdlib.HttpServer.getPath req == "/ping" then
+    Stdlib.Http.responseWithText "pong" 200
+  else
+    match hostOf req with
+    | "notes.example.com" -> notes req
+    | host -> Stdlib.Http.responseWithText $"Example.Sites, for {host}" 200
