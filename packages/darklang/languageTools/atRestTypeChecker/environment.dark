@@ -794,13 +794,22 @@ let loadDependency
        { closure with
            values = Stdlib.Dict.setOverridingDuplicates closure.values hash v })
     | None -> ([], closure)
+  // Kept without its body. A dependency is used for its signature only (`addFunctionSignature`,
+  // and `Impls` reading a method's), and a Dark fn's types are all written out, so the body
+  // never decides anything. It was most of what each piece held, in every piece at once: dropping
+  // it took a whole-tree `dark typecheck`'s live heap from 1,527 MB to 1,108 (Debug). The
+  // `ThroughADependency` tests pin what the signature alone has to catch.
   | PackageFn hash ->
     match LanguageTools.PackageManager.Function.get hash with
     | Some fn ->
       let refs = signatureRefs fn
       (refs,
        { closure with
-           fns = Stdlib.Dict.setOverridingDuplicates closure.fns hash fn })
+           fns =
+             Stdlib.Dict.setOverridingDuplicates
+               closure.fns
+               hash
+               { fn with body = LanguageTools.ProgramTypes.Expr.EUnit 0L } })
     | None -> ([], closure)
   // A trait method call contributes a reference to its TRAIT (`functionNameRefs`), so this is
   // reached. The closure holds types, values and fns and not traits, and it does not need to:
