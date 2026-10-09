@@ -343,9 +343,10 @@ per handler tested. Fixing it needs public stdlib API (a `makeRouter`, or a pars
 
 ### `dark typecheck`: interpreted calls per syntax node, with no single lever
 
-Whole-tree `dark typecheck` allocates 9.8 GB on AOT, 7,509 items (15.0 GB before `Spread.keyOf`
-stopped printing an `FQFnName` through reflection on every list op over a named fn). 93% of it is
-the at-rest checker's own inference, interpreted Dark.
+Whole-tree `dark typecheck` allocates 6.8 GB on AOT, about 7,500 items, and completes in 448 MB on
+four cores. It was 15.0 GB and needed 2 GB: `Spread.keyOf` printed an `FQFnName` through reflection
+on every list op over a named fn, and the checker's 32 pieces ran all at once, each holding its own
+copy of what it depended on. What is left is mostly the checker's own inference, interpreted Dark.
 
 The cost is linear in item size, not quadratic: about 21 KB per syntax node on AOT, flat from 16
 nodes to 256+. The deferred-constraint loops (`queueDeferred`, `solvePendingConstraints`) look
@@ -375,7 +376,18 @@ from AOT.
 
 What is left is spread across the call count itself. A real reduction means fewer interpreted calls
 per node, either a cheaper call or a checker that makes fewer of them, rather than any one
-function moving native.
+function moving native. Trimming the busiest tiny calls in the checker's own Dark code (a
+`maxUnifyDepth ()` per comparison, `walk` called on types that are not variables) measured 0.5%:
+the cost is in what each call does, not in how many there are.
+
+**The package manager keeps every loaded fn WITH its body for the life of the process** (measured,
+Debug). `getFn` is `withCache PMPT.Fn.get` in `LibDB/PackageManager.fs`, unbounded. The checker
+reads dependencies by signature only, but `pmGetFnSignature` goes through `getFn`, so the full body
+is cached anyway, and by the end of a whole-tree check every fn's body is. Dropping the caches right
+after the checker's pool loads freed 64 MB, about half of the ~400 MB floor that a single lane still
+needs. The fix is a signature read that does not populate the cache, and it has to keep reading
+through a branch's overlay, which uses the same path, so it is a design change rather than a flag.
+It waits on the store-upgrade work in that area settling.
 
 ### Compile-time type checking -- owned elsewhere
 
