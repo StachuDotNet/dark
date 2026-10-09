@@ -364,10 +364,22 @@ let checkQuery
 
   match Stdlib.List.chunkBySize unique size with
   | Ok chunks ->
-    chunks
-    |> Stdlib.List.parallelMap (fun chunk ->
-      checkReferencesFrom pool branchId loadCandidate chunk)
-    |> Stdlib.List.map (fun report -> report.items)
+    // No more pieces in flight than there are workers to run them. Spawning all of them at once
+    // ran them no faster, since the extras only took turns, but every one of them loaded its
+    // declarations first and held them until it finished: the whole branch in memory at once.
+    // Each lane takes every `lanes`th piece in turn; the reports go back in piece order.
+    let lanes = Stdlib.max 1 (Stdlib.min (Stdlib.List.length chunks) (Stdlib.Exec.workers ()))
+    let numbered = Stdlib.List.indexedMap chunks (fun i chunk -> (i, chunk))
+
+    Stdlib.List.range 0 (lanes - 1)
+    |> Stdlib.List.parallelMap (fun lane ->
+      numbered
+      |> Stdlib.List.filter (fun (i, _) -> i % lanes == lane)
+      |> Stdlib.List.map (fun (i, chunk) ->
+        (i, checkReferencesFrom pool branchId loadCandidate chunk)))
+    |> Stdlib.List.flatten
+    |> Stdlib.List.sortBy (fun (i, _) -> i)
+    |> Stdlib.List.map (fun (_, report) -> report.items)
     |> Stdlib.List.flatten
     |> reportItems
   | Error _ -> checkReferencesFrom pool branchId loadCandidate unique
