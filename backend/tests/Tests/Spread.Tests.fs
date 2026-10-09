@@ -205,6 +205,26 @@ let private namedFallbackIsRemembered =
       "every effect once, in order"
   }
 
+/// The at-rest checker's guard turns a failure into a result, and inside a spread chunk the
+/// failure it would have turned is the chunk refusing an effect: the spreader's cue to run that
+/// part again in the original process. The guard has to let that through. When it did not, a
+/// four-core `typecheck` reported thousands of items incomplete, each "`pmGetFn` has effects".
+let private guardLetsARefusalThrough =
+  testTask "a guarded effect inside a spread falls back rather than failing" {
+    let! state = executionStateFor pmPT false Map.empty
+    Trace.take () |> ignore<List<string>>
+    let code =
+      "(let hidden = ((fun s -> Builtin.testTrace s), 0) in Stdlib.List.map (Stdlib.List.range 1 30) (fun i -> (let (trace, _) = hidden in Darklang.LanguageTools.AtRestTypeChecker.guard (fun n -> trace (Stdlib.toString n)) i)))"
+    let! ((spread, serial), fellBack) = delta fallbacks (fun () -> both state code)
+    let spreadTrace = Trace.take ()
+    Expect.equal fellBack 1L "the spread fell back"
+    Expect.equal (expectOk spread) (expectOk serial) "the same results as serially, every one Ok"
+    Expect.equal
+      (List.length spreadTrace)
+      60
+      "every effect ran once in each of the two runs"
+  }
+
 /// Inner maps run in the outer map's chunks, where nothing spreads. The outer probe's first answer
 /// comes after three elements (one to warm up, two measured), which run in the original process,
 /// so THEIR inner maps spread: four in all, the outer and three inner, never one per element.
@@ -464,6 +484,7 @@ let tests =
         earliestErrorWins
         effectsKeepOrder
         namedFallbackIsRemembered
+        guardLetsARefusalThrough
         nestingIsBounded
         watchedRunsDoNotSpread
         cancelledLeavesNothing
