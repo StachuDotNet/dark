@@ -153,13 +153,14 @@ let fns () : List<BuiltInFn> =
         [ Param.make "label" TString "The label to be printed."
           Param.make "value" (TVariable "a") "The value to be printed." ]
       returnType = TUnit
-      description = "Prints the given <param value> to the standard output"
+      description =
+        "Prints <param label> and the given <param value> to standard error"
       fn =
         (function
         | exeState, _, _, [| DString label; value |] ->
           uply {
             let! repr = Exe.dvalToRepr exeState value
-            print $"DEBUG: {label}: {repr}"
+            printErr $"DEBUG: {label}: {repr}"
             return DUnit
           }
         | _ -> incorrectArgs ())
