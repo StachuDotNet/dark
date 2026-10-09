@@ -606,6 +606,16 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       pm.getFn
       PT2DT.PackageFn.toDT
 
+    // The same fn with its body left out, before it becomes a Dark value: for a caller that reads
+    // only the signature. The at-rest checker loads every fn a declaration depends on this way, and
+    // converting the bodies it never reads was most of what a whole-tree `dark typecheck` held.
+    getByHashFn
+      "pmGetFnSignature"
+      "function, without its body,"
+      PT2DT.PackageFn.typeName
+      pm.getFn
+      (fun fn -> PT2DT.PackageFn.toDT { fn with body = PT.EUnit 0UL })
+
 
     // Resolve a package fn's dotted name to a callable value (Applicable), so a name that only exists as a
     // STRING (a CLI arg) can be passed as a function without eval'ing a source string. This is what lets
