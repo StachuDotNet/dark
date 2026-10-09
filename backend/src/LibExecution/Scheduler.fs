@@ -735,6 +735,7 @@ type Scheduler(quantum : int64) =
     | RT.RuntimeErrorException(_, rte) ->
       this.Finish(p, Error(rte, Execution.callStackFromVM p.vm))
     | ex ->
+      Execution.exitIfOutOfMemory ex
       let metadata : Metadata =
         Exception.toMetadata ex |> List.map (fun (k, v) -> k, string v)
       try

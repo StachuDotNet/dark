@@ -75,6 +75,7 @@ let fns : List<BuiltInFn> =
                 | Ok(DString message) -> return failureWithMessage message
                 | _ -> return failureWithMessage $"{rte}"
             with ex ->
+              Exe.exitIfOutOfMemory ex
               return failureWithMessage ex.Message
           }
         | _ -> incorrectArgs ())

@@ -239,7 +239,19 @@ let execute (state: Cli.AppState) (args: List<String>) : Cli.AppState =
     // An audit that found failures says so in its exit code, so a script or a gate can tell.
     let finished = if totals.failedCount > 0 then { state with exitCode = 1 } else state
 
-    if parsed.asJson then
+    // Incomplete with no items is the checker failing over the whole batch, not a branch with
+    // nothing in it (that comes back Checked). It used to print "checked 0, failed 0" and exit 0,
+    // which says the branch type-checks when nothing was looked at.
+    if
+      report.verdict == LanguageTools.AtRestTypeChecker.Verdict.Incomplete
+      && Stdlib.List.isEmpty report.items
+    then
+      Stdlib.printLine (
+        Stdlib.Cli.UI.Colors.error
+          "The type audit could not run, so nothing was checked:")
+      Stdlib.printLines (AtRestCheck.issueLines state.currentBranchId report.warnings)
+      { state with exitCode = 1 }
+    else if parsed.asJson then
       Stdlib.printLine
         (jsonReport state.currentBranchId parsed.outputFilter report totals total)
       finished
