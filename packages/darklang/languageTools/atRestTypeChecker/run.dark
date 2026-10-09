@@ -120,6 +120,15 @@ let checkPackageOpsOn
   (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : Report =
+  checkPackageOpsFrom (Environment.emptyClosure ()) branchId ops
+
+/// `checkPackageOpsOn`, taking dependencies from <param pool> before the store. See
+/// `Environment.loadClosureFrom`.
+let checkPackageOpsFrom
+  (pool: Environment.Closure)
+  (branchId: Uuid)
+  (ops: List<LanguageTools.ProgramTypes.PackageOp>)
+  : Report =
   let candidates = candidatesFromOps ops
   let types = Stdlib.Dict.values candidates.types
   let values = Stdlib.Dict.values candidates.values
@@ -194,7 +203,8 @@ let checkPackageOpsOn
   let dependencyRefs =
     Stdlib.List.flatten [ typeRefs, signatureRefs, valueBodyRefs, fnBodyRefs, implRefs ]
 
-  let dependencies = Environment.loadClosure builtins candidateRefs dependencyRefs
+  let dependencies =
+    Environment.loadClosureFrom pool builtins candidateRefs dependencyRefs
 
   let env =
     Stdlib.List.fold
@@ -287,6 +297,15 @@ let checkReferences
   (load: LanguageTools.ProgramTypes.Reference -> Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageOp>)
   (references: List<LanguageTools.ProgramTypes.Reference>)
   : Report =
+  checkReferencesFrom (Environment.emptyClosure ()) branchId load references
+
+/// `checkReferences`, taking dependencies from <param pool> before the store.
+let checkReferencesFrom
+  (pool: Environment.Closure)
+  (branchId: Uuid)
+  (load: LanguageTools.ProgramTypes.Reference -> Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageOp>)
+  (references: List<LanguageTools.ProgramTypes.Reference>)
+  : Report =
   let (ops, failures) =
     Stdlib.List.fold (Stdlib.List.unique references) ([], []) (fun (ops, failures) reference ->
       let loaded =
@@ -306,7 +325,7 @@ let checkReferences
               warnings = outcome.warnings
               resolutions = outcome.resolutions }
         (ops, Stdlib.List.push failures item))
-  let checked = checkPackageOpsOn branchId (Stdlib.List.reverse ops)
+  let checked = checkPackageOpsFrom pool branchId (Stdlib.List.reverse ops)
   reportItems (Stdlib.List.append checked.items (Stdlib.List.reverse failures))
 
 /// Check the declarations a search query selects. Fetch their hashes before loading their
@@ -332,18 +351,45 @@ let checkQuery
         Stdlib.List.map impls (fun (_, hash) -> LanguageTools.ProgramTypes.Reference.PackageTraitImpl hash) ]
   let unique = Stdlib.List.unique references
   // In pieces across the cores, the way the package reload splits the same check in
-  // `TraitCalls.resolveIn`. Safe because every piece loads from the store, so it sees what
-  // another piece holds. Explicit until `List.map` spreads by itself.
+  // `TraitCalls.resolveIn`. Safe because every piece loads from the store or the shared pool, so
+  // it sees what another piece holds. Explicit until `List.map` spreads by itself.
   let size = Stdlib.max 64 ((Stdlib.List.length unique) / 32 + 1)
+
+  // What the pieces depend on is mostly the same types and fns, and every piece is in flight at
+  // once, so loading them per piece held one copy of most of Stdlib per piece. Loaded once here
+  // instead, fns by signature only, and every piece's closure points into this. A declaration
+  // that fails to load is left out, and the piece that needs it goes to the store and reports
+  // the failure as it always did.
+  let pool = poolFor (Stdlib.List.map types (fun (_, h) -> h)) (Stdlib.List.map fns (fun (_, h) -> h))
 
   match Stdlib.List.chunkBySize unique size with
   | Ok chunks ->
     chunks
-    |> Stdlib.List.parallelMap (fun chunk -> checkReferences branchId loadCandidate chunk)
+    |> Stdlib.List.parallelMap (fun chunk ->
+      checkReferencesFrom pool branchId loadCandidate chunk)
     |> Stdlib.List.map (fun report -> report.items)
     |> Stdlib.List.flatten
     |> reportItems
-  | Error _ -> checkReferences branchId loadCandidate unique
+  | Error _ -> checkReferencesFrom pool branchId loadCandidate unique
+
+/// Load these types, and these fns by signature, into a closure for `checkReferencesFrom`.
+let poolFor
+  (typeHashes: List<LanguageTools.ProgramTypes.Hash>)
+  (fnHashes: List<LanguageTools.ProgramTypes.Hash>)
+  : Environment.Closure =
+  let types =
+    Stdlib.List.fold typeHashes Dict {} (fun found hash ->
+      match guard (fun h -> LanguageTools.PackageManager.Type.get h) hash with
+      | Ok(Some t) -> Stdlib.Dict.setOverridingDuplicates found hash t
+      | _ -> found)
+
+  let fns =
+    Stdlib.List.fold fnHashes Dict {} (fun found hash ->
+      match guard (fun h -> LanguageTools.PackageManager.Function.getSignature h) hash with
+      | Ok(Some fn) -> Stdlib.Dict.setOverridingDuplicates found hash fn
+      | _ -> found)
+
+  Environment.Closure { types = types; values = Dict {}; fns = fns }
 
 /// A query that selects everything on the branch.
 let everything () : LanguageTools.ProgramTypes.Search.SearchQuery =

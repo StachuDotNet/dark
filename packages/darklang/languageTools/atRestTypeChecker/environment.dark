@@ -734,15 +734,33 @@ let loadClosure
   (candidateRefs: List<LanguageTools.ProgramTypes.Reference>)
   (pending: List<LanguageTools.ProgramTypes.Reference>)
   : Closure =
+  loadClosureFrom (emptyClosure ()) env candidateRefs pending
+
+/// A closure with nothing in it.
+let emptyClosure () : Closure =
+  Closure { types = Dict {}; values = Dict {}; fns = Dict {} }
+
+/// `loadClosure`, taking a declaration from <param pool> when it is there and from the store
+/// otherwise.
+///
+/// For checking many batches at once: each batch would otherwise load its own copy of what they
+/// all depend on, and with every batch in flight together those copies are what the check holds.
+/// A batch's closure then points at the pool's values rather than at copies of them.
+let loadClosureFrom
+  (pool: Closure)
+  (env: Model.Environment)
+  (candidateRefs: List<LanguageTools.ProgramTypes.Reference>)
+  (pending: List<LanguageTools.ProgramTypes.Reference>)
+  : Closure =
   let seen =
     Stdlib.List.fold candidateRefs Dict {} (fun seen r ->
       Stdlib.Dict.setOverridingDuplicates seen r true)
 
   loadPendingDependencies
-    (loadDependency env)
+    (loadDependency pool env)
     seen
     pending
-    (Closure { types = Dict {}; values = Dict {}; fns = Dict {} })
+    (emptyClosure ())
 
 /// Process the remaining references, attempting each distinct reference once.
 /// Mark a reference seen before loading it so cycles, duplicates, and failed loads
@@ -773,13 +791,18 @@ let loadPendingDependencies
 /// Missing declarations leave closure unchanged. The caller guards both loading
 /// and traversal so a conversion or syntax-walk failure cannot abort the queue.
 let loadDependency
+  (pool: Closure)
   (env: Model.Environment)
   (closure: Closure)
   (reference: LanguageTools.ProgramTypes.Reference)
   : (List<LanguageTools.ProgramTypes.Reference> * Closure) =
   match reference with
   | PackageType hash ->
-    match LanguageTools.PackageManager.Type.get hash with
+    let found =
+      match Stdlib.Dict.get pool.types hash with
+      | Some t -> Stdlib.Option.Option.Some t
+      | None -> LanguageTools.PackageManager.Type.get hash
+    match found with
     | Some t ->
       let refs = declarationRefs t.declaration
       (refs,
@@ -799,7 +822,11 @@ let loadDependency
   // never decides anything. It was most of what each piece held, in every piece at once. The
   // `ThroughADependency` tests pin what the signature alone has to catch.
   | PackageFn hash ->
-    match LanguageTools.PackageManager.Function.getSignature hash with
+    let found =
+      match Stdlib.Dict.get pool.fns hash with
+      | Some fn -> Stdlib.Option.Option.Some fn
+      | None -> LanguageTools.PackageManager.Function.getSignature hash
+    match found with
     | Some fn ->
       let refs = signatureRefs fn
       (refs,
