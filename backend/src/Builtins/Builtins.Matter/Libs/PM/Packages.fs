@@ -777,10 +777,17 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                   (NEList.singleton arg)
               with
               | Ok dv -> return ok dv
+              // Inside a spread chunk, a failure is the chunk refusing an effect, which
+              // tells the spreader to run this part again in the original process. As a
+              // value it would be the answer instead, "has effects", where the serial run
+              // succeeds. The re-run meets any genuine error again, and catches it there.
+              | Error(rte, _) when exeState.spreadChild ->
+                return raiseRTE vm.threadID rte
               | Error(rte, _) ->
                 let! message = Execution.runtimeErrorMessage asRoot rte
                 return err message
             with e ->
+              if exeState.spreadChild then raise e
               return err e.Message
           }
         | _ -> incorrectArgs ())

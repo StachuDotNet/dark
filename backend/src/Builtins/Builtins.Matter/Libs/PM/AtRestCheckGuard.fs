@@ -69,12 +69,21 @@ let fns : List<BuiltInFn> =
                 ->
                 // Nesting deep enough to exhaust the native stack.
                 return failureResult typeArgs (checkFailure "TooDeep" [])
+              // Inside a spread chunk, a failure is how the chunk tells the spreader
+              // to run this part again in the original process, which is also where
+              // a store read is allowed. Converting it here turned that retry into
+              // an Incomplete verdict: on four cores, `typecheck` reported 4,701
+              // items incomplete with "`pmGetFn` has effects". The serial re-run
+              // meets any genuine error again, and catches it there.
+              | Error(rte, _) when exeState.spreadChild ->
+                return raiseRTE vm.threadID rte
               | Error(rte, _) ->
                 let! rendered = Exe.runtimeErrorToString exeState rte
                 match rendered with
                 | Ok(DString message) -> return failureWithMessage message
                 | _ -> return failureWithMessage $"{rte}"
             with ex ->
+              if exeState.spreadChild then raise ex
               return failureWithMessage ex.Message
           }
         | _ -> incorrectArgs ())
