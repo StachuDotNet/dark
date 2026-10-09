@@ -501,7 +501,18 @@ let checkBatch
   : List<(LanguageTools.ProgramTypes.Reference * Outcome)> =
   let env = Stdlib.List.fold types env (fun env t -> addType env t)
   let env = Stdlib.List.fold fns env (fun env fn -> addFunctionSignature env fn)
-  let env = Declarations.prepareDeclarations env
+
+  // A type's facts follow from its hash and what it references, so facts already worked out over
+  // a closed set (a shared base, see `Run.checkQuery`) hold here as they are. Prepared again only
+  // when a type has none, which is every type unless the batch started from such a base.
+  let env =
+    if
+      Stdlib.List.all (Stdlib.Dict.keys env.types) (fun hash ->
+        Stdlib.Dict.``member`` env.declarationFacts hash)
+    then
+      env
+    else
+      Declarations.prepareDeclarations env
 
   let typeResults =
     Stdlib.List.map types (fun t ->

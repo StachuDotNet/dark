@@ -120,12 +120,14 @@ let checkPackageOpsOn
   (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : Report =
-  checkPackageOpsFrom (Environment.emptyClosure ()) branchId ops
+  checkPackageOpsFrom (Environment.emptyClosure ()) Stdlib.Option.Option.None branchId ops
 
-/// `checkPackageOpsOn`, taking dependencies from <param pool> before the store. See
-/// `Environment.loadClosureFrom`.
+/// `checkPackageOpsOn`, taking dependencies from <param pool> before the store (see
+/// `Environment.loadClosureFrom`), and starting from <param base> instead of the builtins when
+/// one is given: an environment that already holds and has prepared the pool's declarations.
 let checkPackageOpsFrom
   (pool: Environment.Closure)
+  (base: Stdlib.Option.Option<Model.Environment>)
   (branchId: Uuid)
   (ops: List<LanguageTools.ProgramTypes.PackageOp>)
   : Report =
@@ -146,11 +148,13 @@ let checkPackageOpsFrom
   // The batch's own traits and implementations, beside the store's: the store does not
   // hold them until after this check, and a call saved with the trait or the impl it needs
   // must still be typed against it and pinned to it.
+  let start =
+    match base with
+    | Some env -> env
+    | None -> Environment.builtins branchId
+
   let builtins =
-    Environment.withoutReplaced
-      (Environment.withBatch (Environment.builtins branchId) traits impls)
-      branchId
-      ops
+    Environment.withoutReplaced (Environment.withBatch start traits impls) branchId ops
 
   // If inspecting a type declaration or function signature fails, leave it out
   // of the checking environment and record an Incomplete result for it.
@@ -297,11 +301,13 @@ let checkReferences
   (load: LanguageTools.ProgramTypes.Reference -> Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageOp>)
   (references: List<LanguageTools.ProgramTypes.Reference>)
   : Report =
-  checkReferencesFrom (Environment.emptyClosure ()) branchId load references
+  checkReferencesFrom (Environment.emptyClosure ()) Stdlib.Option.Option.None branchId load references
 
-/// `checkReferences`, taking dependencies from <param pool> before the store.
+/// `checkReferences`, taking dependencies from <param pool> before the store and starting from
+/// <param base>; see `checkPackageOpsFrom`.
 let checkReferencesFrom
   (pool: Environment.Closure)
+  (base: Stdlib.Option.Option<Model.Environment>)
   (branchId: Uuid)
   (load: LanguageTools.ProgramTypes.Reference -> Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageOp>)
   (references: List<LanguageTools.ProgramTypes.Reference>)
@@ -325,7 +331,7 @@ let checkReferencesFrom
               warnings = outcome.warnings
               resolutions = outcome.resolutions }
         (ops, Stdlib.List.push failures item))
-  let checked = checkPackageOpsFrom pool branchId (Stdlib.List.reverse ops)
+  let checked = checkPackageOpsFrom pool base branchId (Stdlib.List.reverse ops)
   reportItems (Stdlib.List.append checked.items (Stdlib.List.reverse failures))
 
 /// Check the declarations a search query selects. Fetch their hashes before loading their
@@ -362,6 +368,11 @@ let checkQuery
   // the failure as it always did.
   let pool = poolFor (Stdlib.List.map types (fun (_, h) -> h)) (Stdlib.List.map fns (fun (_, h) -> h))
 
+  // And the pool's declarations registered and prepared once, which every piece otherwise did
+  // for its own copy. Only when the pool's types are closed (everything they reference is in it),
+  // since a type's facts are worked out from what it references.
+  let base = baseFor branchId pool
+
   match Stdlib.List.chunkBySize unique size with
   | Ok chunks ->
     // No more pieces in flight than there are workers to run them. Spawning all of them at once
@@ -376,13 +387,37 @@ let checkQuery
       numbered
       |> Stdlib.List.filter (fun (i, _) -> i % lanes == lane)
       |> Stdlib.List.map (fun (i, chunk) ->
-        (i, checkReferencesFrom pool branchId loadCandidate chunk)))
+        (i, checkReferencesFrom pool base branchId loadCandidate chunk)))
     |> Stdlib.List.flatten
     |> Stdlib.List.sortBy (fun (i, _) -> i)
     |> Stdlib.List.map (fun (_, report) -> report.items)
     |> Stdlib.List.flatten
     |> reportItems
-  | Error _ -> checkReferencesFrom pool branchId loadCandidate unique
+  | Error _ -> checkReferencesFrom pool base branchId loadCandidate unique
+
+/// The builtins environment with every declaration in <param pool> registered and prepared, or
+/// None when a pool type references a type that is not in the pool.
+let baseFor (branchId: Uuid) (pool: Environment.Closure) : Stdlib.Option.Option<Model.Environment> =
+  let closed =
+    Stdlib.List.all (Stdlib.Dict.values pool.types) (fun t ->
+      Stdlib.List.all (Environment.declarationRefs t.declaration) (fun r ->
+        match r with
+        | PackageType hash -> Stdlib.Dict.``member`` pool.types hash
+        | _ -> true))
+
+  if closed then
+    let env =
+      Stdlib.List.fold
+        (Stdlib.Dict.values pool.fns)
+        (Stdlib.List.fold
+          (Stdlib.Dict.values pool.types)
+          (Environment.builtins branchId)
+          (fun env t -> Items.addType env t))
+        (fun env fn -> Items.addFunctionSignature env fn)
+
+    Stdlib.Option.Option.Some(Declarations.prepareDeclarations env)
+  else
+    Stdlib.Option.Option.None
 
 /// Load these types, and these fns by signature, into a closure for `checkReferencesFrom`.
 let poolFor
