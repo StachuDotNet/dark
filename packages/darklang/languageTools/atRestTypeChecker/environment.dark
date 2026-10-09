@@ -762,6 +762,37 @@ let loadClosureFrom
     pending
     (emptyClosure ())
 
+/// The dependencies <param known> does not already hold, loaded from the store.
+///
+/// For a batch starting from an environment built from <param known>: what is in it is already
+/// registered, prepared and (for values) checked there, so it is neither loaded again nor
+/// followed. Anything outside it is loaded and followed as `loadClosure` would.
+let loadClosureBeyond
+  (known: Closure)
+  (env: Model.Environment)
+  (candidateRefs: List<LanguageTools.ProgramTypes.Reference>)
+  (pending: List<LanguageTools.ProgramTypes.Reference>)
+  : Closure =
+  let seen =
+    Stdlib.List.fold candidateRefs Dict {} (fun seen r ->
+      Stdlib.Dict.setOverridingDuplicates seen r true)
+
+  let load
+    (closure: Closure)
+    (reference: LanguageTools.ProgramTypes.Reference)
+    : (List<LanguageTools.ProgramTypes.Reference> * Closure) =
+    let isKnown =
+      match reference with
+      | PackageType hash -> Stdlib.Dict.``member`` known.types hash
+      | PackageFn hash -> Stdlib.Dict.``member`` known.fns hash
+      | PackageValue hash -> Stdlib.Dict.``member`` known.values hash
+      | _ -> false
+
+    if isKnown then ([], closure)
+    else loadDependency (emptyClosure ()) env closure reference
+
+  loadPendingDependencies load seen pending (emptyClosure ())
+
 /// Process the remaining references, attempting each distinct reference once.
 /// Mark a reference seen before loading it so cycles, duplicates, and failed loads
 /// do not cause repeated attempts. Keep successfully loaded declarations in closure.
