@@ -811,6 +811,16 @@ ranking sweep examined ONE and its diff read as complete. Feed the inner command
 counting what the loop actually examined caught it, which is the general rule, and this is a
 particularly quiet instance of it.
 
+**`run-cli` used to merge stderr into stdout whenever stdout was not a terminal.** It ran
+`"$EXE" "$@" 2>&1 | tee cli.log`, so every redirected or piped run, every agent in this repo
+included, saw refusals, hints and prompts on stdout, and a grep that "found" an error message in
+`run-cli` output was usually reading stderr folded in. Four of eight research passes in one
+stdout/stderr survey measured a merged stream while believing they had two. It now tees each
+stream to the log and leaves it on its own stream. In a clone older than that change, pass
+`--no-log` as the FIRST argument (anywhere else it is passed to the CLI) or `docker exec` the
+binary; and `run-in-docker` forwards only `DARK_*`, `EDITOR` and `VISUAL`, so `NO_COLOR` and `CI`
+cannot be tested through `run-cli` at all.
+
 **Bracket every pattern you hand to `pgrep -f` / `pkill -f`.** The pattern appears in your own
 shell's command line, so an unbracketed one matches the process doing the matching. A waiter waits
 on itself forever; a `pkill -f "serve Foo"` kills the backgrounded shell whose command line
