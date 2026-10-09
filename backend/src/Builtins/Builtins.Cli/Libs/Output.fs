@@ -147,6 +147,40 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "stdoutClaimForProtocol" 0
+      typeParams = []
+      parameters = [ Param.make "unit" TUnit "A unit" ]
+      returnType = TBool
+      description =
+        "Make standard output this program's protocol channel, for a server that speaks a byte protocol over stdio (the LSP, an MCP server). From now on only <fn stdoutWriteProtocol> reaches it; any other write to standard output goes to standard error, marked as stray. Returns false if it was already claimed."
+      fn =
+        (function
+        | _, _, _, [| DUnit |] -> DBool(NonBlockingConsole.claimStdout ()) |> Ply
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.Stdout ]
+      deprecated = NotDeprecated }
+
+
+    { name = fn "stdoutWriteProtocol" 0
+      typeParams = []
+      parameters = [ Param.make "frame" TString "One whole protocol frame" ]
+      returnType = TUnit
+      description =
+        "Write <param frame> to the protocol channel claimed by <fn stdoutClaimForProtocol>, whole and flushed. Before a claim, an ordinary write to standard output."
+      fn =
+        (function
+        | _, _, _, [| DString frame |] ->
+          NonBlockingConsole.writeProtocol frame
+          Ply DUnit
+        | _ -> incorrectArgs ())
+      sqlSpec = NotQueryable
+      previewable = Impure
+      callEffects = set [ Effect.Stdout ]
+      deprecated = NotDeprecated }
+
+
     { name = fn "debug" 0
       typeParams = [ "a" ]
       parameters =

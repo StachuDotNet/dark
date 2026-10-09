@@ -61,6 +61,16 @@ type private Private() =
   // (it would finish once it was removed from the queue)
   static let mLock : obj = obj ()
 
+  // A protocol server's stdout (the LSP, an MCP server). Once claimed, the real stdout carries
+  // that server's frames and nothing else: a frame is written here directly, past the queue and
+  // any capture window, and every other stdout write goes to stderr, marked as stray, so a
+  // `printLine` in user code or a `Builtin.debug` can't land between two frames. Moved rather than
+  // dropped: a debug print that vanished would read as code that never ran.
+  static let mutable protocolOut : System.IO.Stream = null
+  static let protocolLock : obj = obj ()
+  static let strayMark =
+    "[stray stdout, moved to stderr: stdout is this server's protocol] "
+
   static do
     let f () =
       while true do
@@ -128,7 +138,42 @@ type private Private() =
             |> ignore
             true)
 
-      if not captured then mQueue.Add(struct (stream, value))
+      if not captured then
+        match stream with
+        | Out when not (isNull protocolOut) ->
+          mQueue.Add(struct (Err, strayMark + value))
+        | _ -> mQueue.Add(struct (stream, value))
+
+  /// Make stdout the protocol channel; see `protocolOut`. Anything already queued for stdout is
+  /// written first. False if it was already claimed, or in the browser, which has no protocol.
+  static member ClaimStdout() : bool =
+    if isWasm then
+      false
+    else
+      lock protocolLock (fun () ->
+        if not (isNull protocolOut) then
+          false
+        else
+          Private.wait ()
+          System.Console.Out.Flush()
+          protocolOut <- System.Console.OpenStandardOutput()
+          // Writes that skip this module (`Console.WriteLine`, `printfn`) follow too.
+          System.Console.SetOut(System.Console.Error)
+          true)
+
+  /// One frame onto the claimed stdout, whole and flushed. Frames from concurrent processes take
+  /// turns. Before a claim, an ordinary stdout write.
+  static member WriteProtocol(value : string) : unit =
+    let written =
+      lock protocolLock (fun () ->
+        if isNull protocolOut then
+          false
+        else
+          let bytes = System.Text.Encoding.UTF8.GetBytes value
+          protocolOut.Write(bytes, 0, bytes.Length)
+          protocolOut.Flush()
+          true)
+    if not written then Private.Write(Out, value)
 
   /// Begin a capture window for THIS flow. Returns false if one was already open here, in which case
   /// nothing changes: the caller must not assume it owns the buffer. Nesting isn't supported;
@@ -173,6 +218,12 @@ let stopCapture () : string =
 
 /// `(both, stdout, stderr)`.
 let stopCaptureEach () : string * string * string = Private.StopCapture()
+
+/// Make stdout a protocol server's channel: only `writeProtocol` reaches it from now on.
+let claimStdout () : bool = Private.ClaimStdout()
+
+/// One protocol frame onto the claimed stdout (an ordinary stdout write before a claim).
+let writeProtocol (value : string) : unit = Private.WriteProtocol value
 
 /// Browser host only: route every write to <param sink> instead of `System.Console`.
 let setBrowserSink (sink : string -> unit) : unit = Private.SetBrowserSink sink

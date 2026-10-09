@@ -28,6 +28,7 @@ GATES=(
   lsp-branches
   lsp-typing
   lsp-concurrent
+  mcp-stdout
   workbench-scm
   workbench-views
   first-day
@@ -62,7 +63,7 @@ GATES=(
 # These are durations, so they drift with whatever else is on the box; the trait four were taken
 # while another clone was running perf experiments. Treat them as orders of magnitude against the
 # 5m bound, not as a budget. A gate reporting 0s has not run at all.
-CI_GATES=(relay-routes workbench-scm workbench-views lsp-branches lsp-typing lsp-concurrent
+CI_GATES=(relay-routes workbench-scm workbench-views lsp-branches lsp-typing lsp-concurrent mcp-stdout
           trait-choice-survives-rival trait-choice-any-batching trait-checker-vs-dispatch
           trait-deprecation-is-per-branch trait-pin-across-branches hosted-db
           shipped-tree-typechecks)
@@ -77,6 +78,7 @@ describe() {
     lsp-branches)           echo 'the `dark/*` branch surface, as an editor drives it' ;;
     lsp-typing)             echo 'keystrokes are stored; the next request analyses once' ;;
     lsp-concurrent)         echo 'a slow read does not hold up a fast one; a cancel stops the work' ;;
+    mcp-stdout)             echo "the MCP server's stdout carries only its JSON-RPC messages" ;;
     workbench-scm)          echo 'the workbench SCM views with real work in the store' ;;
     workbench-views)        echo 'every workbench view, one session each' ;;
     first-day)              echo 'a published binary, empty home, whole SCM workflow' ;;
