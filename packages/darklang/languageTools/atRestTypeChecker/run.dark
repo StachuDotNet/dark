@@ -205,12 +205,22 @@ let checkPackageOpsFrom
       (fun v -> Items.bodyNodeId v.body)
       (fun v -> Environment.exprRefs builtins v.body)
 
+  // On a closed base every body's references are already in the environment, so the walk would
+  // only find things to throw away.
+  let onClosedBase =
+    match base with
+    | Some b -> b.closed
+    | None -> false
+
   let (_, fnBodyRefs, fnBodyFailures) =
-    collectItemReferences
-      fns
-      (fun fn -> LanguageTools.ProgramTypes.Reference.PackageFn fn.hash)
-      (fun fn -> Items.bodyNodeId fn.body)
-      (fun fn -> Environment.exprRefs builtins fn.body)
+    if onClosedBase then
+      (fns, [], [])
+    else
+      collectItemReferences
+        fns
+        (fun fn -> LanguageTools.ProgramTypes.Reference.PackageFn fn.hash)
+        (fun fn -> Items.bodyNodeId fn.body)
+        (fun fn -> Environment.exprRefs builtins fn.body)
 
   let bodyFailuresByItem =
     Stdlib.List.fold
