@@ -623,69 +623,91 @@ let exprRefs
   (env: Model.Environment)
   (expr: LanguageTools.ProgramTypes.Expr)
   : List<LanguageTools.ProgramTypes.Reference> =
-  let many (exprs: List<LanguageTools.ProgramTypes.Expr>) : List<LanguageTools.ProgramTypes.Reference> =
-    Stdlib.List.flatten (Stdlib.List.map exprs (fun e -> exprRefs env e))
+  Stdlib.List.reverse (exprRefsInto env expr [])
 
+/// <param refs> pushed onto <param acc>, a reversed accumulator, in order.
+let pushRefs
+  (refs: List<LanguageTools.ProgramTypes.Reference>)
+  (acc: List<LanguageTools.ProgramTypes.Reference>)
+  : List<LanguageTools.ProgramTypes.Reference> =
+  if Stdlib.List.isEmpty refs then
+    acc
+  else
+    Stdlib.List.fold refs acc (fun acc r -> Stdlib.List.push acc r)
+
+/// `exprRefsInto` over <param exprs> in order.
+let manyRefsInto
+  (env: Model.Environment)
+  (exprs: List<LanguageTools.ProgramTypes.Expr>)
+  (acc: List<LanguageTools.ProgramTypes.Reference>)
+  : List<LanguageTools.ProgramTypes.Reference> =
+  Stdlib.List.fold exprs acc (fun acc e -> exprRefsInto env e acc)
+
+/// `exprRefs`, pushed onto <param acc> (reversed) in the order `exprRefs` returns them.
+///
+/// Accumulated rather than returned and joined: the joined version built a closure on every
+/// call, a mapped list per node with children and a flattened copy of it at every level, which
+/// made collecting a body's references cost about as much as converting its types.
+let exprRefsInto
+  (env: Model.Environment)
+  (expr: LanguageTools.ProgramTypes.Expr)
+  (acc: List<LanguageTools.ProgramTypes.Reference>)
+  : List<LanguageTools.ProgramTypes.Reference> =
   match expr with
   | EString(_, segments) ->
-    segments
-    |> Stdlib.List.map (fun segment ->
+    Stdlib.List.fold segments acc (fun acc segment ->
       match segment with
-      | StringText _ -> []
-      | StringInterpolation e -> exprRefs env e)
-    |> Stdlib.List.flatten
-  | EList(_, elements) -> many elements
+      | StringText _ -> acc
+      | StringInterpolation e -> exprRefsInto env e acc)
+  | EList(_, elements) -> manyRefsInto env elements acc
   | EDict(_, entries) ->
-    Stdlib.List.flatten (Stdlib.List.map entries (fun (k, v) -> many [ k, v ]))
+    Stdlib.List.fold entries acc (fun acc (k, v) -> exprRefsInto env v (exprRefsInto env k acc))
   | ETuple(_, first, second, rest) ->
-    many (Stdlib.List.append [ first, second ] rest)
+    manyRefsInto env rest (exprRefsInto env second (exprRefsInto env first acc))
   | ERecord(_, name, typeArgs, fields) ->
-    Stdlib.List.flatten
-      [ typeNameRefs name
-        typeListRefs typeArgs
-        many (Stdlib.List.map fields (fun (_, v) -> v)) ]
+    Stdlib.List.fold
+      fields
+      (pushRefs (typeListRefs typeArgs) (pushRefs (typeNameRefs name) acc))
+      (fun acc (_, v) -> exprRefsInto env v acc)
   | EEnum(_, name, typeArgs, _, fields) ->
-    Stdlib.List.flatten [ typeNameRefs name, typeListRefs typeArgs, many fields ]
-  | ELet(_, _, value, body) -> many [ value, body ]
-  | ERecordFieldAccess(_, record, _) -> exprRefs env record
-  | EValue(_, name) -> valueNameRefs name
+    manyRefsInto env fields (pushRefs (typeListRefs typeArgs) (pushRefs (typeNameRefs name) acc))
+  | ELet(_, _, value, body) -> exprRefsInto env body (exprRefsInto env value acc)
+  | ERecordFieldAccess(_, record, _) -> exprRefsInto env record acc
+  | EValue(_, name) -> pushRefs (valueNameRefs name) acc
   | EIf(_, condition, thenExpr, elseExpr) ->
-    many
-      (Stdlib.List.append [ condition, thenExpr ] (Stdlib.Option.toList elseExpr))
+    let acc = exprRefsInto env thenExpr (exprRefsInto env condition acc)
+    match elseExpr with
+    | Some otherwise -> exprRefsInto env otherwise acc
+    | None -> acc
   | EMatch(_, arg, cases) ->
     // Match patterns contain unqualified case names, not package references.
     // Their enum declarations are determined from the matched value's type.
-    Stdlib.List.append
-      (exprRefs env arg)
-      (cases
-       |> Stdlib.List.map (fun case ->
-         many
-           (Stdlib.List.append
-             (Stdlib.Option.toList case.whenCondition)
-             [ case.rhs ]))
-       |> Stdlib.List.flatten)
+    Stdlib.List.fold cases (exprRefsInto env arg acc) (fun acc case ->
+      let acc =
+        match case.whenCondition with
+        | Some guard -> exprRefsInto env guard acc
+        | None -> acc
+      exprRefsInto env case.rhs acc)
   | EPipe(_, lhs, parts) ->
-    Stdlib.List.append
-      (exprRefs env lhs)
-      (Stdlib.List.flatten (Stdlib.List.map parts (fun p -> pipeRefs env p)))
-  | EInfix(_, _, lhs, rhs, _) -> many [ lhs, rhs ]
-  | ELambda(_, _, body) -> exprRefs env body
+    Stdlib.List.fold parts (exprRefsInto env lhs acc) (fun acc p -> pipeRefsInto env p acc)
+  | EInfix(_, _, lhs, rhs, _) -> exprRefsInto env rhs (exprRefsInto env lhs acc)
+  | ELambda(_, _, body) -> exprRefsInto env body acc
   | EApply(_, callee, typeArgs, args) ->
-    Stdlib.List.flatten [ exprRefs env callee, typeListRefs typeArgs, many args ]
-  | EFnName(_, name, _) -> functionNameRefs env name
+    manyRefsInto env args (pushRefs (typeListRefs typeArgs) (exprRefsInto env callee acc))
+  | EFnName(_, name, _) -> pushRefs (functionNameRefs env name) acc
   | ERecordUpdate(_, record, updates) ->
-    Stdlib.List.append
-      (exprRefs env record)
-      (many (Stdlib.List.map updates (fun (_, v) -> v)))
-  | EStatement(_, first, next) -> many [ first, next ]
+    Stdlib.List.fold updates (exprRefsInto env record acc) (fun acc (_, v) -> exprRefsInto env v acc)
+  | EStatement(_, first, next) -> exprRefsInto env next (exprRefsInto env first acc)
   | EUnwrap(_, operand) ->
     // ? has no explicit type name in the syntax. Add Option and Result so the
     // solver can check its operand and the enclosing function's return type.
-    Stdlib.List.append
-      [ LanguageTools.ProgramTypes.Reference.PackageType env.optionType
-        LanguageTools.ProgramTypes.Reference.PackageType env.resultType ]
-      (exprRefs env operand)
-  | _ -> []
+    exprRefsInto
+      env
+      operand
+      (Stdlib.List.push
+        (Stdlib.List.push acc (LanguageTools.ProgramTypes.Reference.PackageType env.optionType))
+        (LanguageTools.ProgramTypes.Reference.PackageType env.resultType))
+  | _ -> acc
 
 /// Collect dependencies from a pipeline step, including named functions or enum
 /// constructors and the expressions supplied as arguments. exprRefs handles the
@@ -694,18 +716,21 @@ let pipeRefs
   (env: Model.Environment)
   (pipePart: LanguageTools.ProgramTypes.PipeExpr)
   : List<LanguageTools.ProgramTypes.Reference> =
-  let many (exprs: List<LanguageTools.ProgramTypes.Expr>) : List<LanguageTools.ProgramTypes.Reference> =
-    Stdlib.List.flatten (Stdlib.List.map exprs (fun e -> exprRefs env e))
+  Stdlib.List.reverse (pipeRefsInto env pipePart [])
 
+/// `pipeRefs`, pushed onto <param acc> as `exprRefsInto` does.
+let pipeRefsInto
+  (env: Model.Environment)
+  (pipePart: LanguageTools.ProgramTypes.PipeExpr)
+  (acc: List<LanguageTools.ProgramTypes.Reference>)
+  : List<LanguageTools.ProgramTypes.Reference> =
   match pipePart with
-  | EPipeVariable(_, _, args) -> many args
-  | EPipeLambda(_, _, body) -> exprRefs env body
-  | EPipeInfix(_, _, rhs, _) -> exprRefs env rhs
+  | EPipeVariable(_, _, args) -> manyRefsInto env args acc
+  | EPipeLambda(_, _, body) -> exprRefsInto env body acc
+  | EPipeInfix(_, _, rhs, _) -> exprRefsInto env rhs acc
   | EPipeFnCall(_, name, typeArgs, args, _) ->
-    Stdlib.List.flatten
-      [ functionNameRefs env name, typeListRefs typeArgs, many args ]
-  | EPipeEnum(_, name, _, fields) ->
-    Stdlib.List.append (typeNameRefs name) (many fields)
+    manyRefsInto env args (pushRefs (typeListRefs typeArgs) (pushRefs (functionNameRefs env name) acc))
+  | EPipeEnum(_, name, _, fields) -> manyRefsInto env fields (pushRefs (typeNameRefs name) acc)
 
 /// Collect the types referenced by a function's parameters and return type.
 /// Dependency functions are checked through these signatures, without walking their bodies.

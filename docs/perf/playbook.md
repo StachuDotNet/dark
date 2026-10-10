@@ -284,6 +284,13 @@ though its allocation column repeats to 0.1 KB.
   `optime`, which runs with stats off.
 - `fnprofile` reports the minimum per call across however many runs you feed it. Feed it three.
   One run of it once misread a builtin by 20x.
+- A profiler that keeps one call stack per VM double-counts anything run through `guard`, because
+  `guard` runs its callback on a fresh VM (`executeApplicable1`): the caller is charged its
+  callee's bytes as well as the callee. One such profile put the checker's loading at 1.6 GB when
+  it was ~0.95. Charge per thread, to whatever frame is running when the bytes are allocated, keep
+  the profiler's own bookkeeping out of the window, and before using any figure check that
+  charged plus unaccounted sums to the total the same binary allocates with the profiler off. Also
+  prove it on a probe of known size called both directly and through `guard`.
 - `scripts/perf/suite`'s allocation is **not** byte-deterministic, unlike the gate's. A couple of
   percent there is noise.
 - The wall-clock sections of `view.dark` and `route.dark` resolve about 1%; `keypress` reports whole

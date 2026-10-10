@@ -341,6 +341,60 @@ got essentially all of it. Low priority; recorded so nobody re-probes it.
 per handler tested. Fixing it needs public stdlib API (a `makeRouter`, or a parsed field on
 `Handler`), so it is a design decision rather than an optimisation.
 
+### Whole-tree `dark typecheck`: the floor of this design, and what would get under it
+
+A whole-tree check is about 7,700 items and 236,000 syntax nodes. Done directly over the stored
+tree it should cost 50 to 100 MB (estimate: ~150 B a node to read, ~150 B a node to infer). With
+the checker's pieces sharing one pool and running one per worker, its per-node throwaways cut, and
+the interpreter's throwaway objects cut, it allocates 3.80 GB (it was 14.9) and completes under a
+464 MB cap on four cores every run, 448 MB usually. Measured on AOT, verdicts identical to main
+per item at 4 and 48 cores.
+
+Where the 4.16 GB went just before the last 0.1 GB of changes, from a per-thread profiler whose
+charged plus unaccounted bytes summed to the measured total (4.163 against 4.162 GB):
+
+| share | where |
+|---|---|
+| 19% | `Generate`; its output, the constraints, is only 2.6%, the rest is the walk |
+| 16% | store reads: `Function.get` 6.2%, `getSignature` 5.2%, search 3.3%, `Type.get` 1.1% |
+| 14% each | `Solve`; `Types` (converting, expanding, walking types) |
+| 8% | dictionary builtins |
+| 7% | `NodeIds`, the pre-check |
+| 22% | the rest of the checker, list builtins, the CLI |
+
+No row is above 6.2%, and the last four changes measured 1.6%, 1.1%, 0.4% and 0.2%. More of the
+same buys fractions of a percent.
+
+The floor of this design is roughly 0.6 to 0.7 GB (estimate), 6 to 14 times the budget, even with
+every remaining small step taken: about 300 MB to load (the checker reads the program as Dark
+values, ~30x the 10 MB serialized form) and about 330 MB to infer (a fresh type variable, a
+persistent-dictionary entry and a constraint per node is ~1.4 KB a node). What would reach the
+budget is allocating different things, not cheaper ones:
+
+- a mutable substitution (union-find over an array). In Dark that needs a mutable array, which
+  would have to be a general primitive, not a checker builtin
+- an interpreter that does not heap-allocate small values. Every enum, tuple and `Some` is an
+  object today
+- reading the program through a compact view instead of converting every body to a Dark value
+
+Moving the checker to F# would also get there, and is off the table: the checker stays in Dark.
+
+Smaller, still open:
+
+- a hashes-only branch listing for the whole-tree path, instead of names and hashes. The listing
+  is ~140 MB (measured on the 6.7 GB tree) and this would save most of it (estimate); hours of
+  work, and it helps `ls` and search too
+- routing the store search's deserialization through the package manager's cache: ~4%
+  (estimate), but a long-lived process (the language server) would then hold every searched body
+  until invalidation. A live-set increase for an allocation win, so a design call, not a tweak
+
+Unexplained, kept so it does not vanish: one commit (making `NodeIds`'s per-node helpers top-level
+functions) raised the 4-core floor one 16 MB step, 448 to 464 MB, while allocating 244 MB less and
+building the same lists. Bisected to that commit; the next change made the symptom go away.
+Unchecked candidates: GC heap sizing, a large-object-heap boundary. Note also that the 448 MB edge
+is noisy on its own: across five trees it passed 24 of 28 runs, failures scattered, so a single
+run at 448 says nothing about a change.
+
 ### Compile-time type checking -- owned elsewhere
 
 Ablation put the prize at -20% allocation and -14% wall, measured before much of the same work was
@@ -492,6 +546,13 @@ self-merge, but the fix is now a four-site change.
   allocation and wrong to stop there: a warm package call allocates nothing, but a forwarder cost
   2.5 us of frame in *time*. Eliding it took a view build 76 -> 66 ms. Allocation-only conclusions
   should not close time questions.
+- **The at-rest checker, smaller levers**, each measured on AOT on the whole-tree check:
+  fusing `Generate` and `Solve` saves at most ~110 MB (2.6%), not worth rewriting
+  `generate.dark`; lambda captures as one array saved 62 MB (1.4%) against an estimated 200,
+  because most lambdas capture zero or one value; dictionary key comparison costs ~200 B a lookup
+  whatever the key's shape, so it is the count (4.8 lookups a node) that matters, and a set is
+  the persistent map's path copy, already at its floor; tracing is free here (`dark typecheck`
+  as typed allocates the same as `--no-trace`); capping lanes costs 24% in time.
 - **Calling a polymorphic builtin.** Claimed 7,470 B from a residual across two probe scripts;
   actually 192 B. Retracted.
 - **A 2x between two record types.** Was the hash collision described below: the two rows were not
