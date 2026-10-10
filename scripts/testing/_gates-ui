@@ -277,7 +277,7 @@ gate_lsp_branches() {
   } | timeout --kill-after=5 120 "$PWD/$CLI" eval 'Darklang.LanguageTools.LspServer.runServerCli ()' > "$UTF8_OUT" 2> "$WORK/utf8-err.txt" || true
 
   ! grep -q '"Parse error"' "$UTF8_OUT" || fail "a message after non-ASCII text did not parse"
-  grep -q '"id":2' "$UTF8_OUT" || fail "a hover after a didChange holding non-ASCII text was not answered"
+  grep -q '"id":2,"result":{"contents"' "$UTF8_OUT" || fail "a hover after a didChange holding non-ASCII text was not answered"
 
   rm -rf "$WORK"
   echo "dark/* branch surface: answers by name and by id, and reports main as a uuid plus a name; non-ASCII text does not desynchronise the stream."

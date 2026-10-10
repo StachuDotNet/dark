@@ -71,7 +71,8 @@ gate_setup() {
   grep -q "$SECRET" <<<"$first" && fail "the write secret was ECHOED to the terminal"
 
   # An unreachable relay is reported and the configuration is kept, rather than the whole thing failing.
-  grep -q 'failed' <<<"$first" || fail "setup did not report the failed push"
+  # The message itself, from the start of its line: a bare 'failed' is in any crash's output too.
+  grep -q '^Push to http://localhost:1 failed: ' <<<"$first" || fail "setup did not report the failed push"
 
   # 2. Re-run, pressing Enter at every prompt. This is the path that could silently wipe a stored secret.
   again=$(run_setup "\n\n\n")
@@ -384,7 +385,8 @@ gate_sync_hostile_relay() {
   elapsed=$(( $(date +%s) - start ))
 
   [[ "$elapsed" -ge 115 ]] && fail "a relay that never answers wedged the client (still going after ${elapsed}s)"
-  grep -qE "timeout|timed out|failed" <<<"$out" \
+  # The message itself, and that it gave up on time: a bare 'failed' is in any crash's output too.
+  grep -qE "^Status from http://localhost:9086 failed: .*(timeout|timed out)" <<<"$out" \
     || fail "a relay that never answers did not produce a failure message; got: $out"
   echo "  ok   a relay that never answers: gave up after ${elapsed}s and said so"
 
