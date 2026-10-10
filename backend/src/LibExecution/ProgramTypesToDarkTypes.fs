@@ -16,7 +16,7 @@ let private ensureSufficientExecutionStack () : unit =
 
 
 module Sign =
-  let typeName () = FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.sign ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.sign
 
   let toDT (s : Sign) : Dval =
     let (caseName, fields) =
@@ -34,8 +34,7 @@ module Sign =
 
 
 module Hash =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.hash ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.hash
 
   let knownType () = KTCustomType(typeName (), [])
 
@@ -49,18 +48,16 @@ module Hash =
 
 
 module PackageLocation =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.packageLocation ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.packageLocation
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (loc : PT.PackageLocation) : Dval =
     let fields =
-      [ "owner", DString loc.owner
-        "modules", DList(VT.string, List.map DString loc.modules)
-        "name", DString loc.name ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "owner" (DString loc.owner)
+      |> Map.add "modules" (DList(VT.string, List.map DString loc.modules))
+      |> Map.add "name" (DString loc.name)
+    DRecord(typeName (), typeName (), [], fields)
 
   let fromDT (d : Dval) : PT.PackageLocation =
     match d with
@@ -72,10 +69,7 @@ module PackageLocation =
 
 
 module ResolvedName =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.resolvedName ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.resolvedName
   let knownType (nameValueType : KnownType) : KnownType =
     KTCustomType(typeName (), [ VT.known nameValueType ])
 
@@ -91,7 +85,9 @@ module ResolvedName =
       typeName (),
       typeName (),
       [ VT.known nameValueType ],
-      Map [ "name", name; "location", location ]
+      (Map.empty
+       |> Map.add "name" (name)
+       |> Map.add "location" (location))
     )
 
   let fromDT (f : Dval -> 'a) (d : Dval) : PT.ResolvedName<'a> =
@@ -105,17 +101,11 @@ module ResolvedName =
 
 
 module FQTypeName =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.FQTypeName.fqTypeName ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQTypeName.fqTypeName
   let knownType () = KTCustomType(typeName (), [])
 
   module Package =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.FQTypeName.package ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQTypeName.package
 
     let toDT (u : PT.FQTypeName.Package) : Dval = Hash.toDT u
 
@@ -135,10 +125,7 @@ module FQTypeName =
 
 
 module FQTraitName =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.FQTraitName.fqTraitName ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQTraitName.fqTraitName
   let knownType () = KTCustomType(typeName (), [])
 
   module Package =
@@ -158,21 +145,18 @@ module FQTraitName =
 
 
 module FQFnName =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.fqFnName ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.fqFnName
   let knownType () = KTCustomType(typeName (), [])
 
   module Builtin =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.builtin ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.builtin
 
     let toDT (u : PT.FQFnName.Builtin) : Dval =
-      let fields = [ "name", DString u.name; "version", DInt32 u.version ]
-      DRecord(typeName (), typeName (), [], Map fields)
+      let fields =
+        Map.empty
+        |> Map.add "name" (DString u.name)
+        |> Map.add "version" (DInt32 u.version)
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.FQFnName.Builtin =
       match d with
@@ -186,10 +170,7 @@ module FQFnName =
     let fromDT (d : Dval) : PT.FQFnName.Package = Hash.fromDT d
 
   module ImplChoice =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.implChoice ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.implChoice
     let knownType () = KTCustomType(typeName (), [])
 
     let toDT (c : PT.FQFnName.ImplChoice) : Dval =
@@ -211,10 +192,7 @@ module FQFnName =
       | _ -> Exception.raiseInternal "Invalid FQFnName.ImplChoice" []
 
   module BoundImpl =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.boundImpl ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.boundImpl
     let knownType () = KTCustomType(typeName (), [])
 
     let toDT (b : PT.FQFnName.BoundImpl) : Dval =
@@ -246,17 +224,15 @@ module FQFnName =
       | _ -> Exception.raiseInternal "Invalid FQFnName.BoundImpl" []
 
   module TraitMethod =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.traitMethod ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQFnName.traitMethod
 
     let toDT (u : PT.FQFnName.TraitMethod) : Dval =
       let fields =
-        [ "trait_", FQTraitName.Package.toDT u.trait_
-          "method_", DString u.method_
-          "implFn", ImplChoice.toDT u.implFn ]
-      DRecord(typeName (), typeName (), [], Map fields)
+        Map.empty
+        |> Map.add "trait_" (FQTraitName.Package.toDT u.trait_)
+        |> Map.add "method_" (DString u.method_)
+        |> Map.add "implFn" (ImplChoice.toDT u.implFn)
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.FQFnName.TraitMethod =
       match d with
@@ -289,20 +265,17 @@ module FQFnName =
 
 
 module FQValueName =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.FQValueName.fqValueName ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQValueName.fqValueName
   let knownType () = KTCustomType(typeName (), [])
 
   module Builtin =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.FQValueName.builtin ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.FQValueName.builtin
     let toDT (u : PT.FQValueName.Builtin) : Dval =
-      let fields = [ "name", DString u.name; "version", DInt32 u.version ]
-      DRecord(typeName (), typeName (), [], Map fields)
+      let fields =
+        Map.empty
+        |> Map.add "name" (DString u.name)
+        |> Map.add "version" (DInt32 u.version)
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.FQValueName.Builtin =
       match d with
@@ -332,10 +305,7 @@ module FQValueName =
 
 
 module NameResolutionError =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.nameResolutionError ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.nameResolutionError
 
   let knownType () = KTCustomType(typeName (), [])
 
@@ -355,10 +325,7 @@ module NameResolutionError =
 
 
 module NameResolution =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.nameResolution ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.nameResolution
 
   let toDT
     (nameValueType : KnownType)
@@ -377,7 +344,9 @@ module NameResolution =
       typeName (),
       typeName (),
       [ VT.known nameValueType ],
-      Map [ "originalName", originalName; "resolved", resolved ]
+      (Map.empty
+       |> Map.add "originalName" (originalName)
+       |> Map.add "resolved" (resolved))
     )
 
   let fromDT (f : Dval -> 'a) (d : Dval) : PT.NameResolution<'a> =
@@ -394,10 +363,7 @@ module NameResolution =
 
 
 module TypeReference =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.typeReference ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.typeReference
   let knownType () = KTCustomType(typeName (), [])
 
   let rec toDT (t : PT.TypeReference) : Dval =
@@ -497,8 +463,7 @@ module TypeReference =
 
 
 module LetPattern =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.letPattern ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.letPattern
   let knownType () = KTCustomType(typeName (), [])
 
   let rec toDT (p : PT.LetPattern) : Dval =
@@ -535,10 +500,7 @@ module LetPattern =
 
 
 module MatchPattern =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.matchPattern ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.matchPattern
   let knownType () = KTCustomType(typeName (), [])
 
   let rec toDT (p : PT.MatchPattern) : Dval =
@@ -655,10 +617,7 @@ module MatchPattern =
 
 
 module BinaryOperation =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.binaryOperation ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.binaryOperation
 
   let toDT (b : PT.BinaryOperation) : Dval =
     let (caseName, fields) =
@@ -675,8 +634,7 @@ module BinaryOperation =
 
 
 module InfixFnName =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.infixFnName ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.infixFnName
 
   let toDT (i : PT.InfixFnName) : Dval =
     let (caseName, fields) =
@@ -728,8 +686,7 @@ module InfixFnName =
 
 
 module Infix =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.infix ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.infix
 
   let toDT (i : PT.Infix) : Dval =
     let (caseName, fields) =
@@ -747,10 +704,7 @@ module Infix =
 
 
 module StringSegment =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.stringSegment ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.stringSegment
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (exprToDT : PT.Expr -> Dval) (s : PT.StringSegment) : Dval =
@@ -769,8 +723,7 @@ module StringSegment =
 
 
 module PipeExpr =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.pipeExpr ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.pipeExpr
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT
@@ -888,8 +841,7 @@ module PipeExpr =
 
 
 module Expr =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.expr ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.expr
   let knownType () = KTCustomType(typeName (), [])
 
   let rec toDT (e : PT.Expr) : Dval =
@@ -1288,8 +1240,7 @@ module Expr =
 
 
 module Deprecation =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.deprecation ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.deprecation
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT
@@ -1320,8 +1271,7 @@ module Deprecation =
 
 
 module TraitRef =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.traitRef ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.traitRef
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (t : PT.TraitRef) : Dval =
@@ -1348,8 +1298,7 @@ module TraitRef =
     | _ -> Exception.raiseInternal "Invalid TraitRef" []
 
 module Bound =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.bound ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.bound
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (b : PT.Bound) : Dval =
@@ -1357,7 +1306,9 @@ module Bound =
       typeName (),
       typeName (),
       [],
-      Map [ "param", DString b.param; "trait_", TraitRef.toDT b.trait_ ]
+      (Map.empty
+       |> Map.add "param" (DString b.param)
+       |> Map.add "trait_" (TraitRef.toDT b.trait_))
     )
 
   let fromDT (d : Dval) : PT.Bound =
@@ -1372,24 +1323,19 @@ module Bound =
 
 
 module TypeDeclaration =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.typeDeclaration ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.typeDeclaration
 
   module RecordField =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.recordField ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.recordField
     let knownType () = KTCustomType(typeName (), [])
 
     let toDT (rf : PT.TypeDeclaration.RecordField) : Dval =
       let fields =
-        [ "name", DString rf.name
-          "typ", TypeReference.toDT rf.typ
-          "description", DString rf.description ]
-      DRecord(typeName (), typeName (), [], Map fields)
+        Map.empty
+        |> Map.add "name" (DString rf.name)
+        |> Map.add "typ" (TypeReference.toDT rf.typ)
+        |> Map.add "description" (DString rf.description)
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.TypeDeclaration.RecordField =
       match d with
@@ -1400,18 +1346,16 @@ module TypeDeclaration =
       | _ -> Exception.raiseInternal "Invalid RecordField" []
 
   module EnumField =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.enumField ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.enumField
     let knownType () = KTCustomType(typeName (), [])
 
     let toDT (ef : PT.TypeDeclaration.EnumField) : Dval =
       let fields =
-        [ "typ", TypeReference.toDT ef.typ
-          "label", ef.label |> Option.map DString |> Dval.option KTString
-          "description", DString ef.description ]
-      DRecord(typeName (), typeName (), [], Map fields)
+        Map.empty
+        |> Map.add "typ" (TypeReference.toDT ef.typ)
+        |> Map.add "label" (ef.label |> Option.map DString |> Dval.option KTString)
+        |> Map.add "description" (DString ef.description)
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.TypeDeclaration.EnumField =
       match d with
@@ -1430,19 +1374,16 @@ module TypeDeclaration =
 
 
   module EnumCase =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.enumCase ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.enumCase
     let knownType () = KTCustomType(typeName (), [])
 
     let toDT (ec : PT.TypeDeclaration.EnumCase) : Dval =
       let fields =
-        [ "name", DString ec.name
-          "fields",
-          DList(VT.known (EnumField.knownType ()), List.map EnumField.toDT ec.fields)
-          "description", DString ec.description ]
-      DRecord(typeName (), typeName (), [], Map fields)
+        Map.empty
+        |> Map.add "name" (DString ec.name)
+        |> Map.add "fields" (DList(VT.known (EnumField.knownType ()), List.map EnumField.toDT ec.fields))
+        |> Map.add "description" (DString ec.description)
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.TypeDeclaration.EnumCase =
       match d with
@@ -1455,10 +1396,7 @@ module TypeDeclaration =
 
 
   module Definition =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.definition ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.TypeDeclaration.definition
 
     let toDT (d : PT.TypeDeclaration.Definition) : Dval =
       let (caseName, fields) =
@@ -1500,10 +1438,11 @@ module TypeDeclaration =
 
   let toDT (td : PT.TypeDeclaration.T) : Dval =
     let fields =
-      [ "typeParams", DList(VT.string, List.map DString td.typeParams)
-        "bounds", Bound.listToDT td.bounds
-        "definition", Definition.toDT td.definition ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "typeParams" (DList(VT.string, List.map DString td.typeParams))
+      |> Map.add "bounds" (Bound.listToDT td.bounds)
+      |> Map.add "definition" (Definition.toDT td.definition)
+    DRecord(typeName (), typeName (), [], fields)
 
   let fromDT (d : Dval) : PT.TypeDeclaration.T =
     match d with
@@ -1517,17 +1456,15 @@ module TypeDeclaration =
 // -- Package stuff -- //
 
 module PackageType =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.PackageType.packageType ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.PackageType.packageType
 
   let toDT (p : PT.PackageType.PackageType) : Dval =
     let fields =
-      [ "hash", Hash.toDT p.hash
-        "declaration", TypeDeclaration.toDT p.declaration
-        "description", DString p.description ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "hash" (Hash.toDT p.hash)
+      |> Map.add "declaration" (TypeDeclaration.toDT p.declaration)
+      |> Map.add "description" (DString p.description)
+    DRecord(typeName (), typeName (), [], fields)
 
 
   let fromDT (d : Dval) : PT.PackageType.PackageType =
@@ -1540,17 +1477,15 @@ module PackageType =
 
 
 module PackageValue =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.PackageValue.packageValue ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.PackageValue.packageValue
 
   let toDT (p : PT.PackageValue.PackageValue) : Dval =
     let fields =
-      [ "hash", Hash.toDT p.hash
-        "body", Expr.toDT p.body
-        "description", DString p.description ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "hash" (Hash.toDT p.hash)
+      |> Map.add "body" (Expr.toDT p.body)
+      |> Map.add "description" (DString p.description)
+    DRecord(typeName (), typeName (), [], fields)
 
   let fromDT (d : Dval) : PT.PackageValue.PackageValue =
     match d with
@@ -1637,10 +1572,7 @@ module PackageFn =
 
 module Trait =
   module Method =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.Trait.method_ ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.Trait.method_
     let knownType () = KTCustomType(typeName (), [])
 
     let toDT (m : PT.Trait.Method) : Dval =
@@ -1680,25 +1612,21 @@ module Trait =
           description = fields |> D.field "description" |> D.string }
       | _ -> Exception.raiseInternal "Invalid Trait.Method" []
 
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.Trait.trait_ ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.Trait.trait_
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (t : PT.Trait.Trait) : Dval =
     let fields =
-      [ "hash", Hash.toDT t.hash
-        "typeParams",
-        DList(VT.string, t.typeParams |> NEList.toList |> List.map DString)
-        "bounds", Bound.listToDT t.bounds
-        "methods",
-        DList(
-          VT.known (Method.knownType ()),
-          t.methods |> NEList.toList |> List.map Method.toDT
-        )
-        "description", DString t.description ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "hash" (Hash.toDT t.hash)
+      |> Map.add "typeParams" (DList(VT.string, t.typeParams |> NEList.toList |> List.map DString))
+      |> Map.add "bounds" (Bound.listToDT t.bounds)
+      |> Map.add "methods" (DList(
+           VT.known (Method.knownType ()),
+           t.methods |> NEList.toList |> List.map Method.toDT
+           ))
+      |> Map.add "description" (DString t.description)
+    DRecord(typeName (), typeName (), [], fields)
 
   let fromDT (d : Dval) : PT.Trait.Trait =
     match d with
@@ -1720,49 +1648,44 @@ module Trait =
 
 
 module TraitImpl =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.TraitImpl.traitImpl ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.TraitImpl.traitImpl
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (i : PT.TraitImpl.TraitImpl) : Dval =
     let fields =
-      [ "hash", Hash.toDT i.hash
-        "trait_",
-        NameResolution.toDT (FQTraitName.knownType ()) FQTraitName.toDT i.trait_
-        "traitTypeArgs",
-        DList(
-          VT.known (TypeReference.knownType ()),
-          List.map TypeReference.toDT i.traitTypeArgs
-        )
-        "self", TypeReference.toDT i.self
-        "typeParams", DList(VT.string, List.map DString i.typeParams)
-        "bounds", Bound.listToDT i.bounds
-        "methods",
-        DList(
-          VT.known (
-            KTTuple(
-              VT.string,
-              VT.known (
-                KTCustomType(
-                  NameResolution.typeName (),
-                  [ VT.known (FQFnName.knownType ()) ]
-                )
-              ),
-              []
-            )
-          ),
-          i.methods
-          |> List.map (fun (m, nr) ->
-            DTuple(
-              DString m,
-              NameResolution.toDT (FQFnName.knownType ()) FQFnName.toDT nr,
-              []
-            ))
-        )
-        "description", DString i.description ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "hash" (Hash.toDT i.hash)
+      |> Map.add "trait_" (NameResolution.toDT (FQTraitName.knownType ()) FQTraitName.toDT i.trait_)
+      |> Map.add "traitTypeArgs" (DList(
+           VT.known (TypeReference.knownType ()),
+           List.map TypeReference.toDT i.traitTypeArgs
+           ))
+      |> Map.add "self" (TypeReference.toDT i.self)
+      |> Map.add "typeParams" (DList(VT.string, List.map DString i.typeParams))
+      |> Map.add "bounds" (Bound.listToDT i.bounds)
+      |> Map.add "methods" (DList(
+           VT.known (
+           KTTuple(
+           VT.string,
+           VT.known (
+           KTCustomType(
+           NameResolution.typeName (),
+           [ VT.known (FQFnName.knownType ()) ]
+           )
+           ),
+           []
+           )
+           ),
+           i.methods
+           |> List.map (fun (m, nr) ->
+           DTuple(
+           DString m,
+           NameResolution.toDT (FQFnName.knownType ()) FQFnName.toDT nr,
+           []
+           ))
+           ))
+      |> Map.add "description" (DString i.description)
+    DRecord(typeName (), typeName (), [], fields)
 
   let fromDT (d : Dval) : PT.TraitImpl.TraitImpl =
     match d with
@@ -1788,8 +1711,7 @@ module TraitImpl =
 
 
 module ItemKind =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.itemKind ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.itemKind
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (k : PT.ItemKind) : Dval =
@@ -1813,8 +1735,7 @@ module ItemKind =
 
 
 module Reference =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.reference ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.reference
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (r : PT.Reference) : Dval =
@@ -1839,8 +1760,7 @@ module Reference =
 
 
 module DocPart =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.docPart ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.docPart
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (p : PT.DocPart) : Dval =
@@ -1865,10 +1785,7 @@ module DocPart =
 
 
 module DeprecationKind =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.deprecationKind ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.deprecationKind
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (k : PT.DeprecationKind) : Dval =
@@ -1889,18 +1806,16 @@ module DeprecationKind =
 
 
 module PropagateRepoint =
-  let typeName () =
-    FQTypeName.fqPackage (
-      PackageRefs.Type.LanguageTools.ProgramTypes.propagateRepoint ()
-    )
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.propagateRepoint
   let knownType () = KTCustomType(typeName (), [])
 
   let toDT (r : PT.PropagateRepoint) : Dval =
     let fields =
-      [ "location", PackageLocation.toDT r.location
-        "fromRef", Reference.toDT r.fromRef
-        "toRef", Reference.toDT r.toRef ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "location" (PackageLocation.toDT r.location)
+      |> Map.add "fromRef" (Reference.toDT r.fromRef)
+      |> Map.add "toRef" (Reference.toDT r.toRef)
+    DRecord(typeName (), typeName (), [], fields)
 
   let fromDT (d : Dval) : PT.PropagateRepoint =
     match d with
@@ -1912,8 +1827,7 @@ module PropagateRepoint =
 
 
 module LocatedItem =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.locatedItem ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.locatedItem
   let knownType (entityKT : KnownType) =
     KTCustomType(typeName (), [ VT.known entityKT ])
 
@@ -1923,8 +1837,10 @@ module LocatedItem =
     (i : PT.LocatedItem<'T>)
     : Dval =
     let fields =
-      [ "entity", entityToDT i.entity; "location", PackageLocation.toDT i.location ]
-    DRecord(typeName (), typeName (), [ VT.known entityKT ], Map fields)
+      Map.empty
+      |> Map.add "entity" (entityToDT i.entity)
+      |> Map.add "location" (PackageLocation.toDT i.location)
+    DRecord(typeName (), typeName (), [ VT.known entityKT ], fields)
 
   let fromDT (entityFromDT : Dval -> 'T) (d : Dval) : PT.LocatedItem<'T> =
     match d with
@@ -1936,10 +1852,7 @@ module LocatedItem =
 
 module Search =
   module EntityType =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.Search.entityType ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.Search.entityType
 
     let toDT (et : PT.Search.EntityType) : Dval =
       let (caseName, fields) =
@@ -1964,10 +1877,7 @@ module Search =
 
 
   module SearchDepth =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.Search.searchDepth ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.Search.searchDepth
 
     let toDT (sd : PT.Search.SearchDepth) : Dval =
       let (caseName, fields) =
@@ -1984,23 +1894,20 @@ module Search =
       | _ -> Exception.raiseInternal "Invalid SearchDepth" []
 
   module SearchQuery =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.Search.searchQuery ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.Search.searchQuery
 
     let toDT (sq : PT.Search.SearchQuery) : Dval =
       let fields =
-        [ "currentModule", DList(VT.string, List.map DString sq.currentModule)
-          "text", DString sq.text
-          "searchDepth", SearchDepth.toDT sq.searchDepth
-          "entityTypes",
-          DList(
-            VT.known (KTCustomType(EntityType.typeName (), [])),
-            sq.entityTypes |> List.map EntityType.toDT
-          )
-          "exactMatch", DBool sq.exactMatch ]
-      DRecord(typeName (), typeName (), [], Map fields)
+        Map.empty
+        |> Map.add "currentModule" (DList(VT.string, List.map DString sq.currentModule))
+        |> Map.add "text" (DString sq.text)
+        |> Map.add "searchDepth" (SearchDepth.toDT sq.searchDepth)
+        |> Map.add "entityTypes" (DList(
+             VT.known (KTCustomType(EntityType.typeName (), [])),
+             sq.entityTypes |> List.map EntityType.toDT
+             ))
+        |> Map.add "exactMatch" (DBool sq.exactMatch)
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.Search.SearchQuery =
       match d with
@@ -2016,42 +1923,34 @@ module Search =
       | _ -> Exception.raiseInternal "Invalid SearchQuery" []
 
   module SearchResults =
-    let typeName () =
-      FQTypeName.fqPackage (
-        PackageRefs.Type.LanguageTools.ProgramTypes.Search.searchResults ()
-      )
+    let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.Search.searchResults
 
     let toDT (sr : PT.Search.SearchResults) : Dval =
       let typeKT = KTCustomType(PackageType.typeName (), [])
       let valueKT = KTCustomType(PackageValue.typeName (), [])
       let fnKT = KTCustomType(PackageFn.typeName (), [])
       let fields =
-        [ "submodules",
-          sr.submodules
-          |> List.map (fun modules ->
-            modules |> List.map (fun m -> DString m) |> Dval.list KTString)
-          |> Dval.list (KTList VT.string)
-          "types",
-          sr.types
-          |> List.map (LocatedItem.toDT typeKT PackageType.toDT)
-          |> Dval.list (LocatedItem.knownType typeKT)
-          "values",
-          sr.values
-          |> List.map (LocatedItem.toDT valueKT PackageValue.toDT)
-          |> Dval.list (LocatedItem.knownType valueKT)
-          "fns",
-          sr.fns
-          |> List.map (LocatedItem.toDT fnKT PackageFn.toDT)
-          |> Dval.list (LocatedItem.knownType fnKT)
-          "traits",
-          sr.traits
-          |> List.map (LocatedItem.toDT (Trait.knownType ()) Trait.toDT)
-          |> Dval.list (LocatedItem.knownType (Trait.knownType ()))
-          "impls",
-          sr.impls
-          |> List.map (LocatedItem.toDT (TraitImpl.knownType ()) TraitImpl.toDT)
-          |> Dval.list (LocatedItem.knownType (TraitImpl.knownType ())) ]
-      DRecord(typeName (), typeName (), [], Map fields)
+        Map.empty
+        |> Map.add "submodules" (sr.submodules
+             |> List.map (fun modules ->
+             modules |> List.map (fun m -> DString m) |> Dval.list KTString)
+             |> Dval.list (KTList VT.string))
+        |> Map.add "types" (sr.types
+             |> List.map (LocatedItem.toDT typeKT PackageType.toDT)
+             |> Dval.list (LocatedItem.knownType typeKT))
+        |> Map.add "values" (sr.values
+             |> List.map (LocatedItem.toDT valueKT PackageValue.toDT)
+             |> Dval.list (LocatedItem.knownType valueKT))
+        |> Map.add "fns" (sr.fns
+             |> List.map (LocatedItem.toDT fnKT PackageFn.toDT)
+             |> Dval.list (LocatedItem.knownType fnKT))
+        |> Map.add "traits" (sr.traits
+             |> List.map (LocatedItem.toDT (Trait.knownType ()) Trait.toDT)
+             |> Dval.list (LocatedItem.knownType (Trait.knownType ())))
+        |> Map.add "impls" (sr.impls
+             |> List.map (LocatedItem.toDT (TraitImpl.knownType ()) TraitImpl.toDT)
+             |> Dval.list (LocatedItem.knownType (TraitImpl.knownType ())))
+      DRecord(typeName (), typeName (), [], fields)
 
     let fromDT (d : Dval) : PT.Search.SearchResults =
       match d with
@@ -2125,8 +2024,7 @@ module DecisionKind =
 
 
 module PackageOp =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.packageOp ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.packageOp
 
   /// Encodes SetName/Unbind's `previous`. A `Hash`, not a bare string: the Dark
   /// side declares `Option<Hash>` and `Hash` is a single-case wrapper there, so
@@ -2261,16 +2159,16 @@ module PackageOp =
 // -- User stuff -- //
 
 module DB =
-  let typeName () =
-    FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.db ())
+  let typeName = Dval.memoTypeName PackageRefs.Type.LanguageTools.ProgramTypes.db
 
   let toDT (db : PT.DB.T) : Dval =
     let fields =
-      [ "tlid", DUInt64(uint64 db.tlid)
-        "name", DString db.name
-        "version", DInt32 db.version
-        "typ", TypeReference.toDT db.typ ]
-    DRecord(typeName (), typeName (), [], Map fields)
+      Map.empty
+      |> Map.add "tlid" (DUInt64(uint64 db.tlid))
+      |> Map.add "name" (DString db.name)
+      |> Map.add "version" (DInt32 db.version)
+      |> Map.add "typ" (TypeReference.toDT db.typ)
+    DRecord(typeName (), typeName (), [], fields)
 
   let fromDT (d : Dval) : PT.DB.T =
     match d with

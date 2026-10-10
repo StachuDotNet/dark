@@ -214,6 +214,12 @@ worse than no label: it looks authoritative and is wrong if the tree had uncommi
 moved on. Before quoting a Release number, check the binary is newer than every commit you are
 crediting.
 
+The same naming destroys your baseline. Publish with uncommitted changes and the new binary lands
+on the HEAD-named path, overwriting the binary of the committed tree, which is usually the "before"
+of the A/B you are about to run. It happened in the typecheck allocation work: the main baseline
+binary was silently replaced by the changed one. Commit, even to a scratch branch, before every
+publish, so each binary's name is a tree you can name back.
+
 ## 11. Working with the tooling here
 
 - Run the perf tools in the **foreground**, with `< /dev/null`. Backgrounded shell commands are
