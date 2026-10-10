@@ -3,8 +3,10 @@
 
 # By-hand checks for changes to the interpreter, the type checker or error construction.
 #
-# Not assertions: read each result against the "expect" line printed above it. They exist because
-# the backend suite can pass while the interpreter returns a quietly wrong answer.
+# Mostly not assertions: read each result against the "expect" line printed above it. They exist
+# because the backend suite can pass while the interpreter returns a quietly wrong answer. The three
+# that compare against a known answer (the fast-path check and the two goldens) are assertions: any
+# of them failing makes this exit 1, so a run that scrolled past a diff still says so.
 #
 # Error paths get most of the attention. They only run once something has already gone wrong, so a
 # change can garble every message with every test green.
@@ -26,6 +28,8 @@ run() { # run <title> <expect> <script>
 # Writes a case to scratch and returns its path. Inline rather than one committed file per case:
 # most are three lines whose whole content is the error they die with.
 case_file() { local name="$1"; shift; local f="$SCRATCH/check-$name.dark"; cat > "$f"; echo "$f"; }
+
+FAILED=0
 
 # --- happy paths -------------------------------------------------------------------------------
 
@@ -149,6 +153,7 @@ fi
 printf '\n=== operator fast path matches the builtins it stands in for\n    expect: no FAIL lines\n'
 if "$EXE" run "$CHECKS/fastopcheck.dark" 2>&1 | grep '^FAIL'; then
   echo "    FAILED -- a fast-path entry disagrees with its builtin"
+  FAILED=1
 else
   echo "    ok"
 fi
@@ -157,17 +162,37 @@ run "SGR width, stripping, clipping and wrapping" \
     "5, 3, 1, then abc, abc, and 2 wrapped lines" \
     "$CHECKS/sgrcheck.dark"
 
+# The workbench says how long ago things happened ("just now", "4m ago", "yesterday"), and the store
+# a golden renders is however old it is, so those words differ from one run to the next and the
+# padding after them moves with their width. Both sides of each diff have that one token, and the
+# padding straight after it, replaced; every other byte is compared as it is. Keep it that narrow:
+# collapsing whitespace in general would also hide a clipping or padding change, which is what
+# goldenview exists to catch.
+ESC=$'\e'
+WHEN="(just now|[0-9]+[mh] ago|yesterday|[0-9]+ days ago)((${ESC}\\[[0-9;]*m)*) *"
+flatten_when() { sed -E "s/$WHEN/<when>\\2/g"; }
+
 # A render change has to produce the same bytes. Regenerate deliberately when the view itself
 # changes, with the command in the header of goldenview.dark -- never to make this pass.
 printf '\n=== workbench view renders byte-identically\n    expect: no diff\n'
-if "$EXE" run "$CHECKS/goldenview.dark" 2>&1 | diff - "$CHECKS/goldenview.expected"; then
+if diff <("$EXE" run "$CHECKS/goldenview.dark" 2>&1 | flatten_when) \
+  <(flatten_when < "$CHECKS/goldenview.expected"); then
   echo "    ok, three sizes byte-identical"
+else
+  echo "    FAILED -- the view renders differently"
+  FAILED=1
 fi
 
 # The one above renders the initial state, so it says nothing about the key handlers. This walks a
 # navigation sequence and renders after every key, which is where a change to *when* a handler
 # computes something shows up. Regenerate the same way, and only on purpose.
 printf '\n=== workbench navigates byte-identically\n    expect: no diff\n'
-if "$EXE" run "$CHECKS/goldenkeys.dark" 2>&1 | diff - "$CHECKS/goldenkeys.expected"; then
+if diff <("$EXE" run "$CHECKS/goldenkeys.dark" 2>&1 | flatten_when) \
+  <(flatten_when < "$CHECKS/goldenkeys.expected"); then
   echo "    ok, eleven frames byte-identical"
+else
+  echo "    FAILED -- a key renders differently"
+  FAILED=1
 fi
+
+exit "$FAILED"

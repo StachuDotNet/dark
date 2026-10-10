@@ -18,8 +18,13 @@
 #   scripts/perf/suite --json out.json  also write machine-readable results
 #   scripts/perf/suite --record         append to benchmarks/results/history.jsonl
 #
-# Allocation repeats to the byte and is the number to trust; time is printed but never fails
-# anything. Method and traps: docs/perf/playbook.md.
+# Allocation is the number to trust, but not to the byte: a per-iteration figure here moves by a
+# few hundred bytes between runs of the same binary, which is most of a small workload. Run each
+# side more than once before believing a difference. Time is printed but never fails anything.
+# Method and traps: docs/perf/playbook.md.
+#
+# If any workload fails, the suite names it, shows its error and exits 1 without printing a table:
+# a table missing a row reads as a measurement.
 set -euo pipefail
 cd /home/dark/app
 . ./scripts/perf/_common
@@ -49,7 +54,26 @@ else
   EXE="backend/Build/out/Cli/Debug/net10.0/Cli"
   MODE=debug
 fi
-TELEMETRY=$(telemetry_path)
+
+# The workloads read their iteration count from PERF_ITERS, and the default instance policy denies
+# reading the environment, so under it every workload raised before measuring anything. The policy
+# lives in `<rundir>/policy` (Cli.fs, setPolicyDirectory), so the suite runs on a rundir of its own:
+# a copy of the store, made the way the gates make theirs, with a fresh policy that allows that one
+# variable. Nothing the developer runs under is widened.
+#
+# The copy inherits the store's config, `sync.relay` and the write secret included, so all of
+# `config_v0` is cleared on it (see `scripts/testing/_copy-store`).
+SUITE_RUNDIR=$(mktemp -d "${TMPDIR:-/tmp}/perf-suite-rundir.XXXXXX")
+trap 'rm -rf "${SUITE_RUNDIR:?}"' EXIT
+scripts/testing/_copy-store "$SUITE_RUNDIR/data.db"
+sqlite3 "$SUITE_RUNDIR/data.db" 'DELETE FROM config_v0;'
+if ! DARK_CONFIG_RUNDIR="$SUITE_RUNDIR" "$EXE" permissions allow env read PERF_ITERS \
+  > "$SUITE_RUNDIR/allow.log" 2>&1; then
+  echo "perf/suite: could not allow PERF_ITERS in the suite's own policy:" >&2
+  cat "$SUITE_RUNDIR/allow.log" >&2
+  exit 2
+fi
+TELEMETRY="$SUITE_RUNDIR/logs/telemetry.jsonl"
 
 if [[ ! -x "$EXE" ]]; then
   if [[ "$RELEASE" == "true" ]]; then no_release_exe perf/suite
@@ -81,7 +105,8 @@ print(last["totalAllocatedBytes"])
 # run, which is not what a user's invocation does.
 run_once() {
   rm -f "$TELEMETRY"
-  PERF_ITERS="$2" DARK_TELEMETRY=1 DARK_CONFIG_TRACE_DETAIL=off "$EXE" run "$1"
+  DARK_CONFIG_RUNDIR="$SUITE_RUNDIR" PERF_ITERS="$2" DARK_TELEMETRY=1 DARK_CONFIG_TRACE_DETAIL=off \
+    "$EXE" run "$1"
 }
 
 # One throwaway run before anything is measured: against a cold store the first invocation seeds it,
@@ -89,9 +114,18 @@ run_once() {
 # per-iteration figure.
 run_once "$SUITE/${NAMES[0]}.dark" 0 > /dev/null 2>&1 || true
 
-printf '%-12s %12s %12s %10s\n' workload "alloc/iter" "total alloc" "ms"
-printf '%-12s %12s %12s %10s\n' ------------ ------------ ------------ ----------
+# A run that fails says so, by name, rather than ending the script under `set -e` with the reason
+# swallowed: that used to print the header, no rows and exit 1, which read as nothing at all.
+failed=()
+fail() {
+  failed+=("$1")
+  {
+    echo "perf/suite: workload '$1' failed ($2):"
+    tail -n 8 <<< "$3" | sed 's/^/    /'
+  } >&2
+}
 
+rows=""
 results=""
 for name in "${NAMES[@]}"; do
   script="$SUITE/$name.dark"
@@ -100,22 +134,31 @@ for name in "${NAMES[@]}"; do
     exit 2
   fi
 
-  run_once "$script" 0 > /dev/null
-  base=$(read_alloc)
+  if ! out=$(run_once "$script" 0 2>&1); then fail "$name" "at 0 iterations" "$out"; continue; fi
+  if ! base=$(read_alloc 2>&1); then fail "$name" "reading its allocation" "$base"; continue; fi
 
-  out=$(run_once "$script" "$ITERS")
-  full=$(read_alloc)
+  if ! out=$(run_once "$script" "$ITERS" 2>&1); then fail "$name" "at $ITERS iterations" "$out"; continue; fi
+  if ! full=$(read_alloc 2>&1); then fail "$name" "reading its allocation" "$full"; continue; fi
   ms=$(sed -n 's/.*elapsed_ms=\([0-9]*\).*/\1/p' <<< "$out")
 
   body=$((full - base))
   per=$((body / ITERS))
-  printf '%-12s %12s %12s %10s\n' \
+  rows+=$(printf '%-12s %12s %12s %10s' \
     "$name" \
     "$(python3 -c "print(f'{$per/1024:.2f} KB')")" \
     "$(python3 -c "print(f'{$body/1e6:.3f} MB')")" \
-    "${ms:-?}"
+    "${ms:-?}")$'\n'
   results="$results{\"workload\":\"$name\",\"iters\":$ITERS,\"bytesPerIter\":$per,\"bodyBytes\":$body,\"ms\":${ms:-null}},"
 done
+
+if [[ ${#failed[@]} -gt 0 ]]; then
+  echo "perf/suite: ${#failed[@]} of ${#NAMES[@]} workloads failed (${failed[*]}); no table, since one missing a row reads as a measurement" >&2
+  exit 1
+fi
+
+printf '%-12s %12s %12s %10s\n' workload "alloc/iter" "total alloc" "ms"
+printf '%-12s %12s %12s %10s\n' ------------ ------------ ------------ ----------
+printf '%s' "$rows"
 
 results="[${results%,}]"
 

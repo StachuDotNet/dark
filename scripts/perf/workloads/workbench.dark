@@ -42,6 +42,8 @@ let base =
     "perf"
     "perf-instance"
     (Stdlib.List.range 0 40)
+    // `live` off: what `dark workbench` opens with unless given `--live`.
+    false
 
 // 120x40 is the smallest size that lays out every pane; below it the workbench drops panes and the
 // numbers stop meaning what they look like they mean.

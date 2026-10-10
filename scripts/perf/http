@@ -51,10 +51,16 @@ if [[ ! -x "$EXE" ]]; then
   exit 2
 fi
 
-LOGDIR="${DARK_CONFIG_RUNDIR}/logs"
+# The server reads its port from PERF_HTTP_PORT, and the default instance policy denies reading the
+# environment, so under it the server raised before listening. Same fix as `scripts/perf/suite`: a
+# rundir of its own (the policy lives in `<rundir>/policy`), a copy of the store with all of
+# `config_v0` cleared, and a fresh policy that allows that one variable and binding that one port.
+# Nothing the developer runs under is widened.
+HTTP_RUNDIR=$(mktemp -d "${TMPDIR:-/tmp}/perf-http-rundir.XXXXXX")
+LOGDIR="$HTTP_RUNDIR/logs"
+mkdir -p "$LOGDIR"
 SERVER_LOG="$LOGDIR/perf-http-server.log"
 TELEMETRY="$LOGDIR/telemetry.jsonl"
-rm -f "$TELEMETRY" "$SERVER_LOG"
 
 # The server serves until it's killed, so it has to be stopped on every exit path, including a
 # failed wait-for-listening. Killing the process group gets the dotnet child too.
@@ -64,11 +70,22 @@ cleanup() {
     kill -TERM "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
+  rm -rf "${HTTP_RUNDIR:?}"
 }
 trap cleanup EXIT
 
-PERF_HTTP_PORT="$PORT" DARK_TELEMETRY="${PERF_TELEMETRY:-1}" DARK_CONFIG_TRACE_DETAIL=off \
-  "$EXE" run "$SERVER" > "$SERVER_LOG" 2>&1 &
+scripts/testing/_copy-store "$HTTP_RUNDIR/data.db"
+sqlite3 "$HTTP_RUNDIR/data.db" 'DELETE FROM config_v0;'
+if ! { DARK_CONFIG_RUNDIR="$HTTP_RUNDIR" "$EXE" permissions allow env read PERF_HTTP_PORT \
+  && DARK_CONFIG_RUNDIR="$HTTP_RUNDIR" "$EXE" permissions allow http-server "$PORT"; } \
+  > "$HTTP_RUNDIR/allow.log" 2>&1; then
+  echo "perf/http: could not allow PERF_HTTP_PORT and port $PORT in its own policy:" >&2
+  cat "$HTTP_RUNDIR/allow.log" >&2
+  exit 2
+fi
+
+DARK_CONFIG_RUNDIR="$HTTP_RUNDIR" PERF_HTTP_PORT="$PORT" DARK_TELEMETRY="${PERF_TELEMETRY:-1}" \
+  DARK_CONFIG_TRACE_DETAIL=off "$EXE" run "$SERVER" > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
 for _ in $(seq 1 120); do
