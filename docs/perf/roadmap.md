@@ -13,7 +13,7 @@ Numbers are measured unless marked *(estimate)*.
     scripts/perf/keystroke          what one keypress costs in the interactive CLI (needs a TTY)
     ./scripts/run-cli run scripts/perf/workloads/optime.dark      time per operation (costs.dark's time twin)
     ./scripts/run-cli run scripts/perf/workloads/costs.dark      per-operation cost table
-    ./scripts/run-cli run scripts/perf/workloads/workbench.dark  ms to build each workbench view
+    scripts/perf/views              ms to build each workbench view, and all ten measured
 
 Method and traps: `docs/perf/playbook.md`. Numbers round by round: `docs/perf/history.md`.
 

@@ -25,6 +25,8 @@ let base =
     "perf"
     "perf-instance"
     (Stdlib.List.range 0 40)
+    // `live` off: what `dark workbench` opens with unless given `--live`.
+    false
 
 let size = Stdlib.Cli.Tui.Size { width = 120; height = 40 }
 

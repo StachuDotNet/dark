@@ -6,8 +6,10 @@
 // `scripts/perf/checks` diffs this against `goldenview.expected` beside it. When the view itself
 // changes, regenerate that file deliberately -- never to make the check pass:
 //
-//   ./scripts/run-cli run scripts/perf/workloads/checks/goldenview.dark \
-//     > scripts/perf/workloads/checks/goldenview.expected
+//   scripts/perf/checks --regenerate-goldens
+//
+// Not `run-cli run ... > goldenview.expected`: Home lists the store's commits, and `checks` renders
+// a copy of the store pinned to one, so a file taken from the dev store would not match it.
 //
 // Three sizes because the interesting bugs are in clipping and in rows that run out of room.
 
@@ -18,6 +20,8 @@ let base =
     "perf"
     "perf-instance"
     (Stdlib.List.range 0 40)
+    // `live` off: what `dark workbench` opens with unless given `--live`.
+    false
 
 let sizes =
   [ Stdlib.Cli.Tui.Size { width = 120; height = 40 }

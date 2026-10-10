@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+
+# Render every workbench view, headless, and report ms per render.
+#
+#   scripts/perf/views              the debug CLI
+#   scripts/perf/views --published  the published one
+#
+# The whole keystroke loop, with a terminal in front of it, is `scripts/perf/keystroke`. This is the
+# half that repeats: `viewAtSize` is a pure function of state and size, so it needs no TTY and can be
+# profiled. Reach for that one to see what the loop costs and this one to find out why.
+#
+# Why this is a script and not just `dark run scripts/perf/workloads/workbench.dark`: the workload
+# reports how many views it measured, and a count nobody checks is how a tool goes on reporting
+# success over less work than it was asked for. Here the count is ASSERTED. A view that stops being
+# measurable fails the run instead of quietly dropping out of the average.
+set -euo pipefail
+
+WORKLOAD=scripts/perf/workloads/workbench.dark
+EXPECTED_VIEWS=10
+
+# Refused rather than ignored, since a script whose whole point is not answering over a mistake
+# should not quietly measure the debug binary when you asked for the published one.
+case "${1:-}" in
+  "")           EXE=backend/Build/out/Cli/Debug/net10.0/Cli ;;
+  --published)  EXE=backend/Build/out/Cli/Release/net10.0/publish/Cli ;;
+  *)            echo "perf/views: does not take \`$1\`. Usage: scripts/perf/views [--published]" >&2
+                exit 2 ;;
+esac
+[[ -x "$EXE" ]] || { echo "perf/views: no CLI at $EXE -- run scripts/dev/build" >&2; exit 2; }
+
+# Its own rundir, the way perf/suite gets one: a copy of the store with all of `config_v0` cleared,
+# so this never reaches the relay the dev store is pointed at, and a policy of its own, so nothing
+# the developer runs under is widened.
+RUNDIR=$(mktemp -d "${TMPDIR:-/tmp}/perf-views-rundir.XXXXXX")
+trap 'rm -rf "${RUNDIR:?}"' EXIT
+scripts/testing/_copy-store "$RUNDIR/data.db"
+sqlite3 "$RUNDIR/data.db" 'DELETE FROM config_v0;'
+
+# Two grants, in this throwaway rundir only, both of them for the Devices view, which is the one that
+# went unmeasured:
+#   - reading `cli-config.json`, this instance's id and name. A view that shows you who you are has
+#     to read that, so this one is permanent.
+#   - `package-write`, which is here under protest: rendering Devices also WRITES the identity if the
+#     store has none yet. A render that writes is its own bug, fixed separately; until that lands,
+#     denying the write here would mean measuring nine views and calling it ten.
+grant() {  # grant <permission words...>
+  if ! DARK_CONFIG_RUNDIR="$RUNDIR" "$EXE" permissions allow "$@" > "$RUNDIR/allow.log" 2>&1; then
+    echo "perf/views: could not allow '$*' in this run's own policy:" >&2
+    cat "$RUNDIR/allow.log" >&2
+    exit 2
+  fi
+}
+grant file read "$RUNDIR/cli-config.json"
+grant package-write
+
+out=$(DARK_CONFIG_RUNDIR="$RUNDIR" DARK_CONFIG_TRACE_DETAIL=off "$EXE" run "$WORKLOAD" 2>&1) || {
+  rc=$?
+  printf '%s\n' "$out"
+  echo "perf/views: the workload itself failed (exit $rc)" >&2
+  exit 1
+}
+printf '%s\n' "$out"
+
+# Exit 0 and a line that is exactly the count, never a substring: "measured 9 of 10" contains "10".
+if ! grep -qxF "measured $EXPECTED_VIEWS of $EXPECTED_VIEWS views" <<<"$out"; then
+  echo >&2
+  echo "perf/views: expected all $EXPECTED_VIEWS views to be measured. The lines above say which" >&2
+  echo "one was not, and why. A view nobody can measure is a view nobody is watching: fix it, or" >&2
+  echo "take it out of the list in $WORKLOAD and change EXPECTED_VIEWS here, deliberately." >&2
+  exit 1
+fi

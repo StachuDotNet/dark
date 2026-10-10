@@ -343,6 +343,16 @@ gate_trait_checker_vs_dispatch() {
 
   export DARK_CONFIG_RUNDIR="$PWD/$WORK"
   clean() { sed 's/\x1b\[[0-9;]*m//g'; }
+  # Whether a command answered <expected>: exit 0 and a line that is exactly it. Never a substring of
+  # the output: a crash's stack trace has `+ 0x42` in it, and a hash or an error message has digits
+  # of its own. Prints the output either way, for the failure message.
+  answers() {  # answers <expected> <command...>
+    local want="$1" got code=0; shift
+    got=$("$@" 2>&1) || code=$?
+    got=$(clean <<<"$got")
+    printf '%s\n' "$got"
+    [[ "$code" -eq 0 ]] && grep -qxF -- "$want" <<<"$got"
+  }
 
   # A field name nobody else would write: a record's hash IS its identity, so a shared shape
   # would hand us somebody's leftover implementations. See the AGENTS.md note.
@@ -357,8 +367,7 @@ gate_trait_checker_vs_dispatch() {
 (a: Stachu.Dep.Dt) (b: Stachu.Dep.Dt) : Int64 =
   (a + b).gateDeprecatedOnly
 DARK
-  live=$($CLI eval 'Stachu.Dep.sumLive (Stachu.Dep.Dt { gateDeprecatedOnly = 1L }) (Stachu.Dep.Dt { gateDeprecatedOnly = 2L })' | clean)
-  if [[ "$live" != *3* ]]; then
+  if ! live=$(answers 3 "$CLI" eval 'Stachu.Dep.sumLive (Stachu.Dep.Dt { gateDeprecatedOnly = 1L }) (Stachu.Dep.Dt { gateDeprecatedOnly = 2L })'); then
     echo "trait-checker-vs-dispatch: the call did not work with a live implementation: $live"
     exit 1
   fi
@@ -454,8 +463,7 @@ DARK
       exit 1
     fi
 
-    got=$($CLI eval 'Stachu.Fit.callIt ()' 2>&1 | clean || true)
-    if [[ "$got" != *INT* ]]; then
+    if ! got=$(answers INT "$CLI" eval 'Stachu.Fit.callIt ()'); then
       echo "trait-checker-vs-dispatch: a saved call was pinned to an implementation that does not"
       echo "  fit its type arguments, with the implementations authored $order."
       echo "  An Option<Int64> should take the Option<Int64> implementation whichever order they"
@@ -496,6 +504,16 @@ gate_trait_choice_survives_rival() {
 
   export DARK_CONFIG_RUNDIR="$PWD/$WORK"
   clean() { sed 's/\x1b\[[0-9;]*m//g'; }
+  # Whether a command answered <expected>: exit 0 and a line that is exactly it. Never a substring of
+  # the output: a crash's stack trace has `+ 0x42` in it, and a hash or an error message has digits
+  # of its own. Prints the output either way, for the failure message.
+  answers() {  # answers <expected> <command...>
+    local want="$1" got code=0; shift
+    got=$("$@" 2>&1) || code=$?
+    got=$(clean <<<"$got")
+    printf '%s\n' "$got"
+    [[ "$code" -eq 0 ]] && grep -qxF -- "$want" <<<"$got"
+  }
 
   $CLI type Stachu.Rival.Pt "= { gateRivalOnly: Int64 }" >/dev/null
   $CLI impl Stachu.Rival \
@@ -509,8 +527,7 @@ let callIt () : String =
   Stdlib.String.join ["value: ", Stachu.Rival.display p] ""
 DARK
 
-  before=$($CLI eval 'Stachu.Rival.callIt ()' | clean)
-  if [[ "$before" != *"value: 7"* ]]; then
+  if ! before=$(answers 'value: 7' "$CLI" eval 'Stachu.Rival.callIt ()'); then
     echo "trait-choice-survives-rival: the bounded call did not work before any rival: $before"
     exit 1
   fi
@@ -521,14 +538,15 @@ DARK
     "Stdlib.ToString for Stachu.Rival.Pt = let toString (p: Stachu.Rival.Pt) : String = \"RIVAL\"" \
     >/dev/null
 
-  after=$($CLI eval 'Stachu.Rival.callIt ()' | clean)
+  local answered=0
+  after=$(answers 'value: 7' "$CLI" eval 'Stachu.Rival.callIt ()') || answered=$?
   if [[ "$after" == *RIVAL* ]]; then
     echo "trait-choice-survives-rival: a newer implementation changed a saved call underneath it"
     echo "  before the rival: $before"
     echo "  after  the rival: $after"
     exit 1
   fi
-  if [[ "$after" != *"value: 7"* ]]; then
+  if [[ "$answered" -ne 0 ]]; then
     echo "trait-choice-survives-rival: the saved call stopped working once a rival existed: $after"
     exit 1
   fi
@@ -573,6 +591,16 @@ gate_trait_choice_any_batching() {
 
   export DARK_CONFIG_RUNDIR="$PWD/$WORK"
   clean() { sed 's/\x1b\[[0-9;]*m//g'; }
+  # Whether a command answered <expected>: exit 0 and a line that is exactly it. Never a substring of
+  # the output: a crash's stack trace has `+ 0x42` in it, and a hash or an error message has digits
+  # of its own. Prints the output either way, for the failure message.
+  answers() {  # answers <expected> <command...>
+    local want="$1" got code=0; shift
+    got=$("$@" 2>&1) || code=$?
+    got=$(clean <<<"$got")
+    printf '%s\n' "$got"
+    [[ "$code" -eq 0 ]] && grep -qxF -- "$want" <<<"$got"
+  }
 
   local src="$WORK/src"
   mkdir -p "$src"
@@ -637,8 +665,7 @@ gate_trait_choice_any_batching() {
       "$traitPath for String = let $method (s: String) : Int = 777" >/dev/null
 
     after=$($CLI eval "Stachu.$mod.tryIt ()" | clean)
-    direct=$($CLI eval "$traitPath.$method \"hello\"" | clean)
-    if [[ "$direct" != *777* ]]; then
+    if ! direct=$(answers 777 "$CLI" eval "$traitPath.$method \"hello\""); then
       echo "trait-choice-any-batching: saved $way, the rival never became the newest"
       echo "  implementation, so nothing was tested. A fresh call answered: $direct"
       exit 1
@@ -786,6 +813,16 @@ gate_trait_pin_across_branches() {
 
   export DARK_CONFIG_RUNDIR="$PWD/$WORK"
   clean() { sed 's/\x1b\[[0-9;]*m//g'; }
+  # Whether a command answered <expected>: exit 0 and a line that is exactly it. Never a substring of
+  # the output: a crash's stack trace has `+ 0x42` in it, and a hash or an error message has digits
+  # of its own. Prints the output either way, for the failure message.
+  answers() {  # answers <expected> <command...>
+    local want="$1" got code=0; shift
+    got=$("$@" 2>&1) || code=$?
+    got=$(clean <<<"$got")
+    printf '%s\n' "$got"
+    [[ "$code" -eq 0 ]] && grep -qxF -- "$want" <<<"$got"
+  }
 
   # A field name nobody else would write: a record's hash IS its identity. See the AGENTS.md note.
   $CLI type Stachu.Pin.Thing "= { gatePinOnly: Int64 }" >/dev/null
@@ -804,8 +841,7 @@ DARK
 () : Int64 =
   Stachu.Pin.Tr.go (Stachu.Pin.Thing { gatePinOnly = 0L })
 DARK
-  pinned=$($CLI eval 'Stachu.Pin.callIt ()' | clean)
-  if [[ "$pinned" != *2* ]]; then
+  if ! pinned=$(answers 2 "$CLI" eval 'Stachu.Pin.callIt ()'); then
     echo "trait-pin-across-branches: the saved call did not pin the newer implementation on main,"
     echo "  so nothing downstream is testing what it says. It answered: $pinned"
     exit 1
@@ -823,16 +859,14 @@ DARK
 
   # A FRESH call on the branch takes the branch's rival: without this the next assertion could pass
   # against a branch that simply cannot see the new implementation.
-  fresh=$($CLI eval 'Stachu.Pin.Tr.go (Stachu.Pin.Thing { gatePinOnly = 0L })' | clean)
-  if [[ "$fresh" != *3* ]]; then
+  if ! fresh=$(answers 3 "$CLI" eval 'Stachu.Pin.Tr.go (Stachu.Pin.Thing { gatePinOnly = 0L })'); then
     echo "trait-pin-across-branches: the branch's own implementation never became the newest one,"
     echo "  so the pin was not actually under pressure. A fresh call answered: $fresh"
     exit 1
   fi
 
   # THE PROPERTY: the caller saved on main still runs what it resolved against, on the branch.
-  held=$($CLI eval 'Stachu.Pin.callIt ()' | clean)
-  if [[ "$held" != *2* ]]; then
+  if ! held=$(answers 2 "$CLI" eval 'Stachu.Pin.callIt ()'); then
     echo "trait-pin-across-branches: a call saved on main changed meaning on a branch. It should"
     echo "  keep the implementation it was written against (2) while a fresh call takes the"
     echo "  branch's newer one (3). It answered: $held"
@@ -852,40 +886,43 @@ Stachu.Pin.Tr for Stachu.Pin.Other =
 DARK
   $CLI commit -m 'gate: the deprecation fixture' --yes >/dev/null
 
-  other() { $CLI eval 'Stachu.Pin.Tr.go (Stachu.Pin.Other { gatePinOtherOnly = 0L })' | clean; }
+  other() { answers "$1" "$CLI" eval 'Stachu.Pin.Tr.go (Stachu.Pin.Other { gatePinOtherOnly = 0L })'; }
+  local got
 
   # E is newer, so it runs on main.
-  if [[ "$(other)" != *20* ]]; then
+  if ! got=$(other 20); then
     echo "trait-pin-across-branches: the second fixture's newer implementation does not run on main."
+    echo "  Expected 20, got: $got"
     exit 1
   fi
 
   $CLI deprecate impl Stachu.PinE.Other.Tr --kind obsolete -m 'gate' --yes >/dev/null
-  if [[ "$(other)" != *10* ]]; then
+  if ! got=$(other 10); then
     echo "trait-pin-across-branches: deprecating on main did not retire the implementation there."
+    echo "  Expected 10, got: $got"
     exit 1
   fi
 
   # Down: a branch forked after that deprecation sees it.
   $CLI branch create gate-pin-dep >/dev/null
-  if [[ "$(other)" != *10* ]]; then
+  if ! got=$(other 10); then
     echo "trait-pin-across-branches: a branch does not inherit a deprecation made on main."
-    echo "  Expected 10, got: $(other)"
+    echo "  Expected 10, got: $got"
     exit 1
   fi
 
   # Up: the branch says "not here", and main is untouched by it.
   $CLI undeprecate Stachu.PinE.Other.Tr >/dev/null
-  if [[ "$(other)" != *20* ]]; then
+  if ! got=$(other 20); then
     echo "trait-pin-across-branches: a branch cannot undeprecate what main deprecated."
-    echo "  Expected 20 on the branch, got: $(other)"
+    echo "  Expected 20 on the branch, got: $got"
     exit 1
   fi
 
   $CLI switch main >/dev/null
-  if [[ "$(other)" != *10* ]]; then
+  if ! got=$(other 10); then
     echo "trait-pin-across-branches: a branch's undeprecate reached MAIN."
-    echo "  Expected 10 on main, got: $(other)"
+    echo "  Expected 10 on main, got: $got"
     exit 1
   fi
 

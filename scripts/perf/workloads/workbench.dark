@@ -1,6 +1,11 @@
 // One workbench view render, per view, timed. `viewAtSize` is a pure function of state and size,
 // so this needs no terminal and repeats: it is the loopable half of what a keystroke costs.
 //
+// Run it through `scripts/perf/views`, which gives it a rundir and the two permissions the Devices
+// view needs (it reads the instance's id and name, and writes the id if there is none yet) and then
+// ASSERTS the count on the last line. Run by hand under a policy that denies either, that view
+// raises, nine views get measured, and the average silently becomes an average of nine.
+//
 // The other half -- reading the key, diffing the frame, writing it -- needs a real TTY and lives in
 // `scripts/perf/keystroke`.
 
@@ -42,8 +47,32 @@ let base =
     "perf"
     "perf-instance"
     (Stdlib.List.range 0 40)
+    // `live` off: what `dark workbench` opens with unless given `--live`.
+    false
 
 // 120x40 is the smallest size that lays out every pane; below it the workbench drops panes and the
 // numbers stop meaning what they look like they mean.
 let size = Stdlib.Cli.Tui.Size { width = 120; height = 40 }
-Stdlib.List.iter (Stdlib.List.range 0 9) (fun i -> timeView i base size)
+
+// Each view is tried on its own and a failure comes back as a value, so one view that raises does
+// not hide the rest, and the last line says how many were measured out of how many were tried.
+let views = Stdlib.List.range 0 9
+
+let measured =
+  views
+  |> Stdlib.List.filter (fun i ->
+    match Stdlib.Live.apply (fun j -> timeView j base size) i with
+    | Ok _ -> true
+    | Error e ->
+      let reason =
+        Stdlib.String.split e "\n"
+        |> Stdlib.List.filter (fun l -> Stdlib.String.trim l != "")
+        |> Stdlib.List.last
+        |> Stdlib.Option.withDefault e
+      Stdlib.printLine ("view " + (Stdlib.toString i) + ": not measured -- " + reason)
+      false)
+  |> Stdlib.List.length
+
+Stdlib.printLine
+  ("measured " + (Stdlib.toString measured) + " of "
+   + (Stdlib.toString (Stdlib.List.length views)) + " views")

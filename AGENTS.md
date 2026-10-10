@@ -359,6 +359,7 @@ Everything perf lives in `scripts/perf/` (tools) and `docs/perf/` (writing):
                              than looking like a check that passed
     scripts/perf/suite       six workloads, allocation and time per iteration
     scripts/perf/checks      by-hand interpreter and error-message checks
+    scripts/perf/views       every workbench view rendered headless, ms each, and all ten asserted
     scripts/perf/http        a real server under concurrent load
     scripts/perf/bench       repeatable CLI timing, with an A/B mode
     scripts/perf/alloc-profile   allocation by type name

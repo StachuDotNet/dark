@@ -120,8 +120,9 @@ check() {
     failures=$((failures + 1))
     return
   fi
-  if [[ -n "$expected" && "$out" != *"$expected"* ]]; then
-    echo "  FAIL $name (output did not contain '$expected')"
+  # A line that is exactly it, never a substring: a stack trace carries digits of its own.
+  if [[ -n "$expected" ]] && ! grep -qxF -- "$expected" <<<"$out"; then
+    echo "  FAIL $name (no line of the output was exactly '$expected')"
     echo "$out" | indent
     failures=$((failures + 1))
     return
@@ -176,7 +177,7 @@ OUTSIDE=$(mktemp -d /tmp/dark-artifact-outside.XXXXXX)
 cp "$ARTIFACT" "$OUTSIDE/dark"
 outside_rc=0
 outside_out=$( cd "$OUTSIDE" && HOME="$OUTSIDE" ./dark eval "1 + 2" 2>&1 ) || outside_rc=$?
-if [[ $outside_rc -ne 0 || "$outside_out" != *"3"* ]]; then
+if [[ $outside_rc -ne 0 ]] || ! grep -qxF 3 <<<"$outside_out"; then
   echo "  FAIL eval outside the checkout (exit $outside_rc)"
   echo "$outside_out" | tail -15 | indent
   failures=$((failures + 1))

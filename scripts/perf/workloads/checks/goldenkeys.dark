@@ -8,8 +8,9 @@
 // `scripts/perf/checks` diffs this against `goldenkeys.expected` beside it. When the keymap or the
 // views change, regenerate that file deliberately -- never to make the check pass:
 //
-//   ./scripts/run-cli run scripts/perf/workloads/checks/goldenkeys.dark \
-//     > scripts/perf/workloads/checks/goldenkeys.expected
+//   scripts/perf/checks --regenerate-goldens
+//
+// Not `run-cli run ... > goldenkeys.expected`, for the reason `goldenview.dark` gives.
 
 let base =
   Darklang.Cli.Workbench.initialState
@@ -18,6 +19,8 @@ let base =
     "perf"
     "perf-instance"
     (Stdlib.List.range 0 40)
+    // `live` off: what `dark workbench` opens with unless given `--live`.
+    false
 
 let size = Stdlib.Cli.Tui.Size { width = 120; height = 40 }
 let mods = Stdlib.Cli.Stdin.Modifiers.Modifiers { alt = false; ctrl = false; shift = false }
