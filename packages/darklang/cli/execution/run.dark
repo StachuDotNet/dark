@@ -198,7 +198,7 @@ let runScript
       promptsLeft > 0
       && Stdlib.Bool.not sandbox
       && Stdlib.Bool.not warnPermissions
-      && (Stdlib.Cli.Tui.TerminalSupport.currentFacts ()).inputIsTerminal
+      && Stdlib.Cli.UI.Prompt.canAsk ()
     match denied.rule with
     | Some rule when canAsk ->
       match LanguageTools.Permissions.parseRuleText rule with
@@ -207,9 +207,11 @@ let runScript
           (Stdlib.Cli.UI.Colors.warning
             $"The script wants {denied.resource}, which the instance policy does not allow.")
         let choice =
-          Stdlib.Cli.UI.Prompt.select
-            $"Allow `{rule}`?"
-            [ allowOnce (), allowAlways (), denyChoice () ]
+          Stdlib.Option.withDefault
+            (Stdlib.Cli.UI.Prompt.select
+              $"Allow `{rule}`?"
+              [ allowOnce (), allowAlways (), denyChoice () ])
+            (denyChoice ())
         if choice == allowOnce () then
           runScript
             state

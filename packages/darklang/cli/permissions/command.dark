@@ -412,8 +412,7 @@ let resolveVersionArg
     | Some _ -> Stdlib.Option.Option.Some arg
     | None -> Stdlib.Option.Option.None
 
-let stdinIsInteractive () : Bool =
-  (Stdlib.Cli.Tui.TerminalSupport.currentFacts ()).inputIsTerminal
+let stdinIsInteractive () : Bool = Stdlib.Cli.UI.Prompt.canAsk ()
 
 /// Print a version's requirements, warning when analysis is incomplete.
 /// Returns completeness so callers can acknowledge a possibly short list.

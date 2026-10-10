@@ -456,3 +456,82 @@ EOF
 
   rm -rf "$WORK"
 }
+
+# --- prompts-unattended: a question nobody can answer is refused, never waited on -------------------
+# CI gives every step a pty, so "stdin is a terminal" said a person was there when nobody was, and a
+# confirmation blocked until the step timed out. And input ending used to read as an answer: `agent
+# ask < /dev/null` asked again forever, `conflicts walk` took the auto-pick, `install` downloaded a
+# release. A prompt now asks only when stdin and stderr are terminals and none of `--no-input`,
+# `DARK_NO_INPUT` or `CI` is set. The piped case always passed, which is how this survived, so the
+# cases here run under a real pty (`script`), each with a timeout that turns a hang into a failure.
+gate_prompts_unattended() {
+  set -euo pipefail
+
+  CLI=${CLI:-backend/Build/out/Cli/Debug/net10.0/Cli}
+  WORK=rundir/prompts-unattended-test
+  fail() { echo "FAIL: $1" >&2; exit 1; }
+
+  [[ -x "$PWD/$CLI" ]] || {
+    echo "prompts-unattended: no CLI at $CLI" >&2
+    echo "  scripts/dev/build, and note that --optimize leaves no debug tree" >&2
+    exit 2
+  }
+  command -v script >/dev/null || { echo "prompts-unattended: no \`script\` for a pty" >&2; exit 2; }
+
+  rm -rf "$WORK"
+  mkdir -p "$WORK"
+  scripts/testing/_copy-store "$WORK/data.db"
+  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0;' 2>/dev/null || true
+  export DARK_CONFIG_RUNDIR="$PWD/$WORK"
+  CLI_ABS="$PWD/$CLI"
+  unset CI DARK_NO_INPUT
+
+  # Under a pty with nothing typed. `script` keeps the child's stdin a terminal even with ours empty.
+  # Escape sequences stripped: a pty gets colour, and the keypad-mode switch .NET writes on startup.
+  pty() {
+    timeout --kill-after=5 30 script -qec "$1" /dev/null < /dev/null 2>&1 \
+      | tr -d '\r' | sed -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g; s/\x1b=//g'
+  }
+  can_ask='eval "Stdlib.Cli.UI.Prompt.canAsk ()"'
+  checked=0
+
+  [[ "$(pty "$CLI_ABS $can_ask" | tail -1)" == "true" ]] || fail "a plain pty should count as a person"
+  checked=$((checked + 1))
+  # A switch that is set to "off" is off. Getting these wrong refuses to prompt on someone's machine
+  # forever, with nothing to say why.
+  for env in "CI=0" "CI=false" "CI=" "DARK_NO_INPUT=0"; do
+    [[ "$(pty "env $env $CLI_ABS $can_ask" | tail -1)" == "true" ]] || fail "$env under a pty should still be a person"
+    checked=$((checked + 1))
+  done
+  for env in "CI=1" "DARK_NO_INPUT=1"; do
+    [[ "$(pty "env $env $CLI_ABS $can_ask" | tail -1)" == "false" ]] || fail "$env under a pty should mean nobody is there"
+    checked=$((checked + 1))
+  done
+  [[ "$(pty "$CLI_ABS --no-input $can_ask" | tail -1)" == "false" ]] || fail "--no-input under a pty should mean nobody is there"
+  checked=$((checked + 1))
+  [[ "$(pty "$CLI_ABS $can_ask 2>/dev/null" | tail -1)" == "false" ]] \
+    || fail "with stderr redirected the question can't be seen, so nobody can answer it"
+  checked=$((checked + 1))
+
+  # A confirmation under CI's pty: refused, exit 1, promptly. Before, this waited for a person.
+  "$CLI_ABS" fn PromptsGate.T.x '() : Int64 = 1L' >/dev/null 2>&1 < /dev/null || fail "could not author the draft to discard"
+  set +e
+  out=$(pty "env CI=1 $CLI_ABS discard; echo EXIT=\$?")
+  set -e
+  grep -q 'EXIT=1' <<<"$out" || fail "discard under CI's pty did not refuse with exit 1 (a timeout means it waited): $out"
+  grep -q 'kept' <<<"$out" || fail "discard under CI's pty did not say it kept the draft"
+  checked=$((checked + 1))
+
+  # The conversation that used to spin on an empty stdin.
+  set +e
+  timeout --kill-after=5 30 "$CLI_ABS" agent ask < /dev/null > "$WORK/agent-out" 2> "$WORK/agent-err"
+  code=$?
+  set -e
+  [[ $code -ne 124 && $code -ne 137 ]] || fail "agent ask with stdin empty hung"
+  grep -q 'nobody can answer' "$WORK/agent-err" || fail "agent ask with stdin empty did not say why it would not start"
+  checked=$((checked + 1))
+
+  "$CLI_ABS" discard -y >/dev/null 2>&1 < /dev/null || true
+  rm -rf "$WORK"
+  echo "prompts: $checked unattended cases refused or answered without waiting."
+}
