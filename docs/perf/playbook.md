@@ -26,6 +26,16 @@ It is not, however, byte-identical. `steady.dark` in debug, ten runs back to bac
 So treat ~0.8% as the noise floor for a single run of this workload, and do not believe a win
 smaller than that from one measurement each side.
 
+**The suite's per-iteration figures are noisier still, and one run each side nearly published a
+regression that was not there.** `scripts/perf/suite` differences two runs and divides by 200, so a
+wobble of tens of KB in a whole process becomes hundreds of bytes per iteration, which is most of a
+small workload. Measured on one box with the same two binaries: `recursion` read 395, 679 and 767
+B/iter on main and 681, 354 and 163 on a branch, and `containers` 3,107 and 3,335 against 2,159 and
+2,826. The first pair of runs said `recursion` had regressed by 72%, and that very nearly went into
+a PR description. Run each side at least three times and compare the ranges; a difference inside
+the overlap is not a difference, and a workload whose range is wider than its value is telling you
+about the box rather than the code.
+
 **The store counts as part of the workload.** The same binary on a working rundir allocates about
 2.5% more than on a freshly loaded one, measured both ways: enough to swamp the noise floor and
 enough to fail the gate. `scripts/perf/gate` prints which store it measured for this reason. A
