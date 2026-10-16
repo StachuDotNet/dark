@@ -494,6 +494,12 @@ caller, not a definition and not evidence. `--include=*.dark` over the whole rep
 Logs are for reading when something went wrong. For "did it work", use
 `scripts/dev/status`.
 
+## Changing the stdlib
+
+Before adding or changing a stdlib fn, read `docs/stdlib-principles.md`: argument order,
+error shapes, naming, who owns a conversion. A change that contradicts a Decided rule
+changes the rule in the same PR.
+
 ## Adding a builtin (F#)
 
 Pick the right `Builtins` subproject: `Pure` (pure stdlib), `Matter` (DB, package store,
