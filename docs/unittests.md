@@ -1,8 +1,10 @@
 # Unit tests
 
-The repository has an F# backend suite and Dark package tests. This guide covers
-running and filtering them. See [Package tests](package-tests.md) for the design,
-including storage, isolation, permissions and caching.
+The repository has an F# backend suite and Dark package tests.
+`scripts/run-backend-tests` runs both at once (`--fsharp-only` or `--packages-only` for
+one; any F# filter means F# only). This guide covers running and filtering them. See
+[Package tests](package-tests.md) for the design, including storage, isolation,
+permissions and caching.
 
 ## Backend tests
 
@@ -93,13 +95,13 @@ scripts/run-cli test run Stdlib.Float
 scripts/run-cli test run --force Stdlib.Float
 ```
 
-Filters match whole name segments. `--force` bypasses cached passes; each executed
-test still gets its own process and store. The summary distinguishes tests that
-ran from cached results. Assertions combined with `Stdlib.Test.all` count as one
-test declaration.
+Filters match whole name segments. `--force` bypasses cached passes. The summary
+distinguishes tests that ran from cached results. Assertions combined with
+`Stdlib.Test.all` count as one test declaration.
 
-Tests run in parallel, with up to four workers (limited by the available cores).
-Use `--jobs <count>` to change the limit, or `--jobs 1` for a serial run.
+A test the runner can prove pure runs in its own process, up to one per core; the
+rest get a worker each, up to four at once. `--jobs <count>` sets one limit for both,
+and `--jobs 1` runs serially.
 
 Some tests deliberately contain invalid programs, so `dark typecheck` in a
 normal development store can report intentional test errors. Run the production

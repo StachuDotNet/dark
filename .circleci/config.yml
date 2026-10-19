@@ -283,9 +283,10 @@ jobs:
           command: |
             # The package load above already exported this build's seed.
             # Give tests their own copy instead of parsing the same sources again.
+            # The package tests run in build-cli, on the NativeAOT binary built there.
             # --split runs the sequenced tests in a second process alongside the rest.
             DARK_CONFIG_PACKAGES_SOURCE=seed python3 .circleci/collect_diagnostics.py \
-              --run backend-tests -- timeout 20m scripts/run-backend-tests --published --split
+              --run backend-tests -- timeout 20m scripts/run-backend-tests --published --split --fsharp-only
 
       ## TODO: too many race conditions. Bring back later
       # Test package manager/cli integration works

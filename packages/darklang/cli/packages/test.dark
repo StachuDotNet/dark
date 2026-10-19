@@ -16,7 +16,9 @@ type Counts =
   { passed: Int
     failed: Int
     cached: Int
-    ran: Int }
+    ran: Int
+    /// Of those that ran, how many needed their own process and store copy.
+    isolated: Int }
 
 val usage =
   "Usage: test run [--force] [--jobs <count>] [name-or-module ...]\n       test add <location> <body> | <source-file> | -"
@@ -301,6 +303,9 @@ let runTests (state: Cli.AppState) (args: List<String>) : Cli.AppState =
 type RunOptions =
   { force: Bool
     jobs: Int
+    /// Whether `--jobs` was given. If so it bounds in-process tests too, so
+    /// `--jobs 1` is a fully serial run.
+    jobsGiven: Bool
     filters: List<String> }
 
 let parseRunOptions
@@ -312,7 +317,8 @@ let parseRunOptions
   | "--force" :: rest -> parseRunOptions { options with force = true } rest
   | "--jobs" :: value :: rest ->
     match Stdlib.Int.parse value with
-    | Ok jobs when jobs > 0 -> parseRunOptions { options with jobs = jobs } rest
+    | Ok jobs when jobs > 0 ->
+      parseRunOptions { options with jobs = jobs; jobsGiven = true } rest
     | _ -> Error "--jobs needs a positive whole number"
   | [ "--jobs" ] -> Error "--jobs needs a positive whole number"
   | arg :: rest when Stdlib.String.startsWith arg "--jobs=" ->
@@ -330,7 +336,8 @@ type FinishedTest =
   { name: String
     test: LanguageTools.ProgramTypes.PackageTest.PackageTest
     outcome: Outcome
-    wasCached: Bool }
+    wasCached: Bool
+    inProcess: Bool }
 
 let finishTest
   (cache: Stdlib.Option.Option<CacheContext>)
@@ -348,55 +355,152 @@ let finishTest
     { passed = counts.passed + (if isPassed finished.outcome then 1 else 0)
       failed = counts.failed + (if isPassed finished.outcome then 0 else 1)
       cached = counts.cached + (if finished.wasCached then 1 else 0)
-      ran = counts.ran + (if finished.wasCached then 0 else 1) }
+      ran = counts.ran + (if finished.wasCached then 0 else 1)
+      isolated =
+        counts.isolated
+        + (if finished.wasCached || finished.inProcess then 0 else 1) }
 
-/// Run up to `jobs` tests at once. Start the next whenever one finishes.
-/// Wait for all tests before closing the shared snapshot.
+/// A cached pass for <param item>, if one may be reused.
+let cachedOutcome
+  (options: RunOptions)
+  (cache: Stdlib.Option.Option<CacheContext>)
+  (item: LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>)
+  : Stdlib.Option.Option<Outcome> =
+  if options.force then
+    Stdlib.Option.Option.None
+  else
+    match cache with
+    | Some context when mayCache item.entity ->
+      match storedOutcome context item.entity.hash with
+      | Some Passed when isCacheable item.entity -> Some Outcome.Passed
+      | _ -> Stdlib.Option.Option.None
+    | _ -> Stdlib.Option.Option.None
+
+/// The tests still to start, split by where they run. In-process tests are
+/// bounded by the cores; isolated ones by `--jobs`, since each owns a process and
+/// a store copy.
+type Queues =
+  { inProcess: List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>>
+    isolated: List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>>
+    runningInProcess: List<Stdlib.Exec.Handle<FinishedTest>>
+    runningIsolated: List<Stdlib.Exec.Handle<FinishedTest>> }
+
+let startTest
+  (run: LanguageTools.PackageManager.Test.Run)
+  (branchId: Uuid)
+  (inProcess: Bool)
+  (item: LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>)
+  : Stdlib.Exec.Handle<FinishedTest> =
+  Stdlib.printLine $"Running: {fullPath item}"
+  Stdlib.Exec.spawn (fun () ->
+    FinishedTest
+      { name = fullPath item
+        test = item.entity
+        outcome = runFresh run branchId item.entity
+        wasCached = false
+        inProcess = inProcess })
+
+/// Keep both pools full, isolated tests first since they take longest. Start the
+/// next whenever one finishes, and wait for all before the shared snapshot closes.
 let runSelected
   (run: LanguageTools.PackageManager.Test.Run)
   (branchId: Uuid)
   (options: RunOptions)
+  (cores: Int)
   (cache: Stdlib.Option.Option<CacheContext>)
-  (remaining: List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>>)
-  (running: List<Stdlib.Exec.Handle<FinishedTest>>)
+  (queues: Queues)
   (counts: Counts)
   : Counts =
-  match remaining with
-  | item :: rest when Stdlib.List.length running < options.jobs ->
-    let cachedResult =
-      if options.force then
-        Stdlib.Option.Option.None
-      else
-        match cache with
-        | Some context when mayCache item.entity ->
-          match storedOutcome context item.entity.hash with
-          | Some Passed when isCacheable item.entity -> Some Outcome.Passed
-          | _ -> Stdlib.Option.Option.None
-        | _ -> Stdlib.Option.Option.None
-    match cachedResult with
-    | Some outcome ->
-      let finished = FinishedTest
-        { name = fullPath item
-          test = item.entity
-          outcome = outcome
-          wasCached = true }
-      runSelected run branchId options cache rest running (finishTest cache counts finished)
-    | None ->
-      Stdlib.printLine $"Running: {fullPath item}"
-      let handle = Stdlib.Exec.spawn (fun () ->
-        FinishedTest
-          { name = fullPath item
-            test = item.entity
-            outcome = runFresh run branchId item.entity
-            wasCached = false })
-      runSelected run branchId options cache rest (Stdlib.List.push running handle) counts
-  | _ ->
-    if Stdlib.List.isEmpty running then
+  match queues.isolated with
+  | item :: rest when Stdlib.List.length queues.runningIsolated < options.jobs ->
+    let handle = startTest run branchId false item
+    runSelected
+      run
+      branchId
+      options
+      cores
+      cache
+      { queues with
+          isolated = rest
+          runningIsolated = Stdlib.List.push queues.runningIsolated handle }
       counts
-    else
-      let (done, finished) = Stdlib.Exec.select running
-      let running = Stdlib.List.filter running (fun handle -> handle.id != done.id)
-      runSelected run branchId options cache remaining running (finishTest cache counts finished)
+  | _ ->
+    match queues.inProcess with
+    | item :: rest when Stdlib.List.length queues.runningInProcess < cores ->
+      let handle = startTest run branchId true item
+      runSelected
+        run
+        branchId
+        options
+        cores
+        cache
+        { queues with
+            inProcess = rest
+            runningInProcess = Stdlib.List.push queues.runningInProcess handle }
+        counts
+    | _ ->
+      let running =
+        Stdlib.List.append queues.runningIsolated queues.runningInProcess
+      if Stdlib.List.isEmpty running then
+        counts
+      else
+        let (done, finished) = Stdlib.Exec.select running
+        runSelected
+          run
+          branchId
+          options
+          cores
+          cache
+          { queues with
+              runningInProcess =
+                Stdlib.List.filter queues.runningInProcess (fun h -> h.id != done.id)
+              runningIsolated =
+                Stdlib.List.filter queues.runningIsolated (fun h -> h.id != done.id) }
+          (finishTest cache counts finished)
+
+/// Report cached passes first, then split what has to run by where it runs.
+let runAll
+  (run: LanguageTools.PackageManager.Test.Run)
+  (branchId: Uuid)
+  (options: RunOptions)
+  (cores: Int)
+  (cache: Stdlib.Option.Option<CacheContext>)
+  (items: List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>>)
+  (counts: Counts)
+  : Counts =
+  let (counts, toRun) =
+    Stdlib.List.fold items (counts, []) (fun acc item ->
+      let (counts, toRun) = acc
+      match cachedOutcome options cache item with
+      | Some outcome ->
+        let finished =
+          FinishedTest
+            { name = fullPath item
+              test = item.entity
+              outcome = outcome
+              wasCached = true
+              inProcess = false }
+        (finishTest cache counts finished, toRun)
+      | None -> (counts, Stdlib.List.pushBack toRun item))
+  // Two filters rather than `List.partition`, which recurses once per test.
+  let inProcess =
+    Stdlib.List.filter toRun (fun item ->
+      LanguageTools.PackageManager.Test.runsInProcess item.entity.hash)
+  let isolated =
+    Stdlib.List.filter toRun (fun item ->
+      Stdlib.Bool.not (LanguageTools.PackageManager.Test.runsInProcess item.entity.hash))
+  runSelected
+    run
+    branchId
+    options
+    cores
+    cache
+    (Queues
+      { inProcess = inProcess
+        isolated = isolated
+        runningInProcess = []
+        runningIsolated = [] })
+    counts
 
 let runTestsInRun
   (run: LanguageTools.PackageManager.Test.Run)
@@ -406,7 +510,12 @@ let runTestsInRun
   // Limit the default even on large machines: every slot owns a process and a
   // writable store copy. --jobs lets callers tune this or choose a serial run.
   let cores = Stdlib.Exec.workers ()
-  let defaults = RunOptions { force = false; jobs = (if cores < 4 then cores else 4); filters = [] }
+  let defaults =
+    RunOptions
+      { force = false
+        jobs = (if cores < 4 then cores else 4)
+        jobsGiven = false
+        filters = [] }
   match parseRunOptions defaults args with
   | Error message ->
     Stdlib.printLine (Stdlib.Cli.UI.Colors.error message)
@@ -439,15 +548,15 @@ let runTestsInRun
         || Stdlib.List.any options.filters (fun f -> selects f (fullPath item)))
 
     let initial =
-      Counts { passed = 0; failed = 0; cached = 0; ran = 0 }
+      Counts { passed = 0; failed = 0; cached = 0; ran = 0; isolated = 0 }
     let counts =
-      runSelected
+      runAll
         run
         state.currentBranchId
         options
+        (if options.jobsGiven then options.jobs else cores)
         (cacheContext state.currentBranchId)
         (Stdlib.List.sortBy liveTests fullPath)
-        []
         initial
 
     let total = counts.passed + counts.failed
@@ -456,7 +565,7 @@ let runTestsInRun
     else
       Stdlib.printLine ""
       Stdlib.printLine
-        $"{Stdlib.toString counts.passed} passed, {Stdlib.toString counts.failed} failed; {Stdlib.toString counts.ran} ran, {Stdlib.toString counts.cached} cached"
+        $"{Stdlib.toString counts.passed} passed, {Stdlib.toString counts.failed} failed; {Stdlib.toString counts.ran} ran, {Stdlib.toString counts.cached} cached; {Stdlib.toString counts.isolated} isolated"
 
     if counts.failed > 0 || total == 0 then
       { state with exitCode = 1 }
@@ -482,8 +591,10 @@ let help (_state: Cli.AppState) : String =
     "in order: a module (`Stdlib.Float`), a test name, or both. Several filters"
     "select the union."
     "Deprecated (deleted) tests are skipped."
-    "Tests run in parallel, up to four at once (or fewer on smaller machines)."
-    "Use --jobs <count> to change the limit, or --jobs 1 to run serially."
+    "A test that analysis shows writes and observes nothing outside itself runs"
+    "inside this process, up to one per core. Any other test gets a fresh process"
+    "and its own store copy, up to four at once (or fewer on smaller machines)."
+    "Use --jobs <count> to set one limit for both, or --jobs 1 to run serially."
     "Tests start in name order; results are printed as they finish."
     ""
     "Examples:"

@@ -145,6 +145,83 @@ let private executeWorker
     return DTuple(LibExecution.Blob.newEphemeral bytes, Dval.int (bigint code), [])
   }
 
+/// What a test may do and still run inside the runner. Nothing here writes, reads
+/// anything a test could have changed, or prints, so sharing the runner's process,
+/// store and caches cannot change the outcome. Anything else gets a worker.
+let private inProcessEffects =
+  set [ Effect.Clock; Effect.Random; Effect.PackageRead; Effect.Concurrency ]
+
+/// Builtins that declare no effect but read or reset counters the whole process shares, so
+/// a test using them sees every other in-process test's work. Classified as `Runtime` here
+/// only, which sends such a test to a worker; what a person must grant is unchanged.
+let private processWideState =
+  set
+    [ "interpreterStatsReset"
+      "interpreterStatsEnableDetailedTiming"
+      "interpreterStatsGet" ]
+
+let private inProcessMemo =
+  System.Collections.Concurrent.ConcurrentDictionary<PT.Hash, bool>()
+
+/// Whether <param test> can skip the worker: the analysis of its body and everything
+/// it calls is complete and needs nothing beyond `inProcessEffects`. Unlike cache
+/// safety, branch-dependent rendering and the test counter are fine here, since the
+/// test runs now, on this branch, with a counter of its own.
+let private classify
+  (state : ExecutionState)
+  (test : PT.PackageTest.PackageTest)
+  : Ply<bool> =
+  uply {
+    let callEffectsFor (name, version) =
+      let key : FQFnName.Builtin = { name = name; version = version }
+      match state.fns.builtIn.TryGetValue key with
+      | true, _ when Set.contains name processWideState ->
+        Some(set [ Effect.Runtime ])
+      | true, builtin -> Some builtin.callEffects
+      | false, _ -> None
+    let! result =
+      PackagePermissions.cacheSafetyForExpression
+        PackagePermissions.Load.fromStore
+        callEffectsFor
+        test.body
+    return result.complete && Set.isSubset result.requiredEffects inProcessEffects
+  }
+
+/// A test's hash covers its body and everything it calls, so the answer cannot go
+/// stale within a process.
+let private runsInProcess
+  (state : ExecutionState)
+  (test : PT.PackageTest.PackageTest)
+  : Ply<bool> =
+  uply {
+    match inProcessMemo.TryGetValue test.hash with
+    | true, known -> return known
+    | false, _ ->
+      let! inProcess = classify state test
+      inProcessMemo[test.hash] <- inProcess
+      return inProcess
+  }
+
+/// Run a test the analysis cleared, in this process, under the same test policy a
+/// worker gets. Its state shares the runner's package caches, which is the point:
+/// a worker starts cold and copies the store first.
+let private executeInProcessTest
+  (caller : ExecutionState)
+  (vm : VMState)
+  (branchId : System.Guid)
+  (test : PT.PackageTest.PackageTest)
+  : Ply<Dval> =
+  uply {
+    let guest = LibDB.PolicyStore.testState caller.accountID caller
+    let state =
+      { guest with
+          branchId = LibExecution.Branching.BranchId.Id branchId
+          access = guest.access |> Permissions.Access.constrainBy vm.activeAccess
+          test = { guest.test with isPackageTest = true; sideEffectCount = 0 } }
+    let! result = executeTestBody state test
+    return reflectOutcome result
+  }
+
 /// Every package test executes its own hash in a fresh worker and store snapshot.
 let private executeIsolatedTest
   (caller : ExecutionState)
@@ -394,6 +471,32 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       callEffects = Set.empty
       deprecated = NotDeprecated }
 
+    { name = fn "pmTestRunsInProcess" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "testHash"
+            (TCustomType(NR.ok (PT2DT.Hash.typeName ()), []))
+            "Hash of the package test to classify" ]
+      returnType = TBool
+      description =
+        "Whether the test runs inside the runner rather than in its own process and "
+        + "store: true only when analysis shows it writes and observes nothing outside itself."
+      fn =
+        (function
+        | state, _, _, [| hashDval |] ->
+          uply {
+            match! pm.getTest (PT2DT.Hash.fromDT hashDval) with
+            | None -> return DBool false
+            | Some test ->
+              let! inProcess = runsInProcess state test
+              return DBool inProcess
+          }
+        | _ -> incorrectArgs ())
+      previewable = Impure
+      callEffects = set [ Effect.PackageRead ]
+      deprecated = NotDeprecated }
+
     { name = fn "pmExecuteTest" 0
       typeParams = []
       parameters =
@@ -427,8 +530,9 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
             []
           ))
       description =
-        "Runs a package test in a fresh process and store with test permissions. "
-        + "Cleans up after execution and returns the value or runtime error. "
+        "Runs a package test with test permissions: in this process when analysis "
+        + "shows it cannot write or observe anything outside itself, otherwise in a "
+        + "fresh process and store. Returns the value or runtime error. "
         + "The Dark caller decides whether it passed."
       fn =
         (function
@@ -449,9 +553,13 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
                 reflectOutcome (
                   Error(RuntimeError.VariableNotFound $"package test {hashStr}", [])
                 )
-            | Some _ ->
-              return!
-                executeIsolatedTest exeState vm runId branchId workerHash hashStr
+            | Some test ->
+              let! inProcess = runsInProcess exeState test
+              if inProcess then
+                return! executeInProcessTest exeState vm branchId test
+              else
+                return!
+                  executeIsolatedTest exeState vm runId branchId workerHash hashStr
           }
         | _ -> incorrectArgs ())
       previewable = Impure

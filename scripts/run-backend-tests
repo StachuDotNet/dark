@@ -9,6 +9,10 @@ FORCE=false
 FILTERED=false
 SPLIT=false
 LISTING=false
+# The F# suite and the package tests (`dark test run`) are one suite to a person running
+# this. Either half alone: --fsharp-only, --packages-only. Any F# filter means F# only.
+RUN_FSHARP=true
+RUN_PACKAGES=true
 
 EXPECTO_ARGS=()
 
@@ -23,8 +27,11 @@ do
     --split) SPLIT=true ;;
     --list-tests)
       LISTING=true # lists without running, so "no tests ran" is expected
+      RUN_PACKAGES=false
       EXPECTO_ARGS+=("${i}")
       ;;
+    --fsharp-only) RUN_PACKAGES=false ;;
+    --packages-only) RUN_FSHARP=false ;;
     --filter|--filter-test-list|--filter-test-case|--run|--shard|--kind)
       FILTERED=true
       EXPECTO_ARGS+=("${i}")
@@ -46,6 +53,8 @@ if [[ "$SPLIT" == "true" && "$FILTERED" == "true" ]]; then
   echo "--split runs the whole suite; it does not take a filter, --shard or --kind." >&2
   exit 1
 fi
+
+if [[ "$FILTERED" == "true" ]]; then RUN_PACKAGES=false; fi
 
 # Two runs in one clone destroy each other: same test-data.db, same httpclient port,
 # and the `killall -9 Tests` below would take out the other one's process.
@@ -73,6 +82,10 @@ echo $$ > "$LOCK"
 # shellcheck disable=SC2317  # reached via trap
 cleanup() {
   kill "${HEARTBEAT_PID:-}" 2>/dev/null || true
+  if [[ -n "${PACKAGES_PID:-}" ]]; then
+    pkill -P "$PACKAGES_PID" 2>/dev/null || true
+    kill "$PACKAGES_PID" 2>/dev/null || true
+  fi
   killall -9 Tests 2>/dev/null || true
   rm -f "$LOCK"
 }
@@ -154,6 +167,28 @@ else
 fi
 
 JUNIT_FILE="${DARK_CONFIG_RUNDIR}/test_results/backend.xml"
+
+# The package tests, beside the F# suite rather than after it: most of the F# suite's wall
+# time is its sequenced CLI phase, which leaves the other cores idle. Their own copy of the
+# store just reloaded, their own rundir and HOME (the package-tests gate), and the same build
+# the F# suite drives. Output goes to its log; the verdict is printed at the end.
+PACKAGES_LOG="${LOGS}/package-tests.log"
+if [[ "$RUN_PACKAGES" == "true" ]]; then
+  echo -e "Package tests in the background ${grey}(${PACKAGES_LOG})${reset}"
+  (
+    CLI="${DARK_TEST_CLI#"$PWD"/}" DARK_STORE_SRC="$DB_PATH" \
+      scripts/testing/gates package-tests > "$PACKAGES_LOG" 2>&1
+  ) &
+  PACKAGES_PID=$!
+fi
+if [[ "$RUN_FSHARP" != "true" ]]; then
+  set +e
+  wait "$PACKAGES_PID"
+  PSTATUS=$?
+  set -e
+  grep -E '^(FAIL|ERROR) |passed, [0-9,]+ failed' "$PACKAGES_LOG" | sed -e 's/\x1b\[[0-9;]*m//g' | tail -20
+  exit "$PSTATUS"
+fi
 
 
 COLOURS="256"
@@ -245,6 +280,17 @@ fi
 set -e
 
 kill "${HEARTBEAT_PID:-}" 2>/dev/null || true
+
+if [[ "$RUN_PACKAGES" == "true" ]]; then
+  echo "Waiting for the package tests..."
+  set +e
+  wait "$PACKAGES_PID"
+  PSTATUS=$?
+  set -e
+  echo "Package tests (${PACKAGES_LOG}):"
+  grep -E '^(FAIL|ERROR) |passed, [0-9,]+ failed' "$PACKAGES_LOG" | sed -e 's/\x1b\[[0-9;]*m//g' | tail -20
+  if [[ "$PSTATUS" -ne 0 && "$STATUS" -eq 0 ]]; then STATUS=$PSTATUS; fi
+fi
 
 # Expecto reports a filter that matched nothing as "0 tests run - Success!" and exits
 # 0, which is the worst answer available: you believe you ran a suite you didn't.

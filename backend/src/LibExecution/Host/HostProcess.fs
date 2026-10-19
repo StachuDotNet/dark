@@ -232,7 +232,10 @@ let private readCappedWithCancellation
 let fileSnapshot
   (snapshot : string -> Result<unit, string>)
   : HostTypes.FileSnapshot =
-  let gate = obj ()
+  // Copies share the read side, so parallel tests copy at once; closing takes the
+  // write side and waits for copies in flight. A plain lock here serialized every
+  // copy of the store, which was most of a suite's wall time.
+  let gate = new System.Threading.ReaderWriterLockSlim()
   let mutable disposed = false
   let mutable directory : Option<string> = None
   let baseline =
@@ -242,13 +245,16 @@ let fileSnapshot
        let path = Path.Combine(dir, "baseline")
        snapshot path |> Result.map (fun () -> path))
   let close () =
-    lock gate (fun () ->
+    gate.EnterWriteLock()
+    try
       disposed <- true
       match directory with
       | None -> ()
       | Some dir ->
         Directory.Delete(dir, true)
-        directory <- None)
+        directory <- None
+    finally
+      gate.ExitWriteLock()
   let onExit =
     System.EventHandler(fun _ _ ->
       try
@@ -258,7 +264,8 @@ let fileSnapshot
   System.AppDomain.CurrentDomain.ProcessExit.AddHandler onExit
   { new HostTypes.FileSnapshot with
       member _.CopyTo target =
-        lock gate (fun () ->
+        gate.EnterReadLock()
+        try
           if disposed then
             Error "The file snapshot has already been closed"
           else
@@ -269,7 +276,9 @@ let fileSnapshot
                 File.Copy(path, target)
                 Ok()
             with e ->
-              Error e.Message)
+              Error e.Message
+        finally
+          gate.ExitReadLock()
       member _.Dispose() =
         try
           close ()

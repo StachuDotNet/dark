@@ -46,11 +46,21 @@ unrecognised attribute and the parser refuses it like any other.
 `dark test` shows help. Use `dark test run` to execute tests and `dark test add` to add one.
 
 `dark test run` runs all tests, or you can filter them by module or test name. It skips
-deprecated tests and starts them in name order, with up to four running at once
-(or fewer on smaller machines). Results are printed as tests finish. Use
-`--jobs <count>` to change the limit, or `--jobs 1` to run serially. Each declaration
+deprecated tests and starts them in name order. Tests that run in-process (see below)
+run up to one per core; isolated tests up to four at once (or fewer on smaller
+machines). Results are printed as tests finish. `--jobs <count>` sets one limit for
+both, and `--jobs 1` runs serially. Each declaration
 counts as one test, even when `Stdlib.Test.all` combines several checks. The
 command fails if any test fails or no tests match.
+
+A test runs in one of two places. If the runner can prove it writes and observes
+nothing outside itself, it runs inside the runner's own process: the same analysis
+cache safety uses walks the test and everything it calls, and the test qualifies when
+that walk is complete and it needs nothing beyond clock, random, package reads and
+concurrency. Such a test shares the runner's warm package caches, and costs no
+process start and no store copy. About three quarters of the shipped tests qualify.
+Everything else runs in a worker, as described below. The summary line ends with how
+many were isolated.
 
 The worker is the separate process running the test. It loads the saved version
 by hash and resets the test counter.
@@ -73,10 +83,10 @@ Errors are returned as structured data so Dark can inspect their type and detail
 Before the first uncached test runs, `dark test run` takes one snapshot of the package
 store. SQLite's backup API creates the snapshot. The backup connection is then
 closed, leaving a complete database file that can be copied for each test.
-Each test that needs to run gets a fresh process, its own writable copy of the
+Each isolated test gets a fresh process, its own writable copy of the
 store, and separate directories for its home, temporary files and permission
-policies. If all selected tests have reusable cached passes, no tests run and no
-snapshot is created.
+policies. The snapshot is taken on first use, so a run where every test is cached
+or in-process creates none. Copies of it are made in parallel.
 
 Tests start from the same snapshot, so one test's changes don't affect another.
 The Dark runner passes an explicit run handle to each execution. Test support
@@ -178,9 +188,10 @@ The old execution tests have moved to package tests, and their runner has been
 removed. Raw HTTP tests and backend integration tests still run in F#.
 
 The old runner shared one process and database and could run independent tests
-in parallel. Package tests also run in parallel, each with its own process
-and store. This keeps tests from affecting each other's store, but adds process
-startup and copying costs. CI uses the NativeAOT CLI to make startup faster.
+in parallel. Package tests do the same for every test that can be proven not to
+need isolation, and give the rest their own process and store. Isolation costs a
+process start and a copy of the ~100 MB store per test, so CI runs the suite with the
+NativeAOT CLI. `scripts/run-backend-tests` runs it alongside the F# suite.
 
 Package reloads include tests and their helpers. Some tests intentionally contain
 type errors, so `dark typecheck` can report those errors. The CI audit checks the
