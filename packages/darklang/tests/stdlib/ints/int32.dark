@@ -206,6 +206,23 @@ test randomReachesEveryValue =
        |> Stdlib.List.unique))
       |> Stdlib.Test.equal ([ 0l, 1l, 2l ]) ]
 
+/// Ranges nearly as wide as the type: every draw stays in bounds, and
+/// draws land on both sides of 0l, so the range isn't truncated.
+test randomWideRange =
+  let draws =
+    (Stdlib.List.range 1 300)
+    |> Stdlib.List.map (fun _ -> Stdlib.Int32.random -2000000000l 2000000000l)
+  let full =
+    (Stdlib.List.range 1 300)
+    |> Stdlib.List.map (fun _ -> Stdlib.Int32.random -2147483648l 2147483647l)
+  Stdlib.Test.all
+    [ (Stdlib.List.all draws (fun x -> (x >= -2000000000l) && (x <= 2000000000l)))
+      |> Stdlib.Test.equal true
+      (Stdlib.List.any draws (fun x -> x < 0l)) |> Stdlib.Test.equal true
+      (Stdlib.List.any draws (fun x -> x > 0l)) |> Stdlib.Test.equal true
+      (Stdlib.List.any full (fun x -> x < 0l)) |> Stdlib.Test.equal true
+      (Stdlib.List.any full (fun x -> x > 0l)) |> Stdlib.Test.equal true ]
+
 test sum =
   Stdlib.sum 0l [ 1l, 2l ] |> Stdlib.Test.equal 3l
 

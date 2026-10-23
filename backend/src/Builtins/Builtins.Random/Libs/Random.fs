@@ -11,6 +11,24 @@ module VT = LibExecution.ValueType
 module TypeChecker = LibExecution.TypeChecker
 
 
+/// A uniform draw from [lower, upper], both ends inclusive. The range is
+/// computed in BigInteger, so it can't overflow whatever width the caller
+/// converts the result back to.
+let private randomInRange
+  (lower : System.Numerics.BigInteger)
+  (upper : System.Numerics.BigInteger)
+  : System.Numerics.BigInteger =
+  let range = upper - lower + bigint 1
+  // Draw a uniform value in [0, range). Generate extra bytes so the
+  // modulo bias is negligible (< 2^-64); the top byte stays 0 so the
+  // BigInteger is read as non-negative.
+  let numBytes = range.GetByteCount(true) + 8
+  let buf = Array.zeroCreate (numBytes + 1)
+  randomSeeded().NextBytes(buf)
+  buf[numBytes] <- 0uy
+  lower + System.Numerics.BigInteger(buf) % range
+
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "int8Random" 0
       typeParams = []
@@ -110,8 +128,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [| DInt32 a; DInt32 b |] ->
           let lower, upper = if a > b then (b, a) else (a, b)
-          let correction : int32 = 1
-          lower + randomSeeded().Next(upper - lower + correction) |> DInt32 |> Ply
+          randomInRange (bigint lower) (bigint upper) |> int32 |> DInt32 |> Ply
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Random ]
@@ -128,13 +145,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [| DUInt32 a; DUInt32 b |] ->
           let lower, upper = if a > b then (b, a) else (a, b)
-          let lowerBound = max lower 0ul
-          let upperBound = min upper 4294967295ul
-          let correctRange = 1
-          let uint32Range = int upperBound - int lowerBound + correctRange
-          let resultInt = randomSeeded().Next(uint32Range)
-          let uint32Result = lowerBound + (uint32 resultInt)
-          Ply(DUInt32(uint32Result))
+          randomInRange (bigint lower) (bigint upper) |> uint32 |> DUInt32 |> Ply
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Random ]
@@ -151,11 +162,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [| DInt64 a; DInt64 b |] ->
           let lower, upper = if a > b then (b, a) else (a, b)
-          // .NET's "nextInt64" is exclusive, but we want inclusive.
-          let correction : int64 = 1
-          lower + randomSeeded().NextInt64(upper - lower + correction)
-          |> DInt64
-          |> Ply
+          randomInRange (bigint lower) (bigint upper) |> int64 |> DInt64 |> Ply
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Random ]
@@ -174,16 +181,7 @@ let fns () : List<BuiltInFn> =
           let a = DarkInt.toBigInt a
           let b = DarkInt.toBigInt b
           let lower, upper = if a > b then (b, a) else (a, b)
-          let range = upper - lower + bigint 1
-          // Draw a uniform value in [0, range). Generate extra bytes so the
-          // modulo bias is negligible (< 2^-64); the top byte stays 0 so the
-          // BigInteger is read as non-negative.
-          let numBytes = range.GetByteCount(true) + 8
-          let buf = Array.zeroCreate (numBytes + 1)
-          randomSeeded().NextBytes(buf)
-          buf[numBytes] <- 0uy
-          let r = System.Numerics.BigInteger(buf) % range
-          Dval.int (lower + r) |> Ply
+          Dval.int (randomInRange lower upper) |> Ply
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Random ]
@@ -200,13 +198,7 @@ let fns () : List<BuiltInFn> =
         (function
         | _, _, _, [| DUInt64 a; DUInt64 b |] ->
           let lower, upper = if a > b then (b, a) else (a, b)
-          let correction : int = 1
-          let lowerBound = max lower 0UL
-          let upperBound = min upper (uint64 System.UInt64.MaxValue)
-          let uint64Range = int upperBound - int lowerBound + correction
-          let resultInt = randomSeeded().Next(uint64Range)
-          let uint64Result = lowerBound + (uint64 resultInt)
-          Ply(DUInt64(uint64Result))
+          randomInRange (bigint lower) (bigint upper) |> uint64 |> DUInt64 |> Ply
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Random ]

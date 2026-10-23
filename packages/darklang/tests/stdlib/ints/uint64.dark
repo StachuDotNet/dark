@@ -168,6 +168,25 @@ test randomReachesEveryValue =
        |> Stdlib.List.unique))
       |> Stdlib.Test.equal ([ 0UL, 1UL, 2UL ]) ]
 
+/// Ranges nearly as wide as the type: every draw stays in bounds, and
+/// draws land on both sides of 9000000000000000000UL, so the range isn't truncated.
+test randomWideRange =
+  let draws =
+    (Stdlib.List.range 1 300)
+    |> Stdlib.List.map (fun _ -> Stdlib.UInt64.random 1000UL 18000000000000000000UL)
+  let full =
+    (Stdlib.List.range 1 300)
+    |> Stdlib.List.map (fun _ -> Stdlib.UInt64.random 0UL 18446744073709551615UL)
+  Stdlib.Test.all
+    [ (Stdlib.List.all draws (fun x ->
+        (Stdlib.UInt64.Compare.greaterThanOrEqualTo x 1000UL)
+        && (Stdlib.UInt64.Compare.lessThanOrEqualTo x 18000000000000000000UL)))
+      |> Stdlib.Test.equal true
+      (Stdlib.List.any draws (fun x -> Stdlib.UInt64.Compare.lessThan x 9000000000000000000UL)) |> Stdlib.Test.equal true
+      (Stdlib.List.any draws (fun x -> Stdlib.UInt64.Compare.greaterThan x 9000000000000000000UL)) |> Stdlib.Test.equal true
+      (Stdlib.List.any full (fun x -> Stdlib.UInt64.Compare.lessThan x 9000000000000000000UL)) |> Stdlib.Test.equal true
+      (Stdlib.List.any full (fun x -> Stdlib.UInt64.Compare.greaterThan x 9000000000000000000UL)) |> Stdlib.Test.equal true ]
+
 test sum =
   Stdlib.sum 0UL [ 1UL, 2UL ] |> Stdlib.Test.equal 3UL
 
