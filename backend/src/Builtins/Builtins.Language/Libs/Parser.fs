@@ -1387,97 +1387,59 @@ module WrittenTypesToDarkTypes =
     let elemVT = VT.tuple (VT.customType (rangeTypeName ()) []) VT.string []
     DList(elemVT, diagnostics |> List.map (fun d -> rangedString d.range d.message))
 
-// Impure though they perform nothing: the answer is this binary's parser, which changes between
-// releases. They become Pure once parsers are versioned.
+// Impure though it performs nothing: the answer is this binary's parser, which changes between
+// releases. It becomes Pure once parsers are versioned.
 let fns () : List<BuiltInFn> =
-  [ { name = fn "parserParseToWrittenTypes" 0
+  [ { name = fn "parserParse" 0
       typeParams = []
-      parameters = [ Param.make "sourceCode" TString "" ]
+      parameters =
+        [ Param.make
+            "mode"
+            (TCustomType(NR.ok (FQTypeName.fqPackage (PackageRefs.parseMode ())), []))
+            ""
+          Param.make "sourceCode" TString "" ]
       returnType =
-        TCustomType(
-          NR.ok (
-            FQTypeName.fqPackage (LibExecution.PackageRefs.Type.Stdlib.option ())
+        TTuple(
+          TCustomType(
+            NR.ok (
+              FQTypeName.fqPackage (LibExecution.PackageRefs.Type.Stdlib.option ())
+            ),
+            [ TCustomType(NR.ok (FQTypeName.fqPackage (WTRefs.parsedFile ())), []) ]
           ),
-          [ TCustomType(NR.ok (FQTypeName.fqPackage (WTRefs.parsedFile ())), []) ]
-        )
-      description =
-        "Parses Darklang source into the range-complete WrittenTypes.ParsedFile "
-        + "for the semantic-token highlighter / LSP. Returns Some with a best-effort "
-        + "tree whenever lexing succeeds (parse diagnostics are reported separately); "
-        + "None only when the source cannot be tokenized at all."
-      fn =
-        (function
-        | _, _, _, [| DString sourceCode |] ->
-          let pfKT = KTCustomType(FQTypeName.fqPackage (WTRefs.parsedFile ()), [])
-          let r = P.parse sourceCode
-          // best-effort: return the parse tree whenever the tokenizer succeeded, even
-          // with diagnostics — the parser recovers from parse errors, so partial files
-          // still highlight (with precise diagnostics reported separately). A total
-          // tokenizer failure (`parsed = None`) yields None.
-          let result =
-            match r.parsed with
-            | Some pf ->
-              Dval.optionSome pfKT (WrittenTypesToDarkTypes.parsedFileToDT pf)
-            | None -> Dval.optionNone pfKT
-          Ply result
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-    { name = fn "parserParseDiagnostics" 0
-      typeParams = []
-      parameters = [ Param.make "sourceCode" TString "" ]
-      returnType =
-        TList(
-          TTuple(
-            TCustomType(NR.ok (FQTypeName.fqPackage (PackageRefs.range ())), []),
-            TString,
-            []
-          )
-        )
-      description =
-        "The new parser's syntax diagnostics as (range, message) pairs, for precise "
-        + "LSP error reporting. Empty list on a clean parse."
-      fn =
-        (function
-        | _, _, _, [| DString sourceCode |] ->
-          Ply(
-            WrittenTypesToDarkTypes.diagnosticsToDT (P.parse sourceCode).diagnostics
-          )
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-    // CLEANUP: replace this with one parser that takes Package, Script, or Test.
-    // The current F#-to-Dark conversion drops details needed for validation:
-    // The test `1 = 1` becomes a plain expression. For now, validate here and return the
-    // same package tree.
-    { name = fn "parserParsePackageToWrittenTypes" 0
-      typeParams = []
-      parameters = [ Param.make "sourceCode" TString "" ]
-      returnType =
-        TypeReference.result
-          (TCustomType(NR.ok (FQTypeName.fqPackage (WTRefs.parsedFile ())), []))
-          (TList(
+          TList(
             TTuple(
               TCustomType(NR.ok (FQTypeName.fqPackage (PackageRefs.range ())), []),
               TString,
               []
             )
-          ))
+          ),
+          []
+        )
       description =
-        "Parse and validate package source using declaration semantics at the "
-        + "file root. Returns WrittenTypes on success or diagnostics on failure."
+        "Parses Darklang source into the range-complete WrittenTypes.ParsedFile, with the "
+        + "parser's diagnostics as (range, message) pairs. "
+        + "<param mode> Editor is the tooling parse the semantic-token highlighter and LSP "
+        + "use: a best-effort tree whenever the source tokenizes, even with diagnostics, and "
+        + "None only when it can't be tokenized at all. "
+        + "<param mode> Package parses and validates with declaration semantics at the file "
+        + "root: a tree and no diagnostics, or None and the diagnostics."
       fn =
+        let pfKT = KTCustomType(FQTypeName.fqPackage (WTRefs.parsedFile ()), [])
         (function
-        | _, _, _, [| DString sourceCode |] ->
-          let parsedFileKT =
-            KTCustomType(FQTypeName.fqPackage (WTRefs.parsedFile ()), [])
-          let diagnosticVT =
-            VT.tuple (VT.customType (rangeTypeName ()) []) VT.string []
-          let diagnosticsKT = KTList diagnosticVT
+        | _, _, _, [| DEnum(_, _, [], "Editor", []); DString sourceCode |] ->
+          let r = P.parse sourceCode
+          let tree =
+            match r.parsed with
+            | Some pf ->
+              Dval.optionSome pfKT (WrittenTypesToDarkTypes.parsedFileToDT pf)
+            | None -> Dval.optionNone pfKT
+          Ply(
+            DTuple(tree, WrittenTypesToDarkTypes.diagnosticsToDT r.diagnostics, [])
+          )
+        // CLEANUP: add Script and Test modes (`P.parseFor` with those). The F#-to-Dark conversion drops
+        // details validation needs (the test `1 = 1` becomes a plain expression), so validation runs
+        // here, in F#.
+        | _, _, _, [| DEnum(_, _, [], "Package", []); DString sourceCode |] ->
           match P.parseFor Validation.Package sourceCode with
           | Ok validated ->
             let parsedFile =
@@ -1485,10 +1447,21 @@ let fns () : List<BuiltInFn> =
               |> Validation.ValidatedSourceFile.toWrittenTypes
               |> WT.SourceFile
               |> WrittenTypesToDarkTypes.parsedFileToDT
-            Ply(Dval.resultOk parsedFileKT diagnosticsKT parsedFile)
+            Ply(
+              DTuple(
+                Dval.optionSome pfKT parsedFile,
+                WrittenTypesToDarkTypes.diagnosticsToDT [],
+                []
+              )
+            )
           | Error diagnostics ->
-            let diagnostics = WrittenTypesToDarkTypes.diagnosticsToDT diagnostics
-            Ply(Dval.resultError parsedFileKT diagnosticsKT diagnostics)
+            Ply(
+              DTuple(
+                Dval.optionNone pfKT,
+                WrittenTypesToDarkTypes.diagnosticsToDT diagnostics,
+                []
+              )
+            )
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = Set.empty
