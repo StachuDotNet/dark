@@ -48,24 +48,6 @@ let private dummyVM () =
   RT.VMState.createWithoutTLID
     { registerCount = 1; instructions = [ RT.LoadVal(0, RT.DUnit) ]; resultIn = 0 }
 
-/// Host-only builtins must reject guest calls at the admin boundary.
-let private expectHostOnly
-  (name : string)
-  (args : RT.Dval[])
-  : System.Threading.Tasks.Task<unit> =
-  task {
-    let! (exeState : RT.ExecutionState) = executionStateFor TestValues.pm false
-    let builtin = exeState.fns.builtIn[RT.FQFnName.builtin name 0]
-    try
-      let! _ = builtin.fn (struct (exeState, dummyVM (), [], args)) |> Ply.toTask
-      Expect.equal 1 2 "expected a policy-admin denial"
-    with RT.RuntimeErrorException(_, RTE.Error.UncaughtException(message, _)) ->
-      Expect.stringContains
-        message
-        "trusted `dark permissions` command"
-        "the admin boundary is explained"
-  }
-
 let denied =
   testTask "an effectful builtin is denied by a deny-all policy" {
     let! exeState = executionStateFor TestValues.pm false
@@ -445,22 +427,111 @@ let deferredExecutionMatrix : List<Test> =
         for layer in layers do
           deferredCase shape direction layer ]
 
-let guestCannotChangePolicies =
-  testTask "guest code cannot change stored policies" {
-    do! expectHostOnly "pmPolicySetInstance" [| RT.DUnit |]
-    do! expectHostOnly "pmPolicyEditInstance" [| RT.DUnit |]
+/// The policy builtins that only the CLI's own state may call. Found by calling every builtin in
+/// the permissions module from a guest state, rather than listed: a host-only builtin added later
+/// is covered without touching this file.
+let private adminRefusal = "trusted `dark permissions` command"
+
+/// What one call of a builtin with no arguments says: the admin refusal, or anything else (most
+/// often an arity complaint, which means the builtin got past the admin check).
+let private refusesAsAdmin
+  (state : RT.ExecutionState)
+  (builtin : RT.BuiltInFn)
+  : System.Threading.Tasks.Task<bool> =
+  task {
+    try
+      let! _ = builtin.fn (struct (state, dummyVM (), [], [||])) |> Ply.toTask
+      return false
+    with
+    | RT.RuntimeErrorException(_, RTE.Error.UncaughtException(message, _)) when
+      message.Contains adminRefusal
+      ->
+      return true
+    | _ -> return false
   }
 
-let guestCannotApprovePackages =
-  testTask "guest code cannot change package approvals" {
-    do!
-      expectHostOnly
-        "pmPolicyApproveVersion"
-        [| LibExecution.Dval.optionNone RT.KTUuid
-           RT.DString "loc"
-           RT.DString "unknown"
-           RT.DBool false
-           RT.DBool false |]
+/// Reads any state holding `Native` may make. Each is named on purpose; a policy builtin that is
+/// neither host-only nor here fails `everyPolicyBuiltinIsHostOnlyOrANamedRead`.
+let private policyReads =
+  set
+    [ "pmPolicyGetInstance"
+      "pmPolicyPackageAccess"
+      "pmPolicyApprovedVersions"
+      "pmPolicyExplicitApproval"
+      "pmFnPermissionRequirements" ]
+
+let hostOnlyPolicyBuiltins () : System.Threading.Tasks.Task<List<string>> =
+  task {
+    let! (guest : RT.ExecutionState) = executionStateFor TestValues.pm false
+    let! refused =
+      Builtins.Matter.Libs.PM.Permissions.fns ()
+      |> List.map (fun builtin ->
+        task {
+          let! refuses = refusesAsAdmin guest builtin
+          return (builtin.name.name, refuses)
+        })
+      |> System.Threading.Tasks.Task.WhenAll
+    return refused |> Array.filter snd |> Array.map fst |> List.ofArray |> List.sort
+  }
+
+let everyPolicyBuiltinIsHostOnlyOrANamedRead =
+  testTask "every policy builtin refuses guest code, or is a named read" {
+    let! (guest : RT.ExecutionState) = executionStateFor TestValues.pm false
+    Expect.isFalse guest.canManagePolicies "the test's state is a guest's"
+    let trusted = { guest with canManagePolicies = true }
+    let policyFns = Builtins.Matter.Libs.PM.Permissions.fns ()
+    let! hostOnly = hostOnlyPolicyBuiltins ()
+
+    Expect.isGreaterThanOrEqual
+      (List.length hostOnly)
+      7
+      $"the host-only policy builtins were found: {hostOnly}"
+    for builtin in policyFns do
+      let name = builtin.name.name
+      let isHostOnly = List.contains name hostOnly
+      Expect.isTrue
+        (isHostOnly || Set.contains name policyReads)
+        $"{name} neither refuses guest code nor is a named read"
+      Expect.isFalse
+        (isHostOnly && Set.contains name policyReads)
+        $"{name} is listed as a read but refuses guest code"
+      // The flag is the switch: with it, the same call gets past the admin check.
+      let! refusesTrusted = refusesAsAdmin trusted builtin
+      Expect.isFalse refusesTrusted $"{name} does not refuse the CLI's own state"
+    let names = policyFns |> List.map (fun b -> b.name.name) |> Set.ofList
+    for read in policyReads do
+      Expect.isTrue (Set.contains read names) $"the named read {read} still exists"
+    // A policy builtin registered from another module would skip all of the above.
+    let registered =
+      guest.fns.builtIn.Keys
+      |> Seq.map (fun key -> key.name)
+      |> Seq.filter (fun name -> name.StartsWith "pmPolicy")
+      |> Set.ofSeq
+    Expect.isTrue
+      (Set.isSubset registered names)
+      $"every registered pmPolicy builtin is in the permissions module: {Set.difference registered names}"
+  }
+
+/// Every way the host builds a state for guest code clears the flag, whatever the caller had.
+let guestStatesCannotManagePolicies =
+  testTask "every guest state constructor withholds policy administration" {
+    let! (base' : RT.ExecutionState) = executionStateFor TestValues.pm false
+    let trusted = { base' with canManagePolicies = true }
+    let root =
+      RT.Hash "0000000000000000000000000000000000000000000000000000000000000000"
+    let states =
+      [ "guestState",
+        LibDB.PolicyStore.guestState
+          None
+          LibExecution.Permissions.Policy.allowAll
+          []
+          []
+          trusted
+        "testState", LibDB.PolicyStore.testState None trusted
+        "rootState with a root",
+        LibDB.PolicyStore.rootState trusted trusted.access [ root ] ]
+    for (name, state) in states do
+      Expect.isFalse state.canManagePolicies $"{name} cannot manage policies"
   }
 
 let guestFileApiCannotReachPolicyStore =
@@ -910,6 +981,6 @@ let tests =
           [ serveBindKeepsInvokingCeiling; serveBindAllowedByPermittingCeiling ]
       )
       testList "deferred execution matrix" deferredExecutionMatrix
-      guestCannotChangePolicies
-      guestCannotApprovePackages
+      everyPolicyBuiltinIsHostOnlyOrANamedRead
+      guestStatesCannotManagePolicies
       guestFileApiCannotReachPolicyStore ]
