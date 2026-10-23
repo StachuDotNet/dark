@@ -79,6 +79,36 @@ let sourceRefsBeforeLowering =
       PackageRefs.reloadHashes ()
   }
 
+/// A reload constructs the Sqlite builtins before it has any refs, and Dark code it runs
+/// later (the at-rest checker) reads the store through them. A cell's type has to be the one
+/// the reload loaded: an enum with no type matches no Dark pattern, so `Some(Bytes b)` falls
+/// through to its default arm and the read looks like a miss.
+let sqliteCellsFollowReloadedRefs =
+  test "a Sqlite cell has the type a reload loads, not the one at module init" {
+    let valueHash = String.replicate 64 "e"
+    try
+      PackageRefs.setHashes Map.empty
+      Builtins.Matter.Libs.Sqlite.builtins () |> ignore<RT.Builtins>
+      LibDB.PackageRefsGenerator.initializeFromOps
+        [ PT.PackageOp.SetName(
+            { owner = "Darklang"; modules = [ "Stdlib"; "Sqlite" ]; name = "Value" },
+            PT.PackageType(PT.Hash valueHash),
+            None
+          ) ]
+
+      match
+        Builtins.Matter.Libs.Sqlite.Value.toDT (box (System.Array.Empty<byte>()))
+      with
+      | RT.DEnum(typeName, _, _, "Bytes", _) ->
+        Expect.equal
+          typeName
+          (RT.FQTypeName.fqPackage valueHash)
+          "a BLOB cell carries the reloaded Stdlib.Sqlite.Value"
+      | other -> failtest $"expected a Bytes cell, got {other}"
+    finally
+      PackageRefs.reloadHashes ()
+  }
+
 let private countRows (table : string) : Task<int64> =
   Sql.query $"SELECT COUNT(*) as n FROM {table}"
   |> Sql.executeRowAsync (fun read -> read.int64 "n")
@@ -538,6 +568,7 @@ let tests =
   <| testList
     "OpsProjections"
     [ sourceRefsBeforeLowering
+      sqliteCellsFollowReloadedRefs
       opHashingIsStable
       opIdIsItsContentHash
       rebuildIsDeterministic

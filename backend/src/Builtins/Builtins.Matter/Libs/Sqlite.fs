@@ -40,9 +40,11 @@ let private connStr (path : string) : string = $"Data Source={path}"
 /// ints/reals/blobs keep their types across the round-trip (esp. Bytes for BLOB columns). Mirrors the
 /// `Int.fs` ParseError.toDT pattern: build the FQ type name from PackageRefs, then a `DEnum`.
 module Value =
-  let typeName = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.sqliteValue ())
-  let knownType : KnownType = KTCustomType(typeName, [])
-  let typeRef : TypeReference = TCustomType(NR.ok typeName, [])
+  // Looked up per use, not once: a value fixed at module init keeps whatever the refs held then,
+  // which during a package reload is nothing, and an enum with no type matches no Dark pattern.
+  let typeName = Dval.memoTypeName PackageRefs.Type.Stdlib.sqliteValue
+  let knownType () : KnownType = KTCustomType(typeName (), [])
+  let typeRef () : TypeReference = TCustomType(NR.ok (typeName ()), [])
 
   let toDT (cell : obj) : Dval =
     let (caseName, fields) =
@@ -54,7 +56,8 @@ module Value =
       | :? string as s -> "Text", [ DString s ]
       | :? (byte[]) as b -> "Bytes", [ Blob.newEphemeral b ]
       | other -> "Text", [ DString(string other) ]
-    DEnum(typeName, typeName, [], caseName, fields)
+    let name = typeName ()
+    DEnum(name, name, [], caseName, fields)
 
 
 /// Bind a positional param list to @p0..@pN — parameterized statements, so values can't be SQL-injected.
@@ -102,7 +105,7 @@ let private queryImpl
   let rowsKT =
     KTList(
       ValueType.Known(
-        KTDict(ValueType.Known KTString, ValueType.Known Value.knownType)
+        KTDict(ValueType.Known KTString, ValueType.Known(Value.knownType ()))
       )
     )
 
@@ -131,10 +134,10 @@ let private queryImpl
           let cells =
             [ for i in 0 .. reader.FieldCount - 1 ->
                 (reader.GetName i, Value.toDT (reader.GetValue i)) ]
-          rows.Add(Dval.stringDict Value.knownType cells)
+          rows.Add(Dval.stringDict (Value.knownType ()) cells)
       let listDval =
         Dval.list
-          (KTDict(ValueType.Known KTString, ValueType.Known Value.knownType))
+          (KTDict(ValueType.Known KTString, ValueType.Known(Value.knownType ())))
           (List.ofSeq rows)
       return Dval.resultOk rowsKT KTString listDval
     with e ->
@@ -328,7 +331,7 @@ let fns () : List<BuiltInFn> =
             ("values bound to @p0..@pN placeholders, in order (injection-safe); "
              + "[] for none") ]
       returnType =
-        TypeReference.result (TList(TDict(TString, Value.typeRef))) TString
+        TypeReference.result (TList(TDict(TString, Value.typeRef ()))) TString
       description =
         "Opens the SQLite file at <param path> and runs the SELECT <param sql>, "
         + "binding <param params> to @p0..@pN placeholders (injection-safe; pass "
