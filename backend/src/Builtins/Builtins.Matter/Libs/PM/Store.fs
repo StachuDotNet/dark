@@ -31,13 +31,6 @@ let private requireBundledCaller
     |> raiseUntargetedRTE
 
 
-/// The watch behind `Stdlib.Host.await` (see `hostWatchGet` below). One slot per OS process,
-/// because one host loop runs per process. A second loop in the same process would share it
-/// and see the first's "already reported" state; make it per-process state if that day comes.
-module HostWatch =
-  let mutable watch : Option<Dval> = None
-
-
 let fns () : List<BuiltInFn> =
   [
     // This instance's OWN package store path (data.db). The op-log builtins write ops here; the sync config
@@ -160,62 +153,6 @@ let fns () : List<BuiltInFn> =
       // `PackageRead`, like every other question about the package store: `DbRead` is the scoped
       // effect for a user table, and this names no table.
       callEffects = set [ Effect.PackageRead ]
-      deprecated = NotDeprecated }
-
-    // The one slot `Stdlib.Host.await` keeps its `Stdlib.Live.Watch` in between calls: the runtime
-    // says the store MOVED (a counter, from a timer), and Dark says which ops landed by polling
-    // from where its last look left off. `await` takes no state, and a Dark value cannot outlive
-    // the call that made it, so the watch lives here. Nothing else may use this.
-    { name = fn "hostWatchGet" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TypeReference.option (TVariable "a")
-      description = "`Host.await`'s watch, if one has been stored."
-      fn =
-        (function
-        | _, _, _, [| DUnit |] ->
-          uply {
-            match HostWatch.watch with
-            | Some w ->
-              return
-                DEnum(
-                  Dval.optionType (),
-                  Dval.optionType (),
-                  [ ValueType.Unknown ],
-                  "Some",
-                  [ w ]
-                )
-            | None ->
-              return
-                DEnum(
-                  Dval.optionType (),
-                  Dval.optionType (),
-                  [ ValueType.Unknown ],
-                  "None",
-                  []
-                )
-          }
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = set [ Effect.PackageRead ]
-      deprecated = NotDeprecated }
-
-    { name = fn "hostWatchSet" 0
-      typeParams = []
-      parameters = [ Param.make "watch" (TVariable "a") "" ]
-      returnType = TUnit
-      description = "Store the watch for the next `Host.await`."
-      fn =
-        (function
-        | _, _, _, [| w |] ->
-          uply {
-            HostWatch.watch <- Some w
-            return DUnit
-          }
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      // Not a read: `Effects.readsOnly` would let a resume serve it instead of arming the watch.
-      callEffects = set [ Effect.Runtime ]
       deprecated = NotDeprecated } ]
 
 

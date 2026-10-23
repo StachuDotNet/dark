@@ -199,7 +199,7 @@ let private hostAwaitTimerOrKey =
     try
       let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
       let program =
-        "Stdlib.Host.await [ Stdlib.Host.EventSpec.Key; Stdlib.Host.EventSpec.Timer 10L ]"
+        "Builtin.hostAwait [ Stdlib.Host.EventSpec.Key; Stdlib.Host.EventSpec.Timer 10L ]"
       let! (timedOut : Scheduler.Process) = spawn s state program
       let! result = runOnThread s timedOut
       match expectOk result "the timer await" with
@@ -332,7 +332,7 @@ let private accessIsPerProcess =
         LibExecution.Permissions.Policy.denyAll
         state
     let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
-    let program = "Stdlib.Host.await [ Stdlib.Host.EventSpec.Timer 1L ]"
+    let program = "Builtin.hostAwait [ Stdlib.Host.EventSpec.Timer 1L ]"
     let! (confined : Scheduler.Process) = spawn s denied program
     let! (free : Scheduler.Process) = spawn s state program
     let! freeResult = runOnThread s free
@@ -1550,8 +1550,8 @@ let private execDoneAnswersAFinishedProcess =
               """let done_ = Stdlib.Exec.spawn (fun () -> 1L)
 let _ = Stdlib.Exec.await done_
 let bad = Stdlib.Exec.spawn (fun () -> 1L / 0L)
-let first = Stdlib.Host.await [ Stdlib.Host.EventSpec.ExecDone done_.id ]
-let second = Stdlib.Host.await [ Stdlib.Host.EventSpec.ExecDone bad.id ]
+let first = Builtin.hostAwait [ Stdlib.Host.EventSpec.ExecDone done_.id ]
+let second = Builtin.hostAwait [ Stdlib.Host.EventSpec.ExecDone bad.id ]
 match (first, second) with
 | (ExecDone a, ExecDone b) -> a == done_.id && b == bad.id
 | _ -> false"""

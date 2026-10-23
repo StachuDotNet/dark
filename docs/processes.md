@@ -202,14 +202,16 @@ version.
 module Darklang.Stdlib.Host
 type EventSpec = Key | StoreChanged | Timer of ms: Int64 | ExecDone of id: Uuid
 type Event = Key of KeyRead | StoreChanged of Stdlib.Live.Change | Timer | ExecDone of id: Uuid
-let await (specs: List<EventSpec>) : Event
+let begin () : Stdlib.Live.Watch
+let await (watch: Stdlib.Live.Watch) (specs: List<EventSpec>) : (Event * Stdlib.Live.Watch)
 ```
 
 Under the scheduler the calling process parks on the first spec to fire.
 Outside one (a plain `execute`) it blocks the thread, polling. A
 `StoreChanged` from the runtime carries nothing; `await` asks
-`Stdlib.Live.poll` what landed and hands the loop the `Change`, and a move
-that carried no op (a config write) is absorbed. `Builtin.hostAwait` declares
+`Stdlib.Live.poll` what landed since the watch it was given and hands the loop
+the `Change` with the next watch, and a move that carried no op (a config
+write) is absorbed. The loop keeps the watch in its own state. `Builtin.hostAwait` declares
 `{Stdin; PackageRead}` statically, the union of what any spec could need.
 
 `readKey ()` is unchanged for users; under the scheduler its body is "park on

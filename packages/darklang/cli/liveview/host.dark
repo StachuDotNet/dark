@@ -52,6 +52,9 @@ type Session<'model, 'msg> =
     /// pointing `Live.show` somewhere else switches it.
     live: Bool
     terminal: Stdlib.Cli.Tui.TerminalSession.State
+    /// Where this session's last look at the op log left off; `Host.await` takes it and hands
+    /// back the next one.
+    watch: Stdlib.Live.Watch
     exiting: Bool }
 
 
@@ -439,7 +442,10 @@ let step (s: Session<'model, 'msg>) : Session<'model, 'msg> =
       Stdlib.List.pushBack watching (Stdlib.Host.EventSpec.Timer toastMs)
     | (None, None) -> watching
 
-  match Stdlib.Host.await specs with
+  let (event, watch) = Stdlib.Host.await s.watch specs
+  let s = { s with watch = watch }
+
+  match event with
   | StoreChanged change ->
     // `Live.show` first: an agent that authored a view and pointed at it lands both in one
     // wake, and the view it named is the one the edit should be seen on.
@@ -516,7 +522,7 @@ let prepareWith
   (resume: Stdlib.Option.Option<String>)
   (live: Bool)
   : Stdlib.Result.Result<Session<'model, 'msg>, String> =
-  Stdlib.Host.begin ()
+  let watch = Stdlib.Host.begin ()
 
   match resolveAll branchId view with
   | Error e -> Stdlib.Result.Result.Error e
@@ -551,6 +557,7 @@ let prepareWith
               scroll = 0
               live = live
               terminal = Stdlib.Cli.Tui.TerminalSession.init ()
+              watch = watch
               exiting = false }
         )
       )

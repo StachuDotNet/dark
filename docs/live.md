@@ -171,13 +171,13 @@ Every TUI host is written against one contract, the scheduler's event queue behi
 `Stdlib.Host.await`:
 
 ```
-let rec loop model =
-  match Host.await [Key; StoreChanged] with
-  | StoreChanged c when Live.affects c.locations entry ->
+let rec loop watch model =
+  match Host.await watch [Key; StoreChanged] with
+  | (StoreChanged c, watch) when Live.affects c.locations entry ->
       let model = reload entry model      // last-good rule applies
-      loop (render model)
-  | Key k -> loop (render (update model k))
-  | _ -> loop model
+      loop watch (render model)
+  | (Key k, watch) -> loop watch (render (update model k))
+  | (_, watch) -> loop watch model
 ```
 
 `Stdlib.Host.await [Key; StoreChanged; Timer ms; ExecDone id]` returns the first that
@@ -187,11 +187,11 @@ count), `StoreChanged of Live.Change`, `Timer`, `ExecDone of id` (a process fini
 the calling process parks on the event queue, fed by a reader thread, timers and a
 store poll over `LibDB.Sqlite.DataVersion`; outside a scheduler the thread is held,
 polling) plus one thing the runtime cannot do: say which ops landed. The poll posts that
-the store MOVED; `await` describes it with `Live.poll` from a watch the runtime keeps in
-one slot (`Builtin.hostWatchGet/Set`, since `await` takes no state and a Dark value does
-not outlive the call that made it), and a move that carried no op (a config write) is
-absorbed and the wait goes on. `Host.begin ()` starts the watch before a loop resolves
-its entries, so an edit during startup is not missed.
+the store MOVED; `await` describes it with `Live.poll` from the watch the loop passes in,
+and hands back the next watch with the event, so each loop keeps its own in its state. A
+move that carried no op (a config write) is absorbed and the wait goes on. `Host.begin ()`
+makes the watch before a loop resolves its entries, so an edit during startup is not
+missed.
 
 A view of something that moves on its own (`ps --watch`) sets `View.every = Some ms`;
 the host then adds `Timer ms` to every wait and hands the view an `Event.Tick`, which its

@@ -565,8 +565,20 @@ let runInteractiveLoop (state: AppState) : Int =
       let tReadKey =
         if renderedState.telemetryEnabled then Telemetry.now () else 0
 
+      let watch =
+        match renderedState.hostWatch with
+        | Some w -> w
+        | None -> Stdlib.Host.begin ()
+
+      let (event, watch) =
+        Stdlib.Host.await
+          watch
+          [ Stdlib.Host.EventSpec.Key, Stdlib.Host.EventSpec.StoreChanged ]
+
+      let renderedState = { renderedState with hostWatch = Stdlib.Option.Option.Some watch }
+
       let newState =
-        match Stdlib.Host.await [ Stdlib.Host.EventSpec.Key, Stdlib.Host.EventSpec.StoreChanged ] with
+        match event with
         | Key keyInput ->
           // Process the key. A coalesced burst (a mouse wheel, or a held-down key) arrives as one read
           // with a repeat count; applying it here means every page gets wheel-aware scrolling without

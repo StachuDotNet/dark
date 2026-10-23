@@ -76,6 +76,9 @@ type AppState =
     commandOptionsCache: List<String>
     /// When true, write telemetry to rundir/logs/telemetry.jsonl
     telemetryEnabled: Bool
+    /// The interactive loop's watch on the op log, which `Host.await` takes and hands back.
+    /// None until the loop first waits: a command run from the shell never does.
+    hostWatch: Stdlib.Option.Option<Stdlib.Live.Watch>
     /// What the process exits with in non-interactive use. 0 unless a command sets it: an unknown
     /// command, a failed `eval`, and the `--json` failure paths do, so scripts and agents can
     /// branch on the exit rather than parse prose. (Most commands still report failure in prose
@@ -206,6 +209,7 @@ let initState () : AppState =
       allCommandsCache = commands
       commandOptionsCache = commandOptions commands
       telemetryEnabled = (Stdlib.Env.get "DARK_TELEMETRY") == Stdlib.Option.Option.Some "1"
+      hostWatch = Stdlib.Option.Option.None
       exitCode = 0 }
 
 type Msg =
