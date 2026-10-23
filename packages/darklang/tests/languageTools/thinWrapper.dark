@@ -1,0 +1,40 @@
+module Darklang.LanguageTools.Tests.ThinWrapper
+
+// A forwarder that pins a generic builtin's `'a` to a primitive, the way every per-width operator
+// impl wraps the polymorphic builtin. The interpreter runs the builtin with no frame for it.
+//
+// Not `divide`: a fn's hash ignores its name and its parameter names, so a test wrapper with the
+// same body as a stdlib impl IS that impl, and an error from either could print this one's name.
+let int64sDiffer (a: Int64) (b: Int64) : Bool = Builtin.notEquals a b
+
+// The same call, but not a bare forwarder, so it keeps its frame. The control: if this one also
+// measured zero, the counter would be saying nothing.
+let int64sDifferFramed (a: Int64) (b: Int64) : Bool =
+  let differ = Builtin.notEquals a b
+  differ
+
+
+test pinnedForwarderPushesNoFrame =
+  (let harness = LanguageTools.Perf.floor ()
+   // The first call detects the wrapper; the ones after it come from the cache.
+   let (raw, _) =
+     LanguageTools.Perf.measure (fun () ->
+       [ int64sDiffer 7L 2L, int64sDiffer 9L 9L, int64sDiffer 8L 4L ])
+
+   (LanguageTools.Perf.minus raw harness).framePushes)
+  |> Stdlib.Test.equal 0L
+
+test framedWrapperPushesOneFramePerCall =
+  (let harness = LanguageTools.Perf.floor ()
+
+   let (raw, _) =
+     LanguageTools.Perf.measure (fun () ->
+       [ int64sDifferFramed 7L 2L,
+         int64sDifferFramed 9L 9L,
+         int64sDifferFramed 8L 4L ])
+
+   (LanguageTools.Perf.minus raw harness).framePushes)
+  |> Stdlib.Test.equal 3L
+
+test pinnedForwarderAnswersAsTheWrapper =
+  [ int64sDiffer 7L 2L, int64sDiffer 9L 9L ] |> Stdlib.Test.equal [ true, false ]

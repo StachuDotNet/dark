@@ -1126,9 +1126,11 @@ shipped values under guest policy.
 
 **A forwarding wrapper has no frame.** `let map list fn = Builtin.listMap list fn`
 is elided on both the first call and the cached `Apply` path. Both must establish
-`vm.activeAccess`, the wrapper's package policy and its ceiling. A wrapper is thin only
-when its signature exactly matches the builtin; `sameType` even compares type-variable
-names, so tests must use the builtin's `'a` and `'b`. All paths share
+`vm.activeAccess`, the wrapper's package policy and its ceiling. A wrapper is thin when
+its signature matches the builtin's, or pins a bare `'a` to a primitive (`(a: Int64)`
+against `add`'s `'a`), in which case each call checks the argument's case and goes
+through the frame when it is wrong. `sameType` compares type-variable names, so a
+generic test wrapper must use the builtin's `'a` and `'b`. All paths share
 `Interpreter.packageEntryAccess`.
 
 **A permission test must make the value in one frame and run it in another.** Deferred

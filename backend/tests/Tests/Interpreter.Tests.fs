@@ -1583,6 +1583,125 @@ let callCrate () : String = {q}.guarded ({q}.Crate {{ crateDepth{r} = 1L }})"
   let tests = testList "BoundMemo" [ boundCheckFollowsImplementations ]
 
 
+/// A forwarder that pins a generic builtin's `'a` to a primitive runs the builtin with no frame
+/// (`Interpreter.instanceArgTypes`). Each case runs twice: the first call detects the wrapper on the
+/// package call path, the second answers from the cache in `Apply`. Those are two elision sites,
+/// and both must agree with the frame.
+/// The frame count itself is asserted in `tests/languageTools/thinWrapper.dark`, which can turn
+/// the interpreter's counters on.
+module ThinWrappers =
+  let private wrapperHash = "thin-wrapper-pinned-divide"
+
+  /// `let divide (a: Int64) (b: Int64) : Int64 = Builtin.divide a b`, against `divide`'s
+  /// `'a -> 'b -> 'a`.
+  let private pinnedDivide : PT.PackageFn.PackageFn =
+    { hash = PT.Hash wrapperHash
+      typeParams = []
+      parameters =
+        NEList.ofList
+          { name = "a"; typ = PT.TInt64; description = "" }
+          [ { name = "b"; typ = PT.TInt64; description = "" } ]
+      returnType = PT.TInt64
+      body = eApply (eBuiltinFn "divide" 0) [] [ eVar "a"; eVar "b" ]
+      description = ""
+      permissionCeiling = None
+      bounds = [] }
+
+  /// `fun () -> divide <a> <b>`, as a package fn so the wrapper is called from a frame.
+  let private caller
+    (hash : string)
+    (a : PT.Expr)
+    (b : PT.Expr)
+    : PT.PackageFn.PackageFn =
+    { hash = PT.Hash hash
+      typeParams = []
+      parameters =
+        NEList.singleton { name = "unit"; typ = PT.TUnit; description = "" }
+      returnType = PT.TInt64
+      body = eApply (ePackageFn wrapperHash) [] [ a; b ]
+      description = ""
+      permissionCeiling = None
+      bounds = [] }
+
+  let private run (fns : List<PT.PackageFn.PackageFn>) (hash : string) =
+    task {
+      let byHash = fns |> List.map (fun fn -> fn.hash, fn) |> Map.ofList
+      let pm =
+        { TestValues.pm with
+            getFn =
+              fun h ->
+                match Map.tryFind h byHash with
+                | Some fn -> Ply(Some fn)
+                | None -> TestValues.pm.getFn h }
+      let! exeState = executionStateFor pm false
+      return!
+        LibExecution.Execution.executeFunction
+          exeState
+          (RT.FQFnName.fqPackage hash)
+          []
+          (NEList.singleton RT.DUnit)
+    }
+
+  let private wrapperFrame =
+    RT.ExecutionPoint.Function(RT.FQFnName.fqPackage wrapperHash)
+
+  let answers =
+    testTask "a pinned forwarder answers what its body would" {
+      let fns = [ pinnedDivide; caller "thin-wrapper-ok" (eInt64 7L) (eInt64 2L) ]
+      for _ in 1..2 do
+        let! actual = run fns "thin-wrapper-ok"
+        Expect.equal actual (Ok(RT.DInt64 3L)) ""
+    }
+
+  let wrongTypedArgRaisesTheWrappersError =
+    testTask
+      "a pinned forwarder still refuses an argument its signature does not take" {
+      // `Builtin.divide 7L 2y` would answer with the builtin's own mismatch, or for `+`, the
+      // operator table would answer it outright. The wrapper says `b: Int64`, so the call has to go
+      // through its frame and raise on its parameter.
+      let fns = [ pinnedDivide; caller "thin-wrapper-wrong" (eInt64 7L) (eInt8 2y) ]
+      for _ in 1..2 do
+        let! actual = run fns "thin-wrapper-wrong"
+        match actual with
+        | Error(RTE.Apply(RTE.Applications.FnParameterNotExpectedType(fnName,
+                                                                      1,
+                                                                      "b",
+                                                                      _,
+                                                                      _,
+                                                                      _,
+                                                                      _)),
+                _) ->
+          Expect.equal
+            fnName
+            (RT.FQFnName.fqPackage wrapperHash)
+            "raised by the wrapper"
+        | other ->
+          failtest (sprintf "expected the wrapper's parameter error, got %A" other)
+    }
+
+  let raisingCallHasNoWrapperFrame =
+    testTask
+      "a pinned forwarder that raises leaves no frame of its own on the call stack" {
+      // The frame is what printed a `Call-stack:` header above `7L / 0L`.
+      let fns =
+        [ pinnedDivide; caller "thin-wrapper-raises" (eInt64 7L) (eInt64 0L) ]
+      for _ in 1..2 do
+        let! actual = run fns "thin-wrapper-raises"
+        match actual with
+        | Error(RTE.Int RTE.Ints.DivideByZeroError, callStack) ->
+          Expect.isFalse
+            (List.contains wrapperFrame callStack)
+            $"the wrapper is on the call stack: {callStack}"
+        | other -> failtest (sprintf "expected a divide-by-zero, got %A" other)
+    }
+
+  let tests =
+    testList
+      "ThinWrappers"
+      [ answers; wrongTypedArgRaisesTheWrappersError; raisingCallHasNoWrapperFrame ]
+
+
+
 let tests =
   testList
     "Interpreter"
@@ -1610,4 +1729,5 @@ let tests =
       DictKeyOrdering.tests
       DeepValues.tests
       Reload.tests
-      BoundMemo.tests ]
+      BoundMemo.tests
+      ThinWrappers.tests ]

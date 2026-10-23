@@ -2079,6 +2079,14 @@ type private PackageOutcome =
   | Completed of result : Dval
 
 
+/// What a package fn forwards to, and what its arguments must be for that to mean running it.
+///
+/// `argTypes` is empty when the wrapper's signature is the builtin's. Otherwise it has one entry per
+/// parameter: the primitive the wrapper declares where the builtin takes a bare type variable
+/// (`(a: Int64)` against `add`'s `'a`), and `ValueNone` where the two already agree.
+type private ThinWrapper =
+  { builtin : FQFnName.Builtin; argTypes : TypeReference voption array }
+
 /// Answers by hash, which content-addressing makes permanent.
 ///
 /// The *name* is cached, not the resolved `BuiltInFn`. Caching the resolved one assumed the builtin
@@ -2088,7 +2096,7 @@ type private PackageOutcome =
 /// A process-wide cache of the resolved fn hands whichever was seen first to everyone afterwards.
 /// Resolving per call is one dictionary lookup against the table the caller is actually using.
 let private thinWrapperCache =
-  System.Collections.Concurrent.ConcurrentDictionary<Hash, FQFnName.Builtin voption>()
+  System.Collections.Concurrent.ConcurrentDictionary<Hash, ThinWrapper voption>()
 
 /// Structural type equality that ignores the name a type was written as.
 ///
@@ -2114,11 +2122,120 @@ let rec private sameType (a : TypeReference) (b : TypeReference) : bool =
 and private sameTypes (a : List<TypeReference>) (b : List<TypeReference>) : bool =
   List.length a = List.length b && List.forall2 sameType a b
 
+/// Whether `dv` has type `t`, for the types where the Dval case alone decides it.
+let private primitiveFits (t : TypeReference) (dv : Dval) : bool =
+  match t, dv with
+  | TUnit, DUnit
+  | TBool, DBool _
+  | TInt8, DInt8 _
+  | TUInt8, DUInt8 _
+  | TInt16, DInt16 _
+  | TUInt16, DUInt16 _
+  | TInt32, DInt32 _
+  | TUInt32, DUInt32 _
+  | TInt64, DInt64 _
+  | TUInt64, DUInt64 _
+  | TInt128, DInt128 _
+  | TUInt128, DUInt128 _
+  | TInt, DInt _
+  | TFloat, DFloat _
+  | TChar, DChar _
+  | TString, DString _ -> true
+  | _ -> false
+
+/// The types `primitiveFits` can answer for.
+let private isPrimitive (t : TypeReference) : bool =
+  match t with
+  | TUnit
+  | TBool
+  | TInt8
+  | TUInt8
+  | TInt16
+  | TUInt16
+  | TInt32
+  | TUInt32
+  | TInt64
+  | TUInt64
+  | TInt128
+  | TUInt128
+  | TInt
+  | TFloat
+  | TChar
+  | TString -> true
+  | _ -> false
+
+let rec private mentions (v : string) (t : TypeReference) : bool =
+  match t with
+  | TVariable name -> name = v
+  | TStream x
+  | TList x -> mentions v x
+  | TDict(k, x) -> mentions v k || mentions v x
+  | TTuple(a, b, rest) ->
+    mentions v a || mentions v b || List.exists (mentions v) rest
+  | TFn(args, ret) ->
+    NEList.toList args |> List.exists (mentions v) || mentions v ret
+  | TCustomType(_, args) -> List.exists (mentions v) args
+  | _ -> false
+
+/// The wrapper's signature as an instance of the builtin's, if it is one: each builtin param
+/// either equals the wrapper's, or is a bare `'v` the wrapper pins to a primitive, the same one
+/// wherever `'v` appears. `ValueSome [||]` when nothing was pinned.
+///
+/// Only bare variables, and only primitives, because those are what a Dval case checks on its own:
+/// the call site can then establish per call, with no allocation, that the arguments are what the
+/// wrapper declares. A pinned `'v` may not also appear inside some other param or the return,
+/// since that would narrow a type the call site never looks at.
+let private instanceArgTypes
+  (fn : PackageFn.PackageFn)
+  (bi : BuiltInFn)
+  : TypeReference voption array voption =
+  let pairs =
+    List.zip
+      (NEList.toList fn.parameters
+       |> List.map (fun (p : PackageFn.Parameter) -> p.typ))
+      (bi.parameters |> List.map (fun (p : BuiltInParam) -> p.typ))
+  let pinned =
+    pairs
+    |> List.choose (fun (wrapperT, builtinT) ->
+      match builtinT with
+      | TVariable v when isPrimitive wrapperT && not (sameType wrapperT builtinT) ->
+        Some(v, wrapperT)
+      | _ -> None)
+  let consistent =
+    pinned
+    |> List.forall (fun (v, t) ->
+      pinned |> List.forall (fun (v2, t2) -> v <> v2 || t = t2))
+  let pinnedVars = pinned |> List.map fst |> Set.ofList
+  let unpinned t = pinnedVars |> Set.forall (fun v -> not (mentions v t))
+  let paramsOk =
+    pairs
+    |> List.forall (fun (wrapperT, builtinT) ->
+      match builtinT with
+      | TVariable v when Set.contains v pinnedVars -> isPrimitive wrapperT
+      | _ -> sameType wrapperT builtinT && unpinned builtinT)
+  let returnOk =
+    match bi.returnType with
+    | TVariable v when Set.contains v pinnedVars ->
+      pinned |> List.exists (fun (v2, t) -> v = v2 && t = fn.returnType)
+    | ret -> sameType fn.returnType ret && unpinned ret
+  if not (consistent && paramsOk && returnOk) then
+    ValueNone
+  elif List.isEmpty pinned then
+    ValueSome [||]
+  else
+    pairs
+    |> List.map (fun (wrapperT, builtinT) ->
+      match builtinT with
+      | TVariable v when Set.contains v pinnedVars -> ValueSome wrapperT
+      | _ -> ValueNone)
+    |> Array.ofList
+    |> ValueSome
+
 
 let private detectThinWrapper
   (exeState : ExecutionState)
   (fn : PackageFn.PackageFn)
-  : FQFnName.Builtin voption =
+  : ThinWrapper voption =
   // The builtin's own type params are left to inference, which is what running the wrapper's body
   // would have done: that body applies the builtin with no explicit type args, which the match below
   // insists on.
@@ -2129,14 +2246,14 @@ let private detectThinWrapper
   // policy, its ceiling) is part of that; a pure one is never checked at all. Pure builtins are
   // the whole of the win here anyway -- `Dict.get`, `Option`, `Tuple2` -- so this costs nothing
   // worth having.
-  let sameSignature (bi : BuiltInFn) =
-    Set.isEmpty bi.callEffects
-    && sameType fn.returnType bi.returnType
-    && List.length bi.parameters = NEList.length fn.parameters
-    && List.forall2
-      (fun (p : PackageFn.Parameter) (bp : BuiltInParam) -> sameType p.typ bp.typ)
-      (NEList.toList fn.parameters)
-      bi.parameters
+  let signatureFits (bi : BuiltInFn) =
+    if
+      Set.isEmpty bi.callEffects
+      && List.length bi.parameters = NEList.length fn.parameters
+    then
+      instanceArgTypes fn bi
+    else
+      ValueNone
 
   match fn.body.instructions with
   | [ LoadVal(loadTo, DApplicable(AppNamedFn named))
@@ -2151,10 +2268,32 @@ let private detectThinWrapper
     match named.name with
     | FQFnName.Builtin b ->
       match exeState.fns.builtIn.TryGetValue b with
-      | true, bi when sameSignature bi -> ValueSome b
+      | true, bi ->
+        match signatureFits bi with
+        | ValueSome argTypes -> ValueSome { builtin = b; argTypes = argTypes }
+        | ValueNone -> ValueNone
       | _ -> ValueNone
     | _ -> ValueNone
   | _ -> ValueNone
+
+/// Whether the arguments are what the wrapper declares, so running its builtin directly checks the
+/// same thing its frame would have. When they are not, the call goes through the frame, and the
+/// wrapper's own parameter check raises the error it always raised.
+let rec private argsFitFrom
+  (argTypes : TypeReference voption array)
+  (i : int)
+  (a : ArgSeq)
+  =
+  match ArgSeq.uncons a with
+  | ValueNone -> true
+  | ValueSome(struct (dv, rest)) ->
+    (match argTypes[i] with
+     | ValueSome t -> primitiveFits t dv
+     | ValueNone -> true)
+    && argsFitFrom argTypes (i + 1) rest
+
+let private argsFit (w : ThinWrapper) (a : ArgSeq) : bool =
+  w.argTypes.Length = 0 || argsFitFrom w.argTypes 0 a
 
 /// The builtin a package fn is a bare forwarder for, if it is one.
 ///
@@ -2163,10 +2302,12 @@ let private detectThinWrapper
 /// to run those two instructions, and that frame costs several times what the builtin inside it does.
 /// Much of the stdlib is this shape, so much of any Dark program's call traffic is too.
 ///
-/// Only forwarders whose signature is *identical* to the builtin's qualify. A wrapper that narrows
-/// `List<'a>` to `List<TraceSummary>` is doing real work: its param types decide what is accepted, and
-/// its return type is what `checkFrameReturnType` applies to the result. With the signatures equal,
-/// running the builtin directly checks the same things against the same types.
+/// A forwarder qualifies when its signature is the builtin's, or an instance of it that pins type
+/// variables to primitives (`instanceArgTypes`), which is how every per-width operator impl wraps
+/// the one polymorphic builtin. A wrapper that narrows `List<'a>` to `List<TraceSummary>` is doing
+/// real work and never qualifies: its param types decide what is accepted, and its return type is
+/// what `checkFrameReturnType` applies to the result. For a pinned primitive the call site checks
+/// the argument's case itself (`argsFit`), and the builtin's return is then the wrapper's.
 /// The builtin a package hash is a known forwarder for, from the cache only.
 ///
 /// `thinWrapperOf` needs the `PackageFn` because it may have to *detect*. This one answers from what
@@ -2178,26 +2319,29 @@ let private detectThinWrapper
 let private thinWrapperCachedFor
   (exeState : ExecutionState)
   (hash : Hash)
-  : BuiltInFn voption =
+  : struct (BuiltInFn * ThinWrapper) voption =
   let mutable cached = ValueNone
   if not (thinWrapperCache.TryGetValue(hash, &cached)) then
     ValueNone
   else
     match cached with
     | ValueNone -> ValueNone
-    | ValueSome b ->
+    | ValueSome w ->
       let mutable bi = Unchecked.defaultof<BuiltInFn>
-      if exeState.fns.builtIn.TryGetValue(b, &bi) then ValueSome bi else ValueNone
+      if exeState.fns.builtIn.TryGetValue(w.builtin, &bi) then
+        ValueSome(struct (bi, w))
+      else
+        ValueNone
 
 
 let private thinWrapperOf
   (exeState : ExecutionState)
   (fn : PackageFn.PackageFn)
-  : BuiltInFn voption =
+  : struct (BuiltInFn * ThinWrapper) voption =
   // Explicit byref, not `match ... with | true, v`, which allocates the tuple: this runs on every
   // package call.
   let mutable cached = ValueNone
-  let name =
+  let found =
     if thinWrapperCache.TryGetValue(fn.hash, &cached) then
       cached
     else
@@ -2205,12 +2349,15 @@ let private thinWrapperOf
       thinWrapperCache[fn.hash] <- found
       found
 
-  match name with
+  match found with
   | ValueNone -> ValueNone
-  | ValueSome b ->
+  | ValueSome w ->
     // Against this execution state's table, never a remembered `BuiltInFn`.
     let mutable bi = Unchecked.defaultof<BuiltInFn>
-    if exeState.fns.builtIn.TryGetValue(b, &bi) then ValueSome bi else ValueNone
+    if exeState.fns.builtIn.TryGetValue(w.builtin, &bi) then
+      ValueSome(struct (bi, w))
+    else
+      ValueNone
 
 
 /// Cached data needed to enter a package function. Built once per function to
@@ -2692,20 +2839,22 @@ let private callPackageResolved
   (fn : PackageFn.PackageFn)
   (resolvedExplicitTypeArgsVT : List<ValueType>)
   : Ply<PackageOutcome> =
-  // A bare forwarder to a builtin of the same signature runs that builtin here, instead of pushing a
+  // A bare forwarder to a builtin of a matching signature runs that builtin here, instead of pushing a
   // frame whose whole job is to run the two instructions that would. Partial applications go the
   // ordinary way: the point is to skip the frame, and a partial application doesn't push one anyway.
   match thinWrapperOf exeState fn with
   // `collectExprValues`: not while something is watching. Eliding a forwarder skips its frame,
   // and the frame is how a reader knows a lambda was passed to `List.map` rather than to
   // `List.fold`. The same guard is on the early elision above.
-  | ValueSome biFn when
+  | ValueSome(struct (biFn, wrapper)) when
     List.isEmpty ctx.applicable.argsSoFar
     && List.isEmpty resolvedExplicitTypeArgsVT
     && ArgSeq.count ctx.args = NEList.length fn.parameters
     && not exeState.tracing.collectExprValues
     // A read in flight goes through the frame, which parks on it.
     && not (argsHoldPromise ctx)
+    // An argument the wrapper would refuse goes through the frame, which refuses it.
+    && argsFit wrapper ctx.args
     ->
     // Counted as a package call, since one happened. `framePushCount` is deliberately not bumped:
     // the gap between the two counters is what elision saves.
@@ -3933,8 +4082,9 @@ let private applyInstructionForced
         // still goes the long way -- that is what detects it and fills the cache.
         //
         // Same guards as the elision in `callPackageResolved`: no explicit type args, nothing
-        // applied already, every parameter supplied. Signature equality is what put the fn in the
-        // cache, so the builtin's parameter count is the package fn's.
+        // applied already, every parameter supplied, arguments of the types the wrapper declares. A
+        // matching signature is what put the fn in the cache, so the builtin's parameter count is
+        // the package fn's.
         // Only with the wrapper's call data in hand: its package approval and
         // ceiling are applied below, and they live on the call data the first
         // (long-way) call cached. Without it, go the long way, which caches it.
@@ -3954,10 +4104,10 @@ let private applyInstructionForced
             && not exeState.tracing.collectExprValues
           then
             match thinWrapperCachedFor exeState pkg with
-            | ValueSome biFn ->
+            | ValueSome(struct (biFn, wrapper)) ->
               let mutable callData = Unchecked.defaultof<PackageFnCallData>
               if exeState.packageFnCallCache.TryGetValue(pkg, &callData) then
-                ValueSome(struct (biFn, callData))
+                ValueSome(struct (biFn, wrapper, callData))
               else
                 ValueNone
             | ValueNone -> ValueNone
@@ -3966,9 +4116,12 @@ let private applyInstructionForced
 
         match earlyWrapper with
         // Not with a read in flight: the wrapper's frame parks on it properly.
-        | ValueSome(struct (biFn, callData)) when
+        // Nor with an argument the wrapper would refuse, and before the operator table below,
+        // which would answer `Int8 + Int8` for a wrapper declared over `Int64`.
+        | ValueSome(struct (biFn, wrapper, callData)) when
           NEList.length newArgRegs = List.length biFn.parameters
           && not (anyPromiseIn registers newArgRegs)
+          && argsFit wrapper (ArgSeq.ofNE registers newArgRegs)
           ->
           // Counted, since a package call happened. The late elision in `callPackageResolved` does
           // the same; this path was added afterwards and missed it, so `packageCalls` under-reported
