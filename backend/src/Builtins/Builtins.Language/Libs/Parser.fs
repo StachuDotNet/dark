@@ -1421,8 +1421,8 @@ let fns () : List<BuiltInFn> =
         + "<param mode> Editor is the tooling parse the semantic-token highlighter and LSP "
         + "use: a best-effort tree whenever the source tokenizes, even with diagnostics, and "
         + "None only when it can't be tokenized at all. "
-        + "<param mode> Package parses and validates with declaration semantics at the file "
-        + "root: a tree and no diagnostics, or None and the diagnostics."
+        + "<param mode> Package, Script and Test parse and validate for that kind of file: "
+        + "a tree and no diagnostics, or None and the diagnostics."
       fn =
         let pfKT = KTCustomType(FQTypeName.fqPackage (WTRefs.parsedFile ()), [])
         (function
@@ -1436,11 +1436,19 @@ let fns () : List<BuiltInFn> =
           Ply(
             DTuple(tree, WrittenTypesToDarkTypes.diagnosticsToDT r.diagnostics, [])
           )
-        // CLEANUP: add Script and Test modes (`P.parseFor` with those). The F#-to-Dark conversion drops
-        // details validation needs (the test `1 = 1` becomes a plain expression), so validation runs
-        // here, in F#.
-        | _, _, _, [| DEnum(_, _, [], "Package", []); DString sourceCode |] ->
-          match P.parseFor Validation.Package sourceCode with
+        // The F#-to-Dark conversion drops details validation needs (the test `1 = 1` becomes a
+        // plain expression), so validation runs here, in F#.
+        | _,
+          _,
+          _,
+          [| DEnum(_, _, [], ("Package" | "Script" | "Test" as modeName), [])
+             DString sourceCode |] ->
+          let mode =
+            match modeName with
+            | "Package" -> Validation.Package
+            | "Script" -> Validation.Script
+            | _ -> Validation.Test
+          match P.parseFor mode sourceCode with
           | Ok validated ->
             let parsedFile =
               validated

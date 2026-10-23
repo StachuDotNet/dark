@@ -7,11 +7,13 @@
 /// source — identical except for node ids (which canonical serialization
 /// ignores). Any other difference is drift, the class of bug this gate catches.
 ///
-/// Two tests: a broad sweep over REAL corpus expressions (fn/value bodies in
+/// Three tests: a broad sweep over REAL corpus expressions (fn/value bodies in
 /// packages/darklang that reparse cleanly as one expression, spread-sampled to
 /// bound runtime, lowered with an empty context), and a few pinned cases lowered
 /// under a real (module, fn, params) context — catching divergences that only
 /// surface once names resolve (self-calls, a match pattern shadowing a param).
+/// The third covers whole SCRIPTS, the CLI path: declarations, modules, impls and
+/// script values, through `Cli.parseCliScript` against `CliScript.parseForCli`.
 module Tests.WrittenTypesLoweringParity
 
 open System.Threading.Tasks
@@ -32,6 +34,7 @@ module WT = LibParser.WrittenTypes
 module WT2PT = LibParser.WrittenTypesToProgramTypes
 module NR = LibParser.NameResolver
 module Canonical = LibSerialization.Hashing.Canonical
+module Cli = Builtins.CliHost.Libs.Cli
 
 // --- id-independent canonical comparison ---
 
@@ -182,6 +185,163 @@ let private parseSingleExpr (snippet : string) : Option<WT.Expr> =
   match r.parsed, r.diagnostics with
   | Some(WT.SourceFile { declarations = []; exprsToEval = [ e ] }), [] -> Some e
   | _ -> None
+
+// --- the script path ---
+
+/// What one lowering made of a script: its declarations' hashes by kind (sorted, with
+/// submodules flattened in, since F# keeps them inline and Dark nests them) and its
+/// top-level expressions' canonical bytes. Hashes are content hashes, so two equal
+/// shapes mean the same program types.
+type private ScriptShape =
+  { types : List<string>
+    values : List<string>
+    fns : List<string>
+    traits : List<string>
+    impls : List<string>
+    exprs : List<string> }
+
+let private sortedHashes (hashes : List<PT.Hash>) : List<string> =
+  hashes |> List.map (fun (PT.Hash h) -> h) |> List.sort
+
+let private exprsKey (exprs : List<PT.Expr>) : List<string> =
+  exprs |> List.map (canonicalBytes >> System.Convert.ToHexString)
+
+let private fsShape (m : Builtins.CliHost.Utils.CliScript.PTCliScriptModule) =
+  { types = (m.types @ m.submodules.types) |> List.map _.hash |> sortedHashes
+    values = (m.values @ m.submodules.values) |> List.map _.hash |> sortedHashes
+    fns = (m.fns @ m.submodules.fns) |> List.map _.hash |> sortedHashes
+    traits = m.traits |> List.map _.hash |> sortedHashes
+    impls = m.impls |> List.map _.hash |> sortedHashes
+    exprs = exprsKey m.exprs }
+
+let private field (name : string) (d : RT.Dval) : RT.Dval =
+  match d with
+  | RT.DRecord(_, _, _, fields) ->
+    match Map.tryFind name fields with
+    | Some v -> v
+    | None -> failtest $"no field {name} in %A{d}"
+  | other -> failtest $"expected a record, got %A{other}"
+
+let private items (d : RT.Dval) : List<RT.Dval> =
+  match d with
+  | RT.DList(_, items) -> items
+  | other -> failtest $"expected a list, got %A{other}"
+
+let private darkShape (m : RT.Dval) =
+  let subs = field "submodules" m |> items
+  let hashesOf kind (d : RT.Dval) =
+    field kind d |> items |> List.map (field "hash" >> PT2DT.Hash.fromDT)
+  let withSubs kind = hashesOf kind m @ (subs |> List.collect (hashesOf kind))
+  { types = withSubs "types" |> sortedHashes
+    values = withSubs "values" |> sortedHashes
+    fns = withSubs "fns" |> sortedHashes
+    traits = hashesOf "traits" m |> sortedHashes
+    impls = hashesOf "impls" m |> sortedHashes
+    exprs = field "exprs" m |> items |> List.map PT2DT.Expr.fromDT |> exprsKey }
+
+/// Scripts that pin a shape the corpus might not happen to contain.
+let private pinnedScripts : List<string * string> =
+  [ "expressions only", "let x = 1L\nlet y = x + 2L\ny * 3L"
+    "statements", "()\n\"done\""
+    "types and fns",
+    "type P = { x: Int64, y: Int64 }\nlet norm (p: P) : Int64 = p.x * p.x + p.y * p.y\nnorm (P { x = 3L, y = 4L })"
+    // Each `a` calls its own module's `h`. Hashed over the NAME `h` rather than what it
+    // resolved to, the two `a`s share a hash and one body runs for both.
+    "same body, different siblings",
+    "module M =\n  let h () : Int64 = 1L\n  let a () : Int64 = h ()\nmodule N =\n  let h () : Int64 = 2L\n  let a () : Int64 = h ()\nM.a () + N.a ()"
+    "mutual recursion",
+    "let isEven (n: Int) : Bool = if n == 0 then true else isOdd (n - 1)\nlet isOdd (n: Int) : Bool = if n == 0 then false else isEven (n - 1)\n0"
+    "values",
+    "val first = later ()\nlet later () : Int64 = second\nval second = 2L\nfirst + second"
+    "impl of a stdlib trait",
+    "type Vec = { dx: Int64, dy: Int64 }\nlet vecAdd (a: Vec) (b: Vec) : Vec = Vec { dx = a.dx + b.dx, dy = a.dy + b.dy }\nimpl Stdlib.Add for Vec =\n  let add (a: Vec) (b: Vec) : Vec = vecAdd a b\n(Vec { dx = 1L, dy = 2L } + Vec { dx = 3L, dy = 4L }).dy"
+    "own trait",
+    "trait Describe<'a> =\n  let describe (v: 'a) : String\ntype Cat = { name: String }\nlet catDescribe (c: Cat) : String = c.name\nimpl Describe for Cat =\n  let describe (c: Cat) : String = catDescribe c\n0"
+    "impl of a trait that doesn't exist",
+    "type Q = { a: Int64 }\nlet qa (x: Q) (y: Q) : Q = x\nimpl Nope.NotATrait for Q =\n  let add (x: Q) (y: Q) : Q = qa x y\n0"
+    "a named test", "test t = 1L |> Stdlib.Test.equal 1L\n0"
+    "a syntax error", "let x = \n" ]
+
+let private scriptPathParity =
+  testTask "F# and Dark lower whole scripts alike (accept, reject, hashes)" {
+    let root =
+      [ "/home/dark/app"; ".."; "." ]
+      |> List.tryFind (fun r ->
+        System.IO.Directory.Exists(
+          System.IO.Path.Combine(r, "scripts/perf/workloads")
+        ))
+    match root with
+    | None -> () // not a full checkout -- nothing to gate
+    | Some root ->
+      let fromDisk =
+        [ "scripts/perf/workloads"; "backend/testfiles/execution/stdlib"; "docs" ]
+        |> List.collect (fun dir ->
+          System.IO.Directory.GetFiles(
+            System.IO.Path.Combine(root, dir),
+            "*.dark",
+            System.IO.SearchOption.AllDirectories
+          )
+          |> Array.sort
+          |> Array.toList)
+        |> List.map (fun path ->
+          System.IO.Path.GetRelativePath(root, path),
+          System.IO.File.ReadAllText path)
+      let scripts = pinnedScripts @ fromDisk
+      let! (state : RT.ExecutionState) = executionStateFor pmPT false
+      let parseFn =
+        RT.FQFnName.fqPackage (
+          PackageRefs.Fn.LanguageTools.Parser.CliScript.parseForCli ()
+        )
+      let disagreements = ResizeArray<string>()
+      let mutable examined = 0
+      for (name, code) in scripts do
+        let! fs = Cli.parseCliScript state "Tests" "" code |> Ply.toTask
+        let! darkResult =
+          LibExecution.Execution.executeFunction
+            state
+            parseFn
+            []
+            (NEList.ofList
+              (RT.DUuid PT.BranchId.Main.Guid)
+              [ RT.DString "Tests"; RT.DString ""; RT.DString name; RT.DString code ])
+        let dark =
+          match darkResult with
+          | Ok(RT.DEnum(_, _, _, "Ok", [ RT.DTuple(m, _, []) ])) -> Ok(darkShape m)
+          | Ok(RT.DEnum(_, _, _, "Error", [ e ])) -> Error $"%A{e}"
+          | Ok other -> failtest $"{name}: parseForCli returned %A{other}"
+          | Error(rte, _) -> failtest $"{name}: parseForCli raised {rte}"
+        examined <- examined + 1
+        match fs, dark with
+        | Error _, Error _ -> ()
+        | Ok _, Error e ->
+          disagreements.Add $"{name}: only F# accepts it; Dark says {e}"
+        | Error diags, Ok _ ->
+          let first =
+            diags
+            |> List.tryHead
+            |> Option.map (fun (d : P.Diagnostic) -> d.message)
+            |> Option.defaultValue ""
+          disagreements.Add $"{name}: only Dark accepts it; F# says {first}"
+        | Ok m, Ok darkM ->
+          let fsM = fsShape m
+          let differs =
+            [ if fsM.types <> darkM.types then "types"
+              if fsM.values <> darkM.values then "values"
+              if fsM.fns <> darkM.fns then "fns"
+              if fsM.traits <> darkM.traits then "traits"
+              if fsM.impls <> darkM.impls then "impls"
+              if fsM.exprs <> darkM.exprs then "exprs" ]
+          if not differs.IsEmpty then
+            disagreements.Add
+              $"""{name}: the lowerings differ in {String.concat ", " differs}"""
+      // A corpus that silently shrank to nothing would agree with everything.
+      Expect.isGreaterThan examined 40 "scripts examined"
+      if disagreements.Count > 0 then
+        failtest (
+          $"{disagreements.Count} of {examined} scripts lower differently:\n"
+          + String.concat "\n" disagreements
+        )
+  }
 
 let tests =
   testList
@@ -389,4 +549,5 @@ let tests =
         if mismatches.Count > 0 then
           let detail = String.concat "\n" mismatches
           failtest $"context-dependent lowering divergences:\n{detail}"
-      } ]
+      }
+      scriptPathParity ]

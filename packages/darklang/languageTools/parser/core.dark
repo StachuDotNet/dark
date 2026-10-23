@@ -10,8 +10,15 @@ type Point = { row: Int, column: Int }
 type Range = { start: Point, end_: Point }
 
 /// What `Builtin.parserParse` parses for. `Editor` is the tooling parse: a best-effort tree
-/// with diagnostics alongside. `Package` validates declarations at the file root, and gives a
-/// tree only when there's nothing to report.
+/// with diagnostics alongside. The other three validate for one kind of file, and give a tree
+/// only when there's nothing to report.
 type ParseMode =
   | Editor
+  /// Declarations at the file root, no top-level expressions.
   | Package
+  /// Declarations and top-level expressions, as `dark run` and `dark eval` take them. Named
+  /// tests and `actual = expected` assertions are refused.
+  | Script
+  /// A test file. Its tree loses the difference between an assertion and an expression, so
+  /// this mode is for validating one rather than lowering it.
+  | Test

@@ -2,8 +2,8 @@ module Darklang.LanguageTools.Parser.Parse
 
 
 /// The parser's tree for <param code> and its diagnostics, as (range, message) pairs. In `Editor` mode
-/// the tree is best-effort, {{None}} only if the tokenizer failed outright; in `Package` mode there is a
-/// tree only when there are no diagnostics.
+/// the tree is best-effort, {{None}} only if the tokenizer failed outright; in the validating modes
+/// there is a tree only when there are no diagnostics.
 let parse
   (mode: Parser.ParseMode)
   (code: String)
