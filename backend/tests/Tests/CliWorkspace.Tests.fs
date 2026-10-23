@@ -131,6 +131,123 @@ let approvedSqliteOnTheStoreRuns =
         do! run state [ "permissions"; "unapprove"; "Tests.SqliteAppr.probe" ]
         do! discardAll state
       })
+/// Package-read lets a call open the store, on the promise that the statement stays in it and,
+/// for `query`, only reads. Both used to rest on the SQL text: `VACUUM INTO` wrote a copy of the
+/// store anywhere, and `query` ran a DELETE as readily as a SELECT.
+let sqliteOnTheStoreStaysInIt =
+  instanceTest
+    "sqlite on the store can neither leave it nor write through query"
+    (fun state ->
+      task {
+        let call (builtin : string) (sql : string) =
+          $"Stdlib.Sqlite.{builtin} (Stdlib.LocalStore.path ()) \"{sql}\""
+
+        let probe =
+          System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            $"dark-scope-probe-{System.Guid.NewGuid()}.db"
+          )
+
+        for (builtin, sql) in
+          [ "query", $"VACUUM INTO '{probe}'"
+            "exec", $"VACUUM INTO '{probe}'"
+            "query", $"ATTACH '{probe}' AS probe" ] do
+          do!
+            evals
+              state
+              (call builtin sql)
+              "(native) is not allowed"
+              $"{builtin} {sql} asks for native"
+        Expect.isFalse (System.IO.File.Exists probe) "and nothing was written"
+
+        // Ordinary SCM writes go through exec and execBatch, reads through query.
+        do! switch state "scopeprobe"
+        do! onMain state
+        do!
+          evals
+            state
+            (call "query" "DELETE FROM branches WHERE name = 'scopeprobe'")
+            "readonly database"
+            "a write through query is refused"
+        do! shows state [ "branches" ] "scopeprobe" "so the branch is still there"
+        do!
+          shows
+            state
+            [ "branch"; "archive"; "scopeprobe"; "-y" ]
+            "archived"
+            "and the SCM can still write it"
+      })
+
+/// The text check above decides what a store call ASKS for; the connection is what holds it to
+/// that. This opens a confined connection directly, past the text check, so it fails if the
+/// authorizer stops doing anything.
+let storeConnectionCannotReachOut =
+  testTask
+    "a confined sqlite connection refuses another file and read-only refuses writes" {
+    let dir =
+      System.IO.Path.Combine(
+        System.IO.Path.GetTempPath(),
+        $"sqlite-scope-{System.Guid.NewGuid()}"
+      )
+    System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
+    let db = System.IO.Path.Combine(dir, "store.db")
+    let copy = System.IO.Path.Combine(dir, "copy.db")
+
+    let run (write : bool) (sql : string) : Task<Result<unit, string>> =
+      task {
+        let! conn = Builtins.Matter.Libs.Sqlite.openConn db true write
+        use conn = conn
+        use cmd = conn.CreateCommand()
+        cmd.CommandText <- sql
+        try
+          let! _ = cmd.ExecuteNonQueryAsync()
+          return Ok()
+        with e ->
+          return Error e.Message
+      }
+
+    let seed () =
+      use conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={db}")
+      conn.Open()
+      use cmd = conn.CreateCommand()
+      cmd.CommandText <- "CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1)"
+      cmd.ExecuteNonQuery() |> ignore<int>
+
+    try
+      seed ()
+
+      for (write, sql) in
+        [ true, $"VACUUM INTO '{copy}'"
+          false, $"VACUUM INTO '{copy}'"
+          true, $"ATTACH '{copy}' AS other" ] do
+        let! result = run write sql
+        // 23 is SQLITE_AUTH. The wording differs by route: an ATTACH is refused as it
+        // compiles, a VACUUM INTO when it attaches its target while running.
+        Expect.isTrue
+          (match result with
+           | Error(m : string) -> m.StartsWith "SQLite Error 23:"
+           | Ok() -> false)
+          $"{sql} (write={write}) is refused by SQLite, got: {result}"
+      Expect.isFalse (System.IO.File.Exists copy) "and no copy was made"
+
+      let! readWrite = run false "INSERT INTO t VALUES (2)"
+      Expect.equal
+        readWrite
+        (Error "SQLite Error 8: 'attempt to write a readonly database'.")
+        "a read connection cannot write"
+
+      let! written = run true "INSERT INTO t VALUES (2)"
+      Expect.equal written (Ok()) "a write connection still writes"
+      let! vacuumed = run true "VACUUM"
+      Expect.equal
+        vacuumed
+        (Ok())
+        "and a plain VACUUM, which attaches no file, still runs"
+    finally
+      Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools()
+      System.IO.Directory.Delete(dir, true)
+  }
+
 /// A dependency approved as part of a root's closure has no approved name, and it used to be
 /// listed as a bare hash. That listing is where the stale-approvals warning sends people, so a
 /// row nobody can identify was most of the problem.
@@ -1584,6 +1701,8 @@ let tests : List<Test> =
     permissionsLists
     storeReadsRequirePackageRead
     approvedSqliteOnTheStoreRuns
+    sqliteOnTheStoreStaysInIt
+    storeConnectionCannotReachOut
     approvalsNameTheirDependencies
     foldCallbackKeepsItsAccess
     anApprovedVersionIsWhatRuns

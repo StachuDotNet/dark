@@ -8,10 +8,11 @@
 /// time.
 ///
 /// What they require depends on the call, decided in the body rather than declared (`requireSqlite`):
-/// SQL can open secondary files via ATTACH and so cannot honestly uphold path-scoped rules, which
-/// makes the broad `Native` right in general -- but a statement against THIS instance's store that
-/// cannot ATTACH out of it is package-read/write and nothing more. Without that, the SCM being Dark
-/// would mean `dark status` demanding `allow native` on a stock install.
+/// SQL can open secondary files via ATTACH (and VACUUM INTO) and so cannot honestly uphold
+/// path-scoped rules, which makes the broad `Native` right in general -- but a statement against
+/// THIS instance's store that cannot reach out of it is package-read/write and nothing more.
+/// Without that, the SCM being Dark would mean `dark status` demanding `allow native` on a stock
+/// install.
 ///
 /// Deferred (not needed yet): scoping the grant to an arbitrary path/glob (only the store is
 /// special-cased), binding typed params (params are string-only today; results already carry types
@@ -33,7 +34,50 @@ module NR = LibExecution.RuntimeTypes.NameResolution
 module Blob = LibExecution.Blob
 
 
-let private connStr (path : string) : string = $"Data Source={path}"
+/// A store-scoped connection has a connection string of its own, which also makes it a pool of
+/// its own. A pooled handle keeps its authorizer, so sharing a pool with the unconfined callers
+/// that open the store as plain `Data Source=` would hand them `keepInStore`.
+let private connStr (path : string) (storeScoped : bool) (write : bool) : string =
+  if not storeScoped then $"Data Source={path}"
+  elif write then $"Data Source={path};Mode=ReadWrite"
+  else $"Data Source={path};Mode=ReadOnly"
+
+
+/// SQLite's own refusal to let a store-scoped statement open another file. SQLite asks this
+/// for every action a statement takes as it compiles it, so it holds whatever the SQL text
+/// looks like. `VACUUM INTO 'f'` arrives here too, as an attach of `f`: SQLite implements it
+/// by attaching the target. A plain `VACUUM` attaches '' (a temporary database) and stays
+/// allowed.
+let private keepInStore =
+  SQLitePCL.strdelegate_authorizer (fun _ action file _ _ _ ->
+    if
+      action = SQLitePCL.raw.SQLITE_ATTACH && not (System.String.IsNullOrEmpty file)
+    then
+      SQLitePCL.raw.SQLITE_DENY
+    else
+      SQLitePCL.raw.SQLITE_OK)
+
+/// Open `path`. A store-scoped connection was granted on the promise that it stays in the
+/// store, so it carries `keepInStore`; a read is also opened read-only, so a statement given
+/// to `sqliteQuery` cannot write whatever it says.
+let openConn
+  (path : string)
+  (storeScoped : bool)
+  (write : bool)
+  : System.Threading.Tasks.Task<SqliteConnection> =
+  task {
+    let conn = new SqliteConnection(connStr path storeScoped write)
+    do! conn.OpenAsync()
+
+    if storeScoped then
+      let rc = SQLitePCL.raw.sqlite3_set_authorizer (conn.Handle, keepInStore, null)
+
+      if rc <> SQLitePCL.raw.SQLITE_OK then
+        conn.Dispose()
+        Exception.raiseInternal "could not confine the store connection" [ "rc", rc ]
+
+    return conn
+  }
 
 
 /// Marshal a SQLite cell (the ADO reader's `obj`) into a typed `Stdlib.Sqlite.Value` DEnum, so
@@ -76,14 +120,15 @@ let private paramStrings (dvals : List<Dval>) : List<string> =
 // `Sync.pull`/the daemon skip a bad-or-offline peer gracefully.
 let private execImpl
   (path : string)
+  (storeScoped : bool)
   (sql : string)
   (parameters : List<string>)
   : Ply<Dval> =
   uply {
     Telemetry.count "sql.dark.exec"
     try
-      use conn = new SqliteConnection(connStr path)
-      do! conn.OpenAsync()
+      let! conn = openConn path storeScoped true
+      use conn = conn
       use cmd = conn.CreateCommand()
       cmd.CommandText <- sql
       bindParams cmd parameters
@@ -96,6 +141,7 @@ let private execImpl
 // query mirrors exec: a bad path / malformed SQL surfaces as an Error value, never an uncaught throw.
 let private queryImpl
   (path : string)
+  (storeScoped : bool)
   (sql : string)
   (parameters : List<string>)
   : Ply<Dval> =
@@ -109,8 +155,8 @@ let private queryImpl
   uply {
     Telemetry.count "sql.dark.query"
     try
-      use conn = new SqliteConnection(connStr path)
-      do! conn.OpenAsync()
+      let! conn = openConn path storeScoped false
+      use conn = conn
       use cmd = conn.CreateCommand()
       cmd.CommandText <- sql
       bindParams cmd parameters
@@ -153,6 +199,7 @@ let private queryImpl
 /// store in a state no reader expects.
 let private execBatchImpl
   (path : string)
+  (storeScoped : bool)
   (statements : List<string * List<List<string>>>)
   : Ply<Dval> =
   let retKT = KTList(ValueType.Known KTInt)
@@ -160,8 +207,8 @@ let private execBatchImpl
   uply {
     Telemetry.count "sql.dark.batch"
     try
-      use conn = new SqliteConnection(connStr path)
-      do! conn.OpenAsync()
+      let! conn = openConn path storeScoped true
+      use conn = conn
       use tx = conn.BeginTransaction()
       let counts = ResizeArray<Dval>()
 
@@ -194,7 +241,9 @@ let private storePath : string = System.IO.Path.GetFullPath LibConfig.Config.dbP
 /// `Native` is the honest effect for raw SQLite in general: the SQL can `ATTACH` any file on the
 /// machine, so a path check alone would pretend to confine what the runtime cannot see. Two things
 /// have to hold for the store case: the path IS the store, and the statement cannot reach outside
-/// it. `ATTACH` is what would, so a statement carrying one falls back to `Native`.
+/// it. `ATTACH` and `VACUUM INTO` are what would, so a statement carrying either word falls back to
+/// `Native`. That decides what to ASK for; `keepInStore` is what enforces it, on the connection,
+/// so a route this text check misses fails rather than runs.
 ///
 /// This is what keeps `dark status` working on a stock install. The SCM is Dark, so its reads are
 /// sqlite calls, and requiring `allow native` for them would mean handing over the keys to run
@@ -204,7 +253,9 @@ let private isStoreScoped (path : string) (sql : string) : bool =
     System.IO.Path.GetFullPath path = storePath
    with _ ->
      false)
-  && not (System.Text.RegularExpressions.Regex.IsMatch(sql, @"(?i)\battach\b"))
+  && not (
+    System.Text.RegularExpressions.Regex.IsMatch(sql, @"(?i)\b(attach|vacuum)\b")
+  )
 
 /// The effects a store-scoped call actually has, or `Native` when it is not store-scoped.
 let private effectsFor (write : bool) (path : string) (sql : string) : Set<Effect> =
@@ -216,9 +267,10 @@ let private effectsFor (write : bool) (path : string) (sql : string) : Set<Effec
   else
     set [ Effect.Native ]
 
-/// Check the call's real effects before running it. Declared `callEffects` are static, so they
-/// can only say the worst case; the interpreter leaves these builtins to this check
-/// (`Effects.checkedInBody`), where both arguments are in hand.
+/// Check the call's real effects before running it, and say whether it was granted as
+/// store-scoped (so the connection must be confined to match). Declared `callEffects` are
+/// static, so they can only say the worst case; the interpreter leaves these builtins to this
+/// check (`Effects.checkedInBody`), where both arguments are in hand.
 let private requireSqlite
   (state : ExecutionState)
   (vm : VMState)
@@ -226,12 +278,14 @@ let private requireSqlite
   (path : string)
   (sql : string)
   (builtinName : string)
-  : unit =
+  : bool =
   LibExecution.PermissionCheck.requireBuiltinEffects
     state
     vm
     (effectsFor write path sql)
     builtinName
+
+  isStoreScoped path sql
 
 
 let fns () : List<BuiltInFn> =
@@ -256,8 +310,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, _, [| DString path; DString sql; DList(_, ps) |] ->
-          requireSqlite state vm true path sql "sqliteExec"
-          execImpl path sql (paramStrings ps)
+          let storeScoped = requireSqlite state vm true path sql "sqliteExec"
+          execImpl path storeScoped sql (paramStrings ps)
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Native; Effect.PackageRead; Effect.PackageWrite ]
@@ -283,18 +337,19 @@ let fns () : List<BuiltInFn> =
         | state, vm, _, [| DString path; DList(_, stmts) |] ->
           // A batch is many statements; any one of them carrying ATTACH makes
           // the whole call unscopable, so they are checked joined.
-          requireSqlite
-            state
-            vm
-            true
-            path
-            (stmts
-             |> List.map (fun stmt ->
-               match stmt with
-               | DTuple(DString sql, _, []) -> sql
-               | _ -> "")
-             |> String.concat ";")
-            "sqliteExecBatch"
+          let storeScoped =
+            requireSqlite
+              state
+              vm
+              true
+              path
+              (stmts
+               |> List.map (fun stmt ->
+                 match stmt with
+                 | DTuple(DString sql, _, []) -> sql
+                 | _ -> "")
+               |> String.concat ";")
+              "sqliteExecBatch"
           let decoded =
             stmts
             |> List.map (fun stmt ->
@@ -311,7 +366,7 @@ let fns () : List<BuiltInFn> =
                 Exception.raiseInternal
                   "sqliteExecBatch: expected (sql, paramRows) tuples"
                   [ "got", string other ])
-          execBatchImpl path decoded
+          execBatchImpl path storeScoped decoded
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Native; Effect.PackageRead; Effect.PackageWrite ]
@@ -337,8 +392,8 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, vm, _, [| DString path; DString sql; DList(_, ps) |] ->
-          requireSqlite state vm false path sql "sqliteQuery"
-          queryImpl path sql (paramStrings ps)
+          let storeScoped = requireSqlite state vm false path sql "sqliteQuery"
+          queryImpl path storeScoped sql (paramStrings ps)
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ Effect.Native; Effect.PackageRead ]
