@@ -14,19 +14,35 @@ open LibExecution.Builtin.Shortcuts
 module VT = LibExecution.ValueType
 module Dval = LibExecution.Dval
 module Blob = LibExecution.Blob
+module NR = LibExecution.RuntimeTypes.NameResolution
+module PackageRefs = LibExecution.PackageRefs
+
+let private digestAlgorithmType () =
+  FQTypeName.fqPackage (PackageRefs.Type.Stdlib.Crypto.digestAlgorithm ())
 
 
 let fns () : List<BuiltInFn> =
-  [ { name = fn "cryptoSha256" 0
+  [ // One builtin for every digest, picked by `Stdlib.Crypto.DigestAlgorithm`. HMAC is
+    // Dark over this; the hash itself stays native, since a Dark SHA-256 would be
+    // thousands of interpreted operations per block on paths that hash per item.
+    { name = fn "cryptoDigest" 0
       typeParams = []
-      parameters = [ Param.make "data" TBlob "" ]
+      parameters =
+        [ Param.make "algorithm" (TCustomType(NR.ok (digestAlgorithmType ()), [])) ""
+          Param.make "data" TBlob "" ]
       returnType = TBlob
-      description = "Computes the SHA-256 digest of the given <param data>"
+      description = "Computes the <param algorithm> digest of the given <param data>"
       fn =
         (function
-        | state, _, _, [| DBlob ref |] ->
-          Blob.withBytes state ref (fun data ->
-            Ply(Blob.newEphemeral (SHA256.HashData(System.ReadOnlySpan(data)))))
+        | state, _, _, [| DEnum(_, _, [], algorithm, []); DBlob ref |] ->
+          let hash : byte[] -> byte[] =
+            match algorithm with
+            | "Md5" -> MD5.HashData
+            | "Sha1" -> SHA1.HashData
+            | "Sha256" -> SHA256.HashData
+            | "Sha384" -> SHA384.HashData
+            | _ -> incorrectArgs ()
+          Blob.withBytes state ref (fun data -> Ply(Blob.newEphemeral (hash data)))
         | _ -> incorrectArgs ())
       previewable = Pure
       callEffects = Set.empty
@@ -60,77 +76,6 @@ let fns () : List<BuiltInFn> =
                 )
               )
             )
-        | _ -> incorrectArgs ())
-      previewable = Pure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
-    { name = fn "cryptoSha384" 0
-      typeParams = []
-      parameters = [ Param.make "data" TBlob "" ]
-      returnType = TBlob
-      description = "Computes the SHA-384 digest of the given <param data>"
-      fn =
-        (function
-        | state, _, _, [| DBlob ref |] ->
-          Blob.withBytes state ref (fun data ->
-            Ply(Blob.newEphemeral (SHA384.HashData(System.ReadOnlySpan data))))
-        | _ -> incorrectArgs ())
-      previewable = Pure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
-    { name = fn "cryptoMd5" 0
-      typeParams = []
-      parameters = [ Param.make "data" TBlob "" ]
-      returnType = TBlob
-      description =
-        "Computes the md5 digest of the given <param data>. NOTE: There are multiple security problems with md5, see https://en.wikipedia.org/wiki/MD5#Security"
-      fn =
-        (function
-        | state, _, _, [| DBlob ref |] ->
-          Blob.withBytes state ref (fun data ->
-            Ply(Blob.newEphemeral (MD5.HashData(System.ReadOnlySpan data))))
-        | _ -> incorrectArgs ())
-      previewable = Pure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
-    { name = fn "cryptoSha256hmac" 0
-      typeParams = []
-      parameters = [ Param.make "key" TBlob ""; Param.make "data" TBlob "" ]
-      returnType = TBlob
-      description =
-        "Computes the SHA-256 HMAC (hash-based message authentication code) digest of the given <param key> and <param data>."
-      fn =
-        (function
-        | state, _, _, [| DBlob keyRef; DBlob dataRef |] ->
-          Blob.withBytes state keyRef (fun key ->
-            Blob.withBytes state dataRef (fun data ->
-              use hmac = new HMACSHA256(key)
-              Ply(Blob.newEphemeral (hmac.ComputeHash(data)))))
-        | _ -> incorrectArgs ())
-      previewable = Pure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
-    { name = fn "cryptoSha1hmac" 0
-      typeParams = []
-      parameters = [ Param.make "key" TBlob ""; Param.make "data" TBlob "" ]
-      returnType = TBlob
-      description =
-        "Computes the SHA1-HMAC (hash-based message authentication code) digest of the given <param key> and <param data>."
-      fn =
-        (function
-        | state, _, _, [| DBlob keyRef; DBlob dataRef |] ->
-          Blob.withBytes state keyRef (fun key ->
-            Blob.withBytes state dataRef (fun data ->
-              use hmac = new HMACSHA1(key)
-              Ply(Blob.newEphemeral (hmac.ComputeHash(data)))))
         | _ -> incorrectArgs ())
       previewable = Pure
       callEffects = Set.empty

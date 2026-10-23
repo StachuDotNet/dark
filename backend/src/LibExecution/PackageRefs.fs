@@ -231,6 +231,9 @@ module Type =
       let request = p [ "Http" ] "Request"
       let response = p [ "Http" ] "Response"
 
+    module Crypto =
+      let digestAlgorithm = p [ "Crypto" ] "DigestAlgorithm"
+
     module HttpClient =
       let private p addl = p ("HttpClient" :: addl)
       let badHeader = p [] "BadHeader"

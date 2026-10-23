@@ -1,25 +1,61 @@
 module Darklang.Stdlib.Crypto
 
 
+/// A hash function <fn Crypto.digest> can compute.
+type DigestAlgorithm =
+  | Md5
+  | Sha1
+  | Sha256
+  | Sha384
+
+
+/// Computes the <param algorithm> digest of the given <param data>
+let digest (algorithm: DigestAlgorithm) (data: Blob) : Blob =
+  Builtin.cryptoDigest algorithm data
+
+
 /// Computes the SHA-256 digest of the given <param data>
-let sha256 (data: Blob) : Blob = Builtin.cryptoSha256 data
+let sha256 (data: Blob) : Blob = digest DigestAlgorithm.Sha256 data
 
 
 /// Computes the SHA-384 digest of the given <param data>
-let sha384 (data: Blob) : Blob = Builtin.cryptoSha384 data
+let sha384 (data: Blob) : Blob = digest DigestAlgorithm.Sha384 data
 
 
 /// Computes the md5 digest of the given <param data>. NOTE: There are multiple security problems with md5, see https://en.wikipedia.org/wiki/MD5#Security
-let md5 (data: Blob) : Blob = Builtin.cryptoMd5 data
+let md5 (data: Blob) : Blob = digest DigestAlgorithm.Md5 data
+
+
+/// HMAC (RFC 2104) over <param algorithm>, for the algorithms whose block is 64
+/// bytes. A key longer than the block is hashed first; a shorter one is padded
+/// with zeros.
+let __hmac64 (algorithm: DigestAlgorithm) (key: Blob) (data: Blob) : Blob =
+  let blockSize = 64
+
+  let keyBytes =
+    if Stdlib.Blob.length key > blockSize then
+      Stdlib.Blob.toList (digest algorithm key)
+    else
+      Stdlib.Blob.toList key
+
+  let padded =
+    Stdlib.List.append
+      keyBytes
+      (Stdlib.List.repeatUnsafe (blockSize - Stdlib.List.length keyBytes) 0uy)
+
+  let innerPad = Stdlib.List.map padded (fun b -> b ^ 54uy) |> Stdlib.Blob.fromList
+  let outerPad = Stdlib.List.map padded (fun b -> b ^ 92uy) |> Stdlib.Blob.fromList
+  let inner = digest algorithm (Stdlib.Blob.concat [ innerPad, data ])
+  digest algorithm (Stdlib.Blob.concat [ outerPad, inner ])
 
 
 /// Computes the SHA-256 HMAC (hash-based message authentication code) digest of the given <param key> and <param data>.
 let sha256hmac (key: Blob) (data: Blob) : Blob =
-  Builtin.cryptoSha256hmac key data
+  __hmac64 DigestAlgorithm.Sha256 key data
 
 
 /// Computes the SHA1-HMAC (hash-based message authentication code) digest of the given <param key> and <param data>.
-let sha1hmac (key: Blob) (data: Blob) : Blob = Builtin.cryptoSha1hmac key data
+let sha1hmac (key: Blob) (data: Blob) : Blob = __hmac64 DigestAlgorithm.Sha1 key data
 
 
 /// Whether <param presented> equals <param expected>, in time that does not depend on where they first
