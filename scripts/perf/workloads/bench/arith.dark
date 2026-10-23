@@ -2,8 +2,9 @@
 // since the two disagree substantially on per-Apply cost.
 //
 // Staged into `rundir/perf-workloads/` by `scripts/perf/bench`, which is also the only thing that
-// runs it. Raw `Builtin.` calls rather than the Dark wrappers on purpose: an A/B runs this source
-// against an OLDER published binary too, whose store may not carry today's wrapper.
+// runs it. An A/B runs this source against an OLDER published binary too, so it calls only Dark
+// wrappers, whose names outlive the builtins under them: the raw `Builtin.` calls it used to make had
+// both been renamed or removed by the time anyone ran it again.
 let hot (n: Int) (acc: Int) : Int =
   if n <= 0 then
     acc
@@ -16,8 +17,8 @@ let hot (n: Int) (acc: Int) : Int =
     hot (n - 1) e
 
 let _warm = hot 200 0
-let _reset = Builtin.interpreterStatsReset ()
-let t0 = Builtin.timeNowMs ()
+let _reset = Darklang.LanguageTools.InterpreterStats.reset ()
+let t0 = Stdlib.DateTime.__monotonicMilliseconds ()
 let result = hot 4000 0
-let t1 = Builtin.timeNowMs ()
-Stdlib.printLine ("elapsed_ms=" + (Stdlib.toString (t1 - t0)) + " stats=" + (Builtin.interpreterStatsGet ()))
+let t1 = Stdlib.DateTime.__monotonicMilliseconds ()
+Stdlib.printLine ("elapsed_ms=" + (Stdlib.toString (t1 - t0)) + " stats=" + (Darklang.LanguageTools.InterpreterStats.get ()))

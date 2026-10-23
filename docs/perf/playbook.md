@@ -143,7 +143,7 @@ agrees, and let the most realistic workload decide a mixed result.
 **Count the hit rate before explaining a disappointing fast path.** A fast path that never fires and
 a fast path that fires but had little to remove produce the same small number, and they need
 opposite fixes. The sync-build path on the record opcodes looked like the first and was the second:
-400 hits, 0 misses. `byOpcode` in `interpreterStatsGet` reports `syncHit`/`syncMiss` for this.
+400 hits, 0 misses. `byOpcode` in `runtimeStats` reports `syncHit`/`syncMiss` for this.
 
 ## 5. Change one thing, measure, keep or revert
 

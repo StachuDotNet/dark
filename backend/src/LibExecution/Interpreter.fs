@@ -1240,9 +1240,9 @@ let private finishBuiltin
       let mutable prev = 0L
       vm.stats.builtinAlloc.TryGetValue(n, &prev) |> ignore<bool>
       vm.stats.builtinAlloc[n] <- prev + d
-  // `sw = 0L` means the bracket never opened: timing was off when this call started and the call
-  // itself turned it on (`interpreterStatsEnableDetailedTiming` is the case). Subtracting from zero
-  // would record the raw tick count as a duration.
+  // `sw = 0L` means the bracket never opened: counting was off when this call started and the call
+  // itself turned it on (`runtimeStatsReset` is the case). Subtracting from zero would record the raw
+  // tick count as a duration.
   if vm.stats.enabled && vm.stats.detailedTiming && sw <> 0L then
     let elapsed = System.Diagnostics.Stopwatch.GetTimestamp() - sw
     vm.stats.recordBuiltin (fn.name.name, elapsed)

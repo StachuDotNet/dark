@@ -53,7 +53,7 @@ stats = runs[0]
 
 fns = stats.get("packageFnTiming", {})
 if not fns:
-  sys.exit("no packageFnTiming -- the workload needs enableDetailedTiming true")
+  sys.exit("no packageFnTiming -- the workload needs resetWith { detailedTiming = true }")
 
 names = {}
 if os.path.exists(db):

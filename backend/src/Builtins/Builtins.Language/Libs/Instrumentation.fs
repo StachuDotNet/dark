@@ -28,82 +28,66 @@ let private buildMode : string =
 
 
 let fns () : List<BuiltInFn> =
-  [ { name = fn "interpreterStatsReset" 0
+  [ { name = fn "runtimeStatsReset" 0
       typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TUnit
-      description = "Resets interpreter performance counters to zero."
-      fn =
-        (function
-        | _, vm, _, [| DUnit |] ->
-          vm.stats.reset ()
-          vm.stats.enabled <- true
-          DUnit |> Ply
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-    { name = fn "interpreterStatsEnableDetailedTiming" 0
-      typeParams = []
-      parameters = [ Param.make "enabled" TBool "" ]
+      parameters =
+        [ Param.make
+            "config"
+            (TCustomType(
+              NameResolution.ok (
+                FQTypeName.fqPackage (
+                  LibExecution.PackageRefs.Type.LanguageTools.statsConfig ()
+                )
+              ),
+              []
+            ))
+            "" ]
       returnType = TUnit
       description =
-        "Turns per-builtin and per-package-fn cumulative timing on or off for this VM. "
-        + "Off by default even when counting is on, because it costs a Stopwatch read per "
-        + "call: that is ~20ns on a TSC host but ~1.27us on an HPET one, where it would "
-        + "dominate the calls being measured. Turn it on for a deliberate profiling run, "
-        + "never for a run whose wall time you intend to quote."
+        "Zeroes the runtime's performance counters and starts counting. "
+        + "`detailedTiming` in <param config> also records per-builtin and per-package-fn "
+        + "cumulative time. That costs a Stopwatch read per call (~20ns on a TSC host, ~1.27us on "
+        + "an HPET one), where it would dominate the calls being measured: turn it on for a "
+        + "deliberate profiling run, never for a run whose wall time you intend to quote."
       fn =
         (function
-        | _, vm, _, [| DBool enabled |] ->
-          // Counting has to be on for timing to record anything; asking for timing implies it.
-          if enabled then vm.stats.enabled <- true
-          vm.stats.detailedTiming <- enabled
-          DUnit |> Ply
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-    { name = fn "gcAllocatedBytes" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TInt64
-      description =
-        "Total bytes this process has allocated since it started, including memory since freed. "
-        + "For measuring what a piece of work costs: read it before and after, and subtract. "
-        + "Unlike wall-clock time this repeats exactly, so it's the number to trust when comparing "
-        + "two versions of the same code."
-      fn =
-        (function
-        | _, _, _, [| DUnit |] ->
-          // `precise: true` walks every thread's allocation context. Slower, but the imprecise
-          // version rounds to allocation-context refills, which is coarse enough to hide a whole
-          // request's worth of work.
-          Dval.dint64 (System.GC.GetTotalAllocatedBytes true) |> Ply
+        | _, vm, _, [| DRecord(_, _, _, fields) |] ->
+          match Map.tryFind "detailedTiming" fields with
+          | Some(DBool detailedTiming) ->
+            vm.stats.reset ()
+            vm.stats.enabled <- true
+            vm.stats.detailedTiming <- detailedTiming
+            DUnit |> Ply
+          | _ -> incorrectArgs ()
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = Set.empty
       deprecated = NotDeprecated }
 
 
-    { name = fn "interpreterStatsGet" 0
+    { name = fn "runtimeStats" 0
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
       returnType = TString
       description =
-        "Returns interpreter performance counters as a JSON string. "
-        + "Includes instruction count, builtin/package call counts, frame pushes, bytes and "
+        "Returns the runtime's performance counters as a JSON object. Every field is optional: a "
+        + "runtime with no counters of its own may answer an empty object. "
+        + "This one includes instruction count, builtin/package call counts, frame pushes, bytes and "
         + "counts per opcode, and bytes and counts per named region of the Apply path (read the "
         + "fine-grained stages, not the totals -- see the note in the implementation). "
-        + "When detailed timing is enabled, also includes per-builtin and per-package-fn "
-        + "cumulative nanoseconds and call counts. Also reports `buildMode`, so a number can "
-        + "say which build produced it, and `statSets`, which says whether these counters are "
-        + "the whole process or one VM's share."
+        + "`allocatedBytes` is the total this process has allocated since it started, including "
+        + "memory since freed: read it either side of a piece of work and subtract. "
+        + "When detailed timing is on (see `runtimeStatsReset`), it also includes per-builtin and "
+        + "per-package-fn cumulative nanoseconds and call counts. "
+        + "Also reports `buildMode`, so a number can say which build produced it, and `statSets`, "
+        + "which says whether these counters are the whole process or one VM's share."
       fn =
         (function
         | _, vm, _, [| DUnit |] ->
+          // Read before anything below allocates. `precise: true` walks every thread's allocation
+          // context. Slower, but the imprecise version rounds to allocation-context refills, which
+          // is coarse enough to hide a whole request's worth of work.
+          let allocatedBytes = System.GC.GetTotalAllocatedBytes true
           let s = vm.stats
           // The accumulators hold raw Stopwatch ticks, so that the hot path has no division in it.
           // Convert once, here. Reporting ticks as microseconds would be wrong by `Frequency / 1e6`,
@@ -127,6 +111,8 @@ let fns () : List<BuiltInFn> =
           sb.Append($",\"traitDispatches\":{s.traitDispatchCount}")
           |> ignore<System.Text.StringBuilder>
           sb.Append($",\"traitDispatchMisses\":{s.traitDispatchMissCount}")
+          |> ignore<System.Text.StringBuilder>
+          sb.Append($",\"allocatedBytes\":{allocatedBytes}")
           |> ignore<System.Text.StringBuilder>
           let dtStr = if s.detailedTiming then "true" else "false"
           sb.Append($",\"detailedTiming\":{dtStr}")

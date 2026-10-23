@@ -1,5 +1,5 @@
 /// The interpreter's performance counters: instruction count, call counts,
-/// frame pushes, and (when detailed timing is on) per-builtin and
+/// frame pushes, allocation, and (when detailed timing is on) per-builtin and
 /// per-package-fn time.
 ///
 /// Perf work reads these by hand, from a `.dark` workload or `dark eval`. Nothing in the
@@ -7,21 +7,33 @@
 module Darklang.LanguageTools.InterpreterStats
 
 
-/// Zero the counters, and start counting if they weren't already.
+/// How <fn resetWith> starts counting.
+///
+/// `detailedTiming` also records per-builtin and per-package-fn time. Off by
+/// default: on some hosts reading the clock costs more than the call being
+/// timed, so it's a deliberate choice for a profiling run, not something to
+/// leave on.
+type StatsConfig = { detailedTiming: Bool }
+
+
+/// Zero the counters and start counting, as <param config> says.
+let resetWith (config: StatsConfig) : Unit =
+  Builtin.runtimeStatsReset config
+
+
+/// Zero the counters and start counting, without detailed timing.
 let reset () : Unit =
-  Builtin.interpreterStatsReset ()
+  resetWith (StatsConfig { detailedTiming = false })
 
 
-/// The counters so far, as a JSON string.
+/// The counters so far, as a JSON string. Every field is optional; a runtime
+/// without counters answers `{}`.
 let get () : String =
-  Builtin.interpreterStatsGet ()
+  Builtin.runtimeStats ()
 
 
-/// Also record per-expression time from here on. Off by default: on some
-/// hosts reading the clock costs more than the expression being timed, so
-/// this is a deliberate, per-run choice rather than something to leave on.
-let enableDetailedTiming (enabled: Bool) : Unit =
-  Builtin.interpreterStatsEnableDetailedTiming enabled
+/// The one field <fn allocatedBytes> reads out of <fn get>.
+type Allocation = { allocatedBytes: Int64 }
 
 
 /// Bytes this process has allocated since it started, including memory since
@@ -31,4 +43,6 @@ let enableDetailedTiming (enabled: Bool) : Unit =
 /// wall-clock time it repeats exactly, and it does not care how loaded the
 /// machine is.
 let allocatedBytes () : Int64 =
-  Builtin.gcAllocatedBytes ()
+  match Stdlib.Json.parse<Allocation> (get ()) with
+  | Ok a -> a.allocatedBytes
+  | Error _ -> 0L

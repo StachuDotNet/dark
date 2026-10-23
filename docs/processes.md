@@ -796,7 +796,7 @@ position it branched from. Its calls are `trace_fn_calls` under the same id.
   against the old I/O. Live values (`docs/live.md`) are this, one call at a
   time.
 - A builtin declared `Impure` with no effects (`cliTerminalColorEnabled`,
-  `interpreterStatsGet`, a stream pull) is logged and answered from the log
+  `runtimeStats`, a stream pull) is logged and answered from the log
   like any other, unless it only orchestrates (applies a callable, awaits);
   `isLogged` in `Interpreter.fs` is the rule. Every pure builtin answers the
   same twice on the same inputs; Dark's dict is an ordered map, so enumeration is deterministic.

@@ -295,6 +295,7 @@ module Type =
   module LanguageTools =
     let private p addl = p ("LanguageTools" :: addl)
     let sign = p [] "Sign"
+    let statsConfig = p [ "InterpreterStats" ] "StatsConfig"
     let builtinValue = p [] "BuiltinValue"
     let builtinFnParam = p [] "BuiltinFunctionParameter"
     let builtinFn = p [] "BuiltinFunction"

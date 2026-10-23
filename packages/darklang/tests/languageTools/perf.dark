@@ -49,3 +49,13 @@ test measurementCarriesItsBuild =
    || (m.buildMode == "release-aot")
    || (m.buildMode == "release-r2r"))
   |> Stdlib.Test.equal true
+
+// `allocatedBytes` reads one field out of the stats JSON and answers 0 when it can't, so a field
+// that stops parsing would read as "nothing allocated". Allocation only grows, and building a list
+// allocates, so the second reading is strictly larger.
+test allocatedBytesIsRead =
+  (let before = LanguageTools.InterpreterStats.allocatedBytes ()
+   let _list = Stdlib.List.range 1 100
+   let after = LanguageTools.InterpreterStats.allocatedBytes ()
+   before > 0L && after > before)
+  |> Stdlib.Test.equal true

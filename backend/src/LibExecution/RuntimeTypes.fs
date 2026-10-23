@@ -3350,8 +3350,8 @@ type InterpreterStats =
       traitDispatchCount = 0L
       traitDispatchMissCount = 0L
       // Off even when counting is on: per-call timing costs a `Stopwatch.GetTimestamp()` each way, which
-      // on some hosts is dearer than the call it is timing. Turn it on deliberately, per run, via
-      // `Builtin.interpreterStatsEnableDetailedTiming`.
+      // on some hosts is dearer than the call it is timing. Turn it on deliberately, per run, with
+      // `detailedTiming` in the config `Builtin.runtimeStatsReset` takes.
       detailedTiming = false
       builtinTiming = Dictionary()
       builtinCounts = Dictionary()
@@ -3417,7 +3417,7 @@ type InterpreterStats =
     (name : string)
     (elapsedTicks : int64)
     =
-    // Raw ticks, not microseconds. The reporting boundary (`interpreterStatsGet`) documents that these
+    // Raw ticks, not microseconds. The reporting boundary (`runtimeStats`) documents that these
     // accumulators hold ticks and converts once there; dividing here both contradicted that -- so the
     // report multiplied ticks-per-ns by a value already in microseconds and under-reported by 1000x on a
     // 1 GHz clocksource -- and put a division in the hot path that the comment there says it avoids.

@@ -61,7 +61,8 @@ let _ =
      + ")")
 
 // Per-fn profile, over fifty routes. Last, because enabling detailed timing perturbs what follows.
-let _on = Darklang.LanguageTools.InterpreterStats.enableDetailedTiming true
-let _reset = Darklang.LanguageTools.InterpreterStats.reset ()
+let _reset =
+  Darklang.LanguageTools.InterpreterStats.resetWith
+    (Darklang.LanguageTools.InterpreterStats.StatsConfig { detailedTiming = true })
 let _profile = routeN (if smoke then 1 else 50) 0
 Stdlib.printLine (Darklang.LanguageTools.InterpreterStats.get ())
