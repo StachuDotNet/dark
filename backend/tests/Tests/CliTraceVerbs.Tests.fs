@@ -413,6 +413,116 @@ let private retentionKeepsTheNewestOfEachEntry =
       })
 
 
+
+/// A store cleared by a build whose clear missed a table still holds that table's rows, under
+/// traces that are gone. Every manual `traces delete` sweeps them, and takes nothing else. The
+/// tables come from the schema, so one added later without joining `perTraceTables` fails here.
+let private manualDeletesSweepOrphanedRows =
+  cliTestWithFreshTraces
+    "every form of traces delete removes rows whose trace is gone, and only those"
+    (fun state ->
+      task {
+        do! start state
+        do!
+          fn
+            state
+            "Tests.Prev.looped"
+            ("(n: Int) : Int =\n"
+             + "  Stdlib.List.range 1 n\n"
+             + "  |> Stdlib.List.map (fun i -> i * 2)\n"
+             + "  |> Stdlib.List.length")
+        do! commit state "looped"
+        let! _ = runCli state [ "permissions"; "approve"; "Tests.Prev.looped" ]
+        // A loop, a logged call and a captured blob, so every table has live rows to copy.
+        let! _ = runCli state [ "eval"; "Tests.Prev.looped 4" ]
+        let! _ = runCli state [ "eval"; twoUuids ]
+        let! _ =
+          runCli state [ "eval"; "Stdlib.String.toBlob \"held by the trace\"" ]
+
+        let! schemaTables =
+          Sql.query
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'trace%' ORDER BY name"
+          |> Sql.executeAsync (fun read -> read.string "name")
+        Expect.isGreaterThanOrEqual
+          (List.length schemaTables)
+          5
+          $"the schema's trace tables were found: {schemaTables}"
+        let tables = schemaTables |> List.filter (fun t -> t <> "traces")
+        Expect.equal
+          (List.sort tables)
+          (List.sort LibDB.Tracing.TraceRetention.perTraceTables)
+          "every per-trace table in the schema is one the sweep and the delete know about"
+
+        let countWhere (table : string) (clause : string) =
+          Sql.query $"SELECT COUNT(*) AS n FROM {table} WHERE {clause}"
+          |> Sql.executeRowAsync (fun read -> read.int64 "n")
+        let live = "trace_id IN (SELECT id FROM traces)"
+        let orphaned = "trace_id NOT IN (SELECT id FROM traces)"
+        let liveCounts () =
+          tables
+          |> List.map (fun table -> countWhere table live)
+          |> Task.WhenAll
+          |> Task.map List.ofArray
+
+        // An orphan per table: a live trace's rows copied under an id with no `traces` row.
+        let plant (suffix : string) =
+          task {
+            for table in tables do
+              let! columns =
+                Sql.query $"SELECT name FROM pragma_table_info('{table}')"
+                |> Sql.executeAsync (fun read -> read.string "name")
+              let selected =
+                columns
+                |> List.map (fun c -> if c = "trace_id" then "@orphan" else c)
+                |> String.concat ", "
+              let columnList = String.concat ", " columns
+              do!
+                Sql.query
+                  $"INSERT INTO {table} ({columnList})
+                    SELECT {selected} FROM {table}
+                    WHERE trace_id = (SELECT trace_id FROM {table} WHERE {live} LIMIT 1)"
+                |> Sql.parameters [ "orphan", Sql.string $"gone-{table}-{suffix}" ]
+                |> Sql.executeStatementAsync
+              let! o = countWhere table orphaned
+              Expect.isGreaterThan o 0L $"{table} has an orphan to sweep ({suffix})"
+          }
+
+        let! oneTrace = latest ()
+        let byId = string oneTrace.id
+        let! rowsOfOne =
+          tables
+          |> List.map (fun table -> countWhere table $"trace_id = '{byId}'")
+          |> Task.WhenAll
+          |> Task.map List.ofArray
+
+        // Each form, with what it should leave of the live rows. None of them drops a live row
+        // it was not asked to.
+        let forms =
+          [ "keep", [ "--keep"; "100" ], (fun (before : int64 list) -> before)
+            "before", [ "--before"; "3650d" ], (fun before -> before)
+            "id",
+            [ byId ],
+            (fun before ->
+              List.map2 (fun (b : int64) (one : int64) -> b - one) before rowsOfOne)
+            "all", [ "--all" ], (fun before -> before |> List.map (fun _ -> 0L)) ]
+        for (name, args, expectLive) in forms do
+          do! plant name
+          let! liveBefore = liveCounts ()
+          let! out = runCli state ([ "traces"; "delete" ] @ args @ [ "--yes" ])
+          Expect.isFalse
+            (out.Contains "Cancelled")
+            $"traces delete {name} ran: {out}"
+          for table in tables do
+            let! o = countWhere table orphaned
+            Expect.equal o 0L $"{table}'s orphans went with traces delete {name}"
+          let! liveAfter = liveCounts ()
+          Expect.equal
+            liveAfter
+            (expectLive liveBefore)
+            $"traces delete {name} left the live rows it should, in {tables}"
+      })
+
+
 /// The pass after a store used to look at bytes only once there were fifty traces, so a
 /// store holding a dozen enormous ones sat at 790 MB under a 256 MB cap and nothing ran.
 let private byteCapActsBelowFiftyTraces =
@@ -1436,6 +1546,7 @@ let tests =
     deletingATraceTakesItsLoopCounts
     retentionKeepsTheNewestAndTheSuspended
     retentionKeepsTheNewestOfEachEntry
+    manualDeletesSweepOrphanedRows
     byteCapSparesTheRunThatTrippedIt
     byteCapActsBelowFiftyTraces
     theFloorIsBounded

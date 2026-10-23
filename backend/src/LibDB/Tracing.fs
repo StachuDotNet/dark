@@ -589,21 +589,52 @@ module TraceRetention =
     maxBytes <- bytes
     lastPass <- System.DateTime.MinValue
 
+  /// Every table keyed by `trace_id`. A row in one of them outlives its trace with nothing that
+  /// can ever read it again, so a table added here is dropped by both the delete and the sweep.
+  let perTraceTables =
+    [ "trace_fn_calls"; "trace_fns"; "trace_loops"; "trace_blobs" ]
+
   /// Delete these runs: their calls and their rows.
   let deleteTraces (ids : List<string>) : unit =
     match ids with
     | [] -> ()
     | _ ->
       let ps = ids |> List.map (fun id -> [ "id", Sql.string id ])
-      Sql.executeTransactionSync
-        [ "DELETE FROM trace_fn_calls WHERE trace_id = @id", ps
-          "DELETE FROM trace_fns WHERE trace_id = @id", ps
-          // Added with the table. Every other per-trace table is dropped here, and a loop row
-          // outlives its trace with nothing that can ever read it again.
-          "DELETE FROM trace_loops WHERE trace_id = @id", ps
-          "DELETE FROM trace_blobs WHERE trace_id = @id", ps
-          "DELETE FROM traces WHERE id = @id", ps ]
+      Sql.executeTransactionSync (
+        (perTraceTables
+         |> List.map (fun table -> $"DELETE FROM {table} WHERE trace_id = @id", ps))
+        @ [ "DELETE FROM traces WHERE id = @id", ps ]
+      )
       |> ignore<List<int>>
+
+  /// The ids that still have rows in a per-trace table and no `traces` row: what a clear that
+  /// missed a table left behind (`trace_blobs` once, `trace_loops` before it). Each table is
+  /// walked one distinct `trace_id` at a time through its primary key, a seek per trace rather
+  /// than a read of every call or blob, so a clean store pays for its traces and writes nothing.
+  let orphanedTraceIds () : List<string> =
+    perTraceTables
+    |> List.collect (fun table ->
+      Sql.query
+        $"WITH RECURSIVE ids(id) AS (
+            SELECT MIN(trace_id) FROM {table}
+            UNION ALL
+            SELECT (SELECT MIN(trace_id) FROM {table} WHERE trace_id > ids.id)
+            FROM ids WHERE ids.id IS NOT NULL)
+          SELECT id FROM ids
+          WHERE id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM traces WHERE traces.id = ids.id)"
+      |> Sql.executeAsync (fun read -> read.string "id")
+      |> fun t -> t.Result)
+    |> List.distinct
+
+  /// Delete the rows of every orphaned id, through the same delete as a trace. Returns how many
+  /// ids went. The manual `traces delete` forms call it, never the pass after a store: no build
+  /// that can clear a store leaves orphans any more, and the stores still holding them are the
+  /// ones whose owner ran a delete.
+  let sweepOrphans () : int =
+    let ids = orphanedTraceIds ()
+    deleteTraces ids
+    List.length ids
 
   /// How many entries the floor protects. Without a bound the floor grows with every entry
   /// there has ever been, and an entry is a concrete path: `keep = 20` kept 120 traces after a
