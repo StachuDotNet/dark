@@ -639,7 +639,7 @@ let viewCompiled
         | _ -> ""
       astRows branchId shortName fn |> Stdlib.printLines
     | Instructions ->
-      match Builtin.pmFnInstructions fn.hash with
+      match LanguageTools.PackageManager.Function.instructions fn.hash with
       | Some instrs -> instructionRows branchId instrs |> Stdlib.printLines
       | None ->
         Stdlib.printLine

@@ -85,6 +85,56 @@ let pickLocation
     Stdlib.Option.Option.Some bestLoc
 
 
+/// What <fn decode> reads a stored blob as.
+type CodecKind =
+  | Op
+  | Type
+  | Value
+  | Fn
+  | FnSignature
+  | Trait
+  | TraitImpl
+  | Test
+  | ValueType
+  | RtInstructions
+
+/// A stored blob, decoded: one case per <type CodecKind>.
+type Decoded =
+  | Op of ProgramTypes.PackageOp
+  | Type of ProgramTypes.PackageType.PackageType
+  | Value of ProgramTypes.PackageValue.PackageValue
+  | Fn of ProgramTypes.PackageFn.PackageFn
+  /// The fn with its body replaced by `()`, dropped before it became Dark values.
+  | FnSignature of ProgramTypes.PackageFn.PackageFn
+  | Trait of ProgramTypes.Trait.Trait
+  | TraitImpl of ProgramTypes.TraitImpl.TraitImpl
+  | Test of ProgramTypes.PackageTest.PackageTest
+  | ValueType of RuntimeTypes.ValueType
+  | RtInstructions of RuntimeTypes.Instructions
+
+/// Decode a blob the store holds outside an item table, an op or a value's type, as
+/// <param kind>, or None when this build cannot read it. <param id> is the op's id.
+///
+/// The binary formats are F#'s, so this is the one primitive for reading them; the
+/// queries that find the blobs are Dark. Items are read by hash with <fn getStored>.
+let decode
+  (kind: CodecKind)
+  (id: String)
+  (blob: Blob)
+  : Stdlib.Option.Option<Decoded> =
+  Builtin.pmDecode kind id blob
+
+/// The package item stored at <param hash>, read as <param kind>: a type, value, fn
+/// (whole or signature only), trait, impl, test, or a fn's compiled instructions. Not
+/// branch-sensitive: an item IS its hash, so there is nothing for a branch to say about
+/// which item a hash means.
+let getStored
+  (kind: CodecKind)
+  (hash: ProgramTypes.Hash)
+  : Stdlib.Option.Option<Decoded> =
+  Builtin.pmGet kind hash
+
+
 module Type =
   let find
     (branchId: Uuid)
@@ -95,7 +145,9 @@ module Type =
   let get
     (hash: ProgramTypes.FQTypeName.Package)
     : Stdlib.Option.Option<ProgramTypes.PackageType.PackageType> =
-    Builtin.pmGetType hash
+    match getStored CodecKind.Type hash with
+    | Some(Type t) -> Stdlib.Option.Option.Some t
+    | _ -> Stdlib.Option.Option.None
 
   /// Every name this type is bound to on <param branchId>. More than one
   /// when structurally identical types share a hash.
@@ -131,7 +183,9 @@ module Trait =
   let get
     (hash: ProgramTypes.FQTraitName.Package)
     : Stdlib.Option.Option<ProgramTypes.Trait.Trait> =
-    Builtin.pmGetTrait hash
+    match getStored CodecKind.Trait hash with
+    | Some(Trait t) -> Stdlib.Option.Option.Some t
+    | _ -> Stdlib.Option.Option.None
 
   /// Every name this trait is bound to on <param branchId>.
   let locations
@@ -183,7 +237,9 @@ module TraitImpl =
     Builtin.pmFindTraitImpl branchId location
 
   let get (hash: ProgramTypes.Hash) : Stdlib.Option.Option<ProgramTypes.TraitImpl.TraitImpl> =
-    Builtin.pmGetTraitImpl hash
+    match getStored CodecKind.TraitImpl hash with
+    | Some(TraitImpl i) -> Stdlib.Option.Option.Some i
+    | _ -> Stdlib.Option.Option.None
 
   /// Every name this impl is bound to on <param branchId>.
   let locations
@@ -195,10 +251,39 @@ module TraitImpl =
 
 module Value =
   /// Find stored values whose runtime value type matches exactly.
+  ///
+  /// The column holds a serialized type, so Dark cannot write the key. Each distinct
+  /// type is decoded and compared instead: a few hundred of them, against thousands of
+  /// values.
   let findByValueType
     (valueType: RuntimeTypes.ValueType)
     : List<ProgramTypes.Hash> =
-    Builtin.pmFindValuesByValueType valueType
+    let db = Stdlib.LocalStore.path ()
+    let wanted = Stdlib.Option.Option.Some(Decoded.ValueType valueType)
+
+    let matching =
+      Stdlib.Sqlite.rowsP
+        db
+        "SELECT DISTINCT hex(value_type) AS key, value_type FROM package_values WHERE value_type IS NOT NULL"
+        []
+        (fun row ->
+          match (Stdlib.Sqlite.textField row "key", Stdlib.Dict.get row "value_type") with
+          | (Some key, Some(Bytes blob)) ->
+            if decode CodecKind.ValueType "" blob == wanted then
+              Stdlib.Option.Option.Some key
+            else
+              Stdlib.Option.Option.None
+          | _ -> Stdlib.Option.Option.None)
+
+    matching
+    |> Stdlib.List.map (fun key ->
+      Stdlib.Sqlite.columnP
+        db
+        "SELECT hash FROM package_values WHERE hex(value_type) = @p0"
+        [ key ]
+        "hash")
+    |> Stdlib.List.flatten
+    |> Stdlib.List.map (fun h -> ProgramTypes.Hash.Hash h)
 
   let find
     (branchId: Uuid)
@@ -209,7 +294,9 @@ module Value =
   let get
     (hash: ProgramTypes.FQValueName.Package)
     : Stdlib.Option.Option<ProgramTypes.PackageValue.PackageValue> =
-    Builtin.pmGetValue hash
+    match getStored CodecKind.Value hash with
+    | Some(Value v) -> Stdlib.Option.Option.Some v
+    | _ -> Stdlib.Option.Option.None
 
   /// Every name this value is bound to on <param branchId>.
   let locations
@@ -244,14 +331,27 @@ module Function =
   let get
     (hash: ProgramTypes.FQFnName.Package)
     : Stdlib.Option.Option<ProgramTypes.PackageFn.PackageFn> =
-    Builtin.pmGetFn hash
+    match getStored CodecKind.Fn hash with
+    | Some(Fn f) -> Stdlib.Option.Option.Some f
+    | _ -> Stdlib.Option.Option.None
 
   /// The fn at <param hash> with its body replaced by `()`, for a caller that only reads the
   /// signature. Cheaper than `get`: the body is never converted into Dark values.
   let getSignature
     (hash: ProgramTypes.FQFnName.Package)
     : Stdlib.Option.Option<ProgramTypes.PackageFn.PackageFn> =
-    Builtin.pmGetFnSignature hash
+    match getStored CodecKind.FnSignature hash with
+    | Some(FnSignature f) -> Stdlib.Option.Option.Some f
+    | _ -> Stdlib.Option.Option.None
+
+  /// The register-machine instructions the fn at <param hash> compiles to, for a
+  /// listing of them. None if there is no such fn.
+  let instructions
+    (hash: ProgramTypes.FQFnName.Package)
+    : Stdlib.Option.Option<RuntimeTypes.Instructions> =
+    match getStored CodecKind.RtInstructions hash with
+    | Some(RtInstructions i) -> Stdlib.Option.Option.Some i
+    | _ -> Stdlib.Option.Option.None
 
   /// Every name this fn is bound to on <param branchId>.
   let locations
@@ -310,7 +410,9 @@ module Test =
   let get
     (hash: ProgramTypes.Hash)
     : Stdlib.Option.Option<ProgramTypes.PackageTest.PackageTest> =
-    Builtin.pmGetTest hash
+    match getStored CodecKind.Test hash with
+    | Some(Test t) -> Stdlib.Option.Option.Some t
+    | _ -> Stdlib.Option.Option.None
 
   let locations
     (branchId: Uuid)

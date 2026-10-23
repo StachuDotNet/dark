@@ -295,6 +295,12 @@ module Type =
   module LanguageTools =
     let private p addl = p ("LanguageTools" :: addl)
     let sign = p [] "Sign"
+
+    /// What `pmDecode` reads a stored blob as, and what it hands back.
+    module PackageManager =
+      let private p addl = p ("PackageManager" :: addl)
+      let codecKind = p [] "CodecKind"
+      let decoded = p [] "Decoded"
     let builtinValue = p [] "BuiltinValue"
     let builtinFnParam = p [] "BuiltinFunctionParameter"
     let builtinFn = p [] "BuiltinFunction"

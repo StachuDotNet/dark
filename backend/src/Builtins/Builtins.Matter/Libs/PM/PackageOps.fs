@@ -12,6 +12,7 @@ module Dval = LibExecution.Dval
 module VT = LibExecution.ValueType
 module NR = LibExecution.RuntimeTypes.NameResolution
 module BS = LibSerialization.Binary.Serialization
+module RT2DT = LibExecution.RuntimeTypesToDarkTypes
 
 open Builtin.Shortcuts
 
@@ -20,6 +21,12 @@ let packageOpTypeName () =
   FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.ProgramTypes.packageOp ())
 
 let packageOpKT () = KTCustomType(packageOpTypeName (), [])
+
+let codecKindTypeName () =
+  FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.PackageManager.codecKind ())
+
+let decodedTypeName () =
+  FQTypeName.fqPackage (PackageRefs.Type.LanguageTools.PackageManager.decoded ())
 
 
 /// Author a BranchEvent op so what happened to a branch travels the way everything else does.
@@ -430,37 +437,48 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // Decode one op_blob into a PackageOp, or None when this build cannot read it. Option rather
-    // than raise, and deliberately with no raising variant: a synced store holds ops from other
-    // builds in its own log on purpose, so every local reader meets them.
-    { name = fn "packageOpFromBlobOption" 0
+    // Decode one stored blob, an op_blob or a value's value_type, or None when this build
+    // cannot read it. Option rather than raise, and deliberately with no
+    // raising variant: a synced store holds ops from other builds in its own log on purpose, so
+    // every local reader meets them. The SQL that finds the blob is Dark's; this is the codec.
+    { name = fn "pmDecode" 0
       typeParams = []
-      parameters = [ Param.make "id" TUuid ""; Param.make "blob" TBlob "" ]
-      returnType =
-        TypeReference.option (TCustomType(NR.ok (packageOpTypeName ()), []))
+      parameters =
+        [ Param.make "kind" (TCustomType(NR.ok (codecKindTypeName ()), [])) ""
+          Param.make
+            "id"
+            TString
+            "an op's id, for an op blob; unused for a value type"
+          Param.make "blob" TBlob "" ]
+      returnType = TypeReference.option (TCustomType(NR.ok (decodedTypeName ()), []))
       description =
-        "Deserialize an op_blob, or None when this build cannot read it. For blobs "
-        + "received from a peer, where an unreadable one must be skipped rather than "
-        + "fatal."
+        "Deserialize a stored blob as <param kind>, or None when this build cannot "
+        + "read it. For blobs received from a peer, where an unreadable one must be "
+        + "skipped rather than fatal."
       fn =
         function
-        | exeState, _, _, [| DUuid id; DBlob blobRef |] ->
+        | exeState, _, _, [| DEnum(_, _, [], kind, []); DString id; DBlob blobRef |] ->
           uply {
             let! bytes = LibExecution.Blob.readBytes exeState blobRef
-
-            let decoded =
+            let decoded (case : string) (toDT : unit -> Dval) : Option<Dval> =
               try
-                Some(LibDB.Queries.deserializeOp id bytes)
+                let fields = [ toDT () ]
+                Some(DEnum(decodedTypeName (), decodedTypeName (), [], case, fields))
               with _ ->
                 None
-
-            match decoded with
-            | Some op ->
-              return
-                Dval.optionSome
-                  (KTCustomType(packageOpTypeName (), []))
-                  (PT2DT.PackageOp.toDT op)
-            | None -> return Dval.optionNone (KTCustomType(packageOpTypeName (), []))
+            let result =
+              match kind with
+              | "Op" ->
+                decoded "Op" (fun () ->
+                  PT2DT.PackageOp.toDT (
+                    LibDB.Queries.deserializeOp (System.Guid.Parse id) bytes
+                  ))
+              | "ValueType" ->
+                decoded "ValueType" (fun () ->
+                  RT2DT.ValueType.toDT (BS.RT.ValueType.deserialize bytes))
+              // An item is read by its hash through `pmGet`, which keeps the cache.
+              | _ -> None
+            return Dval.option (KTCustomType(decodedTypeName (), [])) result
           }
         | _ -> incorrectArgs ()
       previewable = Impure
