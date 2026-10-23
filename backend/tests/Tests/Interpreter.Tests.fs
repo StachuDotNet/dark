@@ -411,7 +411,40 @@ module Values =
   module Package =
     let mySpecialNumber =
       t "Test.mySpecialNumber" E.Values.Package.MySpecialNumber.usage (RT.DInt64 17L)
-    let tests = testList "Package" [ mySpecialNumber ]
+
+    /// A store value whose body is a CALL, read the way every `evalDarkExpr` test reads one. The
+    /// store holds its evaluated result; the harness has to answer with that rather than with
+    /// what a constant-only conversion of the body makes of it.
+    let storeValueThatIsACall =
+      testTask "a store value that is a call reads as its value" {
+        let! expected =
+          evalDarkExpr
+            "Stdlib.String.displayWidth Darklang.Cli.CompletionPicker.minimumHelpText"
+        let! actual = evalDarkExpr "Darklang.Cli.CompletionPicker.minimumWidth"
+        match expected, actual with
+        | Ok(RT.DInt _ as e), Ok a ->
+          Expect.equal a e "minimumWidth is the display width of minimumHelpText"
+        | _ -> return failtest $"unexpected results: {expected} and {actual}"
+      }
+
+    /// The constant conversion folds literals and the shapes built from them. Anything else
+    /// has to say so, naming the value, rather than reading as `()`.
+    let unfoldableValueNamesItsHash =
+      test "a value the constant conversion cannot fold fails with its hash" {
+        let h = "00000000000000000000000000000000000000000000000000000000000000ab"
+        let value : PT.PackageValue.PackageValue =
+          { hash = PT.Hash h; description = ""; body = eVar "x" }
+        Expect.throwsC
+          (fun () ->
+            PT2RT.PackageValue.toRT (localBuiltIns pmPT).values value
+            |> ignore<RT.PackageValue.PackageValue>)
+          (fun e -> Expect.stringContains e.Message h "the error names the value")
+      }
+
+    let tests =
+      testList
+        "Package"
+        [ mySpecialNumber; storeValueThatIsACall; unfoldableValueNamesItsHash ]
   let tests = testList "Values" [ Package.tests ]
 
 

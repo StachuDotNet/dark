@@ -1388,17 +1388,18 @@ module PackageType =
     { hash = Hash.toRT t.hash; declaration = TypeDeclaration.toRT t.declaration }
 
 module PackageValue =
-  // CLEANUP: Replace this partial evaluator with normal package-value evaluation.
-  // Unsupported expressions silently fall through to DUnit below. Reproduce from
-  // the repository root:
-  //   ./scripts/run-cli eval $'val answer = 1L + 2L\nanswer == ()'
-  // This currently prints `true`; `answer` should evaluate to `3L`.
+  // A partial evaluator: it folds literals and the shapes built from them, and raises,
+  // naming the value, on anything else (a call, a `match`, an operator). It is only
+  // for values that never went through the interpreter: in-memory extras in tests.
+  // A store value's evaluated result is in `package_values.rt_dval`, and a script's
+  // own vals are initialized by the interpreter in `Builtins.CliHost/Libs/Cli.fs`.
   let rec evalConstantExpr
     (builtinValues : RT.Dictionary<RT.FQValueName.Builtin, RT.BuiltInValue>)
     (threadID : RT.ThreadID)
+    (valueHash : PT.Hash)
     (expr : PT.Expr)
     : RT.Dval =
-    let recurse = evalConstantExpr builtinValues threadID
+    let recurse = evalConstantExpr builtinValues threadID valueHash
     match expr with
     | PT.EUnit _ -> RT.DUnit
     | PT.EBool(_, b) -> RT.DBool b
@@ -1523,15 +1524,17 @@ module PackageValue =
             boundImpls = [] }
       )
     | _ ->
-      // For more complex expressions, return Unit as fallback
-      RT.DUnit
+      let (PT.Hash h) = valueHash
+      Exception.raiseInternal
+        $"Package value {h} is not a constant this conversion can evaluate"
+        [ "hash", h; "expr", expr.GetType().Name ]
 
   let toRT
     (builtinValues : RT.Dictionary<RT.FQValueName.Builtin, RT.BuiltInValue>)
     (c : PT.PackageValue.PackageValue)
     : RT.PackageValue.PackageValue =
     let threadID = System.Guid.NewGuid()
-    let body = evalConstantExpr builtinValues threadID c.body
+    let body = evalConstantExpr builtinValues threadID c.hash c.body
     { hash = Hash.toRT c.hash; body = body }
 
 module PackageFn =

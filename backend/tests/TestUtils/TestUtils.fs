@@ -236,7 +236,19 @@ let executionStateFor
 
     let builtins = localBuiltIns pmPT
     let state =
-      let pmRT = PT2RT.PackageManager.toRT builtins.values pmPT
+      let converted = PT2RT.PackageManager.toRT builtins.values pmPT
+      // A value is read from the store first, where its evaluated result is, the way the
+      // CLI reads it. Converting the PT body instead only works for constants, so a value
+      // initialized by a call would raise. The conversion is left for in-memory extras.
+      let pmRT =
+        { converted with
+            getValue =
+              fun hash ->
+                uply {
+                  match! LibDB.PackageManager.rt.getValue hash with
+                  | Some value -> return Some value
+                  | None -> return! converted.getValue hash
+                } }
       Exe.createState builtins pmRT Exe.noTracing exceptionReporter notifier
       // Ordinary tests use allow-all; security tests install narrower access.
       |> Exe.setInstancePolicy LibExecution.Permissions.Policy.allowAll
