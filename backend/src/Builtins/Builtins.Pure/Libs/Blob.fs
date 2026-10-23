@@ -32,22 +32,6 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "blobFromString" 0
-      typeParams = []
-      parameters = [ Param.make "s" TString "" ]
-      returnType = TBlob
-      description = "Encodes <param s> as UTF-8 bytes in a fresh ephemeral Blob."
-      fn =
-        (function
-        | _, _, _, [| DString s |] ->
-          let bs = System.Text.Encoding.UTF8.GetBytes(s)
-          Blob.newEphemeral bs |> Ply
-        | _ -> incorrectArgs ())
-      previewable = Pure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
     { name = fn "blobToString" 0
       typeParams = []
       parameters = [ Param.make "blob" TBlob "" ]
@@ -106,53 +90,6 @@ let fns () : List<BuiltInFn> =
             ok (Blob.newEphemeral bs) |> Ply
           with e ->
             err $"Invalid hex string: {e.Message}" |> Ply
-        | _ -> incorrectArgs ())
-      previewable = Pure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
-    { name = fn "blobToBase64" 0
-      typeParams = []
-      parameters = [ Param.make "blob" TBlob "" ]
-      returnType = TString
-      description =
-        "Base64 encodes <param blob> using the standard alphabet (RFC 4648 section 4) with {{=}} padding."
-      fn =
-        (function
-        | state, _, _, [| DBlob ref |] ->
-          Blob.withBytes state ref (fun bs ->
-            Ply(DString(System.Convert.ToBase64String(bs))))
-        | _ -> incorrectArgs ())
-      previewable = Pure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
-    { name = fn "blobFromBase64" 0
-      typeParams = []
-      parameters = [ Param.make "s" TString "" ]
-      returnType = TypeReference.result TBlob TString
-      description =
-        "Parses <param s> as a Base64 string (standard or URL-safe alphabet; padding optional) into a fresh ephemeral Blob."
-      fn =
-        let ok b = Dval.resultOk KTBlob KTString b
-        let err s = Dval.resultError KTBlob KTString (DString s)
-        (function
-        | _, _, _, [| DString s |] ->
-          let normalized =
-            // Accept URL-safe alphabet + optional padding — matches
-            // the old base64Decode behaviour.
-            let base0 = s.Replace('-', '+').Replace('_', '/')
-            match base0.Length % 4 with
-            | 2 -> base0 + "=="
-            | 3 -> base0 + "="
-            | _ -> base0
-          try
-            let bs = System.Convert.FromBase64String(normalized)
-            ok (Blob.newEphemeral bs) |> Ply
-          with e ->
-            err $"Invalid base64 string: {e.Message}" |> Ply
         | _ -> incorrectArgs ())
       previewable = Pure
       callEffects = Set.empty

@@ -35,13 +35,13 @@ let fromHex (s: String) : Stdlib.Result.Result<Blob, String> =
 
 
 /// Base64 encodes <param blob> with standard alphabet + {{=}} padding.
-let toBase64 (blob: Blob) : String = Builtin.blobToBase64 blob
+let toBase64 (blob: Blob) : String = Base64.encode blob
 
 
 /// Parses <param s> as a Base64 string (standard or URL-safe alphabet;
 /// padding optional) into a Blob.
 let fromBase64 (s: String) : Stdlib.Result.Result<Blob, String> =
-  Builtin.blobFromBase64 s
+  Base64.decode s
 
 
 /// Decodes <param blob> as UTF-8. Returns Error with a message if the
@@ -51,7 +51,7 @@ let toString (blob: Blob) : Stdlib.Result.Result<String, String> =
 
 
 /// Encodes <param s> as UTF-8 bytes in a Blob.
-let fromString (s: String) : Blob = Builtin.blobFromString s
+let fromString (s: String) : Blob = String.toBlob s
 
 
 /// Escape hatch: expand a Blob into a List<UInt8>. Prefer the Blob
