@@ -21,6 +21,8 @@ module BS = LibSerialization.Binary.Serialization
 module PT = LibExecution.ProgramTypes
 module PT2DT = LibExecution.ProgramTypesToDarkTypes
 module RT2DT = LibExecution.RuntimeTypesToDarkTypes
+module RTE = RT.RuntimeError
+module StreamLog = TestUtils.LibTest.StreamLog
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -367,6 +369,168 @@ let toValueTypeWalksTransforms =
   }
 
 
+let toValueTypeOfTransforms =
+  testTask "stream: a transform's stream carries its element type" {
+    let typeOf (code : string) : Task<RT.ValueType> =
+      task {
+        match! TestUtils.TestUtils.evalDarkExpr code with
+        | Ok dv -> return RT.Dval.toValueType dv
+        | Error(rte, _) -> return failtest $"the Dark expression raised: {rte}"
+      }
+    let! mapped =
+      typeOf
+        "Stdlib.Stream.map<Int64, String> (Stdlib.Stream.fromList [1L]) (fun n -> Stdlib.toString n)"
+    Expect.equal
+      mapped
+      (RT.ValueType.Known(RT.KTStream VT.string))
+      "map's output type"
+    let! empty = typeOf "Stdlib.Stream.fromList<Int64> []"
+    Expect.equal
+      empty
+      (RT.ValueType.Known(RT.KTStream VT.int64))
+      "an empty fromList keeps its element type"
+  }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Lifecycle of the transforms over an IO source
+// ─────────────────────────────────────────────────────────────────────
+// `Builtin.testTrackedStream` logs each pull of the source and each run of its disposer,
+// by label, so these see what a transform pulled and whether it released the source.
+
+/// What a source saw by the time the program finished, and anything its GC finalizer added
+/// after a forced collection. A source released exactly once shows nothing late.
+type private Tracked = { promptly : List<string>; late : List<string> }
+
+let private collect () =
+  System.GC.Collect()
+  System.GC.WaitForPendingFinalizers()
+  System.GC.Collect()
+  System.GC.WaitForPendingFinalizers()
+
+/// Run `code` and hand back its value with what each source in `labels` saw.
+let private runTracked
+  (labels : List<string>)
+  (code : string)
+  : Task<RT.Dval * Map<string, Tracked>> =
+  task {
+    match! TestUtils.TestUtils.evalDarkExpr code with
+    | Ok dv ->
+      let promptly = labels |> List.map (fun l -> l, StreamLog.take l)
+      collect ()
+      let seen =
+        promptly
+        |> List.map (fun (l, p) -> l, { promptly = p; late = StreamLog.take l })
+        |> Map.ofList
+      return (dv, seen)
+    | Error(rte, _) -> return failtest $"the Dark expression raised: {rte}"
+  }
+
+let private expectTracked
+  (seen : Tracked)
+  (expected : List<string>)
+  (what : string)
+  =
+  Expect.equal seen.promptly expected what
+  Expect.equal seen.late [] $"{what}; and nothing more once collected"
+
+let closingATransformClosesItsSource =
+  testTask "stream: closing a map, filter, take or concat closes its IO source" {
+    let transforms =
+      [ "map", "Stdlib.Stream.map s (fun n -> n)"
+        "filter", "Stdlib.Stream.filter s (fun n -> true)"
+        "take", "Stdlib.Stream.take s 5"
+        "concat", "Stdlib.Stream.concat [ s ]" ]
+    for (name, build) in transforms do
+      let label = $"close-{name}"
+      let! (_, seen) =
+        runTracked
+          [ label ]
+          $"""let s = Builtin.testTrackedStream "{label}" [ 1L, 2L, 3L ]
+let t = {build}
+let _ = Stdlib.Stream.next t
+Stdlib.Stream.close t"""
+      expectTracked
+        (Map.findUnsafe label seen)
+        [ "pull"; "dispose" ]
+        $"{name}: one pull, then closed"
+  }
+
+let takeNeverPullsPastItsLimit =
+  testTask "stream: take n pulls its source n times and no more" {
+    let! (result, seen) =
+      runTracked
+        [ "take-limit" ]
+        """Stdlib.Stream.toList (Stdlib.Stream.take (Builtin.testTrackedStream "take-limit" [ 1L, 2L, 3L, 4L, 5L ]) 2)"""
+    Expect.equal result (int64List [ 1L; 2L ]) "the first two"
+    expectTracked
+      (Map.findUnsafe "take-limit" seen)
+      [ "pull"; "pull"; "dispose" ]
+      "two pulls, then the source closed"
+  }
+
+let exhaustedSourceClosesOnce =
+  testTask "stream: an exhausted source is closed exactly once" {
+    let! (result, seen) =
+      runTracked
+        [ "exhausted" ]
+        """let m = Stdlib.Stream.map (Builtin.testTrackedStream "exhausted" [ 1L, 2L ]) (fun n -> n * 10L)
+let xs = Stdlib.Stream.toList m
+let _ = Stdlib.Stream.close m
+xs"""
+    Expect.equal result (int64List [ 10L; 20L ]) "mapped"
+    expectTracked
+      (Map.findUnsafe "exhausted" seen)
+      [ "pull"; "pull"; "pull"; "dispose" ]
+      "closed once, on exhaustion, and not again on close"
+  }
+
+let concatClosesWhatItHolds =
+  testTask "stream: concat closes each stream as it drains it, and the rest on close" {
+    let! (result, seen) =
+      runTracked
+        [ "concat-a"; "concat-b"; "concat-c" ]
+        """let a = Builtin.testTrackedStream "concat-a" [ 1L ]
+let b = Builtin.testTrackedStream "concat-b" [ 2L, 3L ]
+let c = Builtin.testTrackedStream "concat-c" [ 4L ]
+let joined = Stdlib.Stream.concat [ a, b, c ]
+let first = Stdlib.Stream.next joined
+let second = Stdlib.Stream.next joined
+let _ = Stdlib.Stream.close joined
+[ first, second ]"""
+    match result with
+    | RT.DList(_, items) ->
+      Expect.equal
+        items
+        [ Dval.optionSome RT.KTInt64 (RT.DInt64 1L)
+          Dval.optionSome RT.KTInt64 (RT.DInt64 2L) ]
+        "1 from a, then 2 from b"
+    | other -> failtest $"expected a list, got {other}"
+    expectTracked
+      (Map.findUnsafe "concat-a" seen)
+      [ "pull"; "pull"; "dispose" ]
+      "a closed once it drained"
+    expectTracked
+      (Map.findUnsafe "concat-b" seen)
+      [ "pull"; "dispose" ]
+      "b closed by the close, mid-way"
+    expectTracked
+      (Map.findUnsafe "concat-c" seen)
+      [ "dispose" ]
+      "c closed by the close, never pulled"
+  }
+
+let raisingCallbackSurfaces =
+  testTask "stream: a callback that raises mid-pull surfaces as its own error" {
+    match!
+      TestUtils.TestUtils.evalDarkExpr
+        "Stdlib.Stream.toList (Stdlib.Stream.map (Stdlib.Stream.fromList [1L, 2L]) (fun n -> Builtin.unwrap (Stdlib.Option.Option.None)))"
+    with
+    | Error(RTE.Unwrap _, _) -> ()
+    | other -> failtest $"expected the callback's unwrap error, got {other}"
+  }
+
+
 // ─────────────────────────────────────────────────────────────────────
 // Disposal via the GC-backed StreamFinalizer
 // ─────────────────────────────────────────────────────────────────────
@@ -526,6 +690,12 @@ let tests =
       concatSpansMultipleStreams
       composedTransformsAreLazy
       toValueTypeWalksTransforms
+      toValueTypeOfTransforms
+      closingATransformClosesItsSource
+      takeNeverPullsPastItsLimit
+      exhaustedSourceClosesOnce
+      concatClosesWhatItHolds
+      raisingCallbackSurfaces
       gcFinalizesAbandonedStream
       gcFinalizesMidDrainStream
       gcSkipsFinalizerAfterStreamClose
