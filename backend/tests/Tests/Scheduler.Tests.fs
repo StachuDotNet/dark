@@ -1899,6 +1899,75 @@ let private awaitWithinTimesOut =
   }
 
 
+/// The waits' edges: an await of a process gone from the table is answered from the results
+/// it left behind, and a zero timeout answers at once for one running and one finished.
+let private awaitEdges =
+  testTask
+    "await reaches a process dropped from the table; awaitWithin 0 answers at once" {
+    Gates.reset ()
+    let! state = executionStateFor pmPT false
+    // Three hundred more finish after `first`, more than the root and both workers keep
+    // between them (64 each), which pushes it out of every table.
+    do!
+      withWorkers 2 (fun root ->
+        task {
+          let! (p : Scheduler.Process) =
+            spawn
+              root
+              state
+              """(let first = Stdlib.Exec.spawn (fun () -> 7L)
+                  let a = Stdlib.Exec.await first
+                  let batch = Stdlib.List.map (Stdlib.List.range 1 300) (fun i -> Stdlib.Exec.spawn (fun () -> i))
+                  let _ = Stdlib.List.map batch (fun h -> Stdlib.Exec.await h)
+                  let recent = Stdlib.Exec.spawn (fun () -> 9L)
+                  let _ = Stdlib.Exec.await recent
+                  let slow = Stdlib.Exec.spawn (fun () -> Builtin.testGateWait 72L)
+                  let notYet = Stdlib.Exec.awaitWithin 0L slow
+                  let already = Stdlib.Exec.awaitWithin 0L recent
+                  let dropped = Stdlib.Exec.await first
+                  (a, dropped, notYet, already, first.id))"""
+          let! result = runOnThread root p
+          Gates.release 72L
+          match expectOk result "the program" with
+          | RT.DTuple(a,
+                      dropped,
+                      [ RT.DEnum(_, _, _, "None", [])
+                        RT.DEnum(_, _, _, "Some", [ already ])
+                        RT.DUuid firstId ]) ->
+            Expect.equal a (RT.DInt64 7L) "the first await"
+            Expect.isNone (root.Find firstId) "first was dropped from every table"
+            Expect.equal dropped (RT.DInt64 7L) "the await after it was dropped"
+            Expect.equal
+              already
+              (RT.DInt64 9L)
+              "awaitWithin 0 on a finished process"
+          | other -> failtest $"expected (7, 7, None, Some 9, id), got {other}"
+        })
+  }
+
+
+let private selectRaisesAFailure =
+  testTask "select over a process that failed raises its error" {
+    Gates.reset ()
+    let! state = executionStateFor pmPT false
+    let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
+    let! (p : Scheduler.Process) =
+      spawn
+        s
+        state
+        """(let bad = Stdlib.Exec.spawn (fun () -> 1L / 0L)
+            let slow = Stdlib.Exec.spawn (fun () -> Builtin.testGateWait 73L)
+            let (_, v) = Stdlib.Exec.select [ slow; bad ]
+            v)"""
+    let! result = runOnThread s p
+    Gates.release 73L
+    match result with
+    | Error(rte, _) ->
+      Expect.stringContains (string rte) "DivideByZero" "the child's error"
+    | Ok other -> failtest $"expected the child's error at select, got {other}"
+  }
+
+
 let private killCascadesHard =
   testTask "ps kill of a parent reaches a child stuck on the host, at once" {
     Gates.reset ()
@@ -2206,6 +2275,8 @@ let tests =
         cancelLetsTheWaitLand
         childrenDieWithTheParent
         awaitWithinTimesOut
+        awaitEdges
+        selectRaisesAFailure
         killCascadesHard
         capsEndARunaway
         byteCapEndsARunaway

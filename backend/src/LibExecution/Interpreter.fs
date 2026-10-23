@@ -1019,8 +1019,7 @@ let inline private recordsCall (tracing : Tracing.Tracing) (ord : int64) : bool 
 /// Builtins that WAIT on work done elsewhere. Their parameter is a process handle, whose type
 /// this module cannot resolve, so they are named. One missing from here is intercepted, which
 /// stops a preview visibly rather than letting anything perform.
-let private awaitsElsewhere : Set<string> =
-  set [ "execAwait"; "execAwaitWithin"; "execSelect" ]
+let private awaitsElsewhere : Set<string> = set [ "execAwait"; "execWait" ]
 
 /// Whether this builtin's call is logged, and so intercepted on a resume or a preview.
 ///
@@ -1045,7 +1044,7 @@ let private isLogged (fn : BuiltInFn) : bool =
 
 /// What a spread chunk may not call (`ExecutionState.spreadChild`), and so what makes a callable
 /// impure for a list op deciding whether to spread it: anything that takes an effect ordinal, and
-/// the three awaits. Those are not logged but are order-sensitive all the same: an answer is
+/// the awaits. Those are not logged but are order-sensitive all the same: an answer is
 /// TAKEN once its row has gone (`Scheduler.TakeResult`), so two elements awaiting one handle
 /// would swap which of them finds it gone.
 ///

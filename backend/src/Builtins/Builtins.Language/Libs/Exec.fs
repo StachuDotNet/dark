@@ -255,36 +255,17 @@ let fns () : List<BuiltInFn> =
       typeParams = []
       parameters = [ Param.make "unit" TUnit "" ]
       returnType =
-        TList(TCustomType(NR.ok (typ PackageRefs.Type.Stdlib.Exec.summary), []))
+        TList(TCustomType(NR.ok (typ PackageRefs.Type.Stdlib.Exec.detail), []))
       description =
         "Every process the scheduler in this instance knows, oldest first, finished ones "
-        + "included. Empty when nothing is running under a scheduler."
+        + "included, each with its call stack (outermost first). Empty when nothing is "
+        + "running under a scheduler."
       fn =
         (function
         | _, _, _, [| DUnit |] ->
-          let rows = snapshot () |> List.map summaryToDT
-          DList(ValueType.Known(summaryType ()), rows) |> Ply
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = set [ LibExecution.Effects.Effect.TraceRead ]
-      deprecated = NotDeprecated }
-
-
-    { name = fn "execInspect" 0
-      typeParams = []
-      parameters = [ Param.make "id" TUuid "" ]
-      returnType =
-        TypeReference.option (
-          TCustomType(NR.ok (typ PackageRefs.Type.Stdlib.Exec.detail), [])
-        )
-      description =
-        "One process with its call stack (outermost first), or None for an id nobody has."
-      fn =
-        (function
-        | _, _, _, [| DUuid id |] ->
-          let found = snapshot () |> List.tryFind (fun p -> p.id = id)
+          let rows = snapshot () |> List.map detailToDT
           let detailType = KTCustomType(typ PackageRefs.Type.Stdlib.Exec.detail, [])
-          Dval.option detailType (found |> Option.map detailToDT) |> Ply
+          DList(ValueType.Known detailType, rows) |> Ply
         | _ -> incorrectArgs ())
       previewable = Impure
       callEffects = set [ LibExecution.Effects.Effect.TraceRead ]
@@ -404,68 +385,11 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "execAwaitWithin" 0
+    { name = fn "execWait" 0
       typeParams = [ "a" ]
       parameters =
-        [ Param.make "ms" TInt64 ""
+        [ Param.make "ms" (TypeReference.option TInt64) ""
           Param.make
-            "handle"
-            (TCustomType(
-              NR.ok (typ PackageRefs.Type.Stdlib.Exec.handle),
-              [ TVariable "a" ]
-            ))
-            "" ]
-      returnType = TypeReference.option (TVariable "a")
-      description =
-        "`execAwait`, giving up after `ms` milliseconds: None then, and the process keeps "
-        + "running."
-      fn =
-        (function
-        | _, vm, _, [| DInt64 ms; handle |] ->
-          let pid = pidOfHandle vm handle
-          let sched = Scheduler.Scheduler.CurrentOrShared
-          match sched.Find pid with
-          | Some p ->
-            // The inner type is the handle's `'a`, which nothing here knows: an unknown.
-            let optionOf (dv : Option<Dval>) : Dval =
-              let tn = Dval.optionType ()
-              match dv with
-              | Some dv -> DEnum(tn, tn, [ ValueType.Unknown ], "Some", [ dv ])
-              | None -> DEnum(tn, tn, [ ValueType.Unknown ], "None", [])
-            let some (result : ExecutionResult) = optionOf (Some(resultOf vm result))
-            let task = p.completion.Task
-            if task.IsCompletedSuccessfully then
-              Ply(some task.Result)
-            elif ms <= 0L then
-              Ply(optionOf None)
-            else
-              parkOn p
-              uply {
-                match!
-                  Scheduler.Scheduler.CurrentOrShared.AwaitWithin(p, int ms)
-                with
-                | Some result -> return some result
-                | None -> return optionOf None
-              }
-          | None ->
-            let optionOf (dv : Option<Dval>) : Dval =
-              let tn = Dval.optionType ()
-              match dv with
-              | Some dv -> DEnum(tn, tn, [ ValueType.Unknown ], "Some", [ dv ])
-              | None -> DEnum(tn, tn, [ ValueType.Unknown ], "None", [])
-            match sched.TakeResult pid with
-            | Some result -> Ply(optionOf (Some(resultOf vm result)))
-            | None -> noSuchProcess () |> raiseRTE vm.threadID
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
-    { name = fn "execSelect" 0
-      typeParams = [ "a" ]
-      parameters =
-        [ Param.make
             "handles"
             (TList(
               TCustomType(
@@ -475,58 +399,93 @@ let fns () : List<BuiltInFn> =
             ))
             "" ]
       returnType =
-        TTuple(
-          TCustomType(
-            NR.ok (typ PackageRefs.Type.Stdlib.Exec.handle),
-            [ TVariable "a" ]
-          ),
-          TVariable "a",
-          []
+        TypeReference.option (
+          TTuple(
+            TCustomType(
+              NR.ok (typ PackageRefs.Type.Stdlib.Exec.handle),
+              [ TVariable "a" ]
+            ),
+            TVariable "a",
+            []
+          )
         )
       description =
-        "The first of `handles` to finish, with its value; waits when none has. An empty list "
-        + "is an error."
+        "The first of `handles` to finish, with its value, waiting when none has; an error it "
+        + "failed with is raised here. With `ms`, None once that many milliseconds pass first "
+        + "(at once for 0 or less), and the processes keep running. An empty list is an error."
       fn =
         (function
-        | _, vm, _, [| DList(_, handles) |] ->
+        | _, vm, _, [| msArg; DList(_, handles) |] ->
+          let ms =
+            match msArg with
+            | DEnum(_, _, _, "Some", [ DInt64 ms ]) -> Some ms
+            | _ -> None
           let s = Scheduler.Scheduler.CurrentOrShared
-          let procs =
-            handles
-            |> List.map (fun h ->
+          // The inner type is the handle's `'a`, which nothing here knows: an unknown.
+          let optionOf (dv : Option<Dval>) : Dval =
+            let tn = Dval.optionType ()
+            match dv with
+            | Some dv -> DEnum(tn, tn, [ ValueType.Unknown ], "Some", [ dv ])
+            | None -> DEnum(tn, tn, [ ValueType.Unknown ], "None", [])
+          let answer (h : Dval) (result : ExecutionResult) : Dval =
+            optionOf (Some(DTuple(h, resultOf vm result, [])))
+          // In order, the first that has finished answers. One gone from the table is
+          // answered from what it left behind, as `execAwait` does; that answer is taken
+          // only when it is the one given.
+          let rec firstDone
+            (running : List<Dval * Scheduler.Process>)
+            (rest : List<Dval>)
+            : Choice<Dval, List<Dval * Scheduler.Process>> =
+            match rest with
+            | [] -> Choice2Of2(List.rev running)
+            | h :: rest ->
               let pid = pidOfHandle vm h
               match s.Find pid with
-              | Some p -> h, p
-              | None -> noSuchProcess () |> raiseRTE vm.threadID)
-          // `select` over handles whose processes have all been forgotten is the one case the
-          // kept answers cannot serve, since it needs the tasks to race; it says so above.
-          match procs with
+              | Some p when p.completion.Task.IsCompleted ->
+                Choice1Of2(answer h p.completion.Task.Result)
+              | Some p -> firstDone ((h, p) :: running) rest
+              | None ->
+                match s.TakeResult pid with
+                | Some result -> Choice1Of2(answer h result)
+                | None -> noSuchProcess () |> raiseRTE vm.threadID
+          match handles with
           | [] ->
             RuntimeError.UncaughtException("select needs at least one handle", [])
             |> raiseRTE vm.threadID
           | _ ->
-            let answer (h : Dval, p : Scheduler.Process) : Dval =
-              DTuple(h, resultOf vm p.completion.Task.Result, [])
-            match
-              procs |> List.tryFind (fun (_, p) -> p.completion.Task.IsCompleted)
-            with
-            | Some done' -> Ply(answer done')
-            | None ->
+            match firstDone [] handles with
+            | Choice1Of2 done' -> Ply done'
+            | Choice2Of2 _ when ms |> Option.exists (fun ms -> ms <= 0L) ->
+              Ply(optionOf None)
+            | Choice2Of2 running ->
+              match running with
+              | [ (_, p) ] -> parkOn p
+              | _ -> ()
               uply {
+                // The timer is dropped as soon as a process wins, so a short wait inside a
+                // loop does not leave a timer per iteration ticking.
+                use cts = new System.Threading.CancellationTokenSource()
+                let timer =
+                  ms
+                  |> Option.map (fun ms ->
+                    System.Threading.Tasks.Task.Delay(int ms, cts.Token))
+                  |> Option.toList
                 let! first =
                   System.Threading.Tasks.Task.WhenAny(
-                    procs
-                    |> List.map (fun (_, p) ->
-                      p.completion.Task :> System.Threading.Tasks.Task)
+                    (running
+                     |> List.map (fun (_, p) ->
+                       p.completion.Task :> System.Threading.Tasks.Task))
+                    @ timer
                   )
                 match
-                  procs
+                  running
                   |> List.tryFind (fun (_, p) ->
                     obj.ReferenceEquals(p.completion.Task, first))
                 with
-                | Some won -> return answer won
-                | None ->
-                  return
-                    Exception.raiseInternal "select: the winner is not a handle" []
+                | Some(h, p) ->
+                  cts.Cancel()
+                  return answer h p.completion.Task.Result
+                | None -> return optionOf None
               }
         | _ -> incorrectArgs ())
       previewable = Impure

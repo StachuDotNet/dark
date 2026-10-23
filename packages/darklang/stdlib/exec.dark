@@ -73,9 +73,15 @@ type Detail =
     frames: List<ExecutionPoint> }
 
 
+/// Every process this instance's scheduler knows, finished ones included, with its call stack.
+/// `list` and `inspect` read it.
+let __details () : List<Detail> =
+  Builtin.execList ()
+
+
 /// Every process this instance's scheduler knows, finished ones included.
 let list () : List<Summary> =
-  Builtin.execList ()
+  __details () |> Stdlib.List.map (fun d -> d.summary)
 
 
 /// One Dark process on this machine, from the registry every CLI writes at startup: what `dark ps`
@@ -96,11 +102,20 @@ let machineList () : List<MachineProcess> =
 
 /// One process in detail, or `None` for an id nobody has.
 let inspect (id: Uuid) : Stdlib.Option.Option<Detail> =
-  Builtin.execInspect id
+  Stdlib.List.findFirst (__details ()) (fun d -> d.summary.id == id)
 
 
 /// A process started with `spawn`. `'a` is what `await` gives back for it.
 type Handle<'a> = { id: Uuid }
+
+
+/// The first of `handles` to finish, with its value; with `ms`, `None` once that many
+/// milliseconds pass first. `awaitWithin` and `select` are its shapes.
+let __wait
+  (ms: Stdlib.Option.Option<Int64>)
+  (handles: List<Handle<'a>>)
+  : Stdlib.Option.Option<(Handle<'a> * 'a)> =
+  Builtin.execWait ms handles
 
 
 /// How many processes run at once: one per core this process may use. More than this many
@@ -133,12 +148,17 @@ let await (handle: Handle<'a>) : 'a =
 /// `await`, giving up after `ms` milliseconds: `None` then, and the process keeps running
 /// (`cancel` it if that is not wanted).
 let awaitWithin (ms: Int64) (handle: Handle<'a>) : Stdlib.Option.Option<'a> =
-  Builtin.execAwaitWithin ms handle
+  match __wait (Stdlib.Option.Option.Some ms) [ handle ] with
+  | Some((_, value)) -> Stdlib.Option.Option.Some value
+  | None -> Stdlib.Option.Option.None
 
 
 /// The first of `handles` to finish, with its value. Waits when none has.
 let select (handles: List<Handle<'a>>) : (Handle<'a> * 'a) =
-  Builtin.execSelect handles
+  match __wait Stdlib.Option.Option.None handles with
+  | Some answer -> answer
+  // With no time limit there is always an answer; asking again keeps that so.
+  | None -> select handles
 
 
 /// Ask the process behind `handle` to stop, and everything it spawned that is not detached.

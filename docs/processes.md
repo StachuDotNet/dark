@@ -884,9 +884,10 @@ early for the rest. The real version is part of a design for moving traces betwe
 machines, and it should arrive with the rest of that rather than ahead of it.
 ## `dark ps`
 
-`Stdlib.Exec.list/inspect/cancel` over `Builtin.execList/execInspect/execCancel`
-(`Builtins.Language/Libs/Exec.fs`), and `Cli.Ps.killById`, the one wrapper of
-`execKill` (the escape hatch is the CLI's, not the stdlib's); rendered by
+`Stdlib.Exec.list/inspect/cancel` over `Builtin.execList/execCancel`
+(`Builtins.Language/Libs/Exec.fs`; `inspect` filters what `execList` gives),
+and `Cli.Ps.killById`, the one wrapper of `execKill` (the escape hatch is the
+CLI's, not the stdlib's); rendered by
 `cli/ps.dark` as a tree, a process
 under the one that spawned it. Rows are copies;
 nothing hands Dark a reference into a running VM. A process on a worker is
@@ -1091,9 +1092,10 @@ rest of this file is what the system does; this section is how to move around in
   `createReplayTracer`) and `LibDB/Traces.fs` (`Replay.arm`): the effect-only log
   and the armed replay `dark traces resume` uses; `Builtins.CliHost/Libs/Cli.fs` is where
   the CLI arms it and runs the input through its own `eval`/`run` paths.
-- `Builtins.Language/Libs/Exec.fs`: the ps and Exec builtins (`execList`, `execInspect`,
-  `execSpawn`, `execSpawnDetached`, `execAwait`, `execAwaitWithin`, `execSelect`,
-  `execCancel`, `execKill`), `summaryToDT`/`parkedToDT` (the RT-to-Dark mirror of
+- `Builtins.Language/Libs/Exec.fs`: the ps and Exec builtins (`execList`,
+  `execSpawn`, `execSpawnDetached`, `execAwait`, `execWait`, `execCancel`, `execKill`;
+  `awaitWithin` and `select` are shapes of `execWait`),
+  `summaryToDT`/`parkedToDT` (the RT-to-Dark mirror of
   `ProcessSummary`), and the policy chooser (the Dark policy called from the F# loop).
 - Dark: `stdlib/exec.dark` (the user surface and `ParkedOn`/`Summary`),
   `stdlib/await.dark` (`Stdlib.await`), `stdlib/execPolicy.dark`,
