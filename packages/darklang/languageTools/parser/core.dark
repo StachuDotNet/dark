@@ -8,3 +8,10 @@ module Darklang.LanguageTools.Parser
 type Point = { row: Int, column: Int }
 
 type Range = { start: Point, end_: Point }
+
+/// What `Builtin.parse` parses for. `Editor` is the tooling parse: a best-effort tree
+/// with diagnostics alongside. `Package` validates declarations at the file root, and gives a
+/// tree only when there's nothing to report.
+type ParseMode =
+  | Editor
+  | Package
