@@ -400,7 +400,6 @@ let glob (basePath: String) (pattern: String) : Result.Result<List<String>, Posi
       globMatchSegments patternSegs pathSegs))
 
 
-/// Portable fallback when kernel event queues are unavailable.
 /// Calls the callback each time the file changes. Stops when shouldStop returns true.
 /// Returns Error if the file becomes inaccessible.
 let watchLoop
@@ -423,8 +422,7 @@ let watchLoop
     | Error e -> Stdlib.Result.Result.Error e
 
 
-/// Watch file changes with kernel events where supported. The interval bounds
-/// how long a quiet file can delay checking shouldStop; it is not a stat period.
+/// Watch file changes by checking the modified time every intervalMs.
 /// Calls the callback each time the file changes. Stops when shouldStop returns true.
 /// Returns Error if the file becomes inaccessible.
 let watch
@@ -434,22 +432,6 @@ let watch
   (fn: Unit -> Unit)
   : Result.Result<Unit, Posix.Error> =
   if intervalMs < 0.0 then Error (Stdlib.Cli.Posix.__fromErrno 22)
-  else if Builtin.runtimeTargetOS () == "linux" then
-    let waitMs = if intervalMs < 1.0 then 1 else Stdlib.Float.toInt intervalMs
-    match Stdlib.Cli.File.__watchLinux path waitMs shouldStop fn with
-    | Ok () -> Ok ()
-    | Error e ->
-      // Kernel/procfs support can be absent in constrained hosts. The fallback
-      // still uses checked stat operations; never retry through an unsafe path.
-      if e == 38 || e == 95 || e == 2 then
-        match getModifiedTime path with
-        | Ok mtime -> watchLoop path intervalMs mtime shouldStop fn
-        | Error error -> Error error
-      else Error (Stdlib.Cli.Posix.__fromErrno e)
-  else if Builtin.runtimeTargetOS () == "darwin" then
-    let waitMs = if intervalMs < 1.0 then 1 else Stdlib.Float.toInt intervalMs
-    Stdlib.Cli.File.__watchDarwin path waitMs shouldStop fn
-    |> Stdlib.Result.mapError Stdlib.Cli.Posix.__fromErrno
   else
     match getModifiedTime path with
     | Ok mtime -> watchLoop path intervalMs mtime shouldStop fn
@@ -577,133 +559,6 @@ let __copyCopy (source: String) (destination: String)
         else __copyOpenDestination sourceFd destination sourceInfo)
     let closed = Posix.fdClose sourceFd
     __copyFinish result closed
-
-
-/// Kernel-event watching. Dark owns readiness/event decoding, interruption
-/// retries, callback coalescing, rearming after replacement, and cleanup.
-
-let __watchHas (mask: Int) (flag: Int) : Bool = (mask / flag) % 2 == 1
-
-/// inotify_event headers are 16 bytes followed by a kernel-sized name field.
-/// A batch produces one notification; invalidation asks the caller to rearm.
-let __watchEvents (bytes: List<UInt8>) (remaining: Int) (changed: Bool) (rearm: Bool)
-  : Result.Result<(Bool * Bool), Int> =
-  if remaining == 0 then Ok ((changed, rearm))
-  else if remaining < 16 then Error 5
-  else
-    Stdlib.Cli.Posix.__kernelField bytes 4 4 |> Stdlib.Result.andThen (fun mask ->
-      Stdlib.Cli.Posix.__kernelField bytes 12 4 |> Stdlib.Result.andThen (fun nameLength ->
-        let length = 16 + nameLength
-        if length > remaining then Error 5
-        else
-          let nextChanged = changed || (__watchHas mask 2) || (__watchHas mask 4) || (__watchHas mask 8) || (__watchHas mask 1024) || (__watchHas mask 2048) || (__watchHas mask 16384)
-          let nextRearm = rearm || (__watchHas mask 1024) || (__watchHas mask 2048) || (__watchHas mask 32768)
-          __watchEvents (Stdlib.List.drop bytes length) (remaining - length) nextChanged nextRearm))
-
-let __watchDrain (fd: Int) : Result.Result<(Bool * Bool), Int> =
-  match Builtin.syscallRead fd 65536 with
-  | Error 4 -> __watchDrain fd
-  | Error 11 -> Ok ((false, false))
-  | Error e -> Error e
-  | Ok buffer -> __watchEvents (Stdlib.Blob.toList buffer) (Stdlib.Blob.length buffer) false false
-
-let __watchLoop (fd: Int) (intervalMs: Int) (shouldStop: Unit -> Bool) (fn: Unit -> Unit)
-  : Result.Result<Bool, Int> =
-  if shouldStop () then Ok false
-  else
-    match Builtin.syscallPpoll [ (fd, 1) ] intervalMs with
-    | Error 4 -> __watchLoop fd intervalMs shouldStop fn
-    | Error e -> Error e
-    | Ok record ->
-      Stdlib.Cli.Posix.__kernelField (Stdlib.Blob.toList record) 6 2
-      |> Stdlib.Result.andThen (fun returned ->
-        if __watchHas returned 32 then Error 9
-        else if (__watchHas returned 8) || (__watchHas returned 16) then Error 5
-        else if __watchHas returned 1 then
-          __watchDrain fd |> Stdlib.Result.andThen (fun pair ->
-            let (changed, rearm) = pair
-            if changed then fn () else ()
-            if rearm then Ok true else __watchLoop fd intervalMs shouldStop fn)
-        else __watchLoop fd intervalMs shouldStop fn)
-
-let __watchLinux (path: String) (intervalMs: Int) (shouldStop: Unit -> Bool) (fn: Unit -> Unit)
-  : Result.Result<Unit, Int> =
-  if shouldStop () then Ok ()
-  else
-    match Builtin.syscallInotifyInit1 526336 with
-    | Error e -> Error e
-    | Ok fd ->
-      let result =
-        Builtin.syscallInotifyAddWatch fd path 3086
-        |> Stdlib.Result.andThen (fun _ -> __watchLoop fd intervalMs shouldStop fn)
-      let closed = Builtin.syscallClose fd
-      match result with
-      | Error e -> Error e
-      | Ok rearm ->
-        closed |> Stdlib.Result.andThen (fun _ ->
-          if rearm then __watchLinux path intervalMs shouldStop fn else Ok ())
-
-/// Darwin's kevent records are 32 bytes on both supported 64-bit targets.
-let __watchVnodeEvents (bytes: List<UInt8>) (remaining: Int) (changed: Bool) (rearm: Bool)
-  : Result.Result<(Bool * Bool), Int> =
-  if remaining == 0 then Ok ((changed, rearm))
-  else if remaining < 32 then Error 5
-  else
-    Stdlib.Cli.Posix.__kernelField bytes 10 2 |> Stdlib.Result.andThen (fun flags ->
-      Stdlib.Cli.Posix.__kernelField bytes 12 4 |> Stdlib.Result.andThen (fun mask ->
-        if __watchHas flags 16384 then
-          Stdlib.Cli.Posix.__kernelSignedField bytes 16 8 |> Stdlib.Result.andThen (fun errno ->
-            if errno == 0 then __watchVnodeEvents (Stdlib.List.drop bytes 32) (remaining - 32) changed rearm
-            else Error errno)
-        else
-          let nextRearm = rearm || (__watchHas mask 1) || (__watchHas mask 32) || (__watchHas mask 64)
-          __watchVnodeEvents (Stdlib.List.drop bytes 32) (remaining - 32) (changed || mask != 0) nextRearm))
-
-let __watchVnodeLoop (queue: Int) (intervalMs: Int) (shouldStop: Unit -> Bool) (fn: Unit -> Unit)
-  : Result.Result<Bool, Int> =
-  if shouldStop () then Ok false
-  else
-    match Builtin.syscallKeventVnode queue [] 16 intervalMs with
-    | Error 4 -> __watchVnodeLoop queue intervalMs shouldStop fn
-    | Error e -> Error e
-    | Ok buffer ->
-      __watchVnodeEvents (Stdlib.Blob.toList buffer) (Stdlib.Blob.length buffer) false false
-      |> Stdlib.Result.andThen (fun pair ->
-        let (changed, rearm) = pair
-        if changed then fn () else ()
-        if rearm then Ok true else __watchVnodeLoop queue intervalMs shouldStop fn)
-
-let __watchCloseBoth (queue: Int) (source: Int) : Result.Result<Unit, Int> =
-  let first = Builtin.syscallClose queue
-  let second = Builtin.syscallClose source
-  match first with
-  | Error e -> Error e
-  | Ok () -> second
-
-let __watchDarwin (path: String) (intervalMs: Int) (shouldStop: Unit -> Bool) (fn: Unit -> Unit)
-  : Result.Result<Unit, Int> =
-  if shouldStop () then Ok ()
-  else
-    // O_EVTONLY holds the vnode without needing data-access permission. The
-    // trusted open boundary supplies no-follow and scoped read authorization.
-    match Builtin.syscallOpen path 32768 0 with
-    | Error e -> Error e
-    | Ok source ->
-      match Builtin.syscallKqueue () with
-      | Error e ->
-        let _ = Builtin.syscallClose source
-        Error e
-      | Ok queue ->
-        let result =
-          // EV_ADD | EV_ENABLE | EV_CLEAR; seven vnode-change notes.
-          Builtin.syscallKeventVnode queue [ (source, 37, 127) ] 0 0
-          |> Stdlib.Result.andThen (fun _ -> __watchVnodeLoop queue intervalMs shouldStop fn)
-        let closed = __watchCloseBoth queue source
-        match result with
-        | Error e -> Error e
-        | Ok rearm ->
-          closed |> Stdlib.Result.andThen (fun _ ->
-            if rearm then __watchDarwin path intervalMs shouldStop fn else Ok ())
 
 
 /// Pure UTF-8 glob matching. No kernel operation or Builtin is involved.

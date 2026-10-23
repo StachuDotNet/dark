@@ -2,7 +2,8 @@ module Darklang.Cli.Clear
 
 
 let execute (state: AppState) (args: List<String>) : AppState =
-  Builtin.stdoutClear ()
+  // Erase the screen, then home the cursor.
+  Stdlib.print "\u001b[2J\u001b[H"
   state
 
 

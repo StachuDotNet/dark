@@ -577,10 +577,8 @@ EINTR, so callers must not retry close.
 
 File copy tries kernel cloning/copying before a bounded 64 KiB positional-I/O
 fallback. It checks opened descriptor identities before truncating a destination
-and preserves file modes. Linux watches use inotify and ppoll; Darwin uses
-kqueue vnode events. Queue registrations retain their path grants, checked again
-on reads and waits. Linux held-inode registration fails closed without procfs,
-and the high-level file watcher can use its checked polling fallback.
+and preserves file modes. File watching polls the modified time through the
+same checked stat as any other read.
 
 Dark owns child capture, interleaved stdin/stdout/stderr I/O, output limits,
 deadlines, UTF-8 decoding and interactive history. The interpreter uses .NET's

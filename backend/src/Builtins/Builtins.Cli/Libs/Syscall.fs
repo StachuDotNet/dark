@@ -99,75 +99,7 @@ let private poll name constructor =
       | _ -> incorrectArgs ())
 
 let fns () : List<BuiltInFn> =
-  [ make
-      "syscallKqueue"
-      [ Param.make "unit" TUnit "" ]
-      TInt
-      KTInt
-      (fun _ vm values ->
-        match values with
-        | [| DUnit |] ->
-          perform KTInt vm Op.PosixOp.Kqueue (Host.expectDescriptor >> Dval.int)
-        | _ -> incorrectArgs ())
-    make
-      "syscallKeventVnode"
-      [ integer "queue"
-        Param.make
-          "changes"
-          (TList(TTuple(TInt, TInt, [ TInt ])))
-          "fd, flags, vnode mask"
-        integer "capacity"
-        integer "timeoutMs" ]
-      TBlob
-      KTBlob
-      (fun _ vm values ->
-        match values with
-        | [| DInt queue; DList(_, changes); DInt capacity; DInt timeout |] ->
-          let changes =
-            changes
-            |> List.map (function
-              | DTuple(DInt fd, DInt flags, [ DInt mask ]) ->
-                intToDescriptor vm fd, intToInt32 vm flags, intToInt32 vm mask
-              | _ -> incorrectArgs ())
-          perform
-            KTBlob
-            vm
-            (Op.PosixOp.KeventVnode(
-              intToDescriptor vm queue,
-              changes,
-              intToInt32 vm capacity,
-              intToInt32 vm timeout
-            ))
-            bytes
-        | _ -> incorrectArgs ())
-    make "syscallInotifyInit1" [ integer "flags" ] TInt KTInt (fun _ vm values ->
-      match values with
-      | [| DInt flags |] ->
-        perform
-          KTInt
-          vm
-          (Op.PosixOp.InotifyInit1(intToInt32 vm flags))
-          (fun response -> Dval.int (Host.expectDescriptor response))
-      | _ -> incorrectArgs ())
-    make
-      "syscallInotifyAddWatch"
-      [ integer "fd"; Param.make "path" TString "Checked path"; integer "mask" ]
-      TInt
-      KTInt
-      (fun _ vm values ->
-        match values with
-        | [| DInt fd; DString path; DInt mask |] ->
-          perform
-            KTInt
-            vm
-            (Op.PosixOp.InotifyAddWatch(
-              intToDescriptor vm fd,
-              path,
-              intToInt32 vm mask
-            ))
-            written
-        | _ -> incorrectArgs ())
-    poll "syscallPpoll" Op.PosixOp.Ppoll
+  [ poll "syscallPpoll" Op.PosixOp.Ppoll
     poll "syscallPollDarwin" Op.PosixOp.PollDarwin
     clock "syscallClockGettime" [ integer "clock" ] (fun _ vm values ->
       match values with

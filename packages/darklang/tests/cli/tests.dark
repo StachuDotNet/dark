@@ -144,6 +144,18 @@ test versionCommand =
     Stdlib.Test.fail "Expected version string with 'Darklang CLI alpha-'"
 
 
+/// `clear` writes the erase-screen and cursor-home sequences and nothing else.
+test clearCommand =
+  let command = (Stdlib.Cli.Process.shellQuote (cliUnderTest ())) + " clear"
+  let result = Stdlib.Cli.Unix.executeInDirectoryWithOutput "." command
+  let expected = "\u001b[2J\u001b[H"
+
+  if result.stdout == expected then
+    Stdlib.Test.Result.Pass
+  else
+    Stdlib.Test.fail $"Expected exactly ESC[2J ESC[H on stdout, got {Stdlib.toString (Stdlib.String.toList result.stdout)}"
+
+
 test statusCommand =
   // Two things, because `status` is the one signal you get while editing: WHERE you are, and WHAT you have.
   // The branch line matters most when several branches are in play, which is the normal case now.

@@ -151,20 +151,6 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    { name = fn "cliGetLogDir" 0
-      typeParams = []
-      parameters = [ Param.make "unit" TUnit "" ]
-      returnType = TString
-      description = "Returns the absolute path to the CLI log directory"
-      fn =
-        (function
-        | _, _, [], [| DUnit |] -> DString(LibConfig.Config.logDir) |> Ply
-        | _ -> incorrectArgs ())
-      previewable = Impure
-      callEffects = Set.empty
-      deprecated = NotDeprecated }
-
-
     { name = fn "cliTerminalRestoreArm" 0
       typeParams = []
       parameters =

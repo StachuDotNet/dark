@@ -26,3 +26,47 @@ module MissingFile =
       |> Stdlib.Test.equal
         (Stdlib.Result.Result.Error Stdlib.Cli.FileSystem.FileError.NotFound))
     |> Builtin.unwrap
+
+module Watch =
+  // `watch` polls the modified time, which has whole-second resolution, so this touches the file
+  // on every check until the callback leaves its marker. The deadline keeps a broken watch from
+  // hanging the suite.
+  test callbackFiresOnChange =
+    Stdlib.Cli.File.withTemp (fun filename ->
+      let marker = filename + "-changed"
+      let _ = Stdlib.Cli.File.writeText filename "x"
+      let deadline = (Stdlib.DateTime.toSeconds (Stdlib.DateTime.now ())) + 10
+      let watched =
+        Stdlib.Cli.File.watch
+          filename
+          1100.0
+          (fun () ->
+            if Stdlib.Cli.File.exists marker then true
+            else if (Stdlib.DateTime.toSeconds (Stdlib.DateTime.now ())) > deadline then true
+            else
+              let _ = Stdlib.Cli.File.touch filename
+              false)
+          (fun () ->
+            let _ = Stdlib.Cli.File.writeText marker "changed"
+            ())
+      let fired = Stdlib.Cli.File.exists marker
+      let _ = Stdlib.Cli.FileSystem.deleteFile marker
+      Stdlib.Test.all
+        [ watched |> Stdlib.Test.equal (Stdlib.Result.Result.Ok())
+          fired |> Stdlib.Test.equal true ])
+    |> Builtin.unwrap
+
+  test missingFileIsAnError =
+    Stdlib.Cli.File.withTemp (fun filename ->
+      Stdlib.Cli.File.watch (filename + "-does-not-exist") 10.0 (fun () -> false) (fun () -> ())
+      |> Stdlib.Result.isError
+      |> Stdlib.Test.equal true)
+    |> Builtin.unwrap
+
+  test negativeIntervalIsAnError =
+    Stdlib.Cli.File.withTemp (fun filename ->
+      let _ = Stdlib.Cli.File.writeText filename "x"
+      Stdlib.Cli.File.watch filename -1.0 (fun () -> true) (fun () -> ())
+      |> Stdlib.Result.isError
+      |> Stdlib.Test.equal true)
+    |> Builtin.unwrap

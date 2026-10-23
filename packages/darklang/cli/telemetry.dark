@@ -11,8 +11,15 @@ module Darklang.Cli.Telemetry
 ///   // Or for spans with extra context:
 ///   Telemetry.logWithContext "completionHint" t0 [("input", promptText)]
 
-val logFilePath =
-  (Builtin.cliGetLogDir ()) + "/telemetry.jsonl"
+/// `logs/` under the run dir, or under the current directory when none is set. The CLI refuses a
+/// relative `DARK_CONFIG_RUNDIR` at startup, so only an absolute one reaches here. A fn and not a
+/// `val`: a val is evaluated once when the store is built, which would pin the builder's run dir.
+let logFilePath () : String =
+  let runDir =
+    match Stdlib.Env.get "DARK_CONFIG_RUNDIR" with
+    | Some dir -> dir + "/"
+    | None -> "./"
+  runDir + "logs/telemetry.jsonl"
 
 /// Returns monotonic millisecond timestamp (only differences are meaningful)
 let now () : Int = Stdlib.DateTime.__monotonicMilliseconds ()
@@ -45,7 +52,7 @@ let logWithContext
   let wall = Stdlib.toString (Stdlib.DateTime.now ())
   let line = $"{{\"event\":\"{label}\",\"ms\":{Stdlib.toString elapsed},\"wall\":\"{wall}\",\"ctx\":{ctxJson}}}"
 
-  let _ = Stdlib.Cli.FileSystem.appendToFile logFilePath (line + "\n")
+  let _ = Stdlib.Cli.FileSystem.appendToFile (logFilePath ()) (line + "\n")
   ()
 
 /// Shorthand: log a timing event with no extra context
@@ -58,7 +65,7 @@ let logMessage (label: String) (message: String) : Unit =
   let escaped = Stdlib.String.replaceAll message "\"" "\\\""
   let line = $"{{\"event\":\"{label}\",\"msg\":\"{escaped}\",\"wall\":\"{wall}\"}}"
 
-  let _ = Stdlib.Cli.FileSystem.appendToFile logFilePath (line + "\n")
+  let _ = Stdlib.Cli.FileSystem.appendToFile (logFilePath ()) (line + "\n")
   ()
 
 /// Log the start of a session so we can separate runs in the log
@@ -66,5 +73,5 @@ let logSessionStart () : Unit =
   let wall = Stdlib.toString (Stdlib.DateTime.now ())
   let line = $"{{\"event\":\"session_start\",\"wall\":\"{wall}\"}}"
 
-  let _ = Stdlib.Cli.FileSystem.appendToFile logFilePath (line + "\n")
+  let _ = Stdlib.Cli.FileSystem.appendToFile (logFilePath ()) (line + "\n")
   ()
