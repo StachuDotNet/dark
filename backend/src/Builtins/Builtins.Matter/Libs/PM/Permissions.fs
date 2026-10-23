@@ -10,7 +10,6 @@ module D = LibExecution.DvalDecoder
 module VT = LibExecution.ValueType
 module Builtin = LibExecution.Builtin
 module PolicyToDT = LibExecution.PermissionsToDarkTypes
-module EffectsToDT = LibExecution.EffectsToDarkTypes
 module CommonToDT = LibExecution.CommonToDarkTypes
 module NR = LibExecution.RuntimeTypes.NameResolution
 module PackagePermissions = LibDB.PackagePermissions
@@ -334,33 +333,6 @@ let fns () : List<BuiltInFn> =
           uply {
             PolicyStore.unapproveVersion (accountIDOf accountIDDval) location
             return DUnit
-          }
-        | _ -> incorrectArgs ())
-
-    policyFn
-      "pmFnPermissionRequirements"
-      [ Param.make "hash" TString "The package-fn hash to analyze" ]
-      (TTuple(
-        TList(TCustomType(NR.ok (EffectsToDT.Effect.typeName ()), [])),
-        TBool,
-        []
-      ))
-      "The transitive permission requirements of a package function (including code it can return for later use), and whether the analysis was complete. Incomplete analysis — a dynamic call the static walk can't follow, e.g. a callback in `List.map` — returns the partial effects with `false`; it is NOT an error, so callers display it as incomplete rather than crashing. Approval fails closed on incompleteness separately."
-      (fun state args ->
-        match args with
-        | [| DString hashStr |] ->
-          uply {
-            let! result =
-              PackagePermissions.permissionRequirements
-                PackagePermissions.Load.fromStore
-                (builtinEffects state).callEffectsFor
-                hashStr
-            return
-              DTuple(
-                EffectsToDT.toDT result.requiredEffects,
-                DBool result.complete,
-                []
-              )
           }
         | _ -> incorrectArgs ()) ]
 

@@ -276,6 +276,22 @@ module Function =
     | None -> Stdlib.Option.Option.None
 
 
+module Effects =
+  /// What a package function or test can do: the effects everything it calls needs, whether
+  /// the walk could see all of it, and the builtins it reaches by name.
+  type Analysis =
+    { effects: List<LanguageTools.Permissions.Effect>
+      complete: Bool
+      builtins: List<String> }
+
+  /// Walk <param hash> (a function or a test) and everything it calls. Incomplete analysis is
+  /// not an error: it comes back with `complete = false` and the effects found so far. This
+  /// walks the whole closure, so fetch it once and pass the result around.
+  let analyze (hash: ProgramTypes.Hash) : Analysis =
+    let (effects, complete, builtins) = Builtin.pmAnalyzeEffects hash
+    Analysis { effects = effects, complete = complete, builtins = builtins }
+
+
 module Test =
   /// Valid only inside the withStoreSnapshot callback that created it.
   type Run = { id: Uuid }
@@ -286,10 +302,20 @@ module Test =
   let withStoreSnapshot (run: Run -> 'a) : 'a =
     Builtin.pmTestWithStoreSnapshot (fun id -> run (Run { id = id }))
 
+  /// Builtins that need no permission but still make a pass unsafe to reuse: rendering
+  /// depends on the branch, and the counters on state local to one run.
+  val notCacheSafe = [ "toRepr", "testIncrementCounter", "testCounterValue" ]
+
   /// Conservative proof that a passing result is reusable. Dynamic calls and
   /// branch-dependent rendering are not treated as cache-safe.
   let isCacheSafe (hash: ProgramTypes.Hash) : Bool =
-    Builtin.pmTestIsCacheSafe hash
+    let analysis = Effects.analyze hash
+    analysis.complete
+    && Stdlib.List.isEmpty analysis.effects
+    && Stdlib.Bool.not (
+      Stdlib.List.any analysis.builtins (fun name ->
+        Stdlib.List.contains notCacheSafe name)
+    )
 
   /// The result type as this branch currently binds it. Judging an ordinary
   /// test depends on this binding, even when the test's own hash is unchanged.

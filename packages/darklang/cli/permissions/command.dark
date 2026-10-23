@@ -33,7 +33,9 @@ let editInstancePolicy
 let permissionRequirementsForHash
   (hash: String)
   : (List<LanguageTools.Permissions.Effect> * Bool) =
-  Builtin.pmFnPermissionRequirements hash
+  let analysis =
+    LanguageTools.PackageManager.Effects.analyze (LanguageTools.ProgramTypes.Hash.Hash hash)
+  (analysis.effects, analysis.complete)
 
 /// Drop the approval of one immutable version and the dependencies no other
 /// approved root still needs. `unapprove` does not do this; a name's approved version and the

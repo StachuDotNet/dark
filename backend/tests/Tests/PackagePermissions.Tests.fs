@@ -629,6 +629,33 @@ let testBodiesUseTransitiveCacheSafetyAnalysis =
       "missing dependencies cannot be certified cache-safe"
   }
 
+/// The walk names every builtin it reached, across package calls, so a caller can refuse one
+/// that needs no permission. Test caching refuses `toRepr` this way, in Dark.
+let aWalkNamesTheBuiltinsItReached =
+  testTask "a walk names the builtins it reached, through its package calls" {
+    let callEffectsFor (name, version) =
+      if name = "toRepr" then Some Set.empty else testEffects (name, version)
+    let! (direct : Requirements.Result) =
+      PackagePermissions.cacheSafetyForExpression
+        loadFromUniverse
+        callEffectsFor
+        (callBuiltin "toRepr")
+      |> Ply.toTask
+    Expect.equal direct.builtins (set [ "toRepr" ]) "the body's own builtin"
+    Expect.isTrue direct.complete "a known builtin leaves the walk complete"
+
+    let! (transitive : Requirements.Result) =
+      PackagePermissions.cacheSafetyForExpression
+        loadFromUniverse
+        callEffectsFor
+        (eApply (ePackageFn "caller") [] [ eUnit () ])
+      |> Ply.toTask
+    Expect.equal
+      transitive.builtins
+      (set [ "syscallGettimeofday"; "fileRead" ])
+      "the builtins its package dependencies call"
+  }
+
 let cacheSafetyRejectsBranchDependentRendering =
   testTask "a permission-free branch-dependent builtin is not cache-safe" {
     let callEffectsFor (name, version) =
@@ -648,6 +675,7 @@ let tests =
     "packagePermissions"
     [ dictionaryKeysAreAnalyzed
       cacheSafetyRejectsBranchDependentRendering
+      aWalkNamesTheBuiltinsItReached
       testBodiesUseTransitiveCacheSafetyAnalysis
       missingCodeIsIncomplete
       deferredCodeRequirementsAreIncluded

@@ -250,7 +250,11 @@ let analyzeFn
 module Requirements =
   module E = LibExecution.Effects
 
-  type Result = { requiredEffects : Set<E.Effect>; complete : bool }
+  /// What a walk found: the effects it needs, whether it could see everything, and the
+  /// builtins it reached by name (so a caller can refuse one that needs no permission but still
+  /// matters to it, as test caching does with `toRepr`).
+  type Result =
+    { requiredEffects : Set<E.Effect>; complete : bool; builtins : Set<string> }
 
   /// The loaded, immutable dependency closure of one root: every package fn
   /// statically reachable from it (the root included) that could be loaded,
@@ -277,6 +281,7 @@ module Requirements =
     let mutable visited = Set.empty
     let mutable requiredEffects = Set.empty
     let mutable complete = true
+    let mutable builtins = Set.empty
 
     let incomplete () : unit = complete <- false
 
@@ -302,6 +307,7 @@ module Requirements =
           incomplete ()
           visit package
         | PT.FQFnName.Builtin builtin ->
+          builtins <- Set.add builtin.name builtins
           // TODO consider specializing a scoped effect when the resource
           // argument is a literal at the call site (a hardcoded path or
           // URL), so approve-time review can show an exact rule instead
@@ -321,7 +327,9 @@ module Requirements =
     let owesCaller =
       (body.escapesOwnCallback && not callbacksSupplied) || body.defersToTypeParam
 
-    { requiredEffects = requiredEffects; complete = complete && not owesCaller }
+    { requiredEffects = requiredEffects
+      complete = complete && not owesCaller
+      builtins = builtins }
 
   /// `forExpressionWith`, for a body whose callbacks nobody has accounted for.
   let forExpression

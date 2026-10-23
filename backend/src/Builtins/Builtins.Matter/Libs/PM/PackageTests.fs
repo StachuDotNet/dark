@@ -18,6 +18,7 @@ module Execution = LibExecution.Execution
 module PackageRefs = LibExecution.PackageRefs
 module Permissions = LibExecution.Permissions
 module PackagePermissions = LibDB.PackagePermissions
+module EffectsToDT = LibExecution.EffectsToDarkTypes
 
 
 let private requireRunningPackageTest
@@ -293,45 +294,57 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       callEffects = set [ Effect.Native ]
       deprecated = NotDeprecated }
 
-    { name = fn "pmTestIsCacheSafe" 0
+    { name = fn "pmAnalyzeEffects" 0
       typeParams = []
       parameters =
         [ Param.make
-            "testHash"
+            "hash"
             (TCustomType(NR.ok (PT2DT.Hash.typeName ()), []))
-            "Hash of the package test to analyze" ]
-      returnType = TBool
+            "Hash of a package function or a package test" ]
+      returnType =
+        TTuple(
+          TList(TCustomType(NR.ok (EffectsToDT.Effect.typeName ()), [])),
+          TBool,
+          [ TList TString ]
+        )
       description =
-        "Checks the test and the functions it calls to decide whether a cached pass "
-        + "can be reused. Returns false if it cannot prove reuse is safe."
+        "What a package function or test can do, walking everything it calls: the effects it "
+        + "needs, whether the walk saw all of it, and the builtins it reaches by name. Incomplete "
+        + "analysis (a call the static walk cannot follow) returns what it found with `false`; "
+        + "it is not an error. Answered against this host's builtins."
       fn =
         (function
         | state, _, _, [| hashDval |] ->
           uply {
             let hash = PT2DT.Hash.fromDT hashDval
-            match! pm.getTest hash with
-            | None -> return DBool false
-            | Some test ->
-              let cacheSafeCallEffectsFor (name, version) =
-                let key : FQFnName.Builtin = { name = name; version = version }
-                // These calls observe branch-dependent rendering or mutable
-                // test-local state despite needing no host permissions.
-                if
-                  name = "toRepr"
-                  || name = "testIncrementCounter"
-                  || name = "testCounterValue"
-                then
-                  None
-                else
-                  match state.fns.builtIn.TryGetValue key with
-                  | true, builtin -> Some builtin.callEffects
-                  | false, _ -> None
-              let! result =
+            let callEffectsFor (name, version) =
+              let key : FQFnName.Builtin = { name = name; version = version }
+              match state.fns.builtIn.TryGetValue key with
+              | true, builtin -> Some builtin.callEffects
+              | false, _ -> None
+            let! test = pm.getTest hash
+            let! (result : LibExecution.CallGraph.Requirements.Result) =
+              match test with
+              | Some test ->
                 PackagePermissions.cacheSafetyForExpression
                   PackagePermissions.Load.fromStore
-                  cacheSafeCallEffectsFor
+                  callEffectsFor
                   test.body
-              return DBool(result.complete && Set.isEmpty result.requiredEffects)
+              | None ->
+                let (PT.Hash hashStr) = hash
+                PackagePermissions.permissionRequirements
+                  PackagePermissions.Load.fromStore
+                  callEffectsFor
+                  hashStr
+            return
+              DTuple(
+                EffectsToDT.toDT result.requiredEffects,
+                DBool result.complete,
+                [ result.builtins
+                  |> Set.toList
+                  |> List.map DString
+                  |> fun names -> DList(LibExecution.ValueType.string, names) ]
+              )
           }
         | _ -> incorrectArgs ())
       previewable = Impure
