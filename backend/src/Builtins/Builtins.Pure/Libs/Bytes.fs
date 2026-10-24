@@ -224,15 +224,27 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | state, _, _, [| DBytes ref; DInt startD; DInt lenD |] ->
-          Bytes.withBytes state ref (fun bs ->
-            let len = bigint bs.Length
-            let safeStart = max (bigint 0) (min (DarkInt.toBigInt startD) len)
-            let safeLen =
-              max (bigint 0) (min (DarkInt.toBigInt lenD) (len - safeStart))
+          // The reference carries the length, so clamping never loads saved bytes.
+          let len = bigint ref.Length
+          let safeStart = max (bigint 0) (min (DarkInt.toBigInt startD) len)
+          let safeLen =
+            max (bigint 0) (min (DarkInt.toBigInt lenD) (len - safeStart))
+          match ref with
+          | _ when safeLen = bigint 0 -> Ply(Bytes.newEphemeral [||])
+          | Ephemeral eph ->
             let slice = Array.zeroCreate<byte> (int safeLen)
-            if safeLen > bigint 0 then
-              System.Array.Copy(bs, int safeStart, slice, 0, int safeLen)
-            Ply(Bytes.newEphemeral slice))
+            System.Array.Copy(eph.bytes, int safeStart, slice, 0, int safeLen)
+            Ply(Bytes.newEphemeral slice)
+          | Persistent(hash, _) ->
+            uply {
+              match! state.blobs.getRange hash (int64 safeStart) (int64 safeLen) with
+              | Some slice -> return Bytes.newEphemeral slice
+              | None ->
+                return
+                  Exception.raiseInternal
+                    "persistent blob missing in package_blobs"
+                    [ "hash", hash ]
+            }
         | _ -> incorrectArgs ())
       previewable = Pure
       callEffects = Set.empty

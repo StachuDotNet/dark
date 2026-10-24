@@ -63,7 +63,8 @@ let createState
     types = { package = pm.getType }
     traits = { trait_ = pm.getTrait }
     values = { builtIn = builtins.values; package = pm.getValue }
-    blobs = { get = pm.getBytes; persist = pm.persistBytes }
+    blobs =
+      { get = pm.getBytes; getRange = pm.getBytesRange; persist = pm.persistBytes }
     fns =
       { builtIn = builtins.fns
         package = pm.getFn

@@ -165,6 +165,42 @@ module Bytes =
           |> Sql.executeRowOptionAsync (fun read -> read.bytes "bytes")
     }
 
+  /// [length] bytes from [start] of the blob at [hash], or None if there's no such row.
+  /// A blob handle reads only the pages the range covers; `substr` would load the whole
+  /// value first. The caller clamps the range.
+  let getRange
+    (hash : string)
+    (start : int64)
+    (length : int64)
+    : Ply<Option<byte[]>> =
+    uply {
+      Telemetry.count "pkg.blob.getRange"
+      use conn = new SqliteConnection(connString)
+      conn.Open()
+      use cmd = conn.CreateCommand()
+      // Falls back to `trace_blobs`, like `get`.
+      cmd.CommandText <-
+        "SELECT 'package_blobs', rowid FROM package_blobs WHERE hash = @hash
+         UNION ALL SELECT 'trace_blobs', rowid FROM trace_blobs WHERE hash = @hash
+         LIMIT 1"
+      cmd.Parameters.AddWithValue("@hash", hash) |> ignore<SqliteParameter>
+      let row =
+        use reader = cmd.ExecuteReader()
+        if reader.Read() then Some(reader.GetString 0, reader.GetInt64 1) else None
+      match row with
+      | None -> return None
+      | Some(table, rowid) ->
+        use blob = new SqliteBlob(conn, table, "bytes", rowid, true)
+        blob.Seek(start, System.IO.SeekOrigin.Begin) |> ignore<int64>
+        let buffer = Array.zeroCreate<byte> (int length)
+        let read = blob.Read(buffer, 0, buffer.Length)
+        if read <> buffer.Length then
+          Exception.raiseInternal
+            "blob is shorter than its reference says"
+            [ "hash", hash; "start", start; "length", length; "read", read ]
+        return Some buffer
+    }
+
   /// Insert bytes under [hash]. If the row already exists (same hash
   /// = same content, by content-addressing invariant), this is a no-op
   /// — `INSERT OR IGNORE` handles dedup.

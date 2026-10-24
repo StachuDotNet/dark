@@ -666,7 +666,8 @@ let childState
             implCandidatesByMethod = pm.implCandidatesByMethod
             implSelectionMemo = pm.implSelectionMemo
             implGeneration = pm.implGeneration }
-      blobs = { get = pm.getBytes; persist = pm.persistBytes } }
+      blobs =
+        { get = pm.getBytes; getRange = pm.getBytesRange; persist = pm.persistBytes } }
 
 
 /// `execute`, with the tracer handed in rather than chosen here.

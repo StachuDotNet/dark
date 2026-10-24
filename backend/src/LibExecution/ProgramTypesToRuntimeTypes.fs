@@ -1674,6 +1674,7 @@ module PackageManager =
       // based name resolution. Transient wrappers return None; the
       // real blob lookup comes from the canonical RT PM.
       getBytes = fun _ -> Ply None
+      getBytesRange = fun _ _ _ -> Ply None
       persistBytes = fun _ _ -> uply { return () }
 
       // PT PackageManager doesn't surface deprecation state; transient

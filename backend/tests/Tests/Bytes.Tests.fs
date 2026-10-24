@@ -251,6 +251,8 @@ let byteLengthDoesNotReadStorage =
       { state with
           blobs =
             { get = (fun _ -> failtest "length fetched the blob store")
+              getRange =
+                (fun _ _ _ -> failtest "length read a range of the blob store")
               persist = (fun _ _ -> failtest "length wrote the blob store") } }
     let inMemory = mkEphemeral [| 1uy; 2uy; 3uy |]
     // This payload intentionally does not exist in the store.
@@ -278,6 +280,7 @@ let peekDoesNotReadStorage =
       { state with
           blobs =
             { get = (fun _ -> failtest "the preview fetched the blob store")
+              getRange = (fun _ _ _ -> failtest "the preview read the blob store")
               persist = (fun _ _ -> failtest "the preview wrote the blob store") } }
     let call bytes =
       builtin.fn (
@@ -301,6 +304,49 @@ let peekDoesNotReadStorage =
     | other -> failtest $"expected None for saved bytes, got {other}"
   }
 
+let sliceOfSavedBytesReadsOnlyTheRange =
+  testTask "Bytes.slice of saved bytes reads only the range it returns" {
+    let builtin =
+      (Builtins.Pure.Libs.Bytes.fns ())
+      |> List.find (fun fn -> fn.name.name = "bytesSlice")
+      |> Option.defaultWith (fun () -> failtest "bytesSlice is missing")
+    let asked = System.Collections.Generic.List<string * int64 * int64>()
+    let state = freshState ()
+    let state =
+      { state with
+          blobs =
+            { get = (fun _ -> failtest "slice loaded the whole blob")
+              getRange =
+                fun hash start length ->
+                  asked.Add((hash, start, length))
+                  Ply(Some(Array.init (int length) (fun i -> byte (int start + i))))
+              persist = (fun _ _ -> failtest "slice wrote the blob store") } }
+    let saved = RT.DBytes(RT.Persistent("saved", 10L))
+    let slice start length =
+      builtin.fn (
+        struct (state,
+                Unchecked.defaultof<RT.VMState>,
+                [],
+                [| saved; RT.Dval.int start; RT.Dval.int length |])
+      )
+      |> Ply.toTask
+    let contents (dv : RT.Dval) =
+      match dv with
+      | RT.DBytes(RT.Ephemeral e) -> e.bytes
+      | other -> failtest $"expected in-memory bytes, got {other}"
+
+    let! middle = slice 2I 3I
+    Expect.equal (contents middle) [| 2uy; 3uy; 4uy |] "the range comes back"
+    let! tail = slice 8I 100I
+    Expect.equal (contents tail) [| 8uy; 9uy |] "a range past the end is clamped"
+    let! empty = slice 20I 5I
+    Expect.equal (contents empty) [||] "an empty range"
+    Expect.equal
+      (List.ofSeq asked)
+      [ ("saved", 2L, 3L); ("saved", 8L, 2L) ]
+      "the store saw only the clamped, non-empty ranges"
+  }
+
 // ─────────────────────────────────────────────────────────────────────
 // package_blobs storage
 // ─────────────────────────────────────────────────────────────────────
@@ -312,6 +358,30 @@ let packageBytesInsertLookup =
     do! PMBytes.insert hash bytes |> Ply.toTask
     let! got = PMBytes.get hash |> Ply.toTask
     Expect.equal got (Some bytes) "get returns bytes for a freshly-inserted hash"
+  }
+
+let packageBytesGetRange =
+  testTask "getRange reads a range from package_blobs or trace_blobs" {
+    let bytes = Array.init 100_000 (fun i -> byte (i % 251))
+    let hash = $"test-range-{System.Guid.NewGuid()}"
+    do! PMBytes.insert hash bytes |> Ply.toTask
+    let! got = PMBytes.getRange hash 70_000L 5L |> Ply.toTask
+    Expect.equal got (Some bytes[70_000..70_004]) "from package_blobs"
+
+    let traced = $"test-trace-range-{System.Guid.NewGuid()}"
+    do!
+      Sql.query "INSERT INTO trace_blobs (trace_id, hash, bytes) VALUES (@t, @h, @b)"
+      |> Sql.parameters
+        [ "t", Sql.string (string (System.Guid.NewGuid()))
+          "h", Sql.string traced
+          "b", Sql.bytes [| 1uy; 2uy; 3uy; 4uy |] ]
+      |> Sql.executeStatementAsync
+    let! got = PMBytes.getRange traced 1L 2L |> Ply.toTask
+    Expect.equal got (Some [| 2uy; 3uy |]) "from trace_blobs"
+
+    let! missing =
+      PMBytes.getRange $"nonexistent-{System.Guid.NewGuid()}" 0L 1L |> Ply.toTask
+    Expect.equal missing None "no row, no range"
   }
 
 let packageBytesDedupesOnSameHash =
@@ -1008,7 +1078,9 @@ let tests =
       reflectionIgnoresByteStorage
       byteLengthDoesNotReadStorage
       peekDoesNotReadStorage
+      sliceOfSavedBytesReadsOnlyTheRange
       packageBytesInsertLookup
+      packageBytesGetRange
       packageBytesDedupesOnSameHash
       packageBytesMissingHashReturnsNone
       promotePersistsAndSwaps

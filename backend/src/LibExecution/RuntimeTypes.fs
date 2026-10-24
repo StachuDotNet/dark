@@ -2790,6 +2790,9 @@ type PackageManager =
     /// for missing hashes.
     getBytes : string -> Ply<Option<byte[]>>
 
+    /// [length] bytes from [start] of the blob at a hash, without loading the rest.
+    getBytesRange : string -> int64 -> int64 -> Ply<Option<byte[]>>
+
     /// Insert bytes into `package_blobs` keyed by SHA-256 hash. Uses
     /// INSERT OR IGNORE — same hash = same content (content-addressing
     /// invariant), so a second insert is a cheap no-op.
@@ -2836,6 +2839,7 @@ type PackageManager =
       getValue = (fun _ -> Ply None)
       getTrait = (fun _ -> Ply None)
       getBytes = (fun _ -> Ply None)
+      getBytesRange = (fun _ _ _ -> Ply None)
       persistBytes = (fun _ _ -> uply { return () })
       isHarmful = (fun _ -> false)
       implCandidates = (fun _ _ -> Ply [])
@@ -2917,6 +2921,7 @@ type PackageManager =
           let mutable hit = Unchecked.defaultof<Option<Trait.Trait>>
           if traitMap.TryGetValue(id, &hit) then Ply hit else pm.getTrait id
       getBytes = pm.getBytes
+      getBytesRange = pm.getBytesRange
       persistBytes = pm.persistBytes
       isHarmful = pm.isHarmful
       implCandidates = pm.implCandidates
@@ -4085,7 +4090,9 @@ and Values =
 /// Needed inside builtins that manipulate blobs — eg.
 /// `Bytes.toHex : Bytes -> String` has to dereference its arg.
 and BytesStore =
-  { get : string -> Ply<Option<byte[]>>; persist : string -> byte[] -> Ply<unit> }
+  { get : string -> Ply<Option<byte[]>>
+    getRange : string -> int64 -> int64 -> Ply<Option<byte[]>>
+    persist : string -> byte[] -> Ply<unit> }
 
 and Functions =
   {

@@ -920,6 +920,7 @@ let rt : RT.PackageManager =
       withCache (fun (RT.Hash h) ->
         PMPT.Trait.get (PT.Hash h) |> Ply.map (Option.map PT2RT.Trait.toRT))
     getBytes = PMRT.Bytes.get
+    getBytesRange = PMRT.Bytes.getRange
     persistBytes = PMRT.Bytes.insert
 
     // A deprecation is a fact about a hash, and a hash means the same thing on every branch, so
