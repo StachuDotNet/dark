@@ -69,7 +69,7 @@ because the same workload has three different right answers.
 - `alloc-profile` is allocation by type name, from GC allocation-tick events.
 - `fnprofile` ranks per-package-fn time and resolves hashes to names. Feed it three runs: it takes
   the minimum per call, and one run of it once misread a function by 20x.
-- `crosslang` runs the reference workload in node and python, for scale.
+- `crosslang/` times the same small programs in Dark, python, node and bash, for scale.
 - `view-telemetry.py` shows where a run's time went, from `rundir/logs/telemetry.jsonl`.
 - `_common` holds the shared shell helpers: where a published binary is, which mode it is, whether
   it is stale.
