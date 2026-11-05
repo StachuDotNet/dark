@@ -40,17 +40,15 @@ builtin type already has implementations. Yours join with one `impl`.
       Stdlib.sum(0.0, Stdlib.List.map(xs, fun s -> Area.area(s)))
 
   The first type parameter is the type an implementation is for. A method can
-  DECLARE a permission ceiling (`let fetch(u: 'a):{Http} String`), which is stored and
-  is part of the trait's identity, but nothing enforces it against an implementation
-  yet: an implementation may declare and do more than its trait's method allows. An
-  implementation is still held to its OWN declared effects like any other fn, so this is
-  a missing check rather than a way around permissions. `docs permissions` has the
-  effect names.
+  declare a permission ceiling (`let fetch(u: 'a):{Http} String`): every
+  implementation's fn for it must then declare a ceiling within that one, and is
+  held to it at runtime like any other fn. `docs permissions` has the effect names.
 
   An implementation is checked against its trait when you save it: a method left
   out, or one the trait does not declare, is `[ImplMethodSet]`; a method with the
-  wrong signature is `[ImplMethodSignature]`. Either is saved as a draft, and
-  `commit` refuses it.
+  wrong signature is `[ImplMethodSignature]`; a method whose ceiling allows more
+  than the trait's, or that declares none under a trait ceiling, is
+  `[ImplExceedsCeiling]`. Any of these is saved as a draft, and `commit` refuses it.
 
 ## Bound a type parameter
   let describe<'a: ToString>(v: 'a): String = "value: " + v.toString

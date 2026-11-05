@@ -1,5 +1,5 @@
 /// Check an implementation against its trait: exactly the trait's methods, each with the trait
-/// method's signature at the implementation's type.
+/// method's signature at the implementation's type and a ceiling within the trait method's.
 module Darklang.LanguageTools.AtRestTypeChecker.Impls
 
 /// What checking an implementation needs loaded first: its method fns, the types its self type
@@ -162,6 +162,49 @@ let actualType(
     )
   | _ -> Stdlib.Option.Option.None
 
+/// The method fn as a package fn: one saved in the same batch, else the store's. None for a
+/// builtin or a fn that is not available.
+let packageFnOf(
+  batchFns: Dict<LanguageTools.ProgramTypes.Hash, LanguageTools.ProgramTypes.PackageFn.PackageFn>,
+  fnName: LanguageTools.ProgramTypes.FQFnName.FQFnName)
+  : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageFn.PackageFn> =
+  match fnName with
+  | Package(hash) ->
+    match Stdlib.Dict.get(batchFns, hash) with
+    | Some(fn) -> Stdlib.Option.Option.Some(fn)
+    | None -> LanguageTools.PackageManager.Function.get(hash)
+  | _ -> Stdlib.Option.Option.None
+
+/// Why a method fn's declared ceiling is wider than the trait method's, or None when it is
+/// within it. A trait method with no ceiling constrains nothing. A method fn with no ceiling
+/// may do anything, so under a trait ceiling it has to declare one: its own ceiling is what
+/// the interpreter enforces when the fn is entered, so keeping it within the trait's is what
+/// makes the trait's hold at runtime.
+let ceilingExcess(
+  traitCeiling: Stdlib.Option.Option<List<LanguageTools.Permissions.Effect>>,
+  fnCeiling: Stdlib.Option.Option<List<LanguageTools.Permissions.Effect>>)
+  : Stdlib.Option.Option<String> =
+  match traitCeiling with
+  | None -> Stdlib.Option.Option.None
+  | Some(allowed) ->
+    let row = ":" + LanguageTools.Permissions.ceilingRow(traitCeiling)
+
+    match fnCeiling with
+    | None ->
+      Stdlib.Option.Option.Some(
+        $"it declares no ceiling, so it may do anything; give it one within {row}")
+    | Some(declared) ->
+      let extra =
+        declared
+        |> Stdlib.List.filter(fun e -> Stdlib.Bool.not(Stdlib.List.contains(allowed, e)))
+        |> Stdlib.List.map(LanguageTools.Permissions.effectCaseName)
+
+      match extra with
+      | [] -> Stdlib.Option.Option.None
+      | _ ->
+        let names = Stdlib.String.join(extra, ", ")
+        Stdlib.Option.Option.Some($"it allows {names}, which the trait's {row} does not")
+
 /// Which part differs; the expected and actual types follow it in the message.
 let signatureDetail(expected: Model.Ty, actual: Model.Ty): String =
   match (expected, actual) with
@@ -177,8 +220,8 @@ let signatureDetail(expected: Model.Ty, actual: Model.Ty): String =
       "a parameter's type differs"
   | _ -> "its type differs"
 
-/// Failed when a method is missing, extra, or has the wrong signature; Incomplete, saying why,
-/// when something could not be compared.
+/// Failed when a method is missing, extra, has the wrong signature, or may do more than the
+/// trait's ceiling allows; Incomplete, saying why, when something could not be compared.
 let check(
   env: Model.Environment,
   batchFns: Dict<LanguageTools.ProgramTypes.Hash, LanguageTools.ProgramTypes.PackageFn.PackageFn>,
@@ -279,8 +322,31 @@ let check(
                     let code = LanguageTools.AtRestTypeChecker.issueCodeToString(first.code)
                     (found, Stdlib.List.prepend(unreadable, couldNot(name, $"the comparison gave {code}"))))
 
+    // Declared ceilings only, so this needs no signature and no body: a method whose fn
+    // resolves is compared even when its signature could not be.
+    let ceilings =
+      implementation.methods
+      |> Stdlib.List.filterMap(fun((name, nr)) ->
+        match trait_.methods |> Stdlib.List.findFirst(fun m -> m.name == name) with
+        | None -> Stdlib.Option.Option.None
+        | Some(method_) ->
+          match nr.resolved with
+          | Error(_) -> Stdlib.Option.Option.None
+          | Ok(resolved) ->
+            match packageFnOf(batchFns, resolved.name) with
+            | None -> Stdlib.Option.Option.None
+            | Some(fn) ->
+              ceilingExcess(method_.permissionCeiling, fn.permissionCeiling)
+              |> Stdlib.Option.map(fun detail ->
+                Types.definiteError(
+                  IssueCode.ImplExceedsCeiling,
+                  none,
+                  none,
+                  none,
+                  Context.ImplMethod(traitHash, name, detail))))
+
     let findings =
-      Stdlib.List.flatten([ missing, extra, Stdlib.List.reverse(signatures) ])
+      Stdlib.List.flatten([ missing, extra, Stdlib.List.reverse(signatures), ceilings ])
 
     let verdict =
       if Stdlib.Bool.not(Stdlib.List.isEmpty(findings)) then Verdict.Failed

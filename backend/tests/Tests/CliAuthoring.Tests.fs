@@ -903,6 +903,80 @@ let aMismatchedImplementationIsReportedAtSave =
       })
 
 
+/// `trait T<'a> = let fetch(u: 'a):{} String` reads as "no implementation may touch the
+/// network", and nothing held an implementation to it: the ceiling was parsed, stored and hashed,
+/// and `ImplExceedsCeiling` had no producer. Now an implementation's method fn has to declare a
+/// ceiling within the trait method's, which is the ceiling the interpreter then enforces.
+let anImplementationIsHeldToItsTraitsCeiling =
+  instanceTest
+    "an implementation that may do more than its trait's ceiling is reported at save"
+    (fun state ->
+      task {
+        do! start state
+        do!
+          run
+            state
+            [ "trait"; "Tests.Ceil.Fetch"; "<'a> = let fetch(u: 'a):{Http} String" ]
+
+        let impl (target : string) (body : string) =
+          [ "impl"; "Tests.CeilImpl"; $"Tests.Ceil.Fetch for {target} = {body}" ]
+
+        do!
+          showsAll
+            state
+            (impl "Int64" "let fetch(u: Int64):{Http, FileRead} String = \"x\"")
+            // Single tokens: the message is wrapped to the terminal, at any space.
+            [ "[ImplExceedsCeiling]"
+              "Tests.Ceil.Fetch.fetch"
+              "FileRead,"
+              ":{Http}" ]
+            "a ceiling wider than the trait's names the trait, the method and the extra effect"
+        do!
+          showsAll
+            state
+            (impl "Int64" "let fetch(u: Int64): String = \"x\"")
+            [ "[ImplExceedsCeiling]"; "declares"; ":{Http})" ]
+            "no ceiling at all may do anything, so it exceeds one"
+        do!
+          showsAll
+            state
+            [ "commit"; "too wide"; "-y" ]
+            [ "cannot commit"; "Tests.CeilImpl.Int64.Fetch" ]
+            "commit refuses the draft"
+
+        do!
+          lacks
+            state
+            (impl "Int64" "let fetch(u: Int64):{Http} String = \"same\"")
+            "ImplExceedsCeiling"
+            "the trait's own ceiling is within it"
+        do!
+          lacks
+            state
+            (impl "Int64" "let fetch(u: Int64):{} String = \"narrower\"")
+            "ImplExceedsCeiling"
+            "and so is a narrower one"
+        do! shows state [ "commit"; "narrow"; "-y" ] " ops." "and commits"
+        do! evals state "Tests.Ceil.Fetch.fetch(5L)" "narrower" "and dispatches"
+
+        // A generic implementation of the generic trait is held to the same ceiling.
+        do!
+          showsAll
+            state
+            (impl "List<'a>" "let fetch(u: List<'a>):{Clock} String = \"list\"")
+            [ "[ImplExceedsCeiling]"; "Clock," ]
+            "at a generic self type too"
+        do!
+          lacks
+            state
+            (impl "List<'a>" "let fetch(u: List<'a>):{Http} String = \"list\"")
+            "ImplExceedsCeiling"
+            "and a generic one within it passes"
+        do! shows state [ "commit"; "list"; "-y" ] " ops." "and commits"
+        do! evals state "Tests.Ceil.Fetch.fetch([ 1L ])" "list" "and dispatches"
+      })
+
+
 /// A failed module save must not end on a check mark.
 ///
 /// `module` printed `✓ Defined N declarations` as its LAST line, underneath the reasons the save was
@@ -1248,6 +1322,7 @@ let tests : List<Test> =
     aRefusedImplementationOrBoundSavesNothing
     commitRefusesABoundThatNamesNothing
     aMismatchedImplementationIsReportedAtSave
+    anImplementationIsHeldToItsTraitsCeiling
     aFailedModuleSaveDoesNotEndOnATick
     aReplacedImplementationIsNotPinned ]
   @ helpExamplesRun

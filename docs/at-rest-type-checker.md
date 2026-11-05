@@ -187,9 +187,10 @@ operands must unify and nothing further is owed.
 
 A trait and an impl are package items. `Impls.check` (`atRestTypeChecker/impls.dark`)
 checks an impl's method set (`ImplMethodSet`) and each method fn against the trait's
-signature at the self type (`ImplMethodSignature`). Nothing compares an impl fn's
-ceiling with the trait method's: `ImplExceedsCeiling`, `AmbiguousImpl` and
-`UnboundTypeParameter` are declared and have no producer.
+signature at the self type (`ImplMethodSignature`), and each method fn's declared
+ceiling against the trait method's (`ImplExceedsCeiling`): under a trait ceiling the fn
+must declare one, within it, since its own ceiling is what the interpreter enforces.
+`AmbiguousImpl` and `UnboundTypeParameter` are declared and have no producer.
 
 - A `TraitMethod` call is typed from the trait's method, with the trait's first type
   parameter as self. A bounded signature adds one constraint per
