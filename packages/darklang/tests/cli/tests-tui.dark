@@ -663,10 +663,7 @@ let wbPress(
 let wbChar(state: Darklang.Cli.Workbench.State, c: String): WbResult =
   wbPress(state, Stdlib.Cli.Stdin.Key.Key.NoName, Stdlib.Option.Option.Some(c))
 
-let wbKey(
-  state: Darklang.Cli.Workbench.State,
-  k: Stdlib.Cli.Stdin.Key.Key)
-  : WbResult =
+let wbKey(state: Darklang.Cli.Workbench.State, k: Stdlib.Cli.Stdin.Key.Key): WbResult =
   wbPress(state, k, Stdlib.Option.Option.None)
 
 /// Move the nav cursor to a semantic row through the real key handler.

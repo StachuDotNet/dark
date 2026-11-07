@@ -181,20 +181,14 @@ let checkedAdd(a: Int8, b: Int8): Stdlib.Result.Result<Int8, Stdlib.Math.Overflo
 
 
 /// Subtracts <param b> from <param a>, or {{Error Overflow}} where `-` would wrap
-let checkedSubtract(
-  a: Int8,
-  b: Int8)
-  : Stdlib.Result.Result<Int8, Stdlib.Math.Overflow> =
+let checkedSubtract(a: Int8, b: Int8): Stdlib.Result.Result<Int8, Stdlib.Math.Overflow> =
   let difference = a - b
   let wrapped = if b < 0s8 then difference < a else difference > a
   if wrapped then Error(Stdlib.Math.Overflow.Overflow) else Ok(difference)
 
 
 /// Multiplies <param a> by <param b>, or {{Error Overflow}} where `*` would wrap
-let checkedMultiply(
-  a: Int8,
-  b: Int8)
-  : Stdlib.Result.Result<Int8, Stdlib.Math.Overflow> =
+let checkedMultiply(a: Int8, b: Int8): Stdlib.Result.Result<Int8, Stdlib.Math.Overflow> =
   let product = Stdlib.BigInt.fromInt8(a) * Stdlib.BigInt.fromInt8(b)
   match Stdlib.BigInt.toInt8(product) with
   | Some(fits) -> Ok(fits)

@@ -31,10 +31,7 @@ let confirm(question: String): Bool =
 
 
 /// Ask the user to select from a list of choices. None when nobody can answer, or input ends.
-let select(
-  question: String,
-  choices: List<String>)
-  : Stdlib.Option.Option<String> =
+let select(question: String, choices: List<String>): Stdlib.Option.Option<String> =
   if Stdlib.Bool.not(canAsk()) then
     Stdlib.Option.Option.None
   else

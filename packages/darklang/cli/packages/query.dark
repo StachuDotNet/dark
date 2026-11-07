@@ -133,9 +133,7 @@ type DeprecationSets =
 
 
 /// Build a Dict<String, Bool> keyed by each hash's underlying hex string.
-let hashListToDict(
-  hashes: List<LanguageTools.ProgramTypes.Hash>)
-  : Dict<String, Bool> =
+let hashListToDict(hashes: List<LanguageTools.ProgramTypes.Hash>): Dict<String, Bool> =
   hashes
   |> Stdlib.List.fold(Stdlib.Dict.empty, fun(acc, hash) ->
     let key = LanguageTools.ProgramTypes.hashToString(hash)
@@ -153,26 +151,17 @@ let loadDeprecationSets(branchId: Uuid): DeprecationSets =
       hidden = hashListToDict(hidden) }
 
 
-let memberOf(
-  d: Dict<String, Bool>,
-  hash: LanguageTools.ProgramTypes.Hash)
-  : Bool =
+let memberOf(d: Dict<String, Bool>, hash: LanguageTools.ProgramTypes.Hash): Bool =
   Stdlib.Dict.containsKey(d, LanguageTools.ProgramTypes.hashToString(hash))
 
 
 /// Whether an item hash should be hidden by default visibility.
-let isHidden(
-  sets: DeprecationSets,
-  hash: LanguageTools.ProgramTypes.Hash)
-  : Bool =
+let isHidden(sets: DeprecationSets, hash: LanguageTools.ProgramTypes.Hash): Bool =
   memberOf(sets.hidden, hash)
 
 
 /// Whether an item hash is flagged as deprecated at all (shown-with-icon or hidden).
-let isDeprecated(
-  sets: DeprecationSets,
-  hash: LanguageTools.ProgramTypes.Hash)
-  : Bool =
+let isDeprecated(sets: DeprecationSets, hash: LanguageTools.ProgramTypes.Hash): Bool =
   memberOf(sets.allDeprecated, hash)
 
 
@@ -227,10 +216,7 @@ let filterHidden(
 
 /// Deprecation marker rendered after an item name when it's shown despite
 /// being deprecated. Kept short to avoid cluttering lists.
-let deprecationMarker(
-  sets: DeprecationSets,
-  hash: LanguageTools.ProgramTypes.Hash)
-  : String =
+let deprecationMarker(sets: DeprecationSets, hash: LanguageTools.ProgramTypes.Hash): String =
   if isDeprecated(sets, hash) then " ⚠" else ""
 
 

@@ -33,11 +33,7 @@ let reportRepointed(names: List<String>): Unit =
 /// <param standalone> is false when this is the preview inside the confirm flow, where the next line is
 /// the question and telling someone to run the thing they are being asked to approve reads as a
 /// non-sequitur.
-let executeMergePreview(
-  state: AppState,
-  branchRef: String,
-  standalone: Bool)
-  : AppState =
+let executeMergePreview(state: AppState, branchRef: String, standalone: Bool): AppState =
   match resolveRef(branchRef) with
   | None -> Cli.exitWith(state, false)
   | Some(branchId) when SCM.PackageOps.branchIsMerged(branchId) ->
@@ -96,11 +92,7 @@ let executeMergeDryRun(state: AppState, branchRef: String): AppState =
 /// and main got code that does not typecheck with no record of the decision. Same checker, same
 /// verdict rule (only `Failed`; `Incomplete` is not knowing, which is not the same as knowing it
 /// is wrong), same way past: `--allow-type-errors`, typed out.
-let mergeRefusal(
-  branchId: Uuid,
-  branchRef: String,
-  allowTypeErrors: Bool)
-  : Bool =
+let mergeRefusal(branchId: Uuid, branchRef: String, allowTypeErrors: Bool): Bool =
   let uncommitted = SCM.PackageOps.draftOpCountFor(branchId)
 
   if uncommitted != 0 then
@@ -261,12 +253,7 @@ let executeRebase(state: AppState, branchRef: String): AppState =
 
 /// Resolve one conflicted name on a branch: `mine` keeps the branch's version (wins on merge),
 /// `theirs` takes the parent's (drops the branch's binding). Anything else is re-authoring on the branch.
-let executeResolve(
-  state: AppState,
-  branchRef: String,
-  name: String,
-  choice: String)
-  : AppState =
+let executeResolve(state: AppState, branchRef: String, name: String, choice: String): AppState =
   match resolveRef(branchRef) with
   | None -> Cli.exitWith(state, false)
   | Some(branchId) ->
@@ -302,9 +289,7 @@ let mergeHelp(_state: AppState): String =
 /// On main there is no such branch, and the answer is the usage line rather than a guess. `dark diff`
 /// already works this way for the same reason: the commonest form of the question is the one you are
 /// standing in, and making it the only form you cannot type is a papercut you pay every time.
-let bareTargetBranch(
-  verb: String)
-  : Stdlib.Result.Result<String, Unit> =
+let bareTargetBranch(verb: String): Stdlib.Result.Result<String, Unit> =
   match SCM.PackageOps.currentBranch() with
   | id when SCM.Branch.isMain(id) ->
     Cli.printErr($"usage: dark {verb} <branch>")

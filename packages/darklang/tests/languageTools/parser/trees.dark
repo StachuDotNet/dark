@@ -41,9 +41,7 @@ let packageModule(source: String): List<WrittenTypes.ModuleDeclaration.Declarati
   moduleDecls(Darklang.LanguageTools.Parser.FileKind.Package, source)
 
 /// The type a `type X = <source>` alias declares.
-let typeOf(
-  source: String)
-  : Stdlib.Option.Option<WrittenTypes.TypeReference.TypeReference> =
+let typeOf(source: String): Stdlib.Option.Option<WrittenTypes.TypeReference.TypeReference> =
   match decls($"type X = {source}") with
   | [ Type(t) ] ->
     match t.definition with
@@ -58,9 +56,7 @@ let fnBody(source: String): Stdlib.Option.Option<WrittenTypes.Expr> =
   | _ -> Stdlib.Option.Option.None
 
 /// The type of the one parameter of the one fn a source declares.
-let fnParamType(
-  source: String)
-  : Stdlib.Option.Option<WrittenTypes.TypeReference.TypeReference> =
+let fnParamType(source: String): Stdlib.Option.Option<WrittenTypes.TypeReference.TypeReference> =
   match decls(source) with
   | [ Function(f) ] ->
     match f.parameters with
@@ -862,9 +858,7 @@ test recoveryKeepsTheTree =
 
 // --- traits ---
 
-let typeParamNames(
-  params: List<(Darklang.LanguageTools.Parser.Range * String)>)
-  : List<String> =
+let typeParamNames(params: List<(Darklang.LanguageTools.Parser.Range * String)>): List<String> =
   Stdlib.List.map(params, Stdlib.Tuple2.second)
 
 let boundNames(bounds: List<WrittenTypes.TypeParamBound>): List<(String * String)> =

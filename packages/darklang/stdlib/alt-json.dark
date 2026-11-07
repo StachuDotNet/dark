@@ -14,7 +14,8 @@ type Json =
 
 
 module ParseError =
-  type ParseError = | NotJson
+  type ParseError =
+    | NotJson
 
   let toString(e: ParseError): String =
     match e with
@@ -305,10 +306,7 @@ module Parse =
 
 
   /// The rest of an array, after its `[`.
-  let items(
-    ts: List<String>,
-    acc: List<Json>)
-    : Option.Option<(Json * List<String>)> =
+  let items(ts: List<String>, acc: List<Json>): Option.Option<(Json * List<String>)> =
     match ts with
     | ["]", ...rest] when List.isEmpty(acc) -> Some((Json.Array([]), rest))
     | _ ->
@@ -324,10 +322,7 @@ module Parse =
 
 
   /// The rest of an object, after its `{`.
-  let fields(
-    ts: List<String>,
-    acc: List<(String * Json)>)
-    : Option.Option<(Json * List<String>)> =
+  let fields(ts: List<String>, acc: List<(String * Json)>): Option.Option<(Json * List<String>)> =
     match ts with
     | ["}", ...rest] when List.isEmpty(acc) -> Some((Json.Object([]), rest))
     // The colon straight after the key: System.Text.Json refused a comment
@@ -374,10 +369,7 @@ let toFloat(j: Json): Option.Option<Float> =
 module Helpers =
 
   /// Get a string value from a JSON object's fields
-  let getString(
-    key: String,
-    fields: List<(String * Json)>)
-    : Option.Option<String> =
+  let getString(key: String, fields: List<(String * Json)>): Option.Option<String> =
     let found = List.findFirst(fields, fun((k, _)) -> k == key)
 
     match found with
@@ -389,10 +381,7 @@ module Helpers =
 
 
   /// Get a boolean value from a JSON object's fields
-  let getBool(
-    key: String,
-    fields: List<(String * Json)>)
-    : Option.Option<Bool> =
+  let getBool(key: String, fields: List<(String * Json)>): Option.Option<Bool> =
     let found = List.findFirst(fields, fun((k, _)) -> k == key)
 
     match found with
@@ -404,10 +393,7 @@ module Helpers =
 
 
   /// Get a raw JSON value from a JSON object's fields
-  let getValue(
-    key: String,
-    fields: List<(String * Json)>)
-    : Option.Option<Json> =
+  let getValue(key: String, fields: List<(String * Json)>): Option.Option<Json> =
     let found = List.findFirst(fields, fun((k, _)) -> k == key)
 
     match found with
@@ -417,10 +403,7 @@ module Helpers =
 
   /// Get an integer value from a JSON object's fields. {{None}} if the key is
   /// missing or its value isn't exactly an integer (see <fn toInt64>).
-  let getInt64Option(
-    key: String,
-    fields: List<(String * Json)>)
-    : Option.Option<Int64> =
+  let getInt64Option(key: String, fields: List<(String * Json)>): Option.Option<Int64> =
     let found = List.findFirst(fields, fun((k, _)) -> k == key)
 
     match found with
@@ -445,10 +428,7 @@ module Helpers =
 
   /// Get a required integer field. The error distinguishes a missing field
   /// from a field whose value cannot be converted exactly.
-  let getInt64Result(
-    key: String,
-    fields: List<(String * Json)>)
-    : Result.Result<Int64, String> =
+  let getInt64Result(key: String, fields: List<(String * Json)>): Result.Result<Int64, String> =
     match getValue(key, fields) with
     | None -> Result.Result.Error($"Missing JSON integer field: {key}")
     | Some(value) ->
@@ -476,10 +456,7 @@ module Helpers =
 
   /// Get a Float field. An integer is converted only if Float can hold it
   /// exactly; use <fn getInt64Option> for integers.
-  let getFloat(
-    key: String,
-    fields: List<(String * Json)>)
-    : Option.Option<Float> =
+  let getFloat(key: String, fields: List<(String * Json)>): Option.Option<Float> =
     let found = List.findFirst(fields, fun((k, _)) -> k == key)
 
     match found with
@@ -500,10 +477,7 @@ module Helpers =
 
 
   /// Get a nested object's fields from a JSON object (returns [] if not found)
-  let getObject(
-    key: String,
-    fields: List<(String * Json)>)
-    : List<(String * Json)> =
+  let getObject(key: String, fields: List<(String * Json)>): List<(String * Json)> =
     let found = List.findFirst(fields, fun((k, _)) -> k == key)
 
     match found with
@@ -551,61 +525,37 @@ module Builder =
     List.append(fields, (key, Json.Array(value)))
 
   /// Add an optional string field (only adds if Some)
-  let addOptionalString(
-    fields: Fields,
-    key: String,
-    value: Option.Option<String>)
-    : Fields =
+  let addOptionalString(fields: Fields, key: String, value: Option.Option<String>): Fields =
     match value with
     | Some(v) -> List.append(fields, (key, Json.String(v)))
     | None -> fields
 
   /// Add an optional Float field (only adds if Some)
-  let addOptionalFloat(
-    fields: Fields,
-    key: String,
-    value: Option.Option<Float>)
-    : Fields =
+  let addOptionalFloat(fields: Fields, key: String, value: Option.Option<Float>): Fields =
     match value with
     | Some(v) -> List.append(fields, (key, Json.Float(v)))
     | None -> fields
 
   /// Add an optional integer field (only adds if Some)
-  let addOptionalInt64(
-    fields: Fields,
-    key: String,
-    value: Option.Option<Int64>)
-    : Fields =
+  let addOptionalInt64(fields: Fields, key: String, value: Option.Option<Int64>): Fields =
     match value with
     | Some(v) -> addInt64(fields, key, v)
     | None -> fields
 
   /// Add an optional bool field (only adds if Some)
-  let addOptionalBool(
-    fields: Fields,
-    key: String,
-    value: Option.Option<Bool>)
-    : Fields =
+  let addOptionalBool(fields: Fields, key: String, value: Option.Option<Bool>): Fields =
     match value with
     | Some(v) -> List.append(fields, (key, Json.Bool(v)))
     | None -> fields
 
   /// Add an optional JSON value field (only adds if Some)
-  let addOptionalJson(
-    fields: Fields,
-    key: String,
-    value: Option.Option<Json>)
-    : Fields =
+  let addOptionalJson(fields: Fields, key: String, value: Option.Option<Json>): Fields =
     match value with
     | Some(v) -> List.append(fields, (key, v))
     | None -> fields
 
   /// Add an optional array field (only adds if Some)
-  let addOptionalArray(
-    fields: Fields,
-    key: String,
-    value: Option.Option<List<Json>>)
-    : Fields =
+  let addOptionalArray(fields: Fields, key: String, value: Option.Option<List<Json>>): Fields =
     match value with
     | Some(v) -> List.append(fields, (key, Json.Array(v)))
     | None -> fields

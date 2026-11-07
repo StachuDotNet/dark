@@ -150,11 +150,7 @@ let wentThrough(fnName: String, fnHash: String, limit: Int64): List<Trace> =
 /// Resolves the name to its hash first, so every alias of one function finds the same runs, and
 /// falls back to the name when the store has no such function. That fallback is what lets a run
 /// whose code has since gone stay distinguishable from a typo.
-let wentThroughNamed(
-  branchId: Uuid,
-  fnName: String,
-  limit: Int64)
-  : List<Trace> =
+let wentThroughNamed(branchId: Uuid, fnName: String, limit: Int64): List<Trace> =
   let hash =
     Darklang.LanguageTools.PackageManager.Function.find(
       branchId,

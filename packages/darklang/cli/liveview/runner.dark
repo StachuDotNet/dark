@@ -63,13 +63,7 @@ let loop(
 
 /// Run <param stepName> over <param init> every <param intervalMs>, forever. What a daemon
 /// entrypoint calls after claiming its pidfile. <param live> follows edits to the step.
-let run(
-  name: String,
-  stepName: String,
-  init: 's,
-  intervalMs: Int64,
-  live: Bool)
-  : Int64 =
+let run(name: String, stepName: String, init: 's, intervalMs: Int64, live: Bool): Int64 =
   match Stdlib.Live.locationOfName(stepName) with
   | None ->
     Stdlib.printLine($"{name}: {stepName} is not a package fn name")

@@ -354,10 +354,7 @@ let printInspectJson(branchId: Uuid, prefix: String): Bool =
 /// store time. A package hash is STRUCTURAL, so two functions with identical bodies share one and
 /// the name you get is whichever of them the store resolves it to. The comparison is still sound
 /// -- that name is bound to that hash -- but the name printed can be a sibling's.
-let movedSince(
-  branchId: Uuid,
-  traceID: String)
-  : List<String> =
+let movedSince(branchId: Uuid, traceID: String): List<String> =
   (Darklang.Tracing.Store.fnsWithHashes(traceID))
   |> Stdlib.List.filterMap(fun pair ->
     let (name, recorded) = pair

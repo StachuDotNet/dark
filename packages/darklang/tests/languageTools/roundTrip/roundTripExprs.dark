@@ -360,26 +360,26 @@ test exprsIfExpressions =
       roundTrip(
         "if, 3",
         "if a < b then 1 else if c > d then 2",
-        "if a < b then 1 else if c > d then 2")
+        "if a < b then\n  1\nelse if c > d then\n  2")
       roundTrip(
         "if, 4",
         "if a < b then 1 else if c > d then 2 else 3",
-        "if a < b then 1 else if c > d then 2 else 3")
+        "if a < b then\n  1\nelse if c > d then\n  2\nelse\n  3")
       roundTrip("if, 5", "if true then\n 1", "if true then 1")
       roundTrip("if, 6", "if true then\n 1\nelse\n 2", "if true then 1 else 2")
       roundTrip(
         "if, 7",
         "if true then\n a\nelse if false then\n c",
-        "if true then a else if false then c")
+        "if true then\n  a\nelse if false then\n  c")
       roundTrip(
         "if, 8",
         "if a > b then\n a\nelse if c > d then\n c\nelse d",
-        "if a > b then a else if c > d then c else d")
+        "if a > b then\n  a\nelse if c > d then\n  c\nelse\n  d")
       roundTrip("if, 9", "if true then\n\ta\nelse\n\tb", "if true then a else b")
       roundTrip(
         "if, many branches",
         "if true then\n  a\nelse if false then\n  c\nelse if true then\n  d",
-        "if true then a else if false then c else if true then d")
+        "if true then\n  a\nelse if false then\n  c\nelse if true then\n  d")
       roundTrip(
         "else for inner if",
         "\nif a > b then\n  if c > d then\n    c\n  else\n    b",
@@ -391,7 +391,7 @@ test exprsIfExpressions =
       roundTrip(
         "nested if",
         "if a > b then\n  a\nelse\n  if c > d then\n    c\n  else\n    if e > f then\n      e\n    else\n      if g > h then\n        g\n      else\n        h",
-        "if a > b then\n  a\nelse if c > d then c else if e > f then e else if g > h then g else h") ])
+        "if a > b then\n  a\nelse if c > d then\n  c\nelse if e > f then\n  e\nelse if g > h then\n  g\nelse\n  h") ])
 
 test exprsMatchExpressions =
   Stdlib.Test.all(

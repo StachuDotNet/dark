@@ -19,9 +19,7 @@ module Darklang.SCM.Tests.Cli
 
 /// Run the steps against a fresh store, which is thrown away afterwards. Every step runs, in
 /// order, and the test fails if any of them did.
-let scenario(
-  steps: Darklang.Cli.Tests.Instance.T -> List<Stdlib.Test.Result>)
-  : Stdlib.Test.Result =
+let scenario(steps: Darklang.Cli.Tests.Instance.T -> List<Stdlib.Test.Result>): Stdlib.Test.Result =
   Darklang.Cli.Tests.Instance.withInstance(fun dark -> Stdlib.Test.all(steps(dark)))
 
 let shown(args: List<String>): String =
@@ -43,10 +41,7 @@ let runWithEnv(
   | Error(e) -> (-1, "", $"could not run: {e}")
   | Ok(out) -> (out.exitCode, out.stdout, out.stdout + out.stderr)
 
-let exec(
-  dark: Darklang.Cli.Tests.Instance.T,
-  args: List<String>)
-  : (Int64 * String * String) =
+let exec(dark: Darklang.Cli.Tests.Instance.T, args: List<String>): (Int64 * String * String) =
   runWithEnv(dark, [], args)
 
 

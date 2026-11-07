@@ -96,11 +96,7 @@ let __dropThroughFirstNewline(bytes: Bytes): Bytes =
 /// addresses the file by absolute offset, so a short read there would silently drop bytes out of the middle
 /// of the window and hand back lines that never existed. Loop instead. (`fdReadAll` above loops for the same
 /// reason.)
-let readFully(
-  fd: BigInt,
-  count: Int64,
-  acc: List<Bytes>)
-  : Result.Result<Bytes, Posix.Error> =
+let readFully(fd: BigInt, count: Int64, acc: List<Bytes>): Result.Result<Bytes, Posix.Error> =
   if count <= 0 then
     Stdlib.Result.Result.Ok(Stdlib.Bytes.concatAll(acc))
   else
@@ -142,10 +138,7 @@ let __readTailChunks(
 
 
 /// Read the last `count` lines without loading the whole file.
-let readLastLines(
-  path: String,
-  count: Int64)
-  : Result.Result<List<String>, Posix.Error> =
+let readLastLines(path: String, count: Int64): Result.Result<List<String>, Posix.Error> =
   if count <= 0 then
     Stdlib.Result.Result.Ok([])
   else
@@ -257,10 +250,7 @@ let createTemp(): Result.Result<String, Posix.Error> =
 
 
 /// Create a symbolic link pointing to target.
-let createSymlink(
-  target: String,
-  linkpath: String)
-  : Result.Result<Unit, Posix.Error> =
+let createSymlink(target: String, linkpath: String): Result.Result<Unit, Posix.Error> =
   Posix.symlink(target, linkpath)
 
 
@@ -278,10 +268,7 @@ let areIdentical(path1: String, path2: String): Result.Result<Bool, Posix.Error>
 
 
 /// Read a file, apply a transformation function, and write it back.
-let transform(
-  path: String,
-  fn: String -> String)
-  : Result.Result<Unit, Posix.Error> =
+let transform(path: String, fn: String -> String): Result.Result<Unit, Posix.Error> =
   (readText(path))
   |> Stdlib.Result.andThen(fun content -> writeText(path, fn(content)))
 
@@ -346,10 +333,7 @@ let withLock(path: String, fn: Unit -> 'a): Result.Result<'a, Posix.Error> =
 /// Recursively match path segments against pattern segments.
 /// Pattern segments may include "**" which matches zero or more path segments.
 /// Other pattern segments are matched in Dark (pathMode=true).
-let globMatchSegments(
-  patternSegs: List<String>,
-  pathSegs: List<String>)
-  : Bool =
+let globMatchSegments(patternSegs: List<String>, pathSegs: List<String>): Bool =
   match patternSegs with
   | [] ->
     match pathSegs with
@@ -555,8 +539,7 @@ let __copyCloneDestination(sourceFd: BigInt, destination: String, sourceInfo: St
 
 /// Best-effort copy of a concurrently mutable file, not an atomic snapshot.
 /// Source metadata comes from the opened descriptor, not a second path lookup.
-let __copyCopy(source: String, destination: String)
-  : Result.Result<Unit, Posix.Error> =
+let __copyCopy(source: String, destination: String): Result.Result<Unit, Posix.Error> =
   match Posix.openFile(source, 0, 0) with
   | Error(e) -> Error(e)
   | Ok(sourceFd) ->
@@ -746,10 +729,7 @@ let __globClassEnd(
   | [] -> None
 
 /// Interpret an escaped byte or a single-byte collating/equivalence symbol.
-let __globClassChar(
-  c: UInt8,
-  rest: List<UInt8>)
-  : (UInt8 * List<UInt8>) =
+let __globClassChar(c: UInt8, rest: List<UInt8>): (UInt8 * List<UInt8>) =
   if c == 92u8 then
     match rest with
     | [escaped, ...after] -> (escaped, after)
@@ -788,10 +768,7 @@ let __globClassItems(
         __globClassItems(after, c, false, matched || (c >= low && c <= high), valid)
       | _ -> __globClassItems(next, c, false, matched || c == low, valid)
 
-let __globBracket(
-  bytes: List<UInt8>,
-  c: UInt8)
-  : Option.Option<(List<UInt8> * Bool)> =
+let __globBracket(bytes: List<UInt8>, c: UInt8): Option.Option<(List<UInt8> * Bool)> =
   let inverted =
     match bytes with
     | [first, ...] -> first == 33u8 || first == 94u8
@@ -802,11 +779,7 @@ let __globBracket(
   | Some((after, matched, valid)) ->
     Some((after, valid && (if inverted then Stdlib.Bool.not(matched) else matched)))
 
-let __globMatchBytes(
-  pattern: List<UInt8>,
-  text: List<UInt8>,
-  pathname: Bool)
-  : Bool =
+let __globMatchBytes(pattern: List<UInt8>, text: List<UInt8>, pathname: Bool): Bool =
   match pattern with
   | [] -> text == []
   | [42u8, ...rest] ->

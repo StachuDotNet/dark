@@ -109,10 +109,7 @@ let itemLabelIn(
   | _ -> Stdlib.String.join(paths, ", ")
 
 /// The item under every name it has on the branch.
-let itemLabel(
-  branchId: Uuid,
-  reference: LanguageTools.ProgramTypes.Reference)
-  : String =
+let itemLabel(branchId: Uuid, reference: LanguageTools.ProgramTypes.Reference): String =
   itemLabelIn(branchId, [], reference)
 
 /// Whether the item names something that resolves to nothing. At save that means "not decided
@@ -138,9 +135,7 @@ let auditVerdict(
   | Incomplete when namesNothing(item) -> LanguageTools.AtRestTypeChecker.Verdict.Failed
   | v -> v
 
-let counts(
-  items: List<LanguageTools.AtRestTypeChecker.ItemReport>)
-  : Counts =
+let counts(items: List<LanguageTools.AtRestTypeChecker.ItemReport>): Counts =
   items
   |> Stdlib.List.fold(
        Counts { checkedCount = 0, failedCount = 0, incompleteCount = 0, unresolvedCount = 0 },
@@ -155,10 +150,7 @@ let counts(
          | (Incomplete, _) -> { acc with incompleteCount = acc.incompleteCount + 1 })
 
 /// Whether <param outputFilter> lists <param item>.
-let shows(
-  outputFilter: OutputFilter,
-  item: LanguageTools.AtRestTypeChecker.ItemReport)
-  : Bool =
+let shows(outputFilter: OutputFilter, item: LanguageTools.AtRestTypeChecker.ItemReport): Bool =
   match auditVerdict(item) with
   | Checked -> outputFilter.showChecked
   | Failed -> outputFilter.showFailed
@@ -350,8 +342,5 @@ let help(_state: Cli.AppState): String =
     "--failed and --incomplete may be combined; --all is mutually exclusive." ]
   |> Stdlib.String.join("\n")
 
-let complete(
-  _state: Cli.AppState,
-  _args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(_state: Cli.AppState, _args: List<String>): List<Cli.Completion.CompletionItem> =
   []

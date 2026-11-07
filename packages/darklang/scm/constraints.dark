@@ -408,11 +408,7 @@ let pending(): Detection =
 /// machine you typed it on re-reports forever everywhere else, and differently on each of them.
 ///
 /// The fold writes the `conflicts` row, so that table is derived rather than a second source of truth.
-let ack(
-  branchId: Uuid,
-  s: Finding,
-  note: String)
-  : Stdlib.Result.Result<Unit, String> =
+let ack(branchId: Uuid, s: Finding, note: String): Stdlib.Result.Result<Unit, String> =
   // The default has to name the finding it answers. Only StaleUsage is a use of something else; for
   // the other two `dependency` IS the name itself, and "stale use of X" describes nothing that happened.
   let reason =

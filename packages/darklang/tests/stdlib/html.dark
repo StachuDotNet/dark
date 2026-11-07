@@ -8,11 +8,7 @@ let nodeToString(node: Node): String = Stdlib.Html.nodeToString(node)
 
 let stringNode(str: String): Node = Stdlib.Html.stringNode(str)
 
-let htmlTag(
-  n: String,
-  a: List<String * Stdlib.Option.Option<String>>,
-  c: List<Node>)
-  : Node =
+let htmlTag(n: String, a: List<String * Stdlib.Option.Option<String>>, c: List<Node>): Node =
   Stdlib.Html.htmlTagNode(n, a, c)
 
 

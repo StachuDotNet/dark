@@ -113,11 +113,7 @@ let footBar(f: Frame, width: Int64): String =
 
 /// Draw the frame with `body` filling what's left. `body` runs during this call and is never retained, so
 /// passing a lambda here is fine.
-let view(
-  f: Frame,
-  size: Tui.Size,
-  body: Layout.Region -> List<Layout.Span>)
-  : Tui.View =
+let view(f: Frame, size: Tui.Size, body: Layout.Region -> List<Layout.Span>): Tui.View =
   let width = Stdlib.max(1, size.width)
   let height = Stdlib.max(1, size.height)
   let screen = Layout.Region { top = 1, left = 1, rows = height, cols = width }

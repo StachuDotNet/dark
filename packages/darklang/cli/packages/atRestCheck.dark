@@ -4,10 +4,7 @@ module Darklang.Cli.Packages.AtRestCheck
 let checkBranch(branchId: Uuid): LanguageTools.AtRestTypeChecker.Report =
   LanguageTools.AtRestTypeChecker.checkBranch(branchId)
 
-let checkModule(
-  branchId: Uuid,
-  modules: List<String>)
-  : LanguageTools.AtRestTypeChecker.Report =
+let checkModule(branchId: Uuid, modules: List<String>): LanguageTools.AtRestTypeChecker.Report =
   LanguageTools.AtRestTypeChecker.checkModule(branchId, modules)
 
 /// The name behind a hash in a diagnostic. Types and traits both appear in them -- "no
@@ -28,18 +25,12 @@ let customTypeName(
   | Some(name) -> Stdlib.Option.Option.Some(name)
   | None -> nameAt(LanguageTools.PackageManager.Trait.locations(branchId, hash))
 
-let staticType(
-  branchId: Uuid,
-  typ: LanguageTools.AtRestTypeChecker.StaticType)
-  : String =
+let staticType(branchId: Uuid, typ: LanguageTools.AtRestTypeChecker.StaticType): String =
   LanguageTools.AtRestTypeChecker.staticTypeToStringWith(
     (fun hash -> customTypeName(branchId, hash)),
     typ)
 
-let issueLine(
-  branchId: Uuid,
-  issue: LanguageTools.AtRestTypeChecker.Issue)
-  : String =
+let issueLine(branchId: Uuid, issue: LanguageTools.AtRestTypeChecker.Issue): String =
   let code = LanguageTools.AtRestTypeChecker.issueCodeToString(issue.code)
   let message =
     LanguageTools.AtRestTypeChecker.issueToStringWith(
@@ -78,10 +69,7 @@ let deduplicate(
         Stdlib.Bool.not(sameOrMirrored(issue, other)))
     Stdlib.List.prepend(deduplicate(remaining), issue)
 
-let issueLines(
-  branchId: Uuid,
-  issues: List<LanguageTools.AtRestTypeChecker.Issue>)
-  : List<String> =
+let issueLines(branchId: Uuid, issues: List<LanguageTools.AtRestTypeChecker.Issue>): List<String> =
   issues
   |> deduplicate
   |> Stdlib.List.map(fun issue -> issueLine(branchId, issue))
@@ -91,9 +79,7 @@ let issueLines(
     if count == 1 then line
     else line + " (" + Stdlib.toString(count) + " occurrences)")
 
-let summary(
-  report: LanguageTools.AtRestTypeChecker.Report)
-  : Stdlib.Option.Option<String> =
+let summary(report: LanguageTools.AtRestTypeChecker.Report): Stdlib.Option.Option<String> =
   match report.verdict with
   | Checked -> Stdlib.Option.Option.None
   | Failed -> Stdlib.Option.Option.Some("static type errors detected")
@@ -101,10 +87,7 @@ let summary(
 
 /// Report a saved WIP batch. Findings do not stop the save; `commit` enforces
 /// definite errors.
-let printSaveReport(
-  branchId: Uuid,
-  report: LanguageTools.AtRestTypeChecker.Report)
-  : Unit =
+let printSaveReport(branchId: Uuid, report: LanguageTools.AtRestTypeChecker.Report): Unit =
   match report.verdict with
   | Checked -> ()
   | Failed ->

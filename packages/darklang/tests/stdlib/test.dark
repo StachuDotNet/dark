@@ -3,10 +3,7 @@ module Darklang.Stdlib.Test.Tests
 
 // Compare results with plain `==` so a broken Stdlib.Test.equal cannot pass
 // its own tests.
-let is(
-  actual: Stdlib.Test.Result,
-  expected: Stdlib.Test.Result)
-  : Stdlib.Test.Result =
+let is(actual: Stdlib.Test.Result, expected: Stdlib.Test.Result): Stdlib.Test.Result =
   if actual == expected then
     Stdlib.Test.Result.Pass
   else

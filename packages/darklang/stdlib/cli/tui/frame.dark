@@ -51,10 +51,7 @@ let __changedRowsFrom(
 ///
 /// Comparing through the longer view ensures rows removed from the next view
 /// are returned with empty content and erased from the terminal.
-let changedRows(
-  previousRows: List<String>,
-  nextRows: List<String>)
-  : List<RowChange> =
+let changedRows(previousRows: List<String>, nextRows: List<String>): List<RowChange> =
   __changedRowsFrom(0, previousRows, nextRows, [])
 
 
@@ -92,10 +89,7 @@ let __fullRedrawRowsFrom(
 ///
 /// This is used after resize: every retained row is repainted, while content
 /// outside a now-shorter logical view is explicitly erased.
-let fullRedrawRows(
-  previousRows: List<String>,
-  nextRows: List<String>)
-  : List<RowChange> =
+let fullRedrawRows(previousRows: List<String>, nextRows: List<String>): List<RowChange> =
   __fullRedrawRowsFrom(0, previousRows, nextRows, [])
 
 
@@ -107,10 +101,7 @@ let fullRedrawRows(
 /// style reset precedes the erase so blank cells never inherit styling, and a
 /// final reset contains any style left open by the logical row. Returning to
 /// column one cancels deferred wrap before the next terminal update.
-let renderRowChangeAtWidth(
-  width: Int64,
-  change: RowChange)
-  : String =
+let renderRowChangeAtWidth(width: Int64, change: RowChange): String =
   let terminalRow = Stdlib.toString(change.row + 1)
   let content = Text.normalizeToWidth(change.content, width)
   $"\u001b[{terminalRow};1H\u001b[0m\u001b[K{content}\u001b[0m\r"
@@ -130,11 +121,7 @@ let renderCursor(cursor: Tui.Cursor): String =
 ///
 /// The caller writes this returned string once. Terminal session modes are
 /// deliberately excluded: the terminal session owns those effects.
-let renderAtWidth(
-  width: Int64,
-  previous: Stdlib.Option.Option<Tui.View>,
-  next: Tui.View)
-  : String =
+let renderAtWidth(width: Int64, previous: Stdlib.Option.Option<Tui.View>, next: Tui.View): String =
   let previousRows =
     match previous with
     | None -> []

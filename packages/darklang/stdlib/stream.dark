@@ -8,10 +8,7 @@ let fromList(items: List<'a>): Stream<'a> = Builtin.streamFromList<'a>(items)
 /// Builds a Stream by repeatedly applying <param step> to <param seed>.
 /// Each call returns either {{Some (element, nextSeed)}} to yield an
 /// element and continue, or {{None}} to terminate.
-let unfold(
-  seed: 's,
-  step: 's -> Stdlib.Option.Option<('a * 's)>)
-  : Stream<'a> =
+let unfold(seed: 's, step: 's -> Stdlib.Option.Option<('a * 's)>): Stream<'a> =
   Builtin.streamUnfold<'s, 'a>(seed, step)
 
 

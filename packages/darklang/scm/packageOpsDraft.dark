@@ -251,9 +251,7 @@ let typeCheckOps(
   | live -> LanguageTools.AtRestTypeChecker.checkPackageOps(live)
 
 
-let typeCheckDraft(
-  branchId: Uuid)
-  : LanguageTools.AtRestTypeChecker.Report =
+let typeCheckDraft(branchId: Uuid): LanguageTools.AtRestTypeChecker.Report =
   typeCheckOps(draftEntriesFor(branchId) |> Stdlib.List.map(fun e -> e.op))
 
 
@@ -271,10 +269,7 @@ type DraftEntry =
 
 
 /// Drop <param what> from <param branchId>'s draft. Returns how many ops went.
-let discardOn(
-  branchId: Uuid,
-  what: SCM.Actions.DiscardWhat)
-  : Stdlib.Result.Result<Int64, String> =
+let discardOn(branchId: Uuid, what: SCM.Actions.DiscardWhat): Stdlib.Result.Result<Int64, String> =
   match SCM.Actions.discard(branchId, what) with
   | Ok(n) -> Stdlib.Result.Result.Ok(n)
   | Error(Refused(Moved)) ->

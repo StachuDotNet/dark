@@ -5,7 +5,8 @@ module Darklang.LanguageTools.RuntimeTypes
 type Option<'a> = Stdlib.Option.Option<'a>
 // </aliases>
 
-type Hash = | Hash(String)
+type Hash =
+  | Hash(String)
 
 let hashToString(hash: Hash): String =
   match hash with

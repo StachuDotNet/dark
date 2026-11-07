@@ -96,11 +96,7 @@ let withValues(valueFlags: List<String>, accepts: Accepts): Accepts =
 
 /// <param accepts> with these flags accepted everywhere in it, every subcommand included: for a
 /// command that reads a flag like `--json` wherever it appears.
-let everywhere(
-  flags: List<String>,
-  valueFlags: List<String>,
-  accepts: Accepts)
-  : Accepts =
+let everywhere(flags: List<String>, valueFlags: List<String>, accepts: Accepts): Accepts =
   let add(s: Shape): Shape =
     { s with
         flags = Stdlib.List.concat(s.flags, flags)
@@ -124,11 +120,7 @@ let everywhere(
 /// a start reaches is a fetch from the store, about 30 KB each: as a chain of four (check, checkShape,
 /// countRefusal, isFlagUnder) it cost three more fetches per start for being four functions. Don't
 /// split it back into helpers; the allocation gate will notice.
-let check(
-  name: String,
-  accepts: Accepts,
-  args: List<String>)
-  : Stdlib.Option.Option<String> =
+let check(name: String, accepts: Accepts, args: List<String>): Stdlib.Option.Option<String> =
   // A lone "-" is a word: it is how `fn` and `module` say "read standard input".
   let isFlag(s: Shape, a: String): Bool =
     (Stdlib.Bool.not(s.wordsAreNotFlags)) && (Stdlib.String.startsWith(a, "-")) && (a != "-")

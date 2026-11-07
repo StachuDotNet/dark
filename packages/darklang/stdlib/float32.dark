@@ -10,7 +10,8 @@ module Darklang.Stdlib.Float32
 // That holds for + - * / and sqrt; `**` is only as good as Float's own power.
 
 
-type ParseError = | BadFormat
+type ParseError =
+  | BadFormat
 
 
 /// Round <param a> to the nearest <type Float32>, ties to even. A value too large

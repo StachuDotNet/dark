@@ -40,10 +40,7 @@ let resolveNamesIn(
     Stdlib.Dict.set(acc, h, displayName))
 
 /// A displayable name for an item, from a dict `resolveNamesIn` built, falling back to the hash.
-let getName(
-  namesDict: Dict<String, String>,
-  hash: LanguageTools.ProgramTypes.Hash)
-  : String =
+let getName(namesDict: Dict<String, String>, hash: LanguageTools.ProgramTypes.Hash): String =
   let h = Darklang.LanguageTools.ProgramTypes.hashToString(hash)
 
   match Stdlib.Dict.get(namesDict, h) with

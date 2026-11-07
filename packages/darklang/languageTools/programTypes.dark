@@ -437,7 +437,8 @@ let parsePackageLocation(nameToParse: String): PackageLocation =
 type BranchID = Uuid
 
 /// Content-addressed hash for package items (hex-encoded SHA-256)
-type Hash = | Hash(String)
+type Hash =
+  | Hash(String)
 
 let hashToString(hash: Hash): String =
   match hash with

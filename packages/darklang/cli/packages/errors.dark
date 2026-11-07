@@ -19,9 +19,7 @@ let sourceNameWithoutInternalPrefix(originalName: List<String>): String =
   Stdlib.String.join(sourceParts, ".")
 
 
-let splitLast(
-  parts: List<String>)
-  : Stdlib.Option.Option<(List<String> * String)> =
+let splitLast(parts: List<String>): Stdlib.Option.Option<(List<String> * String)> =
   match Stdlib.List.reverse(parts) with
   | [] -> Stdlib.Option.Option.None
   | [name, ...reversedModules] ->
@@ -85,10 +83,7 @@ let stdlibSuggestionCandidates(
 
 /// Suggest the standard-library name an unresolved name probably meant, when an item exists there:
 /// the first of <fn stdlibSuggestionCandidates> that is on the branch.
-let stdlibSuggestion(
-  branchId: Uuid,
-  originalName: List<String>)
-  : Stdlib.Option.Option<String> =
+let stdlibSuggestion(branchId: Uuid, originalName: List<String>): Stdlib.Option.Option<String> =
   stdlibSuggestionCandidates(originalName)
   |> Stdlib.List.findFirst(fun((_, location)) ->
     Stdlib.Option.isSome(LanguageTools.PackageManager.findAny(branchId, location)))
@@ -96,9 +91,7 @@ let stdlibSuggestion(
 
 
 /// Prints the first parse diagnostic. Returns true when parsing failed.
-let reportParseErrors(
-  diagnostics: List<(LanguageTools.Parser.Range * String)>)
-  : Bool =
+let reportParseErrors(diagnostics: List<(LanguageTools.Parser.Range * String)>): Bool =
   match diagnostics with
   | [] -> false
   | [(range, message), ...] ->

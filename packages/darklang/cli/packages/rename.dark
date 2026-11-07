@@ -131,10 +131,7 @@ let help(_state: Cli.AppState): String =
   |> Stdlib.String.join("\n")
 
 
-let complete(
-  state: Cli.AppState,
-  args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(state: Cli.AppState, args: List<String>): List<Completion.CompletionItem> =
   match args with
   | [] -> Packages.Nav.complete(state, args)
   | [ _ ] -> Packages.Nav.complete(state, args)

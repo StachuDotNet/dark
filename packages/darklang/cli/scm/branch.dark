@@ -238,11 +238,7 @@ let executeRename(state: AppState, branchRef: String, newName: String): AppState
 ///
 /// A branch with nothing unmerged has nothing to lose, so that case goes straight through -- the whole
 /// point of the question is the work, and there is none.
-let executeArchive(
-  state: AppState,
-  branchRef: String,
-  autoConfirm: Bool)
-  : AppState =
+let executeArchive(state: AppState, branchRef: String, autoConfirm: Bool): AppState =
   match resolveRef(branchRef) with
   | None -> Cli.exitWith(state, false)
   // A child resolves names through its parent chain, so archiving a parent takes the parent's work
@@ -458,10 +454,7 @@ let executeSwitchCmd(state: AppState, args: List<String>): AppState =
 /// One `complete` is shared by branch/switch/merge/rebase/branches/resolve, so it can't tell which
 /// word was typed. Branch names are the right answer for nearly all of them, so offer those plus the
 /// subcommands and let the prefix filter sort it out.
-let complete(
-  state: AppState,
-  args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(state: AppState, args: List<String>): List<Completion.CompletionItem> =
   let branchTakingSubcommands =
     [ "switch"
       "archive"
@@ -479,10 +472,7 @@ let complete(
     |> Stdlib.List.map(fun b -> b.name)
     |> Stdlib.List.filter(fun n -> n != "")
 
-  let matching(
-    options: List<String>,
-    partial: String)
-    : List<Completion.CompletionItem> =
+  let matching(options: List<String>, partial: String): List<Completion.CompletionItem> =
     options
     |> Stdlib.List.filter(fun o -> Stdlib.String.startsWith(o, partial))
     |> Stdlib.List.map(Completion.simple)

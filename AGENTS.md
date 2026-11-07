@@ -1398,15 +1398,31 @@ to contradict it later. When a command's output decides whether to act, read all
 ## Style
 
 `///` for doc comments on types, DU cases and fns, in both F# and Dark. `//` for inline
-notes. 85 columns, for both languages.
+notes. F# is 85 columns; Dark code is 100.
 
 `scripts/formatting/format` holds the F# side to it. **It is a pre-merge step, not a
 per-commit one.** Run it once when the branch is being readied to merge; do not run it
 between intermediate commits, and do not hand-apply what it would have done. Checking
 formatting on every commit while more work is coming costs a cycle each time and changes
-nothing a reviewer sees. It reports `.dark` as `ignored`, so Dark is on you. Aim for 85
-there anyway. Some existing Dark files
-don't: `scm/packageOps.dark` is written wider, and is not worth reflowing just to close the gap.
+nothing a reviewer sees. It reports `.dark` as `ignored`, so Dark is on you:
+
+- A fn header that fits in 100 columns goes on one line. Only a longer one breaks, one
+  parameter per line.
+
+      let divide(a: BigInt, b: BigInt): Stdlib.Result.Result<BigInt, Stdlib.Math.DivisionError> =
+
+- An `if` goes on one line only when it is short (about 80 columns) and neither branch is
+  another `if`: `if b == 0z then Error(e) else Ok(a / b)`. Otherwise `if cond then`, its
+  body, `else`, its body, each on its own line. Don't squash a longer one to save lines.
+- Enum cases go on the lines after `type X =`, one per line, even when there is only one.
+
+      type DivisionError =
+        | DivisionByZero
+
+- Blank lines between items: match the file you're in.
+
+`dark view --raw` and `dark edit` print a fn at these widths whatever the terminal is, so
+what they show is a fair model; the neighbouring code is not always one.
 
 ## Measuring text, and what may go native
 

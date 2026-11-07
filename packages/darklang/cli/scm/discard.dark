@@ -139,8 +139,5 @@ let execute(state: AppState, args: List<String>): AppState =
     Cli.printErr($"couldn't discard: {e}")
     Cli.exitWith(state, false)
 
-let complete(
-  _state: AppState,
-  _args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
   []

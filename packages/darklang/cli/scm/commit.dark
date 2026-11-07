@@ -84,9 +84,7 @@ let parseArgs(args: List<String>): Args =
       allowUnresolved = Stdlib.List.contains(args, "--allow-unresolved")
       allowTypeErrors = Stdlib.List.contains(args, "--allow-type-errors") }
 
-let itemKindOf(
-  itemType: String)
-  : LanguageTools.ProgramTypes.ItemKind =
+let itemKindOf(itemType: String): LanguageTools.ProgramTypes.ItemKind =
   match itemType with
   | "type" -> LanguageTools.ProgramTypes.ItemKind.Type
   | "value" -> LanguageTools.ProgramTypes.ItemKind.Value
@@ -95,9 +93,7 @@ let itemKindOf(
   | "test" -> LanguageTools.ProgramTypes.ItemKind.Test
   | _ -> LanguageTools.ProgramTypes.ItemKind.Fn
 
-let locationOf(
-  b: SCM.Conflicts.Binding)
-  : LanguageTools.ProgramTypes.PackageLocation =
+let locationOf(b: SCM.Conflicts.Binding): LanguageTools.ProgramTypes.PackageLocation =
   let modules = if b.modules == "" then [] else Stdlib.String.split(b.modules, ".")
 
   LanguageTools.ProgramTypes.PackageLocation
@@ -716,8 +712,5 @@ let help(_state: AppState): String =
     "`dark status` is the one-line version of the same thing." ]
   |> Stdlib.String.join("\n")
 
-let complete(
-  _state: AppState,
-  _args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
   []

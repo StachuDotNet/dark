@@ -3,22 +3,16 @@ module Darklang.Stdlib.Url.Tests
 // Most checks look at one part through Result.map, so a failure says which part
 // moved rather than dumping two whole records.
 
-let hostOf(
-  s: String)
-  : Stdlib.Result.Result<Stdlib.Option.Option<String>, Stdlib.Url.ParseError> =
+let hostOf(s: String): Stdlib.Result.Result<Stdlib.Option.Option<String>, Stdlib.Url.ParseError> =
   Stdlib.Url.parse(s) |> Stdlib.Result.map(fun u -> u.host)
 
-let portOf(
-  s: String)
-  : Stdlib.Result.Result<Stdlib.Option.Option<Int64>, Stdlib.Url.ParseError> =
+let portOf(s: String): Stdlib.Result.Result<Stdlib.Option.Option<Int64>, Stdlib.Url.ParseError> =
   Stdlib.Url.parse(s) |> Stdlib.Result.map(fun u -> u.port)
 
 let pathOf(s: String): Stdlib.Result.Result<String, Stdlib.Url.ParseError> =
   Stdlib.Url.parse(s) |> Stdlib.Result.map(fun u -> u.path)
 
-let qp(
-  s: String)
-  : Stdlib.Result.Result<List<(String * String)>, Stdlib.Url.ParseError> =
+let qp(s: String): Stdlib.Result.Result<List<(String * String)>, Stdlib.Url.ParseError> =
   Stdlib.Url.parse(s) |> Stdlib.Result.map(fun u -> Stdlib.Url.queryParams(u))
 
 let roundTrip(s: String): Stdlib.Result.Result<String, Stdlib.Url.ParseError> =

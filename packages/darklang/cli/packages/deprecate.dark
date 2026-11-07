@@ -544,10 +544,7 @@ let help(_state: Cli.AppState): String =
   |> Stdlib.String.join("\n")
 
 
-let complete(
-  _state: Cli.AppState,
-  args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(_state: Cli.AppState, args: List<String>): List<Cli.Completion.CompletionItem> =
   match args with
   | [] ->
     ["fn", "type", "value", "trait", "impl", "test"] |> Stdlib.List.map(Cli.Completion.simple)

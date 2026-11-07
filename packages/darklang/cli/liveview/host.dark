@@ -554,10 +554,7 @@ let prepareWith(
 
 /// A session at the view's `init`, rendered once, with no terminal yet. Follows the code, since
 /// what drives this is a test of following it.
-let prepare(
-  branchId: Uuid,
-  view: Model.View)
-  : Stdlib.Result.Result<Session<'model, 'msg>, String> =
+let prepare(branchId: Uuid, view: Model.View): Stdlib.Result.Result<Session<'model, 'msg>, String> =
   prepareWith(branchId, view, Stdlib.Option.Option.None, true)
 
 /// `prepareWith`, on screen. `Error` also when there is no terminal to take.

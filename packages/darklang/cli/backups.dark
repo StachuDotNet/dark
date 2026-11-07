@@ -169,10 +169,7 @@ let help(_state: AppState): String =
   |> Stdlib.String.join("\n")
 
 
-let complete(
-  _state: AppState,
-  args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(_state: AppState, args: List<String>): List<Completion.CompletionItem> =
   match args with
   | [] -> [ "list", "now", "prune", "restore" ] |> Stdlib.List.map(Completion.simple)
   | _ -> []

@@ -154,10 +154,7 @@ let getPath(req: Http.Request): String =
 
 /// Route a request through a list of handlers
 /// Returns the response from the first matching handler, or 404
-let routeRequest(
-  handlers: List<Handler>,
-  req: Http.Request)
-  : Http.Response =
+let routeRequest(handlers: List<Handler>, req: Http.Request): Http.Response =
   let method = getMethod(req)
   let path = getPath(req)
 

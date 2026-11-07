@@ -48,10 +48,7 @@ let resolveTrait(
       | Error(_) -> Stdlib.Result.Result.Error(msg)
 
 /// The name of the implementation, or its short hash when nothing binds it.
-let sourceNameOf(
-  branchId: Uuid,
-  source: LanguageTools.ProgramTypes.Hash)
-  : String =
+let sourceNameOf(branchId: Uuid, source: LanguageTools.ProgramTypes.Hash): String =
   match LanguageTools.PackageManager.TraitImpl.locations(branchId, source) with
   | [loc, ...] -> PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(loc)
   | [] -> LanguageTools.ProgramTypes.hashToShort(source)
@@ -219,10 +216,7 @@ let help(_state: Cli.AppState): String =
 
 
 /// The traits in the current module, then the stdlib's, which is where a bare name resolves.
-let complete(
-  state: Cli.AppState,
-  args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(state: Cli.AppState, args: List<String>): List<Cli.Completion.CompletionItem> =
   match args with
   | []
   | [ _ ] ->

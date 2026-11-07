@@ -227,9 +227,7 @@ val walkAtMost = 2000
 /// Reverse edges from `package_dependencies`, matched by NAME (`SCM.Deps.dependentsFor`), so a caller
 /// still pointing at the previous version of the name is found, which is exactly the caller a live host
 /// is.
-let dependents(
-  touched: List<Touched>)
-  : List<LanguageTools.ProgramTypes.PackageLocation> =
+let dependents(touched: List<Touched>): List<LanguageTools.ProgramTypes.PackageLocation> =
   let step(
     frontier: List<Touched>,
     seen: List<LanguageTools.ProgramTypes.PackageLocation>)
@@ -418,9 +416,7 @@ let applicableByName(branchId: Uuid, name: String): Stdlib.Result.Result<'a -> '
 
 /// A dotted name as a location: `Owner.Module.fn` -> `{ owner, modules, name }`. `None` for a name
 /// with fewer than two segments, which cannot be a package fn.
-let locationOfName(
-  name: String)
-  : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
+let locationOfName(name: String): Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
   let parts = Stdlib.String.split(name, ".")
 
   match Stdlib.List.reverse(parts) with

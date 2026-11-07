@@ -279,10 +279,7 @@ let hostAndPort(
 /// none (the scheme's default for a named host, any for `*`); a path prefix
 /// or none (any); a query or none (any). Every rendered rule parses back to
 /// itself. Malformed URLs are rejected rather than widened.
-let httpRule(
-  method: String,
-  url: String)
-  : Stdlib.Option.Option<Permissions.Rule> =
+let httpRule(method: String, url: String): Stdlib.Option.Option<Permissions.Rule> =
   let method = Permissions.scope(Stdlib.String.toUppercase(method))
   if url == "*" then
     Stdlib.Option.Option.Some(
@@ -337,9 +334,7 @@ let httpRule(
 
 /// Parse one CLI rule. This only constructs the typed Policy value; runtime
 /// authorization remains in `Permissions.Policy`.
-let parseRule(
-  args: List<String>)
-  : Stdlib.Option.Option<List<Permissions.Rule>> =
+let parseRule(args: List<String>): Stdlib.Option.Option<List<Permissions.Rule>> =
   match args with
   | [ "all" ] -> Stdlib.Option.Option.Some([ Permissions.Rule.All ])
   | [ "http", method ] ->
@@ -383,11 +378,7 @@ let parseRule(
 /// spaces and metacharacters remain one token and a displayed
 /// `permissions allow ...` command is safe to paste into a shell.
 let tokens(text: String): Stdlib.Option.Option<List<String>> =
-  let finish(
-    current: List<Char>,
-    soFar: List<String>,
-    active: Bool)
-    : List<String> =
+  let finish(current: List<Char>, soFar: List<String>, active: Bool): List<String> =
     if active then
       Stdlib.List.prepend(
         soFar,
@@ -454,9 +445,7 @@ let parseRuleText(text: String): Stdlib.Option.Option<List<Permissions.Rule>> =
 
 /// Parse a whole policy from rule texts; `deny <rule>` goes to the deny list.
 /// Error carries the first spec that did not parse.
-let parse(
-  specs: List<String>)
-  : Stdlib.Result.Result<Permissions.Policy, String> =
+let parse(specs: List<String>): Stdlib.Result.Result<Permissions.Policy, String> =
   Stdlib.List.fold(
     specs,
     Stdlib.Result.Result.Ok(Permissions.empty()),

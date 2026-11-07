@@ -19,10 +19,7 @@ test workbenchHistoryRoundTrip =
   let parent = (wbKey(entered, Stdlib.Cli.Stdin.Key.Key.Escape)).state
   let lens = (wbChar(tree, "L")).state
   let beforeLens = (wbKey(lens, Stdlib.Cli.Stdin.Key.Key.Escape)).state
-  let sameReturnPoint(
-    a: Darklang.Cli.Workbench.State,
-    b: Darklang.Cli.Workbench.State)
-    : Bool =
+  let sameReturnPoint(a: Darklang.Cli.Workbench.State, b: Darklang.Cli.Workbench.State): Bool =
     Darklang.Cli.Workbench.returnPointOf(a) == Darklang.Cli.Workbench.returnPointOf(b)
   if (Stdlib.List.length(jumped.back) == 1)
      && (sameReturnPoint(returned, base))

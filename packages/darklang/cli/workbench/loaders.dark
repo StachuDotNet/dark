@@ -23,20 +23,13 @@ let loadItems(branchId: Uuid, location: Packages.PackageLocation): List<BodyItem
 /// type's shape, a value's literal - so the Inspect pane's preview of a
 /// module reads as a table of contents. Not for the list: there a signature
 /// clipped to a prefix that told no two rows apart.
-let moduleContents(
-  branchId: Uuid,
-  location: Packages.PackageLocation)
-  : List<BodyItem> =
+let moduleContents(branchId: Uuid, location: Packages.PackageLocation): List<BodyItem> =
   moduleRows(branchId, location, true)
 
 /// A module's rows in display order. `describe` fills the description
 /// column, which pretty-prints every signature and literal, so the list,
 /// which reloads on every move, leaves it off.
-let moduleRows(
-  branchId: Uuid,
-  location: Packages.PackageLocation,
-  describe: Bool)
-  : List<BodyItem> =
+let moduleRows(branchId: Uuid, location: Packages.PackageLocation, describe: Bool): List<BodyItem> =
   let modulePath = Packages.modulePathOf(location)
   let results = Packages.Query.withoutInternal(Packages.Query.allDirectDescendants(branchId, modulePath))
   let subs = Packages.Query.getDirectSubmodules(results, Stdlib.List.length(modulePath))

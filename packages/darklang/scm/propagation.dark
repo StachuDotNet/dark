@@ -87,9 +87,7 @@ let forkBaseOf(
 
 /// Body versions for history displays and live values, including propagated versions.
 /// Undo uses PackageOps.previousRevision so it can also distinguish reference-only edits.
-let authoringOrder(
-  loc: LanguageTools.ProgramTypes.PackageLocation)
-  : List<String> =
+let authoringOrder(loc: LanguageTools.ProgramTypes.PackageLocation): List<String> =
   let fromMain =
     // main-scoped: main's half of the sequence, cut at the fork below when on a branch.
     SCM.Bindings.query(
@@ -149,12 +147,7 @@ let everBoundHashes(
 
 
 /// The key <fn everBoundHashesFor> answers under.
-let everBoundKey(
-  owner: String,
-  modules: String,
-  name: String,
-  itemType: String)
-  : String =
+let everBoundKey(owner: String, modules: String, name: String, itemType: String): String =
   $"{SCM.Conflicts.bindingKey(owner, modules, name)}/{itemType}"
 
 

@@ -10,10 +10,7 @@ type Result<'Ok, 'Err> =
 /// The lambda <param fn> is applied to <var value> and the result is wrapped in
 /// {{Ok}}. If <param result> is {{Error <var msg>}}, returns <param result>
 /// unchanged.
-let map(
-  result: Stdlib.Result.Result<'t, 'e>,
-  fn: 't -> 'u)
-  : Stdlib.Result.Result<'u, 'e> =
+let map(result: Stdlib.Result.Result<'t, 'e>, fn: 't -> 'u): Stdlib.Result.Result<'u, 'e> =
   match result with
   | Ok(value) -> Stdlib.Result.Result.Ok(fn(value))
   | Error(msg) -> Stdlib.Result.Result.Error(msg)
@@ -103,11 +100,7 @@ let map5(
 
 /// Applies the function <param fn> to the value inside the {{Ok <var value>}} variant of <param result>
 /// if it exists. If <param result> is an {{Error _}}, returns the provided <param default_>.
-let mapWithDefault(
-  result: Stdlib.Result.Result<'t, 'e>,
-  default_: 'u,
-  fn: 't -> 'u)
-  : 'u =
+let mapWithDefault(result: Stdlib.Result.Result<'t, 'e>, default_: 'u, fn: 't -> 'u): 'u =
   match result with
   | Ok(value) -> fn(value)
   | Error(_) -> default_
@@ -117,10 +110,7 @@ let mapWithDefault(
 /// The lambda <param fn> is applied to <var msg> and the result is wrapped in
 /// {{Error}}. If <param result> is {{Ok <var value>}}, returns <param result>
 /// unchanged.
-let mapError(
-  result: Stdlib.Result.Result<'t, 'e>,
-  fn: 'e -> 'u)
-  : Stdlib.Result.Result<'t, 'u> =
+let mapError(result: Stdlib.Result.Result<'t, 'e>, fn: 'e -> 'u): Stdlib.Result.Result<'t, 'u> =
   match result with
   | Ok(value) -> Stdlib.Result.Result.Ok(value)
   | Error(value) -> Stdlib.Result.Result.Error(fn(value))
@@ -148,19 +138,14 @@ let withDefault(result: Stdlib.Result.Result<'t, 'e>, default_: 't): 't =
 
 
 /// Turn an option into a result, using <param error> as the error message for Error. Specifically, if <param option> is {{Some <var value>}}, returns {{Ok <var value>}}. Returns {{Error <var error>}} otherwise.
-let fromOption(
-  option: Stdlib.Option.Option<'t>,
-  error: 'e)
-  : Stdlib.Result.Result<'t, 'e> =
+let fromOption(option: Stdlib.Option.Option<'t>, error: 'e): Stdlib.Result.Result<'t, 'e> =
   match option with
   | Some(value) -> Stdlib.Result.Result.Ok(value)
   | None -> Stdlib.Result.Result.Error(error)
 
 
 /// Turn a <type Result> into an <type Option>
-let toOption(
-  result: Stdlib.Result.Result<'t, 'e>)
-  : Stdlib.Option.Option<'t> =
+let toOption(result: Stdlib.Result.Result<'t, 'e>): Stdlib.Option.Option<'t> =
   match result with
   | Ok(value) -> Stdlib.Option.Option.Some(value)
   | Error(_) -> Stdlib.Option.Option.None
@@ -169,9 +154,7 @@ let toOption(
 /// Collect a list of results into a single result. If any of the results
 /// are an error, return the first error. Otherwise, return a list of all
 /// the Ok values.
-let collect(
-  results: List<Stdlib.Result.Result<'t, 'e>>)
-  : Stdlib.Result.Result<List<'t>, 'e> =
+let collect(results: List<Stdlib.Result.Result<'t, 'e>>): Stdlib.Result.Result<List<'t>, 'e> =
   // Built back to front with `prepend` and reversed once. `append` copies the accumulator, so this
   // was quadratic in the list length: collecting 1,000 results did ~500,000 element copies.
   let folded =
@@ -241,9 +224,7 @@ let join(
 /// Combines a list of results into a single list of unwrapped values.
 /// If all of the results are {{Ok <var value>}}, returns {{Ok <list of unwrapped values>}}.
 /// If any of the results are {{Error <var msg>}}, returns {{Error <var msg>}}.
-let combine(
-  results: List<Stdlib.Result.Result<'t, 'e>>)
-  : Stdlib.Result.Result<List<'t>, 'e> =
+let combine(results: List<Stdlib.Result.Result<'t, 'e>>): Stdlib.Result.Result<List<'t>, 'e> =
   // Built back to front and reversed once, as `Option.combine` is: `append` copies the
   // accumulator every element, so this was quadratic in the list length.
   let folded =
@@ -259,9 +240,7 @@ let combine(
 
 
 /// Returns a list of all the values that are {{Ok <var value>}}, and ignores any values that are {{Error <var msg>}}.
-let values(
-  results: List<Stdlib.Result.Result<'t, 'e>>)
-  : Stdlib.Result.Result<List<'t>, 'e> =
+let values(results: List<Stdlib.Result.Result<'t, 'e>>): Stdlib.Result.Result<List<'t>, 'e> =
   let folded =
     results
     |> Stdlib.List.fold(Stdlib.Result.Result.Ok([]), fun(acc, result) ->

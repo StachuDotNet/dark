@@ -52,9 +52,7 @@ module CallStack =
     Darklang.LanguageTools.RuntimeTypes.ExecutionPoint.Function(Darklang.LanguageTools.RuntimeTypes.FQFnName.FQFnName.Builtin(Darklang.LanguageTools.RuntimeTypes.FQFnName.Builtin
           { name = "bigIntDivide", version = 0s32 }))
 
-  let render(
-    frames: List<Darklang.LanguageTools.RuntimeTypes.ExecutionPoint>)
-    : String =
+  let render(frames: List<Darklang.LanguageTools.RuntimeTypes.ExecutionPoint>): String =
     Darklang.PrettyPrinter.RuntimeTypes.callStack(
       Darklang.SCM.Branch.mainBranchId, frames)
 

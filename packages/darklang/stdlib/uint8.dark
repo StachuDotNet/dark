@@ -171,27 +171,18 @@ impl One for UInt8 =
 // {{Error Overflow}} instead, going below 0 included.
 
 /// Adds <param a> and <param b>, or {{Error Overflow}} where `+` would wrap
-let checkedAdd(
-  a: UInt8,
-  b: UInt8)
-  : Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
+let checkedAdd(a: UInt8, b: UInt8): Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
   let sum = a + b
   if sum < a then Error(Stdlib.Math.Overflow.Overflow) else Ok(sum)
 
 
 /// Subtracts <param b> from <param a>, or {{Error Overflow}} where `-` would wrap
-let checkedSubtract(
-  a: UInt8,
-  b: UInt8)
-  : Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
+let checkedSubtract(a: UInt8, b: UInt8): Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
   if b > a then Error(Stdlib.Math.Overflow.Overflow) else Ok(a - b)
 
 
 /// Multiplies <param a> by <param b>, or {{Error Overflow}} where `*` would wrap
-let checkedMultiply(
-  a: UInt8,
-  b: UInt8)
-  : Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
+let checkedMultiply(a: UInt8, b: UInt8): Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
   let product = Stdlib.BigInt.fromUInt8(a) * Stdlib.BigInt.fromUInt8(b)
   match Stdlib.BigInt.toUInt8(product) with
   | Some(fits) -> Ok(fits)
@@ -206,8 +197,7 @@ let checkedNegate(a: UInt8): Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
 
 /// The distance of <param a> from zero, which for an unsigned value is always
 /// <param a> itself. Here so every fixed-width type has the same checked set.
-let checkedAbsoluteValue(a: UInt8)
-  : Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
+let checkedAbsoluteValue(a: UInt8): Stdlib.Result.Result<UInt8, Stdlib.Math.Overflow> =
   Ok(a)
 
 

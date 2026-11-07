@@ -49,7 +49,8 @@ type Model =
     storeVersion: Int64 }
 
 
-type Msg = | Refresh
+type Msg =
+  | Refresh
 
 
 /// The function's source with the selected trace's values in it, as lines.
@@ -105,11 +106,7 @@ let annotate(
 /// Its own function because it is the part with a rule rather than a mechanism, and the rule is
 /// easy to get wrong: a new trace arrives at the TOP, so holding the INDEX would quietly move you
 /// onto a different trace while you were reading it.
-let pickCursor(
-  ids: List<String>,
-  cursor: Int64,
-  keep: Stdlib.Option.Option<String>)
-  : Int64 =
+let pickCursor(ids: List<String>, cursor: Int64, keep: Stdlib.Option.Option<String>): Int64 =
   let found =
     match keep with
     | Some(id) -> Stdlib.List.findFirstIndex(ids, fun i -> i == id)

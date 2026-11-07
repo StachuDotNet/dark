@@ -5,7 +5,10 @@ type Cols2 = { col1: Int64, col2: Int64 }
 
 // Distinct case names keep this type separate from other enums with the same shape,
 // so the runtime error has a stable type name.
-type AnEnum = | RecordTestA | RecordTestB | RecordTestC
+type AnEnum =
+  | RecordTestA
+  | RecordTestB
+  | RecordTestC
 
 test construction =
   Cols2 { col1 = 1, col2 = 3 }

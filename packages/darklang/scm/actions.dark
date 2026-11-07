@@ -161,10 +161,7 @@ let merge(action: MergeAction): Stdlib.Result.Result<Reconciled, Failure> =
   Builtin.scmMerge(action)
 
 /// Drop part of <param branchId>'s draft. Ok is how many ops went.
-let discard(
-  branchId: Uuid,
-  what: DiscardWhat)
-  : Stdlib.Result.Result<Int64, Failure> =
+let discard(branchId: Uuid, what: DiscardWhat): Stdlib.Result.Result<Int64, Failure> =
   Builtin.scmDiscard(branchId, what)
 
 let resolve(resolution: Resolution): Stdlib.Result.Result<Unit, Failure> =

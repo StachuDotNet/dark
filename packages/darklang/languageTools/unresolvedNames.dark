@@ -158,9 +158,7 @@ let inParameters(ps: List<ProgramTypes.PackageFn.Parameter>): List<String> =
   inTypeRefs(Stdlib.List.map(ps, fun p -> p.typ))
 
 
-let inTypeDeclaration(
-  d: ProgramTypes.TypeDeclaration.TypeDeclaration)
-  : List<String> =
+let inTypeDeclaration(d: ProgramTypes.TypeDeclaration.TypeDeclaration): List<String> =
   let inDefinition =
     match d.definition with
     | Alias(t) -> inTypeRef(t)
@@ -187,9 +185,7 @@ let inMethods(methods: List<ProgramTypes.Trait.Method>): List<String> =
 /// order first found, or None when it leaves nothing. Only the content-carrying ops
 /// can hold a reference: a `SetName` binds an existing hash, and the decision ops
 /// carry no expressions.
-let inOp(
-  op: ProgramTypes.PackageOp)
-  : Stdlib.Option.Option<(String * List<String>)> =
+let inOp(op: ProgramTypes.PackageOp): Stdlib.Option.Option<(String * List<String>)> =
   let found =
     match op with
     | AddFn(fn) ->

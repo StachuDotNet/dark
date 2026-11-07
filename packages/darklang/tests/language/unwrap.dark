@@ -1,9 +1,7 @@
 module Darklang.Language.Tests.Unwrap
 
 // `?` extracts Ok or returns Error from the current function.
-let next(
-  value: Stdlib.Result.Result<Int64, String>)
-  : Stdlib.Result.Result<Int64, String> =
+let next(value: Stdlib.Result.Result<Int64, String>): Stdlib.Result.Result<Int64, String> =
   let number = value?
   Ok(number + 1)
 
@@ -14,9 +12,7 @@ test resultUnwrap =
 
 // Returning Error or None must allow the function to use a different success
 // type.
-let stringify(
-  value: Stdlib.Result.Result<Int64, String>)
-  : Stdlib.Result.Result<String, String> =
+let stringify(value: Stdlib.Result.Result<Int64, String>): Stdlib.Result.Result<String, String> =
   let number = value?
   Ok(Stdlib.toString(number))
 
@@ -30,18 +26,13 @@ let fromCall(input: String): Stdlib.Result.Result<Int64, Stdlib.Int64.ParseError
 
 let bomb(): Int64 = Builtin.unwrap(Error("should not execute"))
 
-let argumentOrder(
-  first: Stdlib.Result.Result<Int64, String>)
-  : Stdlib.Result.Result<Int64, String> =
+let argumentOrder(first: Stdlib.Result.Result<Int64, String>): Stdlib.Result.Result<Int64, String> =
   Ok((+)(first?, bomb()))
 
 let listOrder(first: Stdlib.Option.Option<Int64>): Stdlib.Option.Option<List<Int64>> =
   Some([ first?, bomb() ])
 
-let inBranch(
-  choose: Bool,
-  value: Stdlib.Option.Option<Int64>)
-  : Stdlib.Option.Option<Int64> =
+let inBranch(choose: Bool, value: Stdlib.Option.Option<Int64>): Stdlib.Option.Option<Int64> =
   let number = if choose then value? else 12
   Some(number)
 
@@ -122,9 +113,7 @@ test nestedAndFields =
       fields(Some(Container { item = Some(4) })) |> Stdlib.Test.equal(Some(4)) ])
 
 // The caller uses its own `?` to return an Error received from next.
-let chain(
-  value: Stdlib.Result.Result<Int64, String>)
-  : Stdlib.Result.Result<Int64, String> =
+let chain(value: Stdlib.Result.Result<Int64, String>): Stdlib.Result.Result<Int64, String> =
   Ok((next(value))? + 1)
 
 test chained =
@@ -134,9 +123,7 @@ test chained =
 
 // Evaluate the operand once. An error skips later effects without undoing earlier ones.
 module EvaluationCounts =
-  let counted(
-    value: Stdlib.Result.Result<Int64, String>)
-    : Stdlib.Result.Result<Int64, String> =
+  let counted(value: Stdlib.Result.Result<Int64, String>): Stdlib.Result.Result<Int64, String> =
     let number = (Stdlib.Test.incrementCounter(value))?
     let _ = Stdlib.Test.incrementCounter()
     Ok(number)
@@ -176,14 +163,10 @@ test extractedFunction =
       callable(Some(fun x -> x + 1)) |> Stdlib.Test.equal(Some(5)) ])
 
 // None in the first tuple element skips the second element and returns None.
-let tupleOrder(
-  value: Stdlib.Option.Option<Int64>)
-  : Stdlib.Option.Option<(Int64 * Int64)> =
+let tupleOrder(value: Stdlib.Option.Option<Int64>): Stdlib.Option.Option<(Int64 * Int64)> =
   Some((value?, bomb()))
 
-let interpolation(
-  value: Stdlib.Option.Option<String>)
-  : Stdlib.Option.Option<String> =
+let interpolation(value: Stdlib.Option.Option<String>): Stdlib.Option.Option<String> =
   Some($"value: {value?}")
 
 test tuplesAndInterpolation =
@@ -194,10 +177,7 @@ test tuplesAndInterpolation =
 
 // Recursive calls propagate None and extract Some, including when calls are
 // cached.
-let recursive(
-  count: Int64,
-  value: Stdlib.Option.Option<Int64>)
-  : Stdlib.Option.Option<Int64> =
+let recursive(count: Int64, value: Stdlib.Option.Option<Int64>): Stdlib.Option.Option<Int64> =
   if count == 0 then
     Some(value?)
   else
@@ -220,9 +200,7 @@ test libraryCallAfterUnwrap =
 
 // This function declares an Option return but unwraps a Result.
 // If run without static checking, `?` rejects both Ok and Error at runtime.
-let wrongKind(
-  value: Stdlib.Result.Result<Int64, String>)
-  : Stdlib.Option.Option<Int64> =
+let wrongKind(value: Stdlib.Result.Result<Int64, String>): Stdlib.Option.Option<Int64> =
   Some(value?)
 
 test wrongKindOkRaises =
@@ -255,9 +233,7 @@ test listCallbacks =
         | _ -> Ok(0))
       |> Stdlib.Test.equal([ Ok(2), Error("e") ]) ])
 
-let inRecord(
-  v: Stdlib.Option.Option<Int64>)
-  : Stdlib.Option.Option<Dict<String, Int64>> =
+let inRecord(v: Stdlib.Option.Option<Int64>): Stdlib.Option.Option<Dict<String, Int64>> =
   Some(Dict { "a": v? })
 
 type R = { a: Int64, b: Int64 }
@@ -291,9 +267,7 @@ test inExpressions =
 
 // A returned Error works alongside other Results with the function's success
 // type.
-let str(
-  v: Stdlib.Result.Result<Int64, String>)
-  : Stdlib.Result.Result<String, String> =
+let str(v: Stdlib.Result.Result<Int64, String>): Stdlib.Result.Result<String, String> =
   Ok(Stdlib.toString(v?))
 
 test returnedErrorWithOtherResults =
@@ -316,9 +290,7 @@ test laterArgument =
   |> Stdlib.Test.equal((Some(3), None))
 
 // Parentheses around `v?` also allow the extracted function to be called.
-let getFn(
-  v: Stdlib.Option.Option<Int64 -> Int64>)
-  : Stdlib.Option.Option<Int64> =
+let getFn(v: Stdlib.Option.Option<Int64 -> Int64>): Stdlib.Option.Option<Int64> =
   Some((v?)(4))
 
 test parenthesizedCall =

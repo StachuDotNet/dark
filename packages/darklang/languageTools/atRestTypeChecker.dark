@@ -252,9 +252,7 @@ let emptyReport(): Report =
 ///
 /// Run the checker with error handling around the entire batch.
 /// If a checker error escapes the per-declaration handlers, return Incomplete.
-let checkPackageOps(
-  ops: List<LanguageTools.ProgramTypes.PackageOp>)
-  : Report =
+let checkPackageOps(ops: List<LanguageTools.ProgramTypes.PackageOp>): Report =
   guarded(Run.checkPackageOps, ops)
 
 /// Check package operations against the implementations bound on <param branchId>.
@@ -262,10 +260,7 @@ let checkPackageOps(
 /// What authoring uses, and what save-time resolution reads: a call resolves to the
 /// implementation that is live on the branch being saved to, so the branch is not optional
 /// there the way it is for an editor buffer.
-let checkPackageOpsOn(
-  branchId: Uuid,
-  ops: List<LanguageTools.ProgramTypes.PackageOp>)
-  : Report =
+let checkPackageOpsOn(branchId: Uuid, ops: List<LanguageTools.ProgramTypes.PackageOp>): Report =
   guarded((fun((b, o)) -> Run.checkPackageOpsOn(b, o)), (branchId, ops))
 
 /// Type-check all declarations visible on the selected branch.
@@ -305,10 +300,7 @@ let guard(check: 'a -> 'b, input: 'a): Stdlib.Result.Result<'b, CheckFailure> =
   Builtin.atRestCheckGuarded(check, input)
 
 /// Turn a checker failure into an Incomplete warning.
-let failureIssue(
-  nodeId: Stdlib.Option.Option<UInt64>,
-  failure: CheckFailure)
-  : Issue =
+let failureIssue(nodeId: Stdlib.Option.Option<UInt64>, failure: CheckFailure): Issue =
   let context =
     match failure with
     | TooDeep -> Context.DeclarationTooDeep

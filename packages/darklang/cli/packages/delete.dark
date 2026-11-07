@@ -62,11 +62,7 @@ let countLiveDependents(
 
 /// Translate delete's ParsedArgs into the equivalent `deprecate --kind obsolete`
 /// args.
-let toDeprecateArgs(
-  parsed: ParsedArgs,
-  itemTypeStr: String,
-  target: String)
-  : List<String> =
+let toDeprecateArgs(parsed: ParsedArgs, itemTypeStr: String, target: String): List<String> =
   let baseArgs = [ itemTypeStr, target, "--kind", "obsolete" ]
   let messageArgs =
     if parsed.message != "" then [ "-m", parsed.message ] else []
@@ -177,8 +173,5 @@ let help(_state: Cli.AppState): String =
 
 
 // `delete` IS `deprecate --kind obsolete` with a dependents check, so it completes the same way.
-let complete(
-  state: Cli.AppState,
-  args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(state: Cli.AppState, args: List<String>): List<Cli.Completion.CompletionItem> =
   Deprecate.complete(state, args)

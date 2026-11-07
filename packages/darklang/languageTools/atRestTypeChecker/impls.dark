@@ -72,9 +72,7 @@ let variablesIn(typ: LanguageTools.ProgramTypes.TypeReference): List<String> =
 
 /// The implementation's params: the ones it declares, and the ones its self type and type args
 /// name without declaring. `impl Zero for Dict<'k, 'v>` declares none and has two.
-let implParamsOf(
-  implementation: LanguageTools.ProgramTypes.TraitImpl.TraitImpl)
-  : List<String> =
+let implParamsOf(implementation: LanguageTools.ProgramTypes.TraitImpl.TraitImpl): List<String> =
   Stdlib.List.flatten(
     [ implementation.typeParams
       variablesIn(implementation.self)

@@ -29,10 +29,7 @@ let monomorphic(t: Model.Ty): Model.Scheme =
 
 /// Report an error encountered while running the checker as an Incomplete result.
 /// Attach the warning to at when a source node is available, and return no scheme.
-let checkerFailureOutcome(
-  at: Stdlib.Option.Option<Int64>,
-  failure: CheckFailure)
-  : Outcome =
+let checkerFailureOutcome(at: Stdlib.Option.Option<Int64>, failure: CheckFailure): Outcome =
   Outcome
     { verdict = Verdict.Incomplete
       diagnostics = []
@@ -120,11 +117,7 @@ let checkCoverage(s: Solve.State): Solve.State =
 /// Finish deferred checks, classify findings, and decide the declaration's verdict.
 /// Generic variables saved in the scheme may remain unknown. Other unknowns in
 /// the declaration's type or an error's evidence prevent a complete check.
-let finish(
-  s: Solve.State,
-  itemAt: Stdlib.Option.Option<Int64>,
-  scheme: Model.Scheme)
-  : Outcome =
+let finish(s: Solve.State, itemAt: Stdlib.Option.Option<Int64>, scheme: Model.Scheme): Outcome =
   let s = checkCoverage(Solve.reportUnsolvedConstraints(s))
   let findings = Stdlib.List.reverse(s.findings)
 
@@ -215,11 +208,7 @@ let finish(
 
 /// Produce a declaration-wide error for each repeated name, using the supplied
 /// issue code and context to distinguish type parameters from type members.
-let duplicateProblems(
-  names: List<String>,
-  site: DuplicateSite,
-  code: IssueCode)
-  : Model.Constraint =
+let duplicateProblems(names: List<String>, site: DuplicateSite, code: IssueCode): Model.Constraint =
   Generate.all((
     Stdlib.List.map(Generate.duplicates(names), fun name ->
       Generate.report((
@@ -429,16 +418,12 @@ type PendingValue =
 
 /// Use the body's root node as the location for findings about the whole value
 /// or function, including errors encountered while running the checker.
-let bodyNodeId(
-  body: LanguageTools.ProgramTypes.Expr)
-  : Stdlib.Option.Option<Int64> =
+let bodyNodeId(body: LanguageTools.ProgramTypes.Expr): Stdlib.Option.Option<Int64> =
   Stdlib.Option.Option.Some(LanguageTools.ProgramTypes.Expr.toID(body))
 
 /// Infer an initial type and requirements from a value's syntax without solving
 /// them yet. If inference IDs are duplicated, record that problem and skip inference.
-let prepareValue(
-  value: LanguageTools.ProgramTypes.PackageValue.PackageValue)
-  : PendingValue =
+let prepareValue(value: LanguageTools.ProgramTypes.PackageValue.PackageValue): PendingValue =
   let (t, constraints) =
     let (deep, duplicate) = NodeIds.inspect(value.body)
     match duplicate with

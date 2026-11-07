@@ -908,11 +908,7 @@ let executeListByFn(
 ///
 /// The bundled library is hidden by default. `Stdlib.List.map` is in almost every run, and
 /// saying so buries the handful of names that are actually yours.
-let executeFnCounts(
-  state: Cli.AppState,
-  traceLimit: Int64,
-  showAll: Bool)
-  : Cli.AppState =
+let executeFnCounts(state: Cli.AppState, traceLimit: Int64, showAll: Bool): Cli.AppState =
   if traceLimit < 1 then
     Cli.printErr(limitTooSmall)
     { state with exitCode = 1 }
@@ -1004,11 +1000,7 @@ type FnRunsJson =
     gone: Bool }
 
 
-let executeFnCountsJson(
-  state: Cli.AppState,
-  traceLimit: Int64,
-  showAll: Bool)
-  : Cli.AppState =
+let executeFnCountsJson(state: Cli.AppState, traceLimit: Int64, showAll: Bool): Cli.AppState =
   if traceLimit < 1 then
     Cli.printErr(limitTooSmall)
     { state with exitCode = 1 }
@@ -1033,10 +1025,7 @@ let executeFnCountsJson(
 /// `traces hotspots [limit]`: across the last <limit> traces (default 100), the time spent
 /// in each logged call: count, total ms, max ms, sorted by total. Only impure calls are
 /// logged, so every name it prints is a builtin.
-let executeHotspots(
-  state: Cli.AppState,
-  traceLimit: Int64)
-  : Cli.AppState =
+let executeHotspots(state: Cli.AppState, traceLimit: Int64): Cli.AppState =
   if traceLimit < 1 then
     Cli.printErr(limitTooSmall)
     { state with exitCode = 1 }
@@ -1067,10 +1056,7 @@ let executeHotspots(
 /// `traces hotspots --json [limit]` — same data as a JSON array of
 /// `{name, count, totalMs, maxMs}` objects, no headers/footers, for
 /// piping. Empty store prints `[]`.
-let executeHotspotsJson(
-  state: Cli.AppState,
-  traceLimit: Int64)
-  : Cli.AppState =
+let executeHotspotsJson(state: Cli.AppState, traceLimit: Int64): Cli.AppState =
   if traceLimit < 1 then
     Cli.printErr(limitTooSmall)
     { state with exitCode = 1 }
@@ -1100,11 +1086,7 @@ let jsonEscape(s: String): String = Darklang.Tracing.Format.jsonEscape(s)
 /// fn-call args/result contain the substring (case-sensitive, matches the
 /// stored JSON form). Useful for "show me everywhere user 42 was touched"
 /// or "show me traces where errCode 503 came back."
-let executeFind(
-  state: Cli.AppState,
-  pattern: String,
-  limit: Int64)
-  : Cli.AppState =
+let executeFind(state: Cli.AppState, pattern: String, limit: Int64): Cli.AppState =
   if pattern == "" then
     Cli.printErr("find takes something to look for: part of an id, or of what was run")
     { state with exitCode = 1 }
@@ -1121,11 +1103,7 @@ let executeFind(
 /// `traces find <pattern> --json [limit]` — same data as `traces find`
 /// but as a JSON array of `{traceId, handler, timestamp}` objects, no
 /// banner. Designed for piping into jq / scripts.
-let executeFindJson(
-  state: Cli.AppState,
-  pattern: String,
-  limit: Int64)
-  : Cli.AppState =
+let executeFindJson(state: Cli.AppState, pattern: String, limit: Int64): Cli.AppState =
   if pattern == "" then
     Cli.printErr("find takes something to look for: part of an id, or of what was run")
     { state with exitCode = 1 }
@@ -1450,11 +1428,7 @@ let isVisible(opts: ViewOptions, call: FnCall): Bool =
 
 /// A trace's log, one line per impure call, in the order they completed. There is no tree: only
 /// impure calls are recorded, so this is the sequence of things the trace did to the world.
-let formatFnCalls(
-  opts: ViewOptions,
-  branchId: Uuid,
-  fnCalls: List<FnCall>)
-  : String =
+let formatFnCalls(opts: ViewOptions, branchId: Uuid, fnCalls: List<FnCall>): String =
   match fnCalls with
   | [] -> "  (this trace touched nothing outside itself)"
   | _ ->
@@ -1521,11 +1495,7 @@ let formatFnCalls(
 /// the sequence of impure calls it made. The ONE renderer for a single run, which is why `tail`
 /// and `find --inspect` come through here rather than printing their own: two renderers for one
 /// thing drift.
-let executeInspect(
-  state: Cli.AppState,
-  prefix: String,
-  opts: ViewOptions)
-  : Cli.AppState =
+let executeInspect(state: Cli.AppState, prefix: String, opts: ViewOptions): Cli.AppState =
   match Cli.TraceVerbs.find(prefix) with
   | Error(e) ->
     Cli.printErr(e)
@@ -1691,9 +1661,7 @@ let executeClear(state: Cli.AppState): Cli.AppState =
 /// Parse a CLI duration arg. `-`-prefixed inputs are reported as
 /// "unknown flag" rather than "Invalid duration" — same logic as
 /// `parsePositionalErr`. Otherwise delegates to `Stdlib.Duration.parse`.
-let parseDuration(
-  s: String)
-  : Stdlib.Result.Result<Stdlib.Duration.Duration, String> =
+let parseDuration(s: String): Stdlib.Result.Result<Stdlib.Duration.Duration, String> =
   if Stdlib.String.startsWith(s, "-") then
     Stdlib.Result.Result.Error($"unknown flag: {s}")
   else
@@ -1711,10 +1679,7 @@ let parseDuration(
 
 /// `traces delete --before <duration>` — drop traces older than the
 /// given duration; complement to `--keep N` (count-based).
-let executeClearBefore(
-  state: Cli.AppState,
-  durationStr: String)
-  : Cli.AppState =
+let executeClearBefore(state: Cli.AppState, durationStr: String): Cli.AppState =
   match parseDuration(durationStr) with
   | Error(msg) ->
     Cli.printErr(msg)

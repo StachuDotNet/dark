@@ -24,10 +24,7 @@ let toParts(d: Decimal): (BigInt * Int64) = Builtin.decimalToParts(d)
 /// The decimal {{unscaled / 10 ** scale}}, keeping <param scale>:
 /// {{Decimal.fromParts(110z, 2) == Some(1.10dec)}}. {{None}} when <param scale> is outside
 /// 0 to 28 or <param unscaled> needs more than 96 bits.
-let fromParts(
-  unscaled: BigInt,
-  scale: Int64)
-  : Stdlib.Option.Option<Decimal> =
+let fromParts(unscaled: BigInt, scale: Int64): Stdlib.Option.Option<Decimal> =
   Builtin.decimalFromParts(unscaled, scale)
 
 

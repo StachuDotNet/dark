@@ -16,9 +16,7 @@ type Candidates =
 /// Collect declarations from AddType, AddValue, AddFn, AddTrait, AddTraitImpl and AddTest
 /// operations.
 /// Ignore operations that do not supply a declaration to check.
-let candidatesFromOps(
-  ops: List<LanguageTools.ProgramTypes.PackageOp>)
-  : Candidates =
+let candidatesFromOps(ops: List<LanguageTools.ProgramTypes.PackageOp>): Candidates =
   Stdlib.List.fold(
     ops,
     (Candidates
@@ -136,10 +134,7 @@ type Base =
 /// The branch matters only for implementations: everything else the checker loads is
 /// content-addressed. A caller that has no branch in hand goes through `checkPackageOps`
 /// below, which answers about main.
-let checkPackageOpsOn(
-  branchId: Uuid,
-  ops: List<LanguageTools.ProgramTypes.PackageOp>)
-  : Report =
+let checkPackageOpsOn(branchId: Uuid, ops: List<LanguageTools.ProgramTypes.PackageOp>): Report =
   checkPackageOpsFrom(Environment.emptyClosure(), Stdlib.Option.Option.None, branchId, ops)
 
 /// `checkPackageOpsOn`, taking dependencies from <param pool> before the store (see
@@ -435,10 +430,7 @@ let checkReferencesFrom(
 /// Check the declarations a search query selects. Fetch their hashes before loading their
 /// syntax trees, so checkReferences can catch each loading or conversion error separately
 /// and continue checking the other declarations.
-let checkQuery(
-  branchId: Uuid,
-  query: LanguageTools.ProgramTypes.Search.SearchQuery)
-  : Report =
+let checkQuery(branchId: Uuid, query: LanguageTools.ProgramTypes.Search.SearchQuery): Report =
   // SEVEN lists, not four. The search returns submodules, types, values, fns, TRAITS, IMPLS
   // and TESTS; this once destructured four and so matched nothing, which raised and took `dark typecheck` with
   // it: the whole command, not one declaration. The guard turned that into an empty report, so

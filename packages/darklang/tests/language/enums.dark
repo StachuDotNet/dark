@@ -33,7 +33,10 @@ module Errors =
 
   module User =
     // Distinct enum cases give this type its own content hash for stable error names.
-    type MyEnum = | PortedFixtureA | B | C(String)
+    type MyEnum =
+      | PortedFixtureA
+      | B
+      | C(String)
 
     test unknownCaseRaises =
       MyEnum.D
@@ -74,7 +77,9 @@ module Errors =
         "Failed to create enum. Expected String for field 0 in `C`, but got Int64 (5)"
 
 module Simple =
-  type AorB = | A | B
+  type AorB =
+    | A
+    | B
 
   test equality =
     Stdlib.Test.all(
@@ -199,7 +204,9 @@ module Recursive =
 
 module Polymorphism =
   // Define a red-black tree
-  type Color = | Red | Black
+  type Color =
+    | Red
+    | Black
 
   type RBTree<'a> =
     | Empty
@@ -208,11 +215,7 @@ module Polymorphism =
   let singleton(value: 'a): RBTree<'a> =
     RBTree.Node(Color.Red, RBTree.Empty, value, RBTree.Empty)
 
-  let insert'(
-    tree: RBTree<'a>,
-    value: 'a,
-    cmp: ('a, 'a) -> Int64)
-    : RBTree<'a> =
+  let insert'(tree: RBTree<'a>, value: 'a, cmp: ('a, 'a) -> Int64): RBTree<'a> =
     match tree with
     | Empty -> singleton(value)
     | Node(color, left, v, right) ->
@@ -225,11 +228,7 @@ module Polymorphism =
       else
         RBTree.Node(color, left, value, right)
 
-  let insert(
-    tree: RBTree<'a>,
-    value: 'a,
-    cmp: ('a, 'a) -> Int64)
-    : RBTree<'a> =
+  let insert(tree: RBTree<'a>, value: 'a, cmp: ('a, 'a) -> Int64): RBTree<'a> =
     insert'(tree, value, cmp)
 
   let ofList(values: List<'a>, cmp: ('a, 'a) -> Int64): RBTree<'a> =

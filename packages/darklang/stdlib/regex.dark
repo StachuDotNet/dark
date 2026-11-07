@@ -98,10 +98,7 @@ let compile(pattern: String): Stdlib.Result.Result<Regex, RegexError> =
 
 
 /// <fn compile>, with case-insensitive or multiline matching.
-let compileWith(
-  pattern: String,
-  options: Options)
-  : Stdlib.Result.Result<Regex, RegexError> =
+let compileWith(pattern: String, options: Options): Stdlib.Result.Result<Regex, RegexError> =
   let regex = Regex { pattern = pattern, options = options }
   scan("", regex, true, false) |> Stdlib.Result.map(fun _ -> regex)
 
@@ -116,18 +113,12 @@ let findMatch(
 
 
 /// Every match of <param regex> in <param input>, with its groups.
-let findAllMatches(
-  input: String,
-  regex: Regex)
-  : Stdlib.Result.Result<List<Match>, RegexError> =
+let findAllMatches(input: String, regex: Regex): Stdlib.Result.Result<List<Match>, RegexError> =
   scan(input, regex, false, true) |> Stdlib.Result.map(fun((_, matches)) -> matches)
 
 
 /// Whether the regex <param pattern> matches anywhere in <param input>.
-let isMatch(
-  input: String,
-  pattern: String)
-  : Stdlib.Result.Result<Bool, RegexError> =
+let isMatch(input: String, pattern: String): Stdlib.Result.Result<Bool, RegexError> =
   // A match rather than Result.map: on a short input the lambda costs more than the regex.
   match scan(input, ofPattern(pattern), true, false) with
   | Ok(([ _ ], _)) -> Stdlib.Result.Result.Ok(false)
@@ -145,10 +136,7 @@ let find(
 
 
 /// The text of every match of the regex <param pattern> in <param input>.
-let findAll(
-  input: String,
-  pattern: String)
-  : Stdlib.Result.Result<List<String>, RegexError> =
+let findAll(input: String, pattern: String): Stdlib.Result.Result<List<String>, RegexError> =
   findAllMatches(input, ofPattern(pattern))
   |> Stdlib.Result.map(fun ms -> Stdlib.List.map(ms, fun m -> m.text))
 
@@ -220,10 +208,7 @@ let replaceMatches(
 
 /// Splits <param input> at every match of the regex <param pattern>. Groups in the
 /// pattern are not included in the result.
-let split(
-  input: String,
-  pattern: String)
-  : Stdlib.Result.Result<List<String>, RegexError> =
+let split(input: String, pattern: String): Stdlib.Result.Result<List<String>, RegexError> =
   match scan(input, ofPattern(pattern), false, false) with
   | Ok((pieces, _)) -> Stdlib.Result.Result.Ok(pieces)
   | Error(e) -> Stdlib.Result.Result.Error(e)

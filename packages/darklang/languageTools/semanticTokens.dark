@@ -68,9 +68,7 @@ module TypeIdentifier =
 
 module QualifiedTypeIdentifier =
   // Darklang.Stdlib.Option<Int64>
-  let tokenize(
-    q: WrittenTypes.QualifiedTypeIdentifier)
-    : List<SemanticToken> =
+  let tokenize(q: WrittenTypes.QualifiedTypeIdentifier): List<SemanticToken> =
     [ // Darklang.Stdlib.
       (q.modules
         |> Stdlib.List.map(fun((m, _)) -> ModuleIdentifier.tokenize(m))
@@ -112,9 +110,7 @@ module QualifiedFnIdentifier =
 
 module TypeReference =
   module Builtin =
-    let tokenize(
-      t: WrittenTypes.TypeReference.Builtin)
-      : List<SemanticToken> =
+    let tokenize(t: WrittenTypes.TypeReference.Builtin): List<SemanticToken> =
       match t with
       | TUnit(r)
       | TBool(r)
@@ -192,18 +188,14 @@ module TypeReference =
           [ makeToken(rv, TokenType.TypeName) ] ]
         |> Stdlib.List.flatten
 
-  let tokenize(
-    t: WrittenTypes.TypeReference.TypeReference)
-    : List<SemanticToken> =
+  let tokenize(t: WrittenTypes.TypeReference.TypeReference): List<SemanticToken> =
     match t with
     | Builtin(b) -> Builtin.tokenize(b)
     | QualifiedName(q) -> QualifiedTypeIdentifier.tokenize(q)
 
 
 module ModuleDeclaration =
-  let tokenizeDeclaration(
-    d: WrittenTypes.ModuleDeclaration.Declaration)
-    : List<SemanticToken> =
+  let tokenizeDeclaration(d: WrittenTypes.ModuleDeclaration.Declaration): List<SemanticToken> =
     match d with
     | Type(t) -> TypeDeclaration.tokenize(t)
     | Function(f) -> FnDeclaration.tokenize(f)
@@ -214,9 +206,7 @@ module ModuleDeclaration =
     | SubModule(sm) -> ModuleDeclaration.tokenize(sm)
     | Expr(e) -> Expr.tokenize(e)
 
-  let tokenize(
-    m: WrittenTypes.ModuleDeclaration.ModuleDeclaration)
-    : List<SemanticToken> =
+  let tokenize(m: WrittenTypes.ModuleDeclaration.ModuleDeclaration): List<SemanticToken> =
     let (nameRange, name) = m.name
 
     [ [ makeToken(m.keywordModule, TokenType.Keyword) ]
@@ -228,9 +218,7 @@ module ModuleDeclaration =
 
 
 module TypeDeclaration =
-  let tokenizeDefinition(
-    d: WrittenTypes.TypeDeclaration.Definition)
-    : List<SemanticToken> =
+  let tokenizeDefinition(d: WrittenTypes.TypeDeclaration.Definition): List<SemanticToken> =
     match d with
     | Alias(typeRef) -> TypeReference.tokenize(typeRef)
     | Record(fields) ->
@@ -285,9 +273,7 @@ module TypeDeclaration =
 
 
   // type ID = UInt64
-  let tokenize(
-    t: WrittenTypes.TypeDeclaration.TypeDeclaration)
-    : List<SemanticToken> =
+  let tokenize(t: WrittenTypes.TypeDeclaration.TypeDeclaration): List<SemanticToken> =
     [ // type
       [ makeToken(t.keywordType, TokenType.Keyword) ]
       // ID
@@ -307,16 +293,12 @@ module TypeDeclaration =
 module FnDeclaration =
   module UnitParameter =
     // `()`
-    let tokenize(
-      p: WrittenTypes.FnDeclaration.UnitParameter)
-      : List<SemanticToken> =
+    let tokenize(p: WrittenTypes.FnDeclaration.UnitParameter): List<SemanticToken> =
       [ makeToken(p.range, TokenType.Symbol) ]
 
   // `(a: Int64)`
   module NormalParameter =
-    let tokenize(
-      p: WrittenTypes.FnDeclaration.NormalParameter)
-      : List<SemanticToken> =
+    let tokenize(p: WrittenTypes.FnDeclaration.NormalParameter): List<SemanticToken> =
       [ // `(`
         [ makeToken(p.symbolLeftParen, TokenType.Symbol) ]
         // `a`
@@ -330,9 +312,7 @@ module FnDeclaration =
       |> Stdlib.List.flatten
 
   module Parameter =
-    let tokenize(
-      p: WrittenTypes.FnDeclaration.Parameter)
-      : List<SemanticToken> =
+    let tokenize(p: WrittenTypes.FnDeclaration.Parameter): List<SemanticToken> =
       match p with
       | Unit(u) -> UnitParameter.tokenize(u)
       | Normal(n) -> NormalParameter.tokenize(n)
@@ -340,9 +320,7 @@ module FnDeclaration =
 
   /// `(a: Int64, b: Int64)`. Neighbouring parameters share the `,` between them (one's
   /// right delimiter, the next one's left), so it is tokenized once.
-  let tokenizeParameters(
-    ps: List<WrittenTypes.FnDeclaration.Parameter>)
-    : List<SemanticToken> =
+  let tokenizeParameters(ps: List<WrittenTypes.FnDeclaration.Parameter>): List<SemanticToken> =
     ps
     |> Stdlib.List.map(fun p -> Parameter.tokenize(p))
     |> Stdlib.List.flatten
@@ -353,9 +331,7 @@ module FnDeclaration =
     |> Stdlib.List.reverse
 
   // `let add(a: Int64, b: Int64): Int64 = a + b`
-  let tokenize(
-    fn: WrittenTypes.FnDeclaration.FnDeclaration)
-    : List<SemanticToken> =
+  let tokenize(fn: WrittenTypes.FnDeclaration.FnDeclaration): List<SemanticToken> =
     [ // `let`
       [ makeToken(fn.keywordLet, TokenType.Keyword) ]
       // `add`
@@ -379,9 +355,7 @@ module FnDeclaration =
 
 
 module ValueDeclaration =
-  let tokenize(
-    v: WrittenTypes.ValueDeclaration.ValueDeclaration)
-    : List<SemanticToken> =
+  let tokenize(v: WrittenTypes.ValueDeclaration.ValueDeclaration): List<SemanticToken> =
     [ // val
       [ makeToken(v.keywordVal, TokenType.Keyword) ]
       // a
@@ -403,9 +377,7 @@ module TypeParamBound =
 
 module TraitDeclaration =
   // `let show (v: 'a) : String`
-  let tokenizeMethod(
-    m: WrittenTypes.TraitDeclaration.Method)
-    : List<SemanticToken> =
+  let tokenizeMethod(m: WrittenTypes.TraitDeclaration.Method): List<SemanticToken> =
     [ [ makeToken(m.keywordLet, TokenType.Keyword) ]
       FnIdentifier.tokenize(m.name)
       (m.typeParams |> Stdlib.List.map(fun((r, _)) -> makeToken(r, TokenType.TypeParameter)))
@@ -416,9 +388,7 @@ module TraitDeclaration =
     |> Stdlib.List.flatten
 
   // `trait Show<'a> = ...`
-  let tokenize(
-    t: WrittenTypes.TraitDeclaration.TraitDeclaration)
-    : List<SemanticToken> =
+  let tokenize(t: WrittenTypes.TraitDeclaration.TraitDeclaration): List<SemanticToken> =
     [ [ makeToken(t.keywordTrait, TokenType.Keyword) ]
       TypeIdentifier.tokenize(t.name)
       (t.typeParams |> Stdlib.List.map(fun((r, _)) -> makeToken(r, TokenType.TypeParameter)))
@@ -430,9 +400,7 @@ module TraitDeclaration =
 
 module ImplDeclaration =
   // `impl<'a: Show> Show for List<'a> = ...`
-  let tokenize(
-    i: WrittenTypes.ImplDeclaration.ImplDeclaration)
-    : List<SemanticToken> =
+  let tokenize(i: WrittenTypes.ImplDeclaration.ImplDeclaration): List<SemanticToken> =
     [ [ makeToken(i.keywordImpl, TokenType.Keyword) ]
       (i.typeParams |> Stdlib.List.map(fun((r, _)) -> makeToken(r, TokenType.TypeParameter)))
       (i.bounds |> Stdlib.List.map(TypeParamBound.tokenize) |> Stdlib.List.flatten)
@@ -450,9 +418,7 @@ module ImplDeclaration =
 
 
 module TestDeclaration =
-  let tokenize(
-    test: WrittenTypes.TestDeclaration.TestDeclaration)
-    : List<SemanticToken> =
+  let tokenize(test: WrittenTypes.TestDeclaration.TestDeclaration): List<SemanticToken> =
     [ [ makeToken(test.keywordTest, TokenType.Keyword) ]
       ValueIdentifier.tokenize(test.name)
       [ makeToken(test.symbolEquals, TokenType.Symbol) ]

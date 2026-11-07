@@ -203,10 +203,7 @@ module ModuleDeclaration =
 
 
 
-  let toModules(
-    branchId: Uuid,
-    p: LanguageTools.ProgramTypes.Definitions)
-    : List<Module> =
+  let toModules(branchId: Uuid, p: LanguageTools.ProgramTypes.Definitions): List<Module> =
     let empty = []
 
     let modulesAfterTypes =

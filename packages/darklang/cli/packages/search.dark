@@ -106,12 +106,7 @@ let nameRank(query: String, name: String): Int64 =
 // Sort key: match quality first, then Stdlib-first, and finally the full path
 // for deterministic ordering. Both ranks are a single digit, so plain string
 // ordering under `sortBy` gives the intended result.
-let sortKey(
-  query: String,
-  owner: String,
-  modules: List<String>,
-  name: String)
-  : String =
+let sortKey(query: String, owner: String, modules: List<String>, name: String): String =
   let mr = Stdlib.toString(nameRank(query, name))
   let st = if isStdlib(owner, modules) then "0" else "1"
   let path =
@@ -122,10 +117,7 @@ let sortKey(
 
 
 // Used to rank result sections; empty sections sort last.
-let bestItemRank(
-  query: String,
-  items: List<LanguageTools.ProgramTypes.LocatedItem<'a>>)
-  : Int64 =
+let bestItemRank(query: String, items: List<LanguageTools.ProgramTypes.LocatedItem<'a>>): Int64 =
   items
   |> Stdlib.List.fold(9, fun(acc, item) ->
     let r = nameRank(query, item.location.name)

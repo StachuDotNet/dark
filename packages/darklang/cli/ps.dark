@@ -225,9 +225,7 @@ let printShow(branchId: Uuid, prefix: String): Bool = printShowWith(branchId, pr
 /// The Dark process on this machine with pid <param target>, if it is one. A
 /// target no registered pid matches is left to the id prefix, since a short id
 /// can be all digits too.
-let machineByPid(
-  target: String)
-  : Stdlib.Option.Option<Stdlib.Exec.MachineProcess> =
+let machineByPid(target: String): Stdlib.Option.Option<Stdlib.Exec.MachineProcess> =
   match Stdlib.Int64.parse(target) with
   | Ok(pid) ->
     Stdlib.Exec.machineList()
@@ -255,10 +253,7 @@ let printMachineShow(target: String, json: Bool): Bool =
 
 /// Signal another Dark process on this machine. `cancel` is INT, the Ctrl-C path: a traced run
 /// is suspended (`dark traces` keeps it), a daemon or a serve ends. `kill` is KILL.
-let signalMachine(
-  pid: Int64,
-  hard: Bool)
-  : Stdlib.Result.Result<String, String> =
+let signalMachine(pid: Int64, hard: Bool): Stdlib.Result.Result<String, String> =
   let known = Stdlib.Exec.machineList() |> Stdlib.List.filter(fun m -> (m.pid) == pid)
   let pidText = Stdlib.toString(pid)
   match known with
@@ -275,10 +270,7 @@ let signalMachine(
       Stdlib.Result.Result.Error($"could not signal pid {pidText}")
 
 /// Stop a process in this instance by id prefix: `cancel` at its next turn, `kill` now.
-let stopLocal(
-  prefix: String,
-  hard: Bool)
-  : Stdlib.Result.Result<String, String> =
+let stopLocal(prefix: String, hard: Bool): Stdlib.Result.Result<String, String> =
   match find(prefix) with
   | Error(e) -> Stdlib.Result.Result.Error(e)
   | Ok(p) ->
@@ -435,7 +427,8 @@ module Watch =
       /// What the last `c`/`k` said, shown under the tables until the next key.
       note: String }
 
-  type Msg = | Refresh
+  type Msg =
+    | Refresh
 
   let gather(): List<Row> =
     let branchId = SCM.PackageOps.currentBranch()

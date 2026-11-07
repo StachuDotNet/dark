@@ -255,11 +255,7 @@ let conflictFromRow(row: ConflictRow): Conflict =
 /// the ops that caused the divergence cannot quietly undo it. `previous` names the text being
 /// replaced, so the op reads as an ordinary edit made on top of what this store holds -- which is
 /// exactly what it is, once a person has looked at both.
-let settleWording(
-  branchId: Uuid,
-  c: Conflict,
-  text: String)
-  : Stdlib.Result.Result<Unit, String> =
+let settleWording(branchId: Uuid, c: Conflict, text: String): Stdlib.Result.Result<Unit, String> =
   match SCM.Actions.resolve(SCM.Actions.Resolution.Reword(branchId, c.id, text)) with
   | Ok(_) -> Stdlib.Result.Result.Ok()
   | Error(Refused(UnreadablePart(part))) ->

@@ -175,12 +175,7 @@ let renderInline(state: State, width: Int64): String =
 /// Render a field that may not have focus, with a placeholder for when it's empty and unfocused.
 ///
 /// For forms, where several fields are on screen and one has the cursor.
-let renderMaybeFocused(
-  state: State,
-  focused: Bool,
-  placeholder: String,
-  width: Int64)
-  : String =
+let renderMaybeFocused(state: State, focused: Bool, placeholder: String, width: Int64): String =
   if focused then renderInline(state, width)
   else if state.text == "" then Colors.dimText(placeholder)
   else Tui.Text.clipToWidth(state.text, width)

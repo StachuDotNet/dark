@@ -27,12 +27,7 @@ let loc(
   Darklang.LanguageTools.ProgramTypes.PackageLocation
     { owner = owner, modules = modules, name = name }
 
-let short(
-  currentModule: List<String>,
-  owner: String,
-  modules: List<String>,
-  name: String)
-  : String =
+let short(currentModule: List<String>, owner: String, modules: List<String>, name: String): String =
   Darklang.PrettyPrinter.shortenName(currentModule, owner, modules, name)
 
 let at(width: Int64, value: 'a): String =

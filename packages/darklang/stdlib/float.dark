@@ -1,7 +1,8 @@
 module Darklang.Stdlib.Float
 
 
-type ParseError = | BadFormat
+type ParseError =
+  | BadFormat
 
 /// Round up to an integer value
 let ceiling(a: Float): Int64 = Builtin.floatCeiling(a)

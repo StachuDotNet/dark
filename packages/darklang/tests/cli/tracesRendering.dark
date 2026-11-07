@@ -11,9 +11,7 @@ module Input =
   type Request = { method: String, url: String }
   type IncompleteRequest = { method: String }
 
-  let trace(
-    input: Darklang.LanguageTools.RuntimeTypes.Dval)
-    : Darklang.Tracing.Trace =
+  let trace(input: Darklang.LanguageTools.RuntimeTypes.Dval): Darklang.Tracing.Trace =
     Darklang.Tracing.Trace
       { id = "trace"
         entry = "eval"

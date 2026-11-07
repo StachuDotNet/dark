@@ -187,11 +187,7 @@ module Display =
       Stdlib.Cli.UI.Colors.dimText($"{locationStr} ") + "> "
 
   /// Format the complete prompt with input and optional hint
-  let formatPromptWithInput(
-    locationStr: String,
-    text: String,
-    hint: String)
-    : String =
+  let formatPromptWithInput(locationStr: String, text: String, hint: String): String =
     if Stdlib.String.isEmpty(hint) then
       styledPrefix(locationStr) + text
     else

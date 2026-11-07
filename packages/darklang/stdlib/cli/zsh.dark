@@ -34,10 +34,7 @@ let deleteAlias(alias: String): Result.Result<Unit, String> =
 
 
 /// Add an alias to .zshrc
-let addAlias(
-  alias: String,
-  command: String)
-  : Result.Result<Unit, String> =
+let addAlias(alias: String, command: String): Result.Result<Unit, String> =
   let aliasDefinition = $"alias {alias}='{command}'"
 
   (readZshrc())

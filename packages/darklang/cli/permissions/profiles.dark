@@ -49,9 +49,7 @@ val httpsGet =
         pathPrefix = LanguageTools.Permissions.Scope.All
         query = LanguageTools.Permissions.Scope.All })
 
-let fromEffects(
-  effects: List<LanguageTools.Permissions.Effect>)
-  : LanguageTools.Permissions.Policy =
+let fromEffects(effects: List<LanguageTools.Permissions.Effect>): LanguageTools.Permissions.Policy =
   LanguageTools.Permissions.Policy
     { allow =
         effects

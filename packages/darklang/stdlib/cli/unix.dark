@@ -35,10 +35,7 @@ let executeInDirectoryAndRedirectToFile(directory: String, command: String, outp
 /// Executes a command in the specified directory and captures the full execution result.
 /// Returns the complete execution outcome including stdout, stderr, and exit code.
 /// <param command> is shell text and is not quoted; the directory is.
-let executeInDirectoryWithOutput(
-  directory: String,
-  command: String)
-  : Stdlib.Cli.ExecutionOutcome =
+let executeInDirectoryWithOutput(directory: String, command: String): Stdlib.Cli.ExecutionOutcome =
   Cli.execute($"cd -- {quote(directory)} && {command}")
 
 /// Checks if two files are identical.
@@ -77,11 +74,7 @@ let getAbsolutePath(relativePath: String): Stdlib.Cli.ExecutionOutcome =
 
 /// Adds an alias to the user's default shell configuration file.
 /// The alias will be available in new shell sessions.
-let addAlias(
-  shell: Shell.Shell,
-  alias: String,
-  command: String)
-  : Result.Result<Unit, String> =
+let addAlias(shell: Shell.Shell, alias: String, command: String): Result.Result<Unit, String> =
   match shell with
   | Bash -> Bash.addAlias(alias, command)
   | Zsh -> Zsh.addAlias(alias, command)
@@ -90,10 +83,7 @@ let addAlias(
 
 
 /// Deletes an alias from the user's default shell configuration file.
-let deleteAlias(
-  shell: Shell.Shell,
-  alias: String)
-  : Result.Result<Unit, String> =
+let deleteAlias(shell: Shell.Shell, alias: String): Result.Result<Unit, String> =
   match shell with
   | Bash -> Bash.deleteAlias(alias)
   | Zsh -> Zsh.deleteAlias(alias)
@@ -104,10 +94,7 @@ let deleteAlias(
 /// Adds a directory to PATH in the user's default shell configuration file.
 /// This is preferred over aliases for commands that need to be available
 /// in non-interactive shells (e.g., when spawned by other programs like VS Code).
-let addToPath(
-  shell: Shell.Shell,
-  dir: String)
-  : Result.Result<Unit, String> =
+let addToPath(shell: Shell.Shell, dir: String): Result.Result<Unit, String> =
   match shell with
   | Bash -> Bash.addToPath(dir)
   | Zsh -> Zsh.addToPath(dir)

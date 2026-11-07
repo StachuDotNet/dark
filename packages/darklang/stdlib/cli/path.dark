@@ -134,10 +134,7 @@ let resolveToAbsolute(p: String): Result.Result<String, Posix.Error> =
 /// Relative paths are resolved against cwd first (like Python's os.path.relpath).
 /// (relativeTo "/home/user" "/home/lib") -> Ok "../lib"
 /// (relativeTo "/home" "/home") -> Ok "."
-let relativeTo(
-  fromPath: String,
-  toPath: String)
-  : Result.Result<String, Posix.Error> =
+let relativeTo(fromPath: String, toPath: String): Result.Result<String, Posix.Error> =
   (resolveToAbsolute(fromPath))
   |> Stdlib.Result.andThen(fun absFrom ->
     (resolveToAbsolute(toPath))

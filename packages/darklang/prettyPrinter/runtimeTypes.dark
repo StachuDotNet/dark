@@ -6,33 +6,22 @@ module Darklang.PrettyPrinter.RuntimeTypes
 /// they are separate types because they belong to separate vocabularies. Identical declarations
 /// hash identically, so the two can be one stored item and passing either for the other can
 /// type-check by accident. This says the conversion out loud, which is what the code means.
-let ptHash(
-  hash: LanguageTools.RuntimeTypes.Hash)
-  : LanguageTools.ProgramTypes.Hash =
+let ptHash(hash: LanguageTools.RuntimeTypes.Hash): LanguageTools.ProgramTypes.Hash =
   LanguageTools.ProgramTypes.Hash.Hash(LanguageTools.RuntimeTypes.hashToString(hash))
 
 
-let nameResolutionError(
-  nre: LanguageTools.RuntimeTypes.NameResolutionError)
-  : String =
+let nameResolutionError(nre: LanguageTools.RuntimeTypes.NameResolutionError): String =
   match nre with
   | NotFound -> "not found"
   | InvalidName -> "invalid name"
 
-let nameResolution<'a>(
-  nr: LanguageTools.RuntimeTypes.NameResolution<'a>,
-  f: 'a -> String)
-  : String =
+let nameResolution<'a>(nr: LanguageTools.RuntimeTypes.NameResolution<'a>, f: 'a -> String): String =
   match nr.resolved with
   | Ok(a) -> f(a)
   | Error(e) -> nameResolutionError(e)
 
 
-let packageName(
-  owner: String,
-  modules: List<String>,
-  name: String)
-  : String =
+let packageName(owner: String, modules: List<String>, name: String): String =
   let modulesPart =
     match modules with
     | [] -> ""
@@ -285,10 +274,7 @@ let fnName(
 
 
 /// A call frame, using the function's name when it is available.
-let executionPoint(
-  branchId: Uuid,
-  point: LanguageTools.RuntimeTypes.ExecutionPoint)
-  : String =
+let executionPoint(branchId: Uuid, point: LanguageTools.RuntimeTypes.ExecutionPoint): String =
   match point with
   | Source -> "Source"
   | Lambda(_, expressionId, writtenIn) ->
@@ -307,10 +293,7 @@ let executionPoint(
 
 
 /// Show the stack in call order, grouping consecutive identical frames.
-let callStack(
-  branchId: Uuid,
-  frames: List<LanguageTools.RuntimeTypes.ExecutionPoint>)
-  : String =
+let callStack(branchId: Uuid, frames: List<LanguageTools.RuntimeTypes.ExecutionPoint>): String =
   let label(frame: String, count: Int64): String =
     if count == 1 then frame else $"{frame} (×{Stdlib.toString(count)})"
 
@@ -706,9 +689,7 @@ module Dval =
   /// The field names of a record type, in the order they were declared.
   ///
   /// Empty when the type isn't resolvable or isn't a record, which callers treat as "no opinion".
-  let declaredFieldOrder(
-    typeName: LanguageTools.RuntimeTypes.FQTypeName.FQTypeName)
-    : List<String> =
+  let declaredFieldOrder(typeName: LanguageTools.RuntimeTypes.FQTypeName.FQTypeName): List<String> =
     match typeName with
     | Package(hash) ->
       match Darklang.LanguageTools.PackageManager.Type.get(ptHash(hash)) with

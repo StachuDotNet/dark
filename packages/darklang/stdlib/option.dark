@@ -9,10 +9,7 @@ type Option<'v> =
 /// If <param option> is {{Some <var value>}}, returns {{fn <var value>}}. The
 /// lambda <fn fn> is applied to <var value> and the result is wrapped in
 /// {{Some}}. Otherwise, returns {{None}}
-let map(
-  option: Stdlib.Option.Option<'a>,
-  fn: 'a -> 'b)
-  : Stdlib.Option.Option<'b> =
+let map(option: Stdlib.Option.Option<'a>, fn: 'a -> 'b): Stdlib.Option.Option<'b> =
   match option with
   | Some(v) -> Stdlib.Option.Option.Some(fn(v))
   | None -> Stdlib.Option.Option.None
@@ -88,11 +85,7 @@ let map5(
 
 
 /// If <param option> is {{Some <var value>}}, returns {{fn <var value>}}. The lambda <fn fn> is applied to <var value> and the result is wrapped in {{Some}}. Otherwise, returns {{None}}
-let mapWithDefault(
-  option: Stdlib.Option.Option<'a>,
-  default_: 'b,
-  fn: 'a -> 'b)
-  : 'b =
+let mapWithDefault(option: Stdlib.Option.Option<'a>, default_: 'b, fn: 'a -> 'b): 'b =
   match option with
   | Some(v) -> fn(v)
   | None -> default_
@@ -175,10 +168,7 @@ let isNone(option: Stdlib.Option.Option<'a>): Bool =
 
 
 /// Turn a <type Option> into a <type Result>, using <param error> as the error message for Error. if <param option> is {{Some <var value>}}, returns {{Ok <var value>}}. Otherwise, returns {{Error <var error>}}
-let toResult(
-  option: Stdlib.Option.Option<'a>,
-  error: 'e)
-  : Stdlib.Result.Result<'a, 'e> =
+let toResult(option: Stdlib.Option.Option<'a>, error: 'e): Stdlib.Result.Result<'a, 'e> =
   match option with
   | Some(v) -> Stdlib.Result.Result.Ok(v)
   | None -> Stdlib.Result.Result.Error(error)
@@ -213,9 +203,7 @@ let toList(option: Stdlib.Option.Option<'a>): List<'a> =
 
 
 /// Flattens a nested option. If <param option> is {{Some (Some <var value>)}}, returns {{Some <var value>}}. If <param option> is {{Some None}}, returns {{None}}.
-let join(
-  option: Stdlib.Option.Option<Stdlib.Option.Option<'a>>)
-  : Stdlib.Option.Option<'a> =
+let join(option: Stdlib.Option.Option<Stdlib.Option.Option<'a>>): Stdlib.Option.Option<'a> =
   match option with
   | Some(v) -> v
   | None -> Stdlib.Option.Option.None
@@ -224,9 +212,7 @@ let join(
 /// Combines a list of options into a single option containing a list of unwrapped values.
 /// If all options in the list are {{Some _}}, then return {{Some <list of unwrapped values>}}.
 /// If any option is {{None}}, then return {{None}}.
-let combine(
-  options: List<Stdlib.Option.Option<'a>>)
-  : Stdlib.Option.Option<List<'a>> =
+let combine(options: List<Stdlib.Option.Option<'a>>): Stdlib.Option.Option<List<'a>> =
   // Built back to front and reversed once: `List.append acc value` copies the accumulator every
   // element, so this was quadratic in the list length.
   let folded =

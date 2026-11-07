@@ -66,11 +66,7 @@ let sizeHint(dv: LanguageTools.RuntimeTypes.Dval): Stdlib.Option.Option<String> 
 /// NOT through `dvalOneLine`, which caps depth at two as well. Doing that here would quietly
 /// start eliding the inside of any nested value an agent reads, which is a different and worse
 /// kind of loss than a long list being cut short. Full depth, as this has always had.
-let compactDvalTo(
-  branchId: Uuid,
-  budget: Int64,
-  dv: LanguageTools.RuntimeTypes.Dval)
-  : String =
+let compactDvalTo(branchId: Uuid, budget: Int64, dv: LanguageTools.RuntimeTypes.Dval): String =
   let oneLineOf(d: LanguageTools.RuntimeTypes.Dval): String =
     PrettyPrinter.RuntimeTypes.dval(branchId, d)
     |> Stdlib.String.split("\n")

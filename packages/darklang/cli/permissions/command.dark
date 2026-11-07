@@ -34,9 +34,7 @@ let editInstancePolicy(
 /// The transitive permission requirements and whether analysis was complete.
 /// Incomplete analysis returns the effects found with `false`; fetch once and
 /// pass the result around because this walks the function's closure.
-let permissionRequirementsForHash(
-  hash: String)
-  : (List<LanguageTools.Permissions.Effect> * Bool) =
+let permissionRequirementsForHash(hash: String): (List<LanguageTools.Permissions.Effect> * Bool) =
   Builtin.pmFnPermissionRequirements(hash)
 
 /// Take an approval back: a name's approved version, or a hash's approval. They are separate
@@ -50,10 +48,7 @@ let withdraw(
 /// Drop the approval of one immutable version and the dependencies no other
 /// approved root still needs. `unapprove` does not do this; a name's approved version and the
 /// approval are separate records.
-let revokeHash(
-  accountID: Stdlib.Option.Option<Uuid>,
-  hash: String)
-  : Unit =
+let revokeHash(accountID: Stdlib.Option.Option<Uuid>, hash: String): Unit =
   Command.withdraw(accountID, LanguageTools.Permissions.ApprovalTarget.Hash(hash))
 
 let approvedHashes(accountID: Stdlib.Option.Option<Uuid>): List<String> =
@@ -88,9 +83,7 @@ let approvalsStale(): Bool =
   Builtin.pmPolicyApprovalsStale()
 
 /// Every (logical name, approved version) pair for this account.
-let approvedVersions(
-  accountID: Stdlib.Option.Option<Uuid>)
-  : List<(String * String)> =
+let approvedVersions(accountID: Stdlib.Option.Option<Uuid>): List<(String * String)> =
   Command.approvalsOf(accountID, Stdlib.Option.Option.None)
   |> Stdlib.List.filterMap(fun approval ->
     approval.name |> Stdlib.Option.map(fun name -> (name, approval.hash)))
@@ -105,10 +98,7 @@ let approvalsOf(
 
 /// The approved hashes, each labelled with the name that resolves to it when there is one. A hash
 /// with no name is a dependency approved inside another root's closure.
-let namedApprovals(
-  accountID: Stdlib.Option.Option<Uuid>,
-  branchId: Uuid)
-  : List<String> =
+let namedApprovals(accountID: Stdlib.Option.Option<Uuid>, branchId: Uuid): List<String> =
   let byName = Command.approvedVersions(accountID)
   Command.approvedHashes(accountID)
   |> Stdlib.List.map(fun hash ->
@@ -127,10 +117,7 @@ let namedApprovals(
       | None -> hash)
 
 /// The store's name for an approved dependency's hash, when it has one on <param branchId>.
-let dependencyName(
-  branchId: Uuid,
-  hash: String)
-  : Stdlib.Option.Option<String> =
+let dependencyName(branchId: Uuid, hash: String): Stdlib.Option.Option<String> =
   let locations =
     LanguageTools.PackageManager.Function.locations(
       branchId,
@@ -166,10 +153,7 @@ let approveVersionFor(
     acknowledgeContractChange)
 
 /// Withdraw a name's approved version, so it resolves to whatever is current again.
-let unapproveVersionFor(
-  accountID: Stdlib.Option.Option<Uuid>,
-  name: String)
-  : Unit =
+let unapproveVersionFor(accountID: Stdlib.Option.Option<Uuid>, name: String): Unit =
   Command.withdraw(accountID, LanguageTools.Permissions.ApprovalTarget.Name(name))
 
 
@@ -189,9 +173,7 @@ let requirementSummary(requirements: List<LanguageTools.Permissions.Effect>): St
 /// could not follow everything, the effects it did find are shown and the
 /// remainder is called unknown. It does not say why: a callback, a package
 /// value, and an implementation picked at run time all look the same here.
-let describeRequirements(
-  requirements: (List<LanguageTools.Permissions.Effect> * Bool))
-  : String =
+let describeRequirements(requirements: (List<LanguageTools.Permissions.Effect> * Bool)): String =
   match requirements with
   | (effects, true) -> Command.requirementSummary(effects)
   | ([], false) -> "not fully known"
@@ -206,9 +188,7 @@ let requirementBadge(hash: LanguageTools.ProgramTypes.Hash): String =
   "[" + Command.requirementDisplay(LanguageTools.ProgramTypes.hashToString(hash)) + "]"
 
 /// The author's `:{…}` ceiling for a function, when it declares one.
-let ceilingForHash(
-  hash: String)
-  : Stdlib.Option.Option<List<LanguageTools.Permissions.Effect>> =
+let ceilingForHash(hash: String): Stdlib.Option.Option<List<LanguageTools.Permissions.Effect>> =
   match LanguageTools.PackageManager.Function.get(LanguageTools.ProgramTypes.Hash.Hash(hash)) with
   | Some(fn) -> fn.permissionCeiling
   | None -> Stdlib.Option.Option.None
@@ -245,9 +225,7 @@ let policyLines(policy: LanguageTools.Permissions.Policy): List<String> =
 let instancePolicyLines(): List<String> =
   Command.policyLines(Command.currentPolicy())
 
-let indentedPolicyLines(
-  policy: LanguageTools.Permissions.Policy)
-  : List<String> =
+let indentedPolicyLines(policy: LanguageTools.Permissions.Policy): List<String> =
   Command.policyLines(policy) |> Stdlib.List.map(fun line -> "    " + line)
 
 /// Pure rendering for the layered access explanation. Kept separate from the
@@ -308,18 +286,12 @@ let renderAccessReport(facts: Command.AccessReportFacts): List<String> =
 /// A layered explanation of one immutable function's authority. Requirements
 /// say what its reachable code may request; actual authorization remains the
 /// runtime intersection shown here, with exact paths/URLs decided per call.
-let accessReportLines(
-  accountID: Stdlib.Option.Option<Uuid>,
-  hash: String)
-  : List<String> =
+let accessReportLines(accountID: Stdlib.Option.Option<Uuid>, hash: String): List<String> =
   Command.renderAccessReport(Command.accessFacts(accountID, hash))
 
 /// The facts behind `accessReportLines`, for a caller that renders them its
 /// own way (the workbench's detail panes show a compact cut of them).
-let accessFacts(
-  accountID: Stdlib.Option.Option<Uuid>,
-  hash: String)
-  : Command.AccessReportFacts =
+let accessFacts(accountID: Stdlib.Option.Option<Uuid>, hash: String): Command.AccessReportFacts =
   let (effects, complete) = Command.permissionRequirementsForHash(hash)
   let (bundled, packagePolicy) = Command.packageAccess(accountID, hash)
   let approvedAs =
@@ -347,9 +319,7 @@ let invalidRule(args: List<String>): String =
 /// interactive CLI's general command splitter leaves quote fragments in the
 /// list. Re-tokenize only the latter; direct argv remains lossless for an
 /// argument that itself contains spaces.
-let parseRuleArgs(
-  args: List<String>)
-  : Stdlib.Option.Option<List<LanguageTools.Permissions.Rule>> =
+let parseRuleArgs(args: List<String>): Stdlib.Option.Option<List<LanguageTools.Permissions.Rule>> =
   let hasQuotedFragment =
     args
     |> Stdlib.List.any(fun arg ->
@@ -408,10 +378,7 @@ let replacePolicy(
 // identifiers only.
 
 /// Resolve a logical name to its latest published version on this branch.
-let latestVersion(
-  branchId: Uuid,
-  name: String)
-  : Stdlib.Option.Option<String> =
+let latestVersion(branchId: Uuid, name: String): Stdlib.Option.Option<String> =
   let location = LanguageTools.ProgramTypes.parsePackageLocation(name)
   match LanguageTools.PackageManager.Function.find(branchId, location) with
   | Some(hash) ->
@@ -430,10 +397,7 @@ let approvedVersionOf(
 
 /// `requirements`/`show` accept a logical name (resolved to its latest version)
 /// or a raw hash for diagnostics.
-let resolveVersionArg(
-  state: Cli.AppState,
-  arg: String)
-  : Stdlib.Option.Option<String> =
+let resolveVersionArg(state: Cli.AppState, arg: String): Stdlib.Option.Option<String> =
   if Stdlib.String.contains(arg, ".") then
     Command.latestVersion(state.currentBranchId, arg)
   else
@@ -701,11 +665,7 @@ let updateNamed(
 
 /// Run <param show> against the version <param target> names, or report an
 /// unknown function.
-let withVersion(
-  state: Cli.AppState,
-  target: String,
-  show: String -> List<String>)
-  : Bool =
+let withVersion(state: Cli.AppState, target: String, show: String -> List<String>): Bool =
   match Command.resolveVersionArg(state, target) with
   | None ->
     Cli.printErr($"unknown function: {target}")
@@ -852,10 +812,7 @@ let execute(state: Cli.AppState, args: List<String>): Cli.AppState =
     Stdlib.printErrorLine(Command.help(state))
     Cli.exitWith(state, false)
 
-let complete(
-  _state: Cli.AppState,
-  args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(_state: Cli.AppState, args: List<String>): List<Cli.Completion.CompletionItem> =
   match args with
   | [ "profile" ] ->
     Profiles.all |> Stdlib.List.map(fun profile -> Cli.Completion.simple(profile.name))

@@ -26,11 +26,7 @@ let elapsedMs(startMs: Int64): Int64 =
 
 /// Write a single telemetry event line to the log file.
 /// Format: {"event":"<label>","ms":<elapsed>,"wall":"<ISO8601>","ctx":{...}}
-let logWithContext(
-  label: String,
-  startMs: Int64,
-  context: List<(String * String)>)
-  : Unit =
+let logWithContext(label: String, startMs: Int64, context: List<(String * String)>): Unit =
   let elapsed = elapsedMs(startMs)
 
   let ctxPairs =

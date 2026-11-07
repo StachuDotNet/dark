@@ -255,10 +255,7 @@ let testStatusText(status: String): String =
   else if (status == "failed") || (status == "error") then Stdlib.Cli.UI.Colors.error(status)
   else Stdlib.Cli.UI.Colors.dimText(status)
 
-let testOutcomeLines(
-  branchId: Uuid,
-  hash: LanguageTools.ProgramTypes.Hash)
-  : List<String> =
+let testOutcomeLines(branchId: Uuid, hash: LanguageTools.ProgramTypes.Hash): List<String> =
   match Packages.Test.lastOutcome(branchId, hash) with
   | Some(Passed) -> [ Stdlib.Cli.UI.Colors.success("✓ passed (this build)") ]
   | Some(Failed(messages)) ->

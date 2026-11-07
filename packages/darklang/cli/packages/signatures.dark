@@ -353,10 +353,7 @@ let help(_state: Cli.AppState): String =
   |> Stdlib.String.join("\n")
 
 
-let complete(
-  _state: Cli.AppState,
-  args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(_state: Cli.AppState, args: List<String>): List<Cli.Completion.CompletionItem> =
   match Stdlib.List.last(args) with
   | Some(last) ->
     if Stdlib.String.startsWith(last, "--") then

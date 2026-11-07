@@ -50,11 +50,7 @@ type GenericName =
 /// - Darklang.Option.Option
 /// - Option.Option
 /// , in that order (most specific first).
-let namesToTry(
-  owner: String,
-  currentModule: List<String>,
-  given: GenericName)
-  : List<GenericName> =
+let namesToTry(owner: String, currentModule: List<String>, given: GenericName): List<GenericName> =
   // Stdlib.etc shortcut, plus a final stdlib fallback for Result/Option. Their
   // constructors (Ok/Error, Some/None) already resolve unqualified from any
   // module, so their unqualified type names should resolve the same way while still
@@ -77,10 +73,7 @@ let namesToTry(
 
 // TODO we can do this without a helper function,
 // by removing the recursion and using a fold.
-let __namesToTryHelper(
-  modulesToPrepend: List<String>,
-  given: GenericName)
-  : List<GenericName> =
+let __namesToTryHelper(modulesToPrepend: List<String>, given: GenericName): List<GenericName> =
   match Stdlib.List.splitLast(modulesToPrepend) with
   | None -> [ given ]
   | Some((allButLast, _last)) ->

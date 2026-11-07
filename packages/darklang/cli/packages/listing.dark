@@ -5,10 +5,7 @@ module Darklang.Cli.Packages.Listing
 /// Every version this name has been bound to, oldest first: main's history, continuing into the
 /// branch's own edits. Only interesting when there is more than one, which is why the caller only
 /// prints it then.
-let versionsOf(
-  modulePath: List<String>,
-  name: String)
-  : List<String> =
+let versionsOf(modulePath: List<String>, name: String): List<String> =
   match modulePath with
   | [] -> []
   | [owner, ...modules] ->

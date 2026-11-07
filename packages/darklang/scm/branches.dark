@@ -335,9 +335,7 @@ let parseFqn(fqn: String): Stdlib.Option.Option<(String * String * String)> =
 /// Ordered, because callers take the LAST one as the branch's current word on a name; unordered, that is
 /// whatever the query happened to return. Skips an op this build cannot decode rather than raising: a
 /// peer's op on a newer format is stored here on purpose.
-let ownFrontierOps(
-  branchId: Uuid)
-  : List<(Uuid * LanguageTools.ProgramTypes.PackageOp)> =
+let ownFrontierOps(branchId: Uuid): List<(Uuid * LanguageTools.ProgramTypes.PackageOp)> =
   ownFrontierOpsWithSource(branchId)
   |> Stdlib.List.map(fun((id, op, _)) -> (id, op))
 
@@ -394,10 +392,7 @@ let opBindsKey(
 /// RESOLVE take-theirs: drop the branch's binding for <param fqn> -- every op that binds it, a `SetName`
 /// or the override a `resolve mine` wrote -- so the branch's view falls back to the parent's version, and move
 /// the name's base to the parent's current. One action.
-let resolveTakeTheirs(
-  branchId: Uuid,
-  fqn: String)
-  : Stdlib.Result.Result<Unit, String> =
+let resolveTakeTheirs(branchId: Uuid, fqn: String): Stdlib.Result.Result<Unit, String> =
   resolveName(branchId, fqn, false)
 
 
@@ -408,20 +403,13 @@ let resolveTakeTheirs(
 /// point: `origin_ts` is a PORTABLE stamp, byte-identical on every machine holding that op, because it is
 /// what LWW compares. Rewriting it locally on an op that has already travelled makes two peers resolve
 /// the same pair of bindings differently, forever.
-let resolveKeepMine(
-  branchId: Uuid,
-  fqn: String)
-  : Stdlib.Result.Result<Unit, String> =
+let resolveKeepMine(branchId: Uuid, fqn: String): Stdlib.Result.Result<Unit, String> =
   resolveName(branchId, fqn, true)
 
 
 /// Parse <param fqn>, keep the branch's version (<param mine>) or take the parent's, and word what went
 /// wrong.
-let resolveName(
-  branchId: Uuid,
-  fqn: String,
-  mine: Bool)
-  : Stdlib.Result.Result<Unit, String> =
+let resolveName(branchId: Uuid, fqn: String, mine: Bool): Stdlib.Result.Result<Unit, String> =
   match parseFqn(fqn) with
   | None -> Stdlib.Result.Result.Error($"can't parse a name from \"{fqn}\"")
   | Some((owner, modules, name)) ->

@@ -18,10 +18,7 @@ module Kinds =
 
   /// passed for "harmful is fn-only" and "no such kind" alike.
 
-  let refusalText(
-    item: Darklang.LanguageTools.ProgramTypes.ItemKind,
-    kind: String)
-    : String =
+  let refusalText(item: Darklang.LanguageTools.ProgramTypes.ItemKind, kind: String): String =
     match Kinds.parse(item, kind) with
     | Error(e) -> e
     | Ok(_) -> ""

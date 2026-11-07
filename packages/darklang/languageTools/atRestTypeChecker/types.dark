@@ -98,11 +98,7 @@ let definiteError(
 
 /// Create a warning with a location and context, but no expected or actual type.
 /// Callers supply a warning code classified by isWarning.
-let warning(
-  code: IssueCode,
-  at: Stdlib.Option.Option<Int64>,
-  context: Context)
-  : Model.Finding =
+let warning(code: IssueCode, at: Stdlib.Option.Option<Int64>, context: Context): Model.Finding =
   Model.Finding
     { code = code
       at = at
@@ -543,9 +539,7 @@ let fnNameRef(name: LanguageTools.ProgramTypes.FQFnName.FQFnName): NameRef =
   | TraitMethod(method) -> NameRef.TraitMethod(method.trait_, method.method_)
 
 /// Represent a resolved value in the report by its builtin name or package hash.
-let valueNameRef(
-  name: LanguageTools.ProgramTypes.FQValueName.FQValueName)
-  : NameRef =
+let valueNameRef(name: LanguageTools.ProgramTypes.FQValueName.FQValueName): NameRef =
   match name with
   | Builtin(b) -> NameRef.Builtin(b.name, Stdlib.Int64.fromInt32(b.version))
   | Package(hash) -> NameRef.Package(hash)
@@ -572,10 +566,7 @@ let expand(
 /// An expansion that cannot go on: the type becomes TError and <param problem> joins <param found>.
 /// Top-level rather than nested in `expandFrom`, where it is a closure built on every expansion
 /// and used only on the failing ones.
-let blocked(
-  found: List<Model.Finding>,
-  problem: Model.Finding)
-  : (Model.Ty * List<Model.Finding>) =
+let blocked(found: List<Model.Finding>, problem: Model.Finding): (Model.Ty * List<Model.Finding>) =
   (Model.Ty.TError, Stdlib.List.prepend(found, problem))
 
 /// Expand outer aliases while carrying prior findings and the active alias path.
@@ -771,11 +762,7 @@ let declarationFieldTypes(decl: LanguageTools.ProgramTypes.TypeDeclaration.TypeD
 /// Select arguments whose parameter names are in used, preserving argument order.
 /// For dictionary-key checks, this excludes phantom parameters: their arguments
 /// describe the type but never occur in its stored values.
-let argsThatReachValues(
-  typeParams: List<String>,
-  used: List<String>,
-  args: List<'a>)
-  : List<'a> =
+let argsThatReachValues(typeParams: List<String>, used: List<String>, args: List<'a>): List<'a> =
   // The two answers nearly every call has, decided before zipping: no arguments selects none,
   // and neither does a declaration that requires none of its parameters, when the counts agree.
   if Stdlib.List.isEmpty(args) then

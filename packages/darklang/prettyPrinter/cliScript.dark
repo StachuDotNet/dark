@@ -50,9 +50,11 @@ let sourceFileAtWidth(
   [ declsPart, exprsPart ] |> Stdlib.List.flatten |> Stdlib.String.join("\n\n")
 
 
+/// The width `.dark` source is written to: what `dark view --raw` and `dark edit` print at,
+/// whatever the terminal is, so the source they hand back is laid out the way files are.
+val sourceWidth = 100
+
+
 /// Print a source file using the standard source width.
-let sourceFile(
-  branchId: Uuid,
-  source: LanguageTools.ProgramTypes.SourceFile.SourceFile)
-  : String =
-  PrettyPrinter.ProgramTypes.sourceFileAtWidth(branchId, 80, source)
+let sourceFile(branchId: Uuid, source: LanguageTools.ProgramTypes.SourceFile.SourceFile): String =
+  PrettyPrinter.ProgramTypes.sourceFileAtWidth(branchId, sourceWidth, source)

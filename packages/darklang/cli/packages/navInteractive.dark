@@ -117,11 +117,7 @@ let packHelpRows(
 
 
 /// Fit navigation help into complete rows without truncating an action.
-let helpRowsAtWidth(
-  mode: Mode,
-  display: Display,
-  width: Int64)
-  : List<String> =
+let helpRowsAtWidth(mode: Mode, display: Display, width: Int64): List<String> =
   packHelpRows(
     Stdlib.max(1, width),
     helpSections(mode, display),
@@ -137,9 +133,7 @@ let leafNavItems(
   results: LanguageTools.ProgramTypes.Search.SearchResults,
   shortNames: Bool)
   : List<NavItem> =
-  let nameOf(
-    location: LanguageTools.ProgramTypes.PackageLocation)
-    : String =
+  let nameOf(location: LanguageTools.ProgramTypes.PackageLocation): String =
     if shortNames then
       location.name
     else
@@ -214,10 +208,7 @@ let buildState(branchId: Uuid, location: PackageLocation): State =
       branchId = branchId }
 
 // Load truncated focus rows without printing them.
-let loadFocusRows(
-  branchId: Uuid,
-  location: PackageLocation)
-  : List<String> =
+let loadFocusRows(branchId: Uuid, location: PackageLocation): List<String> =
   let maxItemsPerCategory = 3
   let maxTotalLines = 12
 
@@ -303,10 +294,7 @@ let refreshFocusRows(navState: State): State =
 
 
 /// Calculate navigation regions for the complete terminal viewport.
-let layout(
-  navState: State,
-  size: Darklang.Stdlib.Cli.Tui.Size)
-  : Layout =
+let layout(navState: State, size: Darklang.Stdlib.Cli.Tui.Size): Layout =
   let width = Stdlib.max(1, size.width)
   let contentHeight = Stdlib.max(1, size.height)
 
@@ -375,10 +363,7 @@ let layout(
 
 
 /// Build the complete desired navigation view for one terminal-size sample.
-let viewAtSize(
-  navState: State,
-  size: Darklang.Stdlib.Cli.Tui.Size)
-  : Darklang.Stdlib.Cli.Tui.View =
+let viewAtSize(navState: State, size: Darklang.Stdlib.Cli.Tui.Size): Darklang.Stdlib.Cli.Tui.View =
   let regions = layout(navState, size)
   let clip = fun text -> Darklang.Stdlib.Cli.Tui.Text.clipToWidth(text, regions.width)
   let itemClip =
@@ -556,9 +541,7 @@ let viewAtSize(
 
 
 /// Start navigation and present its first complete frame.
-let start(
-  navState: State)
-  : Stdlib.Result.Result<Session, String> =
+let start(navState: State): Stdlib.Result.Result<Session, String> =
   let size = Darklang.Stdlib.Cli.Tui.TerminalSession.currentSize()
   match
     Darklang.Stdlib.Cli.Tui.TerminalSession.startAtSize(
@@ -573,11 +556,7 @@ let start(
 
 
 /// Present the next navigation model using an already sampled terminal size.
-let presentAtSize(
-  session: Session,
-  size: Darklang.Stdlib.Cli.Tui.Size,
-  navState: State)
-  : Session =
+let presentAtSize(session: Session, size: Darklang.Stdlib.Cli.Tui.Size, navState: State): Session =
   let terminal =
     Darklang.Stdlib.Cli.Tui.TerminalSession.presentAtSize(
       session.terminal,
@@ -594,11 +573,7 @@ let presentState(session: Session, navState: State): Session =
 
 
 /// Put a presented navigation model back into the CLI application state.
-let show(
-  state: Cli.AppState,
-  session: Session,
-  navState: State)
-  : Cli.AppState =
+let show(state: Cli.AppState, session: Session, navState: State): Cli.AppState =
   { state with
       currentPage = Page.InteractiveNav(presentState(session, navState)) }
 
@@ -636,11 +611,7 @@ let scrollOffsetForSelection(
     Stdlib.min(maxOffset, Stdlib.max(0, offset))
 
 
-let withFocusScrollOffset(
-  navState: State,
-  focusContentHeight: Int64,
-  offset: Int64)
-  : State =
+let withFocusScrollOffset(navState: State, focusContentHeight: Int64, offset: Int64): State =
   let maxOffset =
     Stdlib.max(
       0,
@@ -697,10 +668,7 @@ let moveDown(navState: State, viewportHeight: Int64): State =
   else
     navState
 
-let exitToMainPrompt(
-  state: Cli.AppState,
-  session: Session)
-  : Cli.AppState =
+let exitToMainPrompt(state: Cli.AppState, session: Session): Cli.AppState =
   let _stoppedTerminal =
     Darklang.Stdlib.Cli.Tui.TerminalSession.stop(session.terminal)
 
@@ -708,10 +676,7 @@ let exitToMainPrompt(
       currentPage = Page.MainPrompt
       prompt = Prompt.Editing.clear(state.prompt) }
 
-let selectAndExit(
-  state: Cli.AppState,
-  session: Session)
-  : Cli.AppState =
+let selectAndExit(state: Cli.AppState, session: Session): Cli.AppState =
   let navState = session.state
   let totalItems = (Stdlib.List.length(navState.items))
 
@@ -730,10 +695,7 @@ let selectAndExit(
   else
     exitToMainPrompt(state, session)
 
-let navigateIntoModule(
-  state: Cli.AppState,
-  session: Session)
-  : Cli.AppState =
+let navigateIntoModule(state: Cli.AppState, session: Session): Cli.AppState =
   let navState = session.state
   let totalItems = (Stdlib.List.length(navState.items))
 
@@ -750,10 +712,7 @@ let navigateIntoModule(
   else
     state
 
-let navigateToParent(
-  state: Cli.AppState,
-  session: Session)
-  : Cli.AppState =
+let navigateToParent(state: Cli.AppState, session: Session): Cli.AppState =
   let navState = session.state
 
   match Traversal.applySegment(navState.branchId, navState.currentLocation, Traversal.PathSegment.Up) with

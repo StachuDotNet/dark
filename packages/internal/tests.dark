@@ -12,9 +12,7 @@ type PTTest =
     actual: LanguageTools.ProgramTypes.Expr
     expected: LanguageTools.ProgramTypes.Expr }
 
-let parseTest(
-  pf: LanguageTools.WrittenTypes.ParsedFile)
-  : Stdlib.Result.Result<WTTest, String> =
+let parseTest(pf: LanguageTools.WrittenTypes.ParsedFile): Stdlib.Result.Result<WTTest, String> =
   let exprsToEval =
     match pf with
     | SourceFile(s) -> s.exprsToEval

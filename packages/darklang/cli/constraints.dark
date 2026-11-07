@@ -169,9 +169,7 @@ let executeList(state: AppState, args: List<String>): AppState =
 ///
 /// Unknown ids are REPORTED and skipped rather than aborting the batch. An agent that has to bisect a failed
 /// batch to find the one bad target is worse off than one that made N calls in the first place.
-let selectTargets(
-  ids: List<String>)
-  : (List<SCM.Constraints.Finding> * List<String>) =
+let selectTargets(ids: List<String>): (List<SCM.Constraints.Finding> * List<String>) =
   // `detectAll` re-runs detection so a prefix can match a finding that has never been listed; `pending`
   // is enough for `--all`, which means "everything currently outstanding".
   if Stdlib.List.contains(ids, "--all") then
@@ -286,9 +284,7 @@ let chosenResolution(args: List<String>): String =
   | None -> ""
 
 /// Every resolution a set of targets could take, deduped, in the order the kinds offer them.
-let resolutionsAcross(
-  targets: List<SCM.Constraints.Finding>)
-  : List<String> =
+let resolutionsAcross(targets: List<SCM.Constraints.Finding>): List<String> =
   targets
   |> Stdlib.List.map(fun f -> SCM.Constraints.resolutionsFor(f.kind))
   |> Stdlib.List.flatten
@@ -485,8 +481,5 @@ let execute(state: AppState, args: List<String>): AppState =
       executeList(state, args)
 
 
-let complete(
-  _state: AppState,
-  _args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
   []

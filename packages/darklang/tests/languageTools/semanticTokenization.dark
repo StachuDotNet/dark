@@ -4,9 +4,7 @@ module Darklang.LanguageTools.SemanticTokens.Tests
 
 type TokenType = Darklang.LanguageTools.SemanticTokens.TokenType
 
-let tokenize(
-  text: String)
-  : List<(TokenType * (Int64 * Int64) * (Int64 * Int64))> =
+let tokenize(text: String): List<(TokenType * (Int64 * Int64) * (Int64 * Int64))> =
   text
   |> Darklang.LanguageTools.Parser.Parse.toWrittenTypes
   |> Builtin.unwrap

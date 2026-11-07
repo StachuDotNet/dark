@@ -91,10 +91,7 @@ let contains(list: List<'a>, value: 'a): Bool =
 
 
 /// Returns a list containing <param val> repeated <param times> times
-let repeat(
-  times: Int64,
-  value: 'a)
-  : Result.Result<List<'a>, String> =
+let repeat(times: Int64, value: 'a): Result.Result<List<'a>, String> =
   if times < 0 then
     Result.Result.Error(
       $"Expected `times` to be positive, but it was `{times |> Stdlib.toString}`")
@@ -301,10 +298,7 @@ let filter(list: List<'a>, f: 'a -> Bool): List<'a> =
 /// If {{fn val}} returns {{Some newValue}}, replaces <var val> with <var newValue>.
 /// Preserves the order of values that were not dropped.
 /// This function combines <fn filter> and <fn map>.
-let filterMap(
-  list: List<'a>,
-  fn: 'a -> Option.Option<'b>)
-  : List<'b> =
+let filterMap(list: List<'a>, fn: 'a -> Option.Option<'b>): List<'b> =
   Builtin.listFilterMap(list, fn)
 
 
@@ -403,11 +397,7 @@ let indexedMap(list: List<'a>, fn: (Int64, 'a) -> 'b): List<'b> =
 /// {{["x", "y", "z"]}}, returns {{[fn 1 "x", fn 2 "y"]}}.
 /// Use <fn map2> if you want to enforce equivalent lengths for <param as>
 /// and <param bs>.
-let map2shortest(
-  as_: List<'a>,
-  bs: List<'b>,
-  fn: ('a, 'b) -> 'c)
-  : List<'c> =
+let map2shortest(as_: List<'a>, bs: List<'b>, fn: ('a, 'b) -> 'c): List<'c> =
   Builtin.listMap2shortest(as_, bs, fn)
 
 
@@ -425,11 +415,7 @@ type LengthMismatch =
 /// {{["x", "y", "z"]}}, returns {{Ok [fn 1 "x", fn 2 "y", fn 3 "z"]}}.
 /// If the lists differ in length, returns {{Error}} with both lengths (consider
 /// <fn map2shortest> if you want to drop values from the longer list instead).
-let map2(
-  as_: List<'a>,
-  bs: List<'b>,
-  fn: ('a, 'b) -> 'c)
-  : Result.Result<List<'c>, LengthMismatch> =
+let map2(as_: List<'a>, bs: List<'b>, fn: ('a, 'b) -> 'c): Result.Result<List<'c>, LengthMismatch> =
   let left = length(as_)
   let right = length(bs)
 
@@ -459,10 +445,7 @@ let zipShortest(as_: List<'a>, bs: List<'b>): List<('a * 'b)> =
 /// and <param l2> again.
 /// If the lists differ in length, returns {{Error}} with both lengths (consider
 /// <fn zipShortest> if you want to drop values from the longer list instead).
-let zip(
-  l1: List<'a>,
-  l2: List<'b>)
-  : Result.Result<List<('a * 'b)>, LengthMismatch> =
+let zip(l1: List<'a>, l2: List<'b>): Result.Result<List<('a * 'b)>, LengthMismatch> =
   // The lengths once, then one native zip, rather than recursing and measuring both lengths
   // again at every level, which is quadratic in the length.
   let left = length(l1)
@@ -503,11 +486,7 @@ type IndexError =
 /// <param value>. Negative indexes count backward from the end of the list, so
 /// {{-1}} replaces the last value and {{-2}} replaces the second-to-last value.
 /// Returns {{Error IndexOutOfBounds}} if the resolved index is outside the list.
-let setAt(
-  list: List<'a>,
-  index: Int64,
-  value: 'a)
-  : Result.Result<List<'a>, IndexError> =
+let setAt(list: List<'a>, index: Int64, value: 'a): Result.Result<List<'a>, IndexError> =
   let listLength = length(list)
   let resolvedIndex = if index < 0 then listLength + index else index
 
@@ -593,14 +572,12 @@ let iter(list: List<'a>, f: 'a -> Unit): Unit =
     iter(tail, f)
 
 
-type ChunkBySizeError = | SizeMustBeGreaterThanZero
+type ChunkBySizeError =
+  | SizeMustBeGreaterThanZero
 
 /// Chunks <param list> into sublists of specified maximum <param size>.
 /// If <param size> is less than or equal to zero, returns an error
-let chunkBySize(
-  list: List<'a>,
-  size: Int64)
-  : Result.Result<List<List<'a>>, ChunkBySizeError> =
+let chunkBySize(list: List<'a>, size: Int64): Result.Result<List<List<'a>>, ChunkBySizeError> =
   if size <= 0 then
     Result.Result.Error(
       ChunkBySizeError.SizeMustBeGreaterThanZero)

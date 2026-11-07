@@ -176,9 +176,7 @@ let builtinName(fn: LanguageTools.ProgramTypes.FQFnName.FQFnName): String =
 /// Map a builtin name to the operator rule that checks its accepted operand types.
 /// Their generic signatures alone would allow unsupported operands. Keep this map
 /// aligned with ProgramTypes.InfixFnName.toBuiltinName, which maps the other way.
-let operatorOf(
-  name: String)
-  : Stdlib.Option.Option<LanguageTools.ProgramTypes.InfixFnName> =
+let operatorOf(name: String): Stdlib.Option.Option<LanguageTools.ProgramTypes.InfixFnName> =
   match name with
   | "add" -> Some(LanguageTools.ProgramTypes.InfixFnName.ArithmeticPlus)
   | "subtract" -> Some(LanguageTools.ProgramTypes.InfixFnName.ArithmeticMinus)
@@ -1080,18 +1078,14 @@ let inferRecordUpdate(
 ///
 /// This copies the runtime's key equality, so a change to that (NaN keys, say)
 /// must be made here too.
-let constantDictKey(
-  expr: LanguageTools.ProgramTypes.Expr)
-  : Stdlib.Option.Option<String> =
+let constantDictKey(expr: LanguageTools.ProgramTypes.Expr): Stdlib.Option.Option<String> =
   let quote(q: String, text: String): String =
     let escaped =
       let backslashes = Stdlib.String.replaceAll(text, "\\", "\\\\")
       Stdlib.String.replaceAll(backslashes, q, "\\" + q)
     q + escaped + q
 
-  let joined(
-    parts: List<LanguageTools.ProgramTypes.Expr>)
-    : Stdlib.Option.Option<String> =
+  let joined(parts: List<LanguageTools.ProgramTypes.Expr>): Stdlib.Option.Option<String> =
     let keys = Stdlib.List.map(parts, fun part -> constantDictKey(part))
     if Stdlib.List.all(keys, fun k -> Stdlib.Option.isSome(k)) then
       Stdlib.Option.Option.Some(

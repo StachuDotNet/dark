@@ -56,10 +56,7 @@ let getSelectedValue(state: State): Stdlib.Option.Option<String> =
   | None -> Stdlib.Option.Option.None
 
 /// Reserve the help row and fit completion items and a scroll indicator above it.
-let layoutAtSize(
-  state: State,
-  size: Stdlib.Cli.Tui.Size)
-  : Layout =
+let layoutAtSize(state: State, size: Stdlib.Cli.Tui.Size): Layout =
   let itemCount = Stdlib.List.length(state.items)
   let availableRows = Stdlib.max(minimumHeight, size.height)
   let helpRowHeight = 1
@@ -82,10 +79,7 @@ let layoutAtSize(
   }
 
 /// Number of item rows available at this terminal size.
-let visibleCapacity(
-  state: State,
-  size: Stdlib.Cli.Tui.Size)
-  : Int64 =
+let visibleCapacity(state: State, size: Stdlib.Cli.Tui.Size): Int64 =
   (layoutAtSize(state, size)).itemCapacity
 
 
@@ -104,10 +98,7 @@ let effectiveOffset(state: State, capacity: Int64): Int64 =
 
 
 /// Build the complete inline completion region without terminal I/O.
-let viewAtSize(
-  state: State,
-  size: Stdlib.Cli.Tui.Size)
-  : Stdlib.Cli.Tui.View =
+let viewAtSize(state: State, size: Stdlib.Cli.Tui.Size): Stdlib.Cli.Tui.View =
   let width = Stdlib.max(1, size.width)
   let layout = layoutAtSize(state, size)
   let capacity = layout.itemCapacity
@@ -229,10 +220,7 @@ type Session =
   { state: State
     terminal: Stdlib.Cli.Tui.TerminalSession.State }
 
-let startAtSize(
-  state: State,
-  size: Stdlib.Cli.Tui.Size)
-  : Stdlib.Result.Result<Session, String> =
+let startAtSize(state: State, size: Stdlib.Cli.Tui.Size): Stdlib.Result.Result<Session, String> =
   if Stdlib.Bool.not(supportsSize(size)) then
     Stdlib.Result.Result.Error(unsupportedSizeMessage)
   else
@@ -242,11 +230,7 @@ let startAtSize(
     | Error(message) ->
       Stdlib.Result.Result.Error(message)
 
-let presentAtSize(
-  session: Session,
-  state: State,
-  size: Stdlib.Cli.Tui.Size)
-  : Session =
+let presentAtSize(session: Session, state: State, size: Stdlib.Cli.Tui.Size): Session =
   let terminal =
     Stdlib.Cli.Tui.TerminalSession.presentAtSize(
       session.terminal,

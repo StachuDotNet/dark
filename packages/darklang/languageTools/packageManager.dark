@@ -148,9 +148,7 @@ module Trait =
     : Stdlib.Option.Option<ProgramTypes.FQTraitName.Package> =
     PackageManager.findItem(branchId, ProgramTypes.ItemKind.Trait, location)
 
-  let get(
-    hash: ProgramTypes.FQTraitName.Package)
-    : Stdlib.Option.Option<ProgramTypes.Trait.Trait> =
+  let get(hash: ProgramTypes.FQTraitName.Package): Stdlib.Option.Option<ProgramTypes.Trait.Trait> =
     Builtin.pmGetTrait(hash)
 
   /// Every name this trait is bound to on <param branchId>.
@@ -193,18 +191,13 @@ module TraitImpl =
     Builtin.pmGetTraitImpl(hash)
 
   /// Every name this impl is bound to on <param branchId>.
-  let locations(
-    branchId: Uuid,
-    hash: ProgramTypes.Hash)
-    : List<ProgramTypes.PackageLocation> =
+  let locations(branchId: Uuid, hash: ProgramTypes.Hash): List<ProgramTypes.PackageLocation> =
     PackageManager.itemLocations(branchId, ProgramTypes.ItemKind.TraitImpl, hash)
 
 
 module Value =
   /// Find stored values whose runtime value type matches exactly.
-  let findByValueType(
-    valueType: RuntimeTypes.ValueType)
-    : List<ProgramTypes.Hash> =
+  let findByValueType(valueType: RuntimeTypes.ValueType): List<ProgramTypes.Hash> =
     Builtin.pmFindValuesByValueType(valueType)
 
   let find(
@@ -344,15 +337,10 @@ module Test =
     : Stdlib.Option.Option<ProgramTypes.Hash> =
     PackageManager.findItem(branchId, ProgramTypes.ItemKind.Test, location)
 
-  let get(
-    hash: ProgramTypes.Hash)
-    : Stdlib.Option.Option<ProgramTypes.PackageTest.PackageTest> =
+  let get(hash: ProgramTypes.Hash): Stdlib.Option.Option<ProgramTypes.PackageTest.PackageTest> =
     Builtin.pmGetTest(hash)
 
-  let locations(
-    branchId: Uuid,
-    hash: ProgramTypes.Hash)
-    : List<ProgramTypes.PackageLocation> =
+  let locations(branchId: Uuid, hash: ProgramTypes.Hash): List<ProgramTypes.PackageLocation> =
     PackageManager.itemLocations(branchId, ProgramTypes.ItemKind.Test, hash)
 
   /// Run this test's body with an allow-all test instance policy and ordinary
@@ -457,9 +445,7 @@ module Test =
 
 /// Replace provisional hashes with SCC-aware content hashes, including references
 /// between items in the batch.
-let stabilizeHashes(
-  ops: List<ProgramTypes.PackageOp>)
-  : List<ProgramTypes.PackageOp> =
+let stabilizeHashes(ops: List<ProgramTypes.PackageOp>): List<ProgramTypes.PackageOp> =
   Builtin.pmStabilizeHashes(ops)
 
 
@@ -469,9 +455,7 @@ let stabilizeHashes(
 ///
 /// Before `stabilizeHashes`, so a choice at a placeholder hash moves with everything else. A call
 /// whose self type is only known at run time (inside a bounded generic) comes back unchanged.
-let resolveTraitCalls(
-  ops: List<ProgramTypes.PackageOp>)
-  : List<ProgramTypes.PackageOp> =
+let resolveTraitCalls(ops: List<ProgramTypes.PackageOp>): List<ProgramTypes.PackageOp> =
   Builtin.pmResolveTraitCalls(ops)
 
 
@@ -482,10 +466,7 @@ let declaration(
   previous: ProgramTypes.PackageOp,
   op: ProgramTypes.PackageOp)
   : Stdlib.Option.Option<String> =
-  let named(
-    kind: String,
-    loc: ProgramTypes.PackageLocation)
-    : Stdlib.Option.Option<String> =
+  let named(kind: String, loc: ProgramTypes.PackageLocation): Stdlib.Option.Option<String> =
     let path = Stdlib.List.flatten([ [ loc.owner ], loc.modules, [ loc.name ] ])
     let fqn = Stdlib.String.join(path, ".")
     Stdlib.Option.Option.Some($"{kind} {fqn}")
@@ -503,9 +484,7 @@ let declaration(
 /// Duplicate declaration names in <param ops>, formatted as
 /// `"fn Owner.Module.name"`, each once, in the order first declared. Reject
 /// before `stabilizeHashes`, which keys by name.
-let duplicateDeclarations(
-  ops: List<ProgramTypes.PackageOp>)
-  : List<String> =
+let duplicateDeclarations(ops: List<ProgramTypes.PackageOp>): List<String> =
   let declarations =
     Stdlib.List.zipShortest(ops, Stdlib.List.drop(ops, 1))
     |> Stdlib.List.filterMap(fun((previous, op)) -> declaration(previous, op))

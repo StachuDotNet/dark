@@ -32,11 +32,7 @@ let gtlid(): UInt64 =
 /// Compute a unique location-based placeholder hash for parsed items.
 /// This ensures each item gets a distinct key in createInMemory maps,
 /// since the parser generates hash="" for all items.
-let locationPlaceholderHash(
-  owner: String,
-  modules: List<String>,
-  name: String)
-  : ProgramTypes.Hash =
+let locationPlaceholderHash(owner: String, modules: List<String>, name: String): ProgramTypes.Hash =
   let modulesPart = Stdlib.String.join(modules, ".")
   ProgramTypes.Hash.Hash($"{owner}.{modulesPart}.{name}")
 
@@ -88,9 +84,7 @@ let valueHashBoundAt(
 
 // Option and Result constructors can be bare. Other enum constructors require
 // `Type.Case` until expected-type inference is supported.
-let optionOrResultTypeName(
-  caseName: String)
-  : Stdlib.Option.Option<List<String>> =
+let optionOrResultTypeName(caseName: String): Stdlib.Option.Option<List<String>> =
   match caseName with
   | "Some"
   | "None" -> Stdlib.Option.Option.Some([ "Stdlib", "Option", "Option" ])
@@ -377,9 +371,7 @@ module InfixFnName =
     | ComparisonNotEquals -> ProgramTypes.InfixFnName.ComparisonNotEquals
 
 module BinaryOperation =
-  let toPT(
-    binop: WrittenTypes.BinaryOperation)
-    : ProgramTypes.BinaryOperation =
+  let toPT(binop: WrittenTypes.BinaryOperation): ProgramTypes.BinaryOperation =
     match binop with
     | BinOpAnd -> ProgramTypes.BinaryOperation.BinOpAnd
     | BinOpOr -> ProgramTypes.BinaryOperation.BinOpOr
@@ -393,10 +385,7 @@ module Infix =
 
 module Expr =
   module LetPattern =
-    let toPT(
-      context: Context,
-      p: WrittenTypes.LetPattern)
-      : (Context * ProgramTypes.LetPattern) =
+    let toPT(context: Context, p: WrittenTypes.LetPattern): (Context * ProgramTypes.LetPattern) =
       match p with
       | LPUnit(_) -> (context, ProgramTypes.LetPattern.LPUnit(gid()))
       | LPWildcard(_) -> (context, ProgramTypes.LetPattern.LPWildcard(gid()))
@@ -1231,9 +1220,7 @@ module Expr =
       (ProgramTypes.Expr.EStatement(gid(), first, next), unresolvedNames)
 
 module ModuleDeclaration =
-  let combineSubmodules(
-    submodules: List<ProgramTypes.Definitions>)
-    : ProgramTypes.Definitions =
+  let combineSubmodules(submodules: List<ProgramTypes.Definitions>): ProgramTypes.Definitions =
     let init =
       ProgramTypes.Definitions
         { types = []
@@ -1450,10 +1437,7 @@ module FunctionDeclaration =
   ///   `let f (x: List<'a>) : Stream<'a> = ...`
   /// may not declare `<'a>` explicitly but still need `'a` registered
   /// as a typeParam for callers that pass an explicit type arg.
-  let collectTVarsInTypeRef(
-    acc: List<String>,
-    tr: ProgramTypes.TypeReference)
-    : List<String> =
+  let collectTVarsInTypeRef(acc: List<String>, tr: ProgramTypes.TypeReference): List<String> =
     match tr with
     | TVariable(name) ->
       if Stdlib.List.contains(acc, name) then acc else Stdlib.List.append(acc, name)

@@ -152,10 +152,7 @@ let stream(
 
 
 /// Returns a header <type (String*String))> with {{'authorization'}} created using HTTP basic auth
-let basicAuth(
-  username: String,
-  password: String)
-  : Stdlib.Result.Result<(String * String), String> =
+let basicAuth(username: String, password: String): Stdlib.Result.Result<(String * String), String> =
   if Stdlib.String.contains(username, "-") then
     Stdlib.Result.Result.Error("Username cannot contain a hyphen")
   else
@@ -276,10 +273,7 @@ module Sse =
   /// Build an Event from the accumulated lines of one block, if any
   /// `data:` field was seen. `lastId` is the id the block inherits
   /// when no `id:` field appears.
-  let __tryEmitBlock(
-    lines: List<String>,
-    lastId: String)
-    : Stdlib.Option.Option<Event> =
+  let __tryEmitBlock(lines: List<String>, lastId: String): Stdlib.Option.Option<Event> =
     let (data, eventType, id, hasData) =
       Stdlib.List.fold(lines, ("", "", lastId, false), fun(acc, line) ->
         let (d, e, i, h) = acc

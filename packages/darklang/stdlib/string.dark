@@ -138,10 +138,7 @@ let split(string: String, separator: String): List<String> =
 /// {{Some (before, after)}}. Unlike {{split}}, the {{after}} half retains any further
 /// occurrences of the separator — useful for parsing `key=value` rows where the value
 /// may itself contain `=`. Returns {{None}} if the separator is empty or not found.
-let splitFirst(
-  string: String,
-  separator: String)
-  : Option.Option<(String * String)> =
+let splitFirst(string: String, separator: String): Option.Option<(String * String)> =
   if separator == "" then
     Option.Option.None
   else
@@ -158,10 +155,7 @@ let splitFirst(
 /// {{Some ("archive.tar", "gz")}}.
 /// Returns {{None}} if <param separator> is not in the string, or is empty.
 /// See <fn splitFirst> to split at the first one instead.
-let splitLast(
-  string: String,
-  separator: String)
-  : Option.Option<(String * String)> =
+let splitLast(string: String, separator: String): Option.Option<(String * String)> =
   if separator == "" then
     Option.Option.None
   else
@@ -178,11 +172,7 @@ let splitLast(
 /// useful for parsing rows of structured data where the value field may contain
 /// the separator. If <param n> <= 1, the separator is empty, or the separator
 /// is not found, returns {{[string]}} unchanged.
-let splitN(
-  string: String,
-  separator: String,
-  n: Int64)
-  : List<String> =
+let splitN(string: String, separator: String, n: Int64): List<String> =
   if n <= 1 || separator == "" then
     [ string ]
   else
@@ -390,10 +380,7 @@ let indexOf(str: String, searchFor: String): Option.Option<Int64> =
 /// Returns {{Some index}} of the last <param searchFor> in <param str>, counted in Chars
 /// (EGC, not byte). Returns {{None}} if <param searchFor> does not occur. Matches whole
 /// Chars only, as <fn indexOf> does.
-let lastIndexOf(
-  str: String,
-  searchFor: String)
-  : Option.Option<Int64> =
+let lastIndexOf(str: String, searchFor: String): Option.Option<Int64> =
   let lastIndex = Builtin.stringLastIndexOf(str, searchFor)
 
   if lastIndex == -1 then

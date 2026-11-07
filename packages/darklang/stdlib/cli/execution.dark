@@ -18,9 +18,7 @@ let execute(command: String): ExecutionOutcome =
 /// Execute a command in the CLI,
 /// returning `Unit` if exit code 0
 /// , or a `String` of stderr if not
-let executeWithUnitOrStdErr(
-  command: String)
-  : Stdlib.Result.Result<Unit, String> =
+let executeWithUnitOrStdErr(command: String): Stdlib.Result.Result<Unit, String> =
   let result = execute(command)
 
   if result.exitCode == 0 then
@@ -32,9 +30,7 @@ let executeWithUnitOrStdErr(
 /// Execute a command in the CLI,
 /// returning `String` of stdout if exit code 0
 /// or `String` of stderr if not
-let executeWithStdOutOrStdErr(
-  command: String)
-  : Stdlib.Result.Result<String, String> =
+let executeWithStdOutOrStdErr(command: String): Stdlib.Result.Result<String, String> =
   let result = execute(command)
 
   if result.exitCode == 0 then

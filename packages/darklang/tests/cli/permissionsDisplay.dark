@@ -30,9 +30,7 @@ module PermissionsDisplay =
                   query = Darklang.LanguageTools.Permissions.Scope.All }) ]
         deny = [] }
 
-  let approved(
-    unit: Unit)
-    : Darklang.Cli.Permissions.Command.AccessReportFacts =
+  let approved(unit: Unit): Darklang.Cli.Permissions.Command.AccessReportFacts =
     Darklang.Cli.Permissions.Command.AccessReportFacts
       { hash = "123456789abcdef"
         effects = [ Darklang.LanguageTools.Permissions.Effect.Http, Darklang.LanguageTools.Permissions.Effect.Clock ]
@@ -62,9 +60,7 @@ module PermissionsDisplay =
           "  effective: checked per operation: instance ∩ run ∩ package approval ∩ function ceiling"
           "  exact resources: paths, URLs, ports, names, and arguments are checked at call time" ])
 
-  let unapproved(
-    unit: Unit)
-    : Darklang.Cli.Permissions.Command.AccessReportFacts =
+  let unapproved(unit: Unit): Darklang.Cli.Permissions.Command.AccessReportFacts =
     let facts = approved()
 
     { facts with

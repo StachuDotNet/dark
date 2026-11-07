@@ -72,9 +72,7 @@ let toFloat(a: Int128): Float = Builtin.int128ToFloat(a)
 /// parsed value on success, or {{Error}} with a <type ParseError> ({{BadFormat}}
 /// if the string isn't a valid integer, {{OutOfRange}} if it's outside the
 /// <type Int128> range).
-let parse(
-  s: String)
-  : Stdlib.Result.Result<Int128, Stdlib.Int128.ParseError> =
+let parse(s: String): Stdlib.Result.Result<Int128, Stdlib.Int128.ParseError> =
   match Stdlib.BigInt.parse(s) with
   | Ok(n) -> Stdlib.Option.toResult(Stdlib.BigInt.toInt128(n), Stdlib.Int128.ParseError.OutOfRange)
   | Error(_) -> Error(Stdlib.Int128.ParseError.BadFormat)
@@ -164,30 +162,21 @@ impl One for Int128 =
 // {{Error Overflow}} instead, going below 0 included.
 
 /// Adds <param a> and <param b>, or {{Error Overflow}} where `+` would wrap
-let checkedAdd(
-  a: Int128,
-  b: Int128)
-  : Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
+let checkedAdd(a: Int128, b: Int128): Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
   let sum = a + b
   let wrapped = if b < 0s128 then sum > a else sum < a
   if wrapped then Error(Stdlib.Math.Overflow.Overflow) else Ok(sum)
 
 
 /// Subtracts <param b> from <param a>, or {{Error Overflow}} where `-` would wrap
-let checkedSubtract(
-  a: Int128,
-  b: Int128)
-  : Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
+let checkedSubtract(a: Int128, b: Int128): Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
   let difference = a - b
   let wrapped = if b < 0s128 then difference < a else difference > a
   if wrapped then Error(Stdlib.Math.Overflow.Overflow) else Ok(difference)
 
 
 /// Multiplies <param a> by <param b>, or {{Error Overflow}} where `*` would wrap
-let checkedMultiply(
-  a: Int128,
-  b: Int128)
-  : Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
+let checkedMultiply(a: Int128, b: Int128): Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
   let product = Stdlib.BigInt.fromInt128(a) * Stdlib.BigInt.fromInt128(b)
   match Stdlib.BigInt.toInt128(product) with
   | Some(fits) -> Ok(fits)
@@ -205,8 +194,7 @@ let checkedNegate(a: Int128): Stdlib.Result.Result<Int128, Stdlib.Math.Overflow>
 
 /// The distance of <param a> from zero, or {{Error Overflow}} for the minimum
 /// value, which <fn Stdlib.abs> wraps back to itself
-let checkedAbsoluteValue(a: Int128)
-  : Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
+let checkedAbsoluteValue(a: Int128): Stdlib.Result.Result<Int128, Stdlib.Math.Overflow> =
   if a == -170141183460469231731687303715884105728s128 then
     Error(Stdlib.Math.Overflow.Overflow)
   else if a < 0s128 then

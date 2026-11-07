@@ -77,10 +77,7 @@ let run(program: String, args: List<String>): Result.Result<Output, Posix.Error>
 /// anything that DRAWS needs: an editor with a redirected stdout paints into a pipe
 /// and reads keys from nowhere. Use `run` when you want the output, this when you
 /// want the program to be usable.
-let runInteractive(
-  program: String,
-  args: List<String>)
-  : Result.Result<Int64, Posix.Error> =
+let runInteractive(program: String, args: List<String>): Result.Result<Int64, Posix.Error> =
   Stdlib.Cli.Process.__childInteractive(program, args) |> Stdlib.Result.mapError(Stdlib.Cli.Posix.__fromErrno)
 
 
@@ -131,10 +128,7 @@ let runIn(
 
 
 /// Run a program silently, discarding output. Returns exit code only.
-let runSilent(
-  program: String,
-  args: List<String>)
-  : Result.Result<Int64, Posix.Error> =
+let runSilent(program: String, args: List<String>): Result.Result<Int64, Posix.Error> =
   (run(program, args))
   |> Stdlib.Result.map(fun output -> output.exitCode)
 

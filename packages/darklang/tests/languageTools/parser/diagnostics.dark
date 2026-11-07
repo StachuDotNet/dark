@@ -5,10 +5,7 @@ module Darklang.LanguageTools.Parser.Tests.Diagnostics
 // severity stay in backend/tests/Tests/LibParser.Tests.fs, because only the
 // message crosses into Dark.
 
-let messagesIn(
-  kind: Darklang.LanguageTools.Parser.FileKind,
-  source: String)
-  : List<String> =
+let messagesIn(kind: Darklang.LanguageTools.Parser.FileKind, source: String): List<String> =
   Darklang.LanguageTools.Parser.Parse.parse(kind, source)
   |> Stdlib.Tuple2.second
   |> Stdlib.List.map(fun((_, message)) -> message)
@@ -25,18 +22,12 @@ let golden(source: String, expected: List<String>): Stdlib.Test.Result =
     actual == expected,
     $"{shown(source)}: got {Stdlib.toRepr(actual)}")
 
-let rejectsIn(
-  kind: Darklang.LanguageTools.Parser.FileKind,
-  source: String)
-  : Stdlib.Test.Result =
+let rejectsIn(kind: Darklang.LanguageTools.Parser.FileKind, source: String): Stdlib.Test.Result =
   Stdlib.Test.expect(
     Stdlib.Bool.not(Stdlib.List.isEmpty(messagesIn(kind, source))),
     $"{shown(source)}: expected a diagnostic, got none")
 
-let cleanIn(
-  kind: Darklang.LanguageTools.Parser.FileKind,
-  source: String)
-  : Stdlib.Test.Result =
+let cleanIn(kind: Darklang.LanguageTools.Parser.FileKind, source: String): Stdlib.Test.Result =
   let actual = messagesIn(kind, source)
   Stdlib.Test.expect(
     Stdlib.List.isEmpty(actual),

@@ -254,8 +254,5 @@ let executeShow(state: AppState, args: List<String>): AppState =
 
 /// Shared by `commits` and `show`, whose arguments are a count and a hash. Neither is worth offering:
 /// a count has no candidates, and a hash prefix is what `dark commits` just printed.
-let complete(
-  _state: AppState,
-  _args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
   []

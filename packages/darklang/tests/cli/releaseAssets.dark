@@ -77,10 +77,7 @@ module AssetForPlatform =
 module PlatformForHost =
   // A function rather than a `val`: a `val` holding a custom type carries the type identity it
   // was built against, and the testfile harness rebuilds the package set underneath it.
-  let host(
-    os: Stdlib.Cli.OS.OS,
-    arch: Stdlib.Cli.Architecture.Architecture)
-    : Stdlib.Cli.Host.Host =
+  let host(os: Stdlib.Cli.OS.OS, arch: Stdlib.Cli.Architecture.Architecture): Stdlib.Cli.Host.Host =
     Stdlib.Cli.Host.Host
       { os = os
         arch = arch

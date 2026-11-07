@@ -11,9 +11,7 @@ let loc(
   Darklang.LanguageTools.ProgramTypes.PackageLocation
     { owner = owner, modules = modules, name = name }
 
-let ctx(
-  currentModule: List<String>)
-  : Darklang.LanguageTools.PackageManager.PickContext =
+let ctx(currentModule: List<String>): Darklang.LanguageTools.PackageManager.PickContext =
   Darklang.LanguageTools.PackageManager.PickContext
     { currentModule = currentModule, preferredLocation = None }
 

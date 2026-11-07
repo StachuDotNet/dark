@@ -21,9 +21,7 @@ let diagnostics(code: String): List<(Parser.Range * String)> =
   (parse(Parser.FileKind.Script, code)) |> Stdlib.Tuple2.second
 
 
-let initialParse(
-  code: String)
-  : Stdlib.Result.Result<WrittenTypes.ParsedFile, String> =
+let initialParse(code: String): Stdlib.Result.Result<WrittenTypes.ParsedFile, String> =
   // The range-complete parser. Every consumer of this fn (canvas modules, CLI scripts, the
   // package-test runner, parsePTExpr) parses through it. `toWrittenTypes` above is the same
   // builtin as an Option; this is it as a Result, and going through that one keeps the builtin
@@ -34,9 +32,7 @@ let initialParse(
 
 
 // TODO: maybe use a proper type instead of string?
-let parsePTExpr(
-  code: String)
-  : Stdlib.Result.Result<ProgramTypes.Expr, String> =
+let parsePTExpr(code: String): Stdlib.Result.Result<ProgramTypes.Expr, String> =
   // context-free lowering is just the in-context lowering with an empty context, against main
   parsePTExprInContext(SCM.Branch.mainBranchId, "", [], [], [], code)
 

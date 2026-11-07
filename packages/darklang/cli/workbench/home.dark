@@ -188,10 +188,7 @@ let openHomeRow(state: State): Step =
       Step.Continue(state)
 
 /// Home uses the whole frame, one column, no inspector.
-let renderHome(
-  state: State,
-  region: Stdlib.Cli.UI.Layout.Region)
-  : List<Stdlib.Cli.UI.Layout.Span> =
+let renderHome(state: State, region: Stdlib.Cli.UI.Layout.Region): List<Stdlib.Cli.UI.Layout.Span> =
   Stdlib.List.flatten(
     [ frameWithTitles(region, "", "", 0 - 1)
       renderTreeList(state, paneContent(region)) ])

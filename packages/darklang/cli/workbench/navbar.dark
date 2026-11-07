@@ -102,11 +102,7 @@ let workspaceOf(d: Dest): Int64 =
 /// is remembered too, so the strip knows where you are, but the number key
 /// always lands on the item's own view: `2` means the tree, wherever in Code
 /// you were.
-let workspaceEntryIn(
-  vis: List<Int64>,
-  state: State,
-  wsIdx: Int64)
-  : Stdlib.Option.Option<Dest> =
+let workspaceEntryIn(vis: List<Int64>, state: State, wsIdx: Int64): Stdlib.Option.Option<Dest> =
   match Stdlib.List.getAt(workspaces, wsIdx) with
   | None -> Stdlib.Option.Option.None
   | Some(w) ->

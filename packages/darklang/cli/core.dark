@@ -247,10 +247,7 @@ module ExecutionError =
 
   /// `. Did you mean `X`?` for a name that did not resolve, when the standard library has it
   /// somewhere else; the same hint `dark fn` gives (<fn Packages.Errors.stdlibSuggestion>).
-  let nameSuggestion(
-    branchId: Uuid,
-    rte: LanguageTools.RuntimeTypes.RuntimeError.Error)
-    : String =
+  let nameSuggestion(branchId: Uuid, rte: LanguageTools.RuntimeTypes.RuntimeError.Error): String =
     match rte with
     | ParseTimeNameResolution(originalName, NotFound) ->
       match Packages.Errors.stdlibSuggestion(branchId, originalName) with
@@ -279,9 +276,7 @@ module ExecutionError =
         $"Internal error: {u.message}\n{lines}"
 
   /// Skip entry-only stacks: they add no useful detail to a missing-name error.
-  let hasReadableFrames(
-    frames: List<LanguageTools.RuntimeTypes.ExecutionPoint>)
-    : Bool =
+  let hasReadableFrames(frames: List<LanguageTools.RuntimeTypes.ExecutionPoint>): Bool =
     Stdlib.List.any(frames, fun frame ->
       match frame with
       | Function(_) -> true

@@ -207,8 +207,5 @@ let help(_state: Cli.AppState): String =
   |> Stdlib.String.join("\n")
 
 
-let complete(
-  state: Cli.AppState,
-  args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(state: Cli.AppState, args: List<String>): List<Cli.Completion.CompletionItem> =
   []

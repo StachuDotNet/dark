@@ -58,10 +58,7 @@ let responseView(
   (response.statusCode, response.headers, Stdlib.Utf8.decode(response.body))
 
 // Build a request with an empty body.
-let request(
-  url: String,
-  headers: List<String * String>)
-  : Stdlib.Http.Request =
+let request(url: String, headers: List<String * String>): Stdlib.Http.Request =
   Stdlib.Http.Request { url = url, headers = headers, body = Stdlib.Bytes.empty }
 
 // Compare response builders with their expected fields.

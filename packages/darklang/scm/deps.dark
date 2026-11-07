@@ -70,9 +70,7 @@ let dependentsFor(
 
 
 /// The name MAIN gives this hash, if any.
-let mainLocationOf(
-  h: String)
-  : Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
+let mainLocationOf(h: String): Stdlib.Option.Option<LanguageTools.ProgramTypes.PackageLocation> =
   SCM.Bindings.query(SCM.Bindings.BindingFilter.LocationOf(SCM.Branch.mainBranchId, h))
   |> Stdlib.List.head
   |> Stdlib.Option.map(fun b -> locationOf(b.owner, b.modules, b.name))

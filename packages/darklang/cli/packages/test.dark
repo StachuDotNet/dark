@@ -144,17 +144,13 @@ let runFresh(
     )
 
 /// Expected-error tests always rerun.
-let mayCache(
-  test: LanguageTools.ProgramTypes.PackageTest.PackageTest)
-  : Bool =
+let mayCache(test: LanguageTools.ProgramTypes.PackageTest.PackageTest): Bool =
   match test.expectedError with
   | Some(_) -> false
   | None -> true
 
 /// Recheck the current cache-safety rule before reusing or storing a result.
-let isCacheable(
-  test: LanguageTools.ProgramTypes.PackageTest.PackageTest)
-  : Bool =
+let isCacheable(test: LanguageTools.ProgramTypes.PackageTest.PackageTest): Bool =
   mayCache(test)
   && LanguageTools.PackageManager.Test.isCacheSafe(test.hash)
 
@@ -182,10 +178,7 @@ let isPassed(outcome: Outcome): Bool =
 val addUsage = "Usage: test add <location> <body> | <source-file> | -"
 
 /// Print why `test add` saved nothing, with its usage, and fail the command.
-let addFailed(
-  state: Cli.AppState,
-  message: String)
-  : Cli.AppState =
+let addFailed(state: Cli.AppState, message: String): Cli.AppState =
   Cli.printErr(message)
   Stdlib.printErrorLine(addUsage)
   { state with exitCode = 1 }
@@ -194,11 +187,7 @@ let addFailed(
 /// the body alone (`Foo.double 4 |> Stdlib.Test.equal 8`) or a whole
 /// declaration, `test name = ...` with an optional doc comment, which is what
 /// a file or stdin usually holds.
-let addTest(
-  state: Cli.AppState,
-  locationStr: String,
-  definition: String)
-  : Cli.AppState =
+let addTest(state: Cli.AppState, locationStr: String, definition: String): Cli.AppState =
   match
     Location.parseRelativeTo(state.packageData.currentLocation, locationStr)
   with

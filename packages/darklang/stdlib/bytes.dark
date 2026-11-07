@@ -29,11 +29,7 @@ let getAt(bytes: Bytes, index: Int64): Stdlib.Option.Option<UInt8> =
 
 /// Returns {{Some index}} of the first <param byte> in <param bytes> at or
 /// after <param start>, or {{None}} if there is none.
-let indexOfFrom(
-  bytes: Bytes,
-  byte: UInt8,
-  start: Int64)
-  : Stdlib.Option.Option<Int64> =
+let indexOfFrom(bytes: Bytes, byte: UInt8, start: Int64): Stdlib.Option.Option<Int64> =
   Builtin.bytesIndexOf(bytes, byte, start)
 
 
@@ -59,11 +55,7 @@ type IndexError =
 /// Returns {{Ok}} a copy of the bytes from <param start> up to, but not
 /// including, <param end>. Returns {{Error IndexOutOfBounds}} unless
 /// {{0 <= start <= end <= length}}.
-let slice(
-  bytes: Bytes,
-  start: Int64,
-  end: Int64)
-  : Stdlib.Result.Result<Bytes, IndexError> =
+let slice(bytes: Bytes, start: Int64, end: Int64): Stdlib.Result.Result<Bytes, IndexError> =
   if start < 0 || start > end || end > length(bytes) then
     Stdlib.Result.Result.Error(IndexError.IndexOutOfBounds)
   else
@@ -105,11 +97,7 @@ let endsWith(bytes: Bytes, suffix: Bytes): Bool =
 /// starts at or after <param start>, or {{None}} if there is none or
 /// <param start> is out of range. An empty <param segment> is found at
 /// <param start>.
-let indexOfSegmentFrom(
-  bytes: Bytes,
-  segment: Bytes,
-  start: Int64)
-  : Stdlib.Option.Option<Int64> =
+let indexOfSegmentFrom(bytes: Bytes, segment: Bytes, start: Int64): Stdlib.Option.Option<Int64> =
   Builtin.bytesIndexOfSegment(bytes, segment, start)
 
 

@@ -67,10 +67,7 @@ let duplicateDeclarationNames(
 /// `dark fn` says it (`updateDocsThatChanged`). Per item, because a module is one batch and
 /// `updateDocsThatChanged` reads every doc in the ops it is given: an item's words are compared with
 /// that item's own declaration, never with another's.
-let landDocEdits(
-  branchId: Uuid,
-  ops: List<LanguageTools.ProgramTypes.PackageOp>)
-  : Int64 =
+let landDocEdits(branchId: Uuid, ops: List<LanguageTools.ProgramTypes.PackageOp>): Int64 =
   // The Add for the item a SetName binds: they carry the same placeholder hash before the save.
   let addFor(
     h: LanguageTools.ProgramTypes.Hash)
@@ -290,8 +287,5 @@ let help(_state: Cli.AppState): String =
   ] |> Stdlib.String.join("\n")
 
 
-let complete(
-  _state: Cli.AppState,
-  _args: List<String>)
-  : List<Cli.Completion.CompletionItem> =
+let complete(_state: Cli.AppState, _args: List<String>): List<Cli.Completion.CompletionItem> =
   []

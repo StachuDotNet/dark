@@ -124,11 +124,7 @@ let stringNode(str: String): Node = Node.String(str)
 /// This is the low-level constructor used by all tag helper functions.
 /// In most cases, you should use the specific tag helpers (div, span, etc.)
 /// instead of calling this directly.
-let htmlTagNode(
-  name: String,
-  attrs: Attributes,
-  children: List<Node>)
-  : Node =
+let htmlTagNode(name: String, attrs: Attributes, children: List<Node>): Node =
   (HtmlTag
     { name = name
       attrs = attrs

@@ -43,10 +43,7 @@ let inlineDocDoc(description: String): Stdlib.Option.Option<Stdlib.Pretty.Doc> =
 
 
 /// <param doc>, with <param description> written above it as `///` lines.
-let withInlineDoc(
-  description: String,
-  doc: Stdlib.Pretty.Doc)
-  : Stdlib.Pretty.Doc =
+let withInlineDoc(description: String, doc: Stdlib.Pretty.Doc): Stdlib.Pretty.Doc =
   match inlineDocDoc(description) with
   | None -> doc
   | Some(docLines) -> Stdlib.Pretty.concat(docLines, doc)
@@ -158,10 +155,7 @@ let packageNameWithContext(
 
 module FQTypeName =
   module Package =
-    let atDefinition(
-      ctx: Context,
-      hash: LanguageTools.ProgramTypes.FQTypeName.Package)
-      : String =
+    let atDefinition(ctx: Context, hash: LanguageTools.ProgramTypes.FQTypeName.Package): String =
       match Darklang.LanguageTools.PackageManager.pickLocation(Context.toPickContext(ctx), LanguageTools.PackageManager.Type.locations(ctx.branchId, hash)) with
       | Some(l) -> l.name
       | None -> shortHash(hash)
@@ -176,10 +170,7 @@ module FQTypeName =
       | None -> shortHash(hash)
 
 
-  let fullForReference(
-    ctx: Context,
-    t: LanguageTools.ProgramTypes.FQTypeName.FQTypeName)
-    : String =
+  let fullForReference(ctx: Context, t: LanguageTools.ProgramTypes.FQTypeName.FQTypeName): String =
     match t with
     | Package(p) ->
       FQTypeName.Package.fullForReference(ctx, p)
@@ -187,10 +178,7 @@ module FQTypeName =
 
 module FQTraitName =
   module Package =
-    let atDefinition(
-      ctx: Context,
-      hash: LanguageTools.ProgramTypes.FQTraitName.Package)
-      : String =
+    let atDefinition(ctx: Context, hash: LanguageTools.ProgramTypes.FQTraitName.Package): String =
       match Darklang.LanguageTools.PackageManager.pickLocation(Context.toPickContext(ctx), LanguageTools.PackageManager.Trait.locations(ctx.branchId, hash)) with
       | Some(l) -> l.name
       | None -> shortHash(hash)
@@ -206,9 +194,7 @@ module FQTraitName =
 
 module FQValueName =
   module Builtin =
-    let fullForReference(
-      t: LanguageTools.ProgramTypes.FQValueName.Builtin)
-      : String =
+    let fullForReference(t: LanguageTools.ProgramTypes.FQValueName.Builtin): String =
       let namePart = t.name
 
       let versionPart =
@@ -221,10 +207,7 @@ module FQValueName =
 
 
   module Package =
-    let atDefinition(
-      ctx: Context,
-      hash: LanguageTools.ProgramTypes.FQValueName.Package)
-      : String =
+    let atDefinition(ctx: Context, hash: LanguageTools.ProgramTypes.FQValueName.Package): String =
       match Darklang.LanguageTools.PackageManager.pickLocation(Context.toPickContext(ctx), LanguageTools.PackageManager.Value.locations(ctx.branchId, hash)) with
       | Some(l) -> PrettyPrinter.formatName(l.name)
       | None -> shortHash(hash)
@@ -253,9 +236,7 @@ module FQValueName =
 
 module FQFnName =
   module Builtin =
-    let fullForReference(
-      t: LanguageTools.ProgramTypes.FQFnName.Builtin)
-      : String =
+    let fullForReference(t: LanguageTools.ProgramTypes.FQFnName.Builtin): String =
       let namePart = t.name
 
       let versionPart =
@@ -268,28 +249,19 @@ module FQFnName =
 
 
   module Package =
-    let atDefinition(
-      ctx: Context,
-      hash: LanguageTools.ProgramTypes.FQFnName.Package)
-      : String =
+    let atDefinition(ctx: Context, hash: LanguageTools.ProgramTypes.FQFnName.Package): String =
       match Darklang.LanguageTools.PackageManager.pickLocation(Context.toPickContext(ctx), LanguageTools.PackageManager.Function.locations(ctx.branchId, hash)) with
       | Some(l) -> PrettyPrinter.formatName(l.name)
       | None -> shortHash(hash)
 
-    let fullForReference(
-      ctx: Context,
-      hash: LanguageTools.ProgramTypes.FQFnName.Package)
-      : String =
+    let fullForReference(ctx: Context, hash: LanguageTools.ProgramTypes.FQFnName.Package): String =
       match Darklang.LanguageTools.PackageManager.pickLocation(Context.toPickContext(ctx), LanguageTools.PackageManager.Function.locations(ctx.branchId, hash)) with
       | Some(l) ->
         packageNameWithContext(ctx, l.owner, l.modules, l.name)
       | None -> shortHash(hash)
 
 
-  let fullForReference(
-    ctx: Context,
-    t: LanguageTools.ProgramTypes.FQFnName.FQFnName)
-    : String =
+  let fullForReference(ctx: Context, t: LanguageTools.ProgramTypes.FQFnName.FQFnName): String =
     match t with
     | Builtin(b) ->
       FQFnName.Builtin.fullForReference(b)
@@ -441,10 +413,7 @@ let typeReferenceDocWithFnParens(
   | other -> txt(typeReferenceFlat(ctx, other))
 
 
-let typeReferenceDoc(
-  ctx: Context,
-  t: LanguageTools.ProgramTypes.TypeReference)
-  : Stdlib.Pretty.Doc =
+let typeReferenceDoc(ctx: Context, t: LanguageTools.ProgramTypes.TypeReference): Stdlib.Pretty.Doc =
   typeReferenceDocWithFnParens(ctx, false, t)
 
 
@@ -527,17 +496,11 @@ let typeReferenceFlatAtPrecedence(
     if fnNeedsParens then $"({rendered})" else rendered
 
 
-let typeReferenceFlat(
-  ctx: Context,
-  t: LanguageTools.ProgramTypes.TypeReference)
-  : String =
+let typeReferenceFlat(ctx: Context, t: LanguageTools.ProgramTypes.TypeReference): String =
   typeReferenceFlatAtPrecedence(ctx, false, t)
 
 
-let typeReference(
-  ctx: Context,
-  t: LanguageTools.ProgramTypes.TypeReference)
-  : String =
+let typeReference(ctx: Context, t: LanguageTools.ProgramTypes.TypeReference): String =
   typeReferenceFlat(ctx, t)
 
 
@@ -740,11 +703,7 @@ let parens(d: Stdlib.Pretty.Doc): Stdlib.Pretty.Doc =
 /// One argument in a call's comma list. A lambda that is the last argument drops its
 /// own parentheses (`List.map(xs, fun x -> x)`); one before a comma keeps them, as do
 /// constructs that read on past a comma.
-let callArg(
-  ctx: Context,
-  arg: LanguageTools.ProgramTypes.Expr,
-  isLast: Bool)
-  : Stdlib.Pretty.Doc =
+let callArg(ctx: Context, arg: LanguageTools.ProgramTypes.Expr, isLast: Bool): Stdlib.Pretty.Doc =
   match arg with
   | ELambda(_id, pats, body) -> if isLast then lambdaDoc(ctx, pats, body, false) else exprDoc(ctx, arg)
   | EIf(_, _, _, _)
@@ -1024,6 +983,70 @@ let wrapExprs(
           Stdlib.Pretty.concat(opener, Stdlib.Pretty.text(closing)))))))
 
 
+/// The longest `if` that may sit on one line, whatever room the page has:
+/// `if b == 0 then Error(e) else Ok(a / b)` reads well inline, a long one reads better broken.
+val shortIfWidth = 80
+
+
+/// `if c then a else b` on one line only when it is short, has no `if` in either branch, and is
+/// not the tail of an `else if` chain (<param chained>): a chain breaks all the way down.
+///
+/// `if a then if b then c else d` is ambiguous on one line: the parser attaches `else d` to the
+/// inner `if`, even if it was written for the outer one. Breaking the outer `if` puts `else` on
+/// its own line at the outer `if`'s indentation, which the parser reads correctly.
+let ifDoc(
+  ctx: Context,
+  cond: LanguageTools.ProgramTypes.Expr,
+  thenBranch: LanguageTools.ProgramTypes.Expr,
+  elseBranch: Stdlib.Option.Option<LanguageTools.ProgramTypes.Expr>,
+  chained: Bool)
+  : Stdlib.Pretty.Doc =
+  let txt(s: String): Stdlib.Pretty.Doc = Stdlib.Pretty.text(s)
+
+  let nested =
+    match (thenBranch, elseBranch) with
+    | (EIf(_, _, _, _), _) -> true
+    | (_, Some(EIf(_, _, _, _))) -> true
+    | _ -> false
+
+  let layout(ctx: Context, sep: Stdlib.Pretty.Doc): Stdlib.Pretty.Doc =
+    let head =
+      Stdlib.Pretty.concat(
+        txt($"if {expr(ctx, cond)} then"),
+        Stdlib.Pretty.nest(2, Stdlib.Pretty.concat(sep, exprDoc(ctx, thenBranch))))
+
+    match elseBranch with
+    | None -> head
+    | Some(eb) ->
+      let rest =
+        match eb with
+        | EIf(_, c, t, e) -> Stdlib.Pretty.concat(txt("else "), ifDoc(ctx, c, t, e, true))
+        | _ ->
+          Stdlib.Pretty.concat(
+            txt("else"),
+            Stdlib.Pretty.nest(2, Stdlib.Pretty.concat(sep, exprDoc(ctx, eb))))
+
+      Stdlib.Pretty.concat(head, Stdlib.Pretty.concat(sep, rest))
+
+  // Measured without live values, so showing them never moves a line.
+  let short =
+    if chained || nested then
+      false
+    else
+      let flat =
+        Stdlib.Pretty.render(
+          shortIfWidth,
+          Stdlib.Pretty.group(
+            layout({ ctx with liveValues = Stdlib.Dict.empty }, Stdlib.Pretty.line)))
+
+      Stdlib.Bool.not(Stdlib.String.contains(flat, "\n"))
+
+  if short then
+    Stdlib.Pretty.group(layout(ctx, Stdlib.Pretty.line))
+  else
+    layout(ctx, Stdlib.Pretty.hardLine)
+
+
 /// An expression as a Doc: the layouts it could take, for the caller to choose between.
 ///
 /// Ported construct by construct. Anything not yet ported falls back to `exprString`, whose output is
@@ -1072,40 +1095,7 @@ let exprDoc(ctx: Context, e: LanguageTools.ProgramTypes.Expr): Stdlib.Pretty.Doc
 
   // `if c then a else b` on one line when it fits. An `else if` chain keeps the `else if` together
   // rather than indenting a whole nested if under it.
-  | EIf(_id, cond, thenBranch, elseBranch) ->
-    // `if a then if b then c else d` is ambiguous on one line: the parser attaches `else d` to
-    // the inner `if`, even if it was written for the outer one. Breaking the outer `if` puts
-    // `else` on its own line at the outer `if`'s indentation, which the parser reads correctly.
-    let thenSep =
-      match thenBranch with
-      | EIf(_, _, _, _) -> Stdlib.Pretty.hardLine
-      | _ -> Stdlib.Pretty.line
-
-    let head =
-      Stdlib.Pretty.concat(
-        txt($"if {expr(ctx, cond)} then"),
-        Stdlib.Pretty.nest(2, Stdlib.Pretty.concat(thenSep, exprDoc(ctx, thenBranch))))
-
-    match elseBranch with
-    | None -> Stdlib.Pretty.group(head)
-    | Some(eb) ->
-      match eb with
-      | EIf(_, _, _, _) ->
-        Stdlib.Pretty.group((
-          Stdlib.Pretty.concat(
-            head,
-            (Stdlib.Pretty.concat(
-              Stdlib.Pretty.line,
-              Stdlib.Pretty.concat(txt("else "), exprDoc(ctx, eb)))))))
-      | _ ->
-        Stdlib.Pretty.group((
-          Stdlib.Pretty.concat(
-            head,
-            (Stdlib.Pretty.concat(
-              Stdlib.Pretty.line,
-              (Stdlib.Pretty.concat(
-                txt("else"),
-                (Stdlib.Pretty.nest(2, Stdlib.Pretty.concat(Stdlib.Pretty.line, exprDoc(ctx, eb)))))))))))
+  | EIf(_id, cond, thenBranch, elseBranch) -> ifDoc(ctx, cond, thenBranch, elseBranch, false)
 
   // `xs |> List.length` on one line when it fits; longer chains keep one stage per line.
   | EPipe(_id, e, pipeExprs) ->
@@ -1471,10 +1461,7 @@ module TypeDeclaration =
         Stdlib.Pretty.text($"{PrettyPrinter.formatFieldName(d.name)}: "),
         typeReferenceDoc(ctx, d.typ))))
 
-  let recordField(
-    ctx: Context,
-    d: LanguageTools.ProgramTypes.TypeDeclaration.RecordField)
-    : String =
+  let recordField(ctx: Context, d: LanguageTools.ProgramTypes.TypeDeclaration.RecordField): String =
     Stdlib.Pretty.render(ctx.width, TypeDeclaration.recordFieldDoc(ctx, d))
 
   let enumFieldDoc(
@@ -1499,10 +1486,7 @@ module TypeDeclaration =
         Stdlib.Pretty.text($"{PrettyPrinter.formatFieldName(label)}: "),
         typ)
 
-  let enumField(
-    ctx: Context,
-    d: LanguageTools.ProgramTypes.TypeDeclaration.EnumField)
-    : String =
+  let enumField(ctx: Context, d: LanguageTools.ProgramTypes.TypeDeclaration.EnumField): String =
     Stdlib.Pretty.render(ctx.width, TypeDeclaration.enumFieldDoc(ctx, d))
 
   let enumCaseDoc(
@@ -1521,10 +1505,7 @@ module TypeDeclaration =
           Stdlib.Pretty.text("| " + c.name),
           wrapExprs("(", ")", ",", Stdlib.Pretty.softLine, parts)))
 
-  let enumCase(
-    ctx: Context,
-    c: LanguageTools.ProgramTypes.TypeDeclaration.EnumCase)
-    : String =
+  let enumCase(ctx: Context, c: LanguageTools.ProgramTypes.TypeDeclaration.EnumCase): String =
     Stdlib.Pretty.render(ctx.width, TypeDeclaration.enumCaseDoc(ctx, c))
 
 
@@ -1594,10 +1575,7 @@ let typeParamsWithBounds(
     |> fun parts -> $"<{parts}>"
 
 
-let packageType(
-  ctx: Context,
-  p: LanguageTools.ProgramTypes.PackageType.PackageType)
-  : String =
+let packageType(ctx: Context, p: LanguageTools.ProgramTypes.PackageType.PackageType): String =
   // TODO: take care of deprecated
   let namePart = FQTypeName.Package.atDefinition(ctx, p.hash)
 
@@ -1614,10 +1592,7 @@ let packageType(
   $"{docComment}type {namePart}{typeParamPart} =\n{defPart}"
 
 
-let packageValue(
-  ctx: Context,
-  p: LanguageTools.ProgramTypes.PackageValue.PackageValue)
-  : String =
+let packageValue(ctx: Context, p: LanguageTools.ProgramTypes.PackageValue.PackageValue): String =
   let namePart = FQValueName.Package.atDefinition(ctx, p.hash)
   let bodyPart = expr(ctx, p.body)
 
@@ -1648,10 +1623,7 @@ module PackageLocation =
     $"{loc.owner}.{modulesPart}{loc.name}"
 
 
-let packageTest(
-  ctx: Context,
-  test: LanguageTools.ProgramTypes.PackageTest.PackageTest)
-  : String =
+let packageTest(ctx: Context, test: LanguageTools.ProgramTypes.PackageTest.PackageTest): String =
   let name =
     match
       Darklang.LanguageTools.PackageManager.pickLocation(
@@ -1680,10 +1652,7 @@ module PackageFn =
     | TUnit -> p.name == "_"
     | _ -> false
 
-  let parameter(
-    ctx: Context,
-    p: LanguageTools.ProgramTypes.PackageFn.Parameter)
-    : String =
+  let parameter(ctx: Context, p: LanguageTools.ProgramTypes.PackageFn.Parameter): String =
     // No `///` here: this is the one-line form (a signature in a listing), and a doc comment runs to
     // the end of the line, so writing one would comment out the rest of the signature.
     // `parameterDoc` is the form that renders back to source and does carry them.
@@ -1725,10 +1694,7 @@ module PackageFn =
       wrapExprs("(", ")", ",", Stdlib.Pretty.softLine, docs)
 
 
-  let signature(
-    ctx: Context,
-    f: LanguageTools.ProgramTypes.PackageFn.PackageFn)
-    : String =
+  let signature(ctx: Context, f: LanguageTools.ProgramTypes.PackageFn.PackageFn): String =
     let params =
       f.parameters
       |> Stdlib.List.map(fun p ->
@@ -1741,10 +1707,7 @@ module PackageFn =
     params + " -> " + returnType
 
 
-let packageFn(
-  ctx: Context,
-  p: LanguageTools.ProgramTypes.PackageFn.PackageFn)
-  : String =
+let packageFn(ctx: Context, p: LanguageTools.ProgramTypes.PackageFn.PackageFn): String =
   // TODO: handle `deprecated`
   let namePart = FQFnName.Package.atDefinition(ctx, p.hash)
 
@@ -1786,10 +1749,7 @@ let packageFn(
 
 
 /// `trait Show<'a> =` then one method signature per line.
-let packageTrait(
-  ctx: Context,
-  t: LanguageTools.ProgramTypes.Trait.Trait)
-  : String =
+let packageTrait(ctx: Context, t: LanguageTools.ProgramTypes.Trait.Trait): String =
   let namePart = FQTraitName.Package.atDefinition(ctx, t.hash)
   let typeParamPart = typeParamsWithBounds(ctx, t.typeParams, t.bounds)
   let methods =
@@ -1815,10 +1775,7 @@ let packageTrait(
 /// `impl<'a: Show> Show<Args> for List<'a> =`, then each method: the declaration itself when the
 /// method's fn was written in the block, and `let m = Some.Fn` when it names one that already
 /// existed. Both round-trip.
-let packageImpl(
-  ctx: Context,
-  i: LanguageTools.ProgramTypes.TraitImpl.TraitImpl)
-  : String =
+let packageImpl(ctx: Context, i: LanguageTools.ProgramTypes.TraitImpl.TraitImpl): String =
   let typeParamPart = typeParamsWithBounds(ctx, i.typeParams, i.bounds)
   let traitPart =
     let name = NameResolution.traitName(ctx, i.trait_)
@@ -1913,10 +1870,7 @@ module BuiltinFn =
 
 
 module PackageOp =
-  let packageOp(
-    branchId: Uuid,
-    op: LanguageTools.ProgramTypes.PackageOp)
-    : String =
+  let packageOp(branchId: Uuid, op: LanguageTools.ProgramTypes.PackageOp): String =
     let ctx = Context.forBranch(branchId)
     match op with
     | AddType(typ) ->

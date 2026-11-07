@@ -10,9 +10,7 @@ type Person = { Name: String, Age: Int64 }
 type Result<'ok, 'err> = Stdlib.Result.Result<'ok, 'err>
 type Option<'t> = Stdlib.Option.Option<'t>
 
-let err(
-  v: Stdlib.Result.Result<'a, Stdlib.Json.ParseError.ParseError>)
-  : Result<'a, String> =
+let err(v: Stdlib.Result.Result<'a, Stdlib.Json.ParseError.ParseError>): Result<'a, String> =
   v
   |> Stdlib.Result.mapError(fun e ->
     Stdlib.Json.ParseError.toString(Darklang.SCM.Branch.mainBranchId, e))

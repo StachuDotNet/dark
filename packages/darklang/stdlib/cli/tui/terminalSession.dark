@@ -142,10 +142,7 @@ let currentSize(): Tui.Size =
 /// Dynamic row content is sanitized and clipped only when a changed row is
 /// emitted. Keeping raw logical rows here makes unchanged frames cheap while
 /// the renderer remains the single terminal-safety boundary.
-let normalizeView(
-  size: Tui.Size,
-  view: Tui.View)
-  : Tui.View =
+let normalizeView(size: Tui.Size, view: Tui.View): Tui.View =
   let width = Stdlib.max(1, size.width)
   let height = Stdlib.max(1, size.height)
 
@@ -199,11 +196,7 @@ let normalizeView(
 /// Moving between terminal surfaces or changing viewport size invalidates the
 /// retained view so the surface receives a complete redraw. Otherwise only
 /// changed rows are emitted.
-let preparePresentAtSize(
-  state: State,
-  size: Tui.Size,
-  next: Tui.View)
-  : Prepared =
+let preparePresentAtSize(state: State, size: Tui.Size, next: Tui.View): Prepared =
   let next = normalizeView(size, next)
   let surfaceChanged = changesSurface(state.status, next.mode)
   let sizeChanged =
@@ -251,11 +244,7 @@ let preparePresentAtSize(
 ///
 /// This is useful when a layout needs to use the same size sample that the
 /// session records for resize detection.
-let presentAtSize(
-  state: State,
-  size: Tui.Size,
-  next: Tui.View)
-  : State =
+let presentAtSize(state: State, size: Tui.Size, next: Tui.View): State =
   let prepared = preparePresentAtSize(state, size, next)
   let surfaceChanged = changesSurface(state.status, next.mode)
 
@@ -295,10 +284,7 @@ let present(state: State, next: Tui.View): State =
 ///
 /// Terminal support is checked before writing any terminal control sequences.
 /// Continuing an existing session uses `presentAtSize`.
-let startAtSize(
-  size: Tui.Size,
-  next: Tui.View)
-  : Stdlib.Result.Result<State, String> =
+let startAtSize(size: Tui.Size, next: Tui.View): Stdlib.Result.Result<State, String> =
   match TerminalSupport.current() with
   | Available ->
     presentAtSize(init(), size, next)
@@ -371,10 +357,7 @@ let stop(state: State): State =
 /// rows such as completion hints are dropped, or every row for a discarded
 /// prompt — and the cursor parks on the final view's last row so subsequent
 /// output begins on the following line.
-let prepareStopInlineWithView(
-  state: State,
-  final: Tui.View)
-  : Prepared =
+let prepareStopInlineWithView(state: State, final: Tui.View): Prepared =
   match state.status with
   | RunningInline ->
     let (width, final) =

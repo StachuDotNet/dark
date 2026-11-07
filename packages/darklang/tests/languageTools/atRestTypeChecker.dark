@@ -112,9 +112,7 @@ let resolved(name: 'a): Darklang.LanguageTools.ProgramTypes.NameResolution<'a> =
             { name = name, location = Stdlib.Option.Option.None }
         ) }
 
-let unresolved(
-  parts: List<String>)
-  : Darklang.LanguageTools.ProgramTypes.NameResolution<'a> =
+let unresolved(parts: List<String>): Darklang.LanguageTools.ProgramTypes.NameResolution<'a> =
   Darklang.LanguageTools.ProgramTypes.NameResolution
     { originalName = parts
       resolved =
@@ -198,9 +196,7 @@ let environmentWith(
       fun(env, t) -> Darklang.LanguageTools.AtRestTypeChecker.Items.addType(env, t))
   Darklang.LanguageTools.AtRestTypeChecker.Declarations.prepareDeclarations(env)
 
-let outcomeSummary(
-  outcome: Darklang.LanguageTools.AtRestTypeChecker.Items.Outcome)
-  : String =
+let outcomeSummary(outcome: Darklang.LanguageTools.AtRestTypeChecker.Items.Outcome): String =
   (verdictWord(outcome.verdict))
   + ":"
   + (codesOf(Stdlib.List.concat(outcome.diagnostics, outcome.warnings)))
@@ -293,9 +289,7 @@ let nestedListType(depth: Int64): Darklang.LanguageTools.ProgramTypes.TypeRefere
 
 /// Build a tuple type with `depth` nested tuples. Checking its elements calls
 /// back through List.map at each level, exercising the native stack limit.
-let nestedTupleType(
-  depth: Int64)
-  : Darklang.LanguageTools.ProgramTypes.TypeReference =
+let nestedTupleType(depth: Int64): Darklang.LanguageTools.ProgramTypes.TypeReference =
   Stdlib.List.fold(Stdlib.List.range(1, depth), tInt(), fun(t, _) ->
     Darklang.LanguageTools.ProgramTypes.TypeReference.TTuple(tInt(), t, []))
 
@@ -3325,10 +3319,7 @@ module StandardTypes =
     | DEnum(Package(hash), _, _, _, _) -> hash
     | _ -> Darklang.LanguageTools.ProgramTypes.Hash.Hash("")
 
-  let byName(
-    modules: List<String>,
-    name: String)
-    : Darklang.LanguageTools.ProgramTypes.Hash =
+  let byName(modules: List<String>, name: String): Darklang.LanguageTools.ProgramTypes.Hash =
     Darklang.LanguageTools.AtRestTypeChecker.Environment.standardTypeHash(
       Darklang.SCM.Branch.mainBranchId, modules, name)
 

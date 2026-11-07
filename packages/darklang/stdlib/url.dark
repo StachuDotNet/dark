@@ -208,9 +208,7 @@ let parseIPLiteral(inner: String): Stdlib.Option.Option<String> =
 
 
 /// An empty port ({{http://x:/}}) is allowed by RFC 3986 and means no port.
-let parsePort(
-  s: String)
-  : Stdlib.Result.Result<Stdlib.Option.Option<Int64>, ParseError> =
+let parsePort(s: String): Stdlib.Result.Result<Stdlib.Option.Option<Int64>, ParseError> =
   if s == "" then
     Stdlib.Result.Result.Ok(Stdlib.Option.Option.None)
   else
@@ -314,11 +312,7 @@ let splitScheme(
   | _ -> Stdlib.Result.Result.Ok((Stdlib.Option.Option.None, s))
 
 
-let __parseWith(
-  strict: Bool,
-  absolute: Bool,
-  s: String)
-  : Stdlib.Result.Result<Url, ParseError> =
+let __parseWith(strict: Bool, absolute: Bool, s: String): Stdlib.Result.Result<Url, ParseError> =
   let (scheme, afterScheme) =
     (match splitScheme(s) with
      | Error(_) when !strict ->

@@ -186,8 +186,5 @@ let help(_state: AppState): String =
     "  --json           the same data, typed, for an agent" ]
   |> Stdlib.String.join("\n")
 
-let complete(
-  _state: AppState,
-  _args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
   []

@@ -27,12 +27,7 @@ let nameTheDefinition(name: String, hash: String, rendered: String): String =
 /// Render the actual source of one candidate, so `show` compares CODE rather than two hex strings.
 /// A hash we don't hold locally is normal (a peer's version can arrive as a name binding before its content),
 /// so say so plainly instead of failing.
-let renderItem(
-  branchId: Uuid,
-  itemType: String,
-  hash: String,
-  name: String)
-  : String =
+let renderItem(branchId: Uuid, itemType: String, hash: String, name: String): String =
   let ctx = PrettyPrinter.ProgramTypes.Context.forBranch(branchId)
   let h = LanguageTools.ProgramTypes.Hash.Hash(hash)
   let named(s: String): String = nameTheDefinition(name, hash, s)
@@ -337,11 +332,7 @@ let pickCandidate(
 /// The override authors a `Resolve` op, so the choice is data in the log rather than a local opinion: it
 /// syncs, a peer folding it lands on the same binding, `discard` skips it (source='resolution'), and
 /// re-folding the ops that caused the conflict can't quietly undo it.
-let executeOverride(
-  state: AppState,
-  idPrefix: String,
-  choice: String)
-  : AppState =
+let executeOverride(state: AppState, idPrefix: String, choice: String): AppState =
   match SCM.Conflicts.getByIdPrefix(idPrefix) with
   | None ->
     Cli.printErr($"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them.")
@@ -741,16 +732,10 @@ let execute(state: AppState, args: List<String>): AppState =
     executePretty(state, stripped)
 
 /// Ids are offered at the width they're printed at, since that's what people copy off the list.
-let complete(
-  _state: AppState,
-  args: List<String>)
-  : List<Completion.CompletionItem> =
+let complete(_state: AppState, args: List<String>): List<Completion.CompletionItem> =
   let subcommands = [ "list", "show", "ack", "override", "branch" ]
 
-  let matching(
-    options: List<String>,
-    partial: String)
-    : List<Completion.CompletionItem> =
+  let matching(options: List<String>, partial: String): List<Completion.CompletionItem> =
     options
     |> Stdlib.List.filter(fun o -> Stdlib.String.startsWith(o, partial))
     |> Stdlib.List.map(Completion.simple)

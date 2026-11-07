@@ -233,9 +233,7 @@ let closeOverNamings(entries: List<SCM.PackageOps.DraftEntry>, namings: List<Sel
 
 /// Choose the operations needed to commit these names, and list any extra names they require.
 /// Return an error if a requested name has no draft changes.
-let plan(
-  names: List<String>)
-  : Stdlib.Result.Result<(List<String> * List<String>), String> =
+let plan(names: List<String>): Stdlib.Result.Result<(List<String> * List<String>), String> =
   let entries = SCM.PackageOps.draftEntries()
   let namings = namingsFrom(entries)
   let held = namings |> Stdlib.List.map(fun naming -> naming.fqn)

@@ -39,9 +39,7 @@ module NestedInTypeArguments =
   let takesDeep(x: Dict<String, List<Darklang.Stdlib.Uuid.ParseError>>): Int64 = 3
 
   // The sharpest case: one hash, two positions, two names, in one type.
-  let takesPair(
-    x: (Darklang.Stdlib.BigInt.ParseError * Darklang.Stdlib.Uuid.ParseError))
-    : Int64 =
+  let takesPair(x: (Darklang.Stdlib.BigInt.ParseError * Darklang.Stdlib.Uuid.ParseError)): Int64 =
     4
 
   test listOfIntRaises =
@@ -68,7 +66,8 @@ module RecordAndEnumFields =
   // Same rule, reached through the other messages that print a declared type.
   type HasIntParseError = { e: Darklang.Stdlib.BigInt.ParseError }
   type HasUuidParseErrors = { es: List<Darklang.Stdlib.Uuid.ParseError> }
-  type WrapsUuidParseError = | Wrap(Darklang.Stdlib.Uuid.ParseError)
+  type WrapsUuidParseError =
+    | Wrap(Darklang.Stdlib.Uuid.ParseError)
 
   let makeIntRecord(): HasIntParseError = HasIntParseError { e = 5 }
   let makeUuidRecord(): HasUuidParseErrors = HasUuidParseErrors { es = 5 }

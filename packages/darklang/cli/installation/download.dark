@@ -190,7 +190,5 @@ let installRelease(
 
 
 /// <fn installRelease> for the latest release.
-let installOrUpdateLatestRelease(
-  host: Stdlib.Cli.Host.Host)
-  : Stdlib.Result.Result<String, String> =
+let installOrUpdateLatestRelease(host: Stdlib.Cli.Host.Host): Stdlib.Result.Result<String, String> =
   installRelease(host, Stdlib.Option.Option.None)

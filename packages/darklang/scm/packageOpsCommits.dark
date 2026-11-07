@@ -13,9 +13,7 @@ let getRecent(limit: Int64): List<LanguageTools.ProgramTypes.PackageOp> =
 
 /// Ops whose id starts with <param prefix>, fully decoded -- for inspecting op CONTENT. Newest 20: a
 /// prefix short enough to match more than a handful is a typo, not a listing.
-let getByIdPrefix(
-  prefix: String)
-  : List<LanguageTools.ProgramTypes.PackageOp> =
+let getByIdPrefix(prefix: String): List<LanguageTools.ProgramTypes.PackageOp> =
   decodeOpRows((query(OpFilter.IdPrefix(prefix), 20)).ops)
 
 

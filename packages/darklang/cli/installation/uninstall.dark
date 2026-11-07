@@ -22,9 +22,7 @@ let uninstallFrom(
     |> Stdlib.Result.andThen(fun _ -> removeDirectory(dir)))
 
 
-let runUninstall(
-  host: Stdlib.Cli.Host.Host)
-  : Stdlib.Result.Result<Unit, String> =
+let runUninstall(host: Stdlib.Cli.Host.Host): Stdlib.Result.Result<Unit, String> =
   let result =
     match Stdlib.Cli.Unix.getHomeDirectory() with
     | Ok(home) ->

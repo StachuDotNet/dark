@@ -1,7 +1,8 @@
 module Darklang.Stdlib.Uuid
 
 
-type ParseError = | BadFormat
+type ParseError =
+  | BadFormat
 
 /// Generate a new <type Uuid> v4 according to RFC 4122
 let generate(): Uuid = Builtin.uuidGenerate()

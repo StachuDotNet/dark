@@ -474,10 +474,7 @@ let instantiate(s: State, scheme: Model.Scheme): (Model.Ty * State) =
 /// Transform type fields in requirements that can be saved in a generic scheme.
 /// Preserve source locations, patterns, and other metadata. Requirements that
 /// should already have been handled immediately pass through unchanged.
-let mapConstraintTypes(
-  mapType: Model.Ty -> Model.Ty,
-  c: Model.Constraint)
-  : Model.Constraint =
+let mapConstraintTypes(mapType: Model.Ty -> Model.Ty, c: Model.Constraint): Model.Constraint =
   match c with
   | GetField(at, record, field, result) ->
     Model.Constraint.GetField(at, mapType(record), field, mapType(result))
@@ -519,10 +516,7 @@ let mapConstraintTypes(
   | other -> other
 
 /// Give a saved requirement the same fresh inference variables as its scheme's type.
-let renameConstraint(
-  mapping: Dict<Model.Var, Model.Ty>,
-  c: Model.Constraint)
-  : Model.Constraint =
+let renameConstraint(mapping: Dict<Model.Var, Model.Ty>, c: Model.Constraint): Model.Constraint =
   mapConstraintTypes((fun typ -> Types.substitute(mapping, typ)), c)
 
 /// Collect unresolved variables used by a deferred or coverage requirement.
@@ -561,11 +555,7 @@ let schemeFreeVars(s: State, scheme: Model.Scheme): Dict<Model.Var, Bool> =
 /// Build a reusable type scheme after solving as much pending work as possible.
 /// Unknowns independent of the surrounding scope may vary at each use. Save
 /// their deferred requirements with the scheme and remove those checks from this state.
-let schemeFor(
-  s: State,
-  ty: Model.Ty,
-  scope: List<Model.Binder>)
-  : (Model.Scheme * State) =
+let schemeFor(s: State, ty: Model.Ty, scope: List<Model.Binder>): (Model.Scheme * State) =
   let s = solvePendingConstraints(s)
   let ty = zonk(s, ty)
 
@@ -673,12 +663,7 @@ let growQuantified(
 
 /// Save a let binding's reusable scheme under its pattern-node ID. Reusing an ID
 /// for another binding makes the scheme unavailable and produces a warning.
-let generalize(
-  s: State,
-  key: Int64,
-  ty: Model.Ty,
-  scope: List<Model.Binder>)
-  : State =
+let generalize(s: State, key: Int64, ty: Model.Ty, scope: List<Model.Binder>): State =
   let (scheme, s) = schemeFor(s, ty, scope)
   if Stdlib.Dict.containsKey(s.schemes, key) then
     // The same ID cannot identify two independent bindings. Replace the saved
@@ -1355,11 +1340,7 @@ let useValue(
 /// Collect unresolved variables after expanding aliases throughout t. If Tag<'a>
 /// aliases Int64, Tag<t> no longer contains t. Return an empty list when expansion
 /// fails, since an unavailable type cannot prove a containment cycle here.
-let containedUnknowns(
-  s: State,
-  at: Int64,
-  t: Model.Ty)
-  : List<Model.Var> =
+let containedUnknowns(s: State, at: Int64, t: Model.Ty): List<Model.Var> =
   match Types.expandDeep(s.env, s.subst, Stdlib.Option.Option.Some(at), [], t) with
   | Ok(expanded) -> Stdlib.Dict.keys(Types.freeVars(s.subst, expanded))
   | Error(_) -> []
@@ -1369,12 +1350,7 @@ let containedUnknowns(
 /// an Option or Result contains the payload extracted from it.
 /// Do not follow record fields or enum declarations as containment edges, since
 /// those declarations are allowed to be recursive.
-let wouldContainItself(
-  s: State,
-  at: Int64,
-  v: Model.Var,
-  contents: List<Model.Ty>)
-  : Bool =
+let wouldContainItself(s: State, at: Int64, v: Model.Var, contents: List<Model.Ty>): Bool =
   let unknowns(types: List<Model.Ty>): List<Model.Var> =
     Stdlib.List.flatten(Stdlib.List.map(types, fun t -> containedUnknowns(s, at, t)))
 
@@ -1431,12 +1407,7 @@ let reaches(
 /// Report a call whose pending type relationships would create an infinite type.
 /// Retain unresolved types as evidence; Items keeps the finding as a warning
 /// while that evidence still depends on unknowns.
-let selfApplication(
-  s: State,
-  at: Int64,
-  callee: Model.Ty,
-  args: List<(Model.Ty * Site)>)
-  : State =
+let selfApplication(s: State, at: Int64, callee: Model.Ty, args: List<(Model.Ty * Site)>): State =
   addFinding(
     s,
     (Types.error(
@@ -1681,11 +1652,7 @@ let newRecord(
       | Alias(_) -> recordRequired(s, nodeId, recordType)
 
 /// Report a constructor that names a type which does not resolve to a record.
-let recordRequired(
-  s: State,
-  at: Stdlib.Option.Option<Int64>,
-  actual: Model.Ty)
-  : State =
+let recordRequired(s: State, at: Stdlib.Option.Option<Int64>, actual: Model.Ty): State =
   addFinding(
     s,
     (Types.definiteError(
@@ -2310,12 +2277,7 @@ let bitwiseNot(s: State, at: Int64, operand: Model.Ty): Stdlib.Option.Option<Sta
 /// a predicate asks "is this a signed numeric" and a rigid type variable is not one, so it
 /// refused the very thing the bound guarantees. A bound is a promise to be deferred, not a
 /// type to be recognised.
-let unaryOperand(
-  s: State,
-  at: Int64,
-  operand: Model.Ty,
-  key: String)
-  : Stdlib.Option.Option<State> =
+let unaryOperand(s: State, at: Int64, operand: Model.Ty, key: String): Stdlib.Option.Option<State> =
   let nodeId = Stdlib.Option.Option.Some(at)
   let (subject, s) = expand(s, nodeId, operand)
 

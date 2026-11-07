@@ -369,10 +369,7 @@ module Registry =
   /// that means a package DB query, which is far too expensive to repeat per keystroke -- and a cache keyed
   /// on the whole prompt text misses on every character of a word. The partial token filters this result
   /// afterwards, and filtering a list is cheap.
-  let getCompletionsForContext(
-    state: AppState,
-    input: String)
-    : List<Completion.CompletionItem> =
+  let getCompletionsForContext(state: AppState, input: String): List<Completion.CompletionItem> =
     let parsed = Completion.parseInput(input)
     if parsed.isCompletingCommand then
       state.commandOptionsCache |> Stdlib.List.map(Completion.simple)
@@ -431,10 +428,7 @@ module Registry =
         | [_, ...] -> filtered
         | [] -> completeFunc(state, parsed.args)
 
-  let hintFromCompletions(
-    input: String,
-    completions: List<Completion.CompletionItem>)
-    : String =
+  let hintFromCompletions(input: String, completions: List<Completion.CompletionItem>): String =
     let parsed = Completion.parseInput(input)
 
     let partial =

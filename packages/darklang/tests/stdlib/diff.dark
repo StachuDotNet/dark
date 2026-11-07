@@ -8,10 +8,7 @@ let refTableGet(table: List<List<Int64>>, row: Int64, col: Int64): Int64 =
   let r = Stdlib.Option.withDefault(Stdlib.List.getAt(table, row), [])
   Stdlib.Option.withDefault(Stdlib.List.getAt(r, col), 0)
 
-let refBuildTable(
-  oldLines: List<String>,
-  newLines: List<String>)
-  : List<List<Int64>> =
+let refBuildTable(oldLines: List<String>, newLines: List<String>): List<List<Int64>> =
   let zeroRow =
     Stdlib.List.map(Stdlib.List.range(0, Stdlib.List.length(oldLines)), fun _i -> 0)
 
