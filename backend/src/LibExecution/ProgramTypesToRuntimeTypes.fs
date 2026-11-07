@@ -1615,6 +1615,14 @@ module PackageFn =
       bounds = List.map Bound.toRT f.bounds }
 
 
+/// A test has no parameters and nothing calls it, so its instructions are its body's alone. The
+/// fold stores them beside the source (`package_tests.rt_instrs`); `dark test run` runs those.
+/// The symbol markers stay in: the VM splits them out of a root body when it starts one.
+module PackageTest =
+  let toRT (t : PT.PackageTest.PackageTest) : RT.Instructions =
+    Expr.toRT Map.empty 0 None t.body
+
+
 module Trait =
   module Method =
     let toRT (m : PT.Trait.Method) : RT.Trait.Method =

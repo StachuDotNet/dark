@@ -380,9 +380,9 @@ let private applyAddFn
     do! updateDependencies ctx hashStr refs
   }
 
-/// Apply a single AddTest op. Unlike a function, a test is stored as source
-/// only: it is compiled when `dark test run` runs it, and the runtime package
-/// manager has no way to look one up, so nothing can call a test.
+/// Apply a single AddTest op. Like a function, a test is compiled once, here, and
+/// `dark test run` runs the stored instructions. Unlike one, the runtime package
+/// manager has no way to look a test up, so nothing can call it.
 let private applyAddTest
   (ctx : Ctx)
   (mayRewriteExisting : bool)
@@ -396,6 +396,15 @@ let private applyAddTest
     let test = { test with hash = hash }
     let (Hash hashStr) = hash
 
+    // A body that cannot be compiled (`self` outside a function is the one case) is stored
+    // without instructions. Its run compiles it then, and fails the way it always did, rather
+    // than the fold failing for everything else in the batch.
+    let instructions =
+      try
+        Some(PT2RT.PackageTest.toRT test)
+      with _ ->
+        None
+
     do!
       upsertContentAddressed
         ctx
@@ -403,6 +412,10 @@ let private applyAddTest
         "package_tests"
         hash
         [ "pt_def", box (BS.PT.PackageTest.serialize hashStr test)
+          "rt_instrs",
+          (match instructions with
+           | Some instrs -> box (BS.RT.Instructions.serialize hashStr instrs)
+           | None -> box System.DBNull.Value)
           "description", box test.description ]
         []
         mayRewriteExisting

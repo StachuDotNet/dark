@@ -152,6 +152,19 @@ module Fn =
     }
 
 
+module Test =
+  /// The instructions the fold compiled for the test at <param hash>. None when no test is stored
+  /// there, and when one is but its body could not be compiled (`rt_instrs` NULL); the caller
+  /// compiles the source then.
+  let getInstructions (hash : Hash) : Ply<Option<RT.Instructions>> =
+    getTimed
+      "test"
+      "SELECT rt_instrs FROM package_tests WHERE hash = @hash AND rt_instrs IS NOT NULL"
+      "rt_instrs"
+      BS.RT.Instructions.deserialize
+      hash
+
+
 /// Content-addressed blob storage — bytes keyed by SHA-256 hash.
 module Bytes =
   /// Look up bytes by hash. Returns [None] when the row doesn't exist.

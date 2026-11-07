@@ -202,6 +202,39 @@ let unknownHash =
     Expect.equal result "error: VariableNotFound" "missing test"
   }
 
+let storedInstructions =
+  testTask
+    "a test runs the instructions stored with it, or its source when it has none" {
+    let m = "PackageTestStored"
+    do! cleanup m
+    let! _ =
+      authorIn
+        m
+        """test adds = (2 + 3) |> Stdlib.Test.equal(5)
+test divides =
+  (1 / 0)
+  => raises "Cannot divide by 0"
+"""
+    for name in [ "adds"; "divides" ] do
+      let! bound = liveBoundHash { owner = "Darklang"; modules = [ m ]; name = name }
+      let hash = Option.get bound
+      let! stored =
+        countSql
+          "SELECT COUNT(*) AS n FROM package_tests WHERE hash = @h AND rt_instrs IS NOT NULL"
+          [ "h", Sql.string hash ]
+      Expect.equal stored 1L $"the fold stores {name}'s instructions"
+      let! withStored = runHash hash
+
+      do!
+        execSqlP
+          "UPDATE package_tests SET rt_instrs = NULL WHERE hash = @h"
+          [ "h", Sql.string hash ]
+      let! fromSource = runHash hash
+      Expect.equal withStored "pass" $"{name} passes from its stored instructions"
+      Expect.equal fromSource withStored $"{name} comes out the same from its source"
+    do! cleanup m
+  }
+
 let isolatedObservations =
   testTask "package test observations are local, ordered, and never cached" {
     let m = "PackageTestObservations"
@@ -317,5 +350,7 @@ test failsAfterObservation =
 // race other store-mutating backend tests.
 let tests =
   testSequenced (
-    testList "PackageTests" [ outcomes; unknownHash; isolatedObservations ]
+    testList
+      "PackageTests"
+      [ outcomes; unknownHash; storedInstructions; isolatedObservations ]
   )

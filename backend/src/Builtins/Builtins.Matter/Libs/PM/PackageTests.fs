@@ -33,18 +33,19 @@ let private requireRunningPackageTest
     )
 
 
-/// Run the test body. The caller handles conversion to Dark values and decides whether the
-/// test passed.
-let private executeTestBody
-  (state : ExecutionState)
-  (test : PT.PackageTest.PackageTest)
-  : Ply<ExecutionResult> =
+/// The instructions the fold stored for the test at <param hash>, or, for one stored without
+/// them, its source compiled now. None when no test is stored there. So a worker reads the
+/// source only for a test stored without instructions.
+let private testInstructions
+  (pm : PT.PackageManager)
+  (PT.Hash hash)
+  : Ply<Option<Instructions>> =
   uply {
-    // TODO: Store test instructions alongside PT, as functions do, to avoid
-    // converting the body on every run. Verify that runtime upgrades regenerate
-    // them and that expected-error tests still behave the same.
-    let instructions = PT2RT.Expr.toRT Map.empty 0 None test.body
-    return! Execution.executeExpr state instructions
+    match! LibDB.RuntimeTypes.Test.getInstructions (Hash hash) with
+    | Some instructions -> return Some instructions
+    | None ->
+      let! test = pm.getTest (PT.Hash hash)
+      return test |> Option.map PT2RT.PackageTest.toRT
   }
 
 
@@ -94,15 +95,18 @@ let private executeWorker
       uply {
         match request.target with
         | LibDB.TestProcess.Target.PackageTest hash ->
-          let! test = pm.getTest (PT.Hash hash)
+          let! instructions = testInstructions pm (PT.Hash hash)
           let! result =
-            match test with
-            | None ->
-              Ply(Error(RuntimeError.VariableNotFound $"package test {hash}", []))
+            uply {
+              match instructions with
+              | None ->
+                return
+                  Error(RuntimeError.VariableNotFound $"package test {hash}", [])
 
-            | Some test ->
-              // Execute the body directly: dispatching isolation again would recurse.
-              executeTestBody workerState test
+              | Some instructions ->
+                // Execute the body directly: dispatching isolation again would recurse.
+                return! Execution.executeExpr workerState instructions
+            }
 
           return Ok(reflectOutcome result)
         | LibDB.TestProcess.Target.TestCallback(hash, argument) ->
@@ -224,7 +228,11 @@ let private executeInProcessTest
                 sideEffectCount = 0
                 inRunner = true
                 stoppedAtImpure = false } }
-    let! result = executeTestBody state test
+    let (PT.Hash hash) = test.hash
+    let! stored = LibDB.RuntimeTypes.Test.getInstructions (Hash hash)
+    let instructions =
+      stored |> Option.defaultWith (fun () -> PT2RT.PackageTest.toRT test)
+    let! result = Execution.executeExpr state instructions
     // Checked whatever the result: a builtin that catches its callee's failure could have
     // swallowed the stop.
     if state.test.stoppedAtImpure then

@@ -252,8 +252,8 @@ CREATE TABLE IF NOT EXISTS package_functions (
   description TEXT NOT NULL DEFAULT ''         -- plain-text doc comment for SQL package search
 );
 
--- Tests are package content that nothing can call. Stored as source only;
--- Before executing a test, `dark test run` compiles its stored body into interpreter instructions.
+-- Tests are package content that nothing can call. Their compiled bodies are `rt_instrs`, added
+-- in 20261107-044500-package-test-instructions.sql.
 CREATE TABLE IF NOT EXISTS package_tests (
   hash TEXT PRIMARY KEY,
   pt_def BLOB NOT NULL,
