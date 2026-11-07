@@ -19,7 +19,8 @@ let compilerPath(): String =
     $"{home}/.darklang/compiler/{Stdlib.String.slice(pinnedCommit, 0, 9)}/darkc"
 
 
-let run(expr: String): Stdlib.Result.Result<Stdlib.Cli.Process.Output, String> =
+/// Serve this instance's packages for as long as the compiler runs with <param args>.
+let withServer(args: List<String>): Stdlib.Result.Result<Stdlib.Cli.Process.Output, String> =
   let compiler = compilerPath()
   if Stdlib.Bool.not(Stdlib.Cli.File.exists(compiler)) then
     Stdlib.Result.Result.Error(
@@ -42,7 +43,9 @@ let run(expr: String): Stdlib.Result.Result<Stdlib.Cli.Process.Output, String> =
       let result =
         match Stdlib.Exec.awaitWithin(1000, server) with
         | None ->
-          Stdlib.Cli.Process.run(compiler, [ "-q", "--package-server", url, "-r", "-e", expr ])
+          Stdlib.Cli.Process.run(
+            compiler,
+            Stdlib.List.concat([ "--syntax=current", "--package-server", url ], args))
           |> Stdlib.Result.mapError(fun e -> e.message)
         | Some(Error(e)) -> Stdlib.Result.Result.Error($"The package server could not start: {e}")
         | Some(Ok(_)) -> Stdlib.Result.Result.Error("The package server stopped before the compile.")
@@ -50,19 +53,30 @@ let run(expr: String): Stdlib.Result.Result<Stdlib.Cli.Process.Output, String> =
       result
 
 
+/// Compile <param expr> and run it.
+let run(expr: String): Stdlib.Result.Result<Stdlib.Cli.Process.Output, String> =
+  withServer([ "-q", "-r", "-e", expr ])
+
+
+/// Ask the compiler whether each package fn or value in <param names> compiles, and why not.
+let check(names: List<String>): Stdlib.Result.Result<Stdlib.Cli.Process.Output, String> =
+  withServer(Stdlib.List.concat([ "--check" ], names))
+
+
 let execute(state: AppState, args: List<String>): AppState =
-  match args with
-  | [ expr ] ->
-    match run(expr) with
-    | Ok(output) ->
-      Stdlib.print(output.stdout)
-      if Stdlib.String.isEmpty(output.stderr) then () else Stdlib.printError(output.stderr)
-      { state with exitCode = output.exitCode }
-    | Error(message) ->
-      Cli.printErr(message)
-      { state with exitCode = 1 }
-  | _ ->
-    Cli.printErr("Usage: compile <expression>")
+  let result =
+    match args with
+    | [ "--check" ] -> Stdlib.Result.Result.Error("Usage: compile --check <fn>...")
+    | [ "--check", ...names ] -> check(names)
+    | [ expr ] -> run(expr)
+    | _ -> Stdlib.Result.Result.Error("Usage: compile <expression> | compile --check <fn>...")
+  match result with
+  | Ok(output) ->
+    Stdlib.print(output.stdout)
+    if Stdlib.String.isEmpty(output.stderr) then () else Stdlib.printError(output.stderr)
+    { state with exitCode = output.exitCode }
+  | Error(message) ->
+    Cli.printErr(message)
     { state with exitCode = 1 }
 
 
@@ -75,9 +89,11 @@ let help(_state: AppState): String =
     "what it prints. Package fns it calls come from this instance's main branch."
     ""
     "Usage: compile <expression>"
+    "       compile --check <fn>...   does each package fn compile, and if not, why not"
     ""
     "Experimental. The compiler is pinned; DARK_COMPILER overrides where it is found."
     ""
     "Example:"
-    "  compile 'Stdlib.List.length (Darklang.Cli.Http.Serve.usageLines ())'" ]
+    "  compile 'Stdlib.List.length(Darklang.Cli.Http.Serve.usageLines())'"
+    "  compile --check Stdlib.English.toOrdinal Stdlib.Decimal.scale" ]
   |> Stdlib.String.join("\n")
