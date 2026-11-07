@@ -642,6 +642,7 @@ module References =
     match t with
     | TStream(inner) -> inTypeRef(inner)
     | TList(inner) -> inTypeRef(inner)
+    | TSet(inner) -> inTypeRef(inner)
     | TDict(key, value) -> Stdlib.List.concat(inTypeRef(key), inTypeRef(value))
     | TTuple(first, second, rest) ->
       Stdlib.List.flatten([ inTypeRef(first), inTypeRef(second), inTypeRefs(rest) ])
@@ -668,6 +669,7 @@ module References =
     | EMatch(_, arg, cases) -> Stdlib.List.concat(inExpr(arg), inMatchCases(cases))
     | ELet(_, _, value, body) -> Stdlib.List.concat(inExpr(value), inExpr(body))
     | EList(_, items) -> inExprs(items)
+    | ESet(_, items) -> inExprs(items)
     | EDict(_, pairs) ->
       inExprs(
         Stdlib.List.flatten(
@@ -832,6 +834,7 @@ let boundNames(e: LanguageTools.ProgramTypes.Expr): List<String> =
     |> Stdlib.List.flatten
     |> Stdlib.List.concat(boundNames(head))
   | EList(_, items) -> all(items)
+  | ESet(_, items) -> all(items)
   | EDict(_, pairs) ->
     pairs
     |> Stdlib.List.map(fun((k, v)) -> Stdlib.List.concat(boundNames(k), boundNames(v)))
@@ -986,6 +989,7 @@ let typeReferenceDocWithFnParens(
   match t with
   | TStream(inner) -> angled("Stream", [ typeReferenceDocWithFnParens(ctx, false, inner) ])
   | TList(inner) -> angled("List", [ typeReferenceDocWithFnParens(ctx, false, inner) ])
+  | TSet(inner) -> angled("Set", [ typeReferenceDocWithFnParens(ctx, false, inner) ])
   | TDict(key, value) ->
     angled(
       "Dict",
@@ -1068,6 +1072,7 @@ let typeReferenceFlatAtPrecedence(
   | TBytes -> "Bytes"
   | TStream(inner) -> $"Stream<{typeReferenceFlatAtPrecedence(ctx, false, inner)}>"
   | TList(inner) -> $"List<{typeReferenceFlatAtPrecedence(ctx, false, inner)}>"
+  | TSet(inner) -> $"Set<{typeReferenceFlatAtPrecedence(ctx, false, inner)}>"
   | TTuple(first, second, theRest) ->
     Stdlib.List.concat([ first, second ], theRest)
     |> Stdlib.List.map(fun item -> typeReferenceFlatAtPrecedence(ctx, true, item))
@@ -2500,6 +2505,11 @@ let exprDocBare(ctx: Context, e: LanguageTools.ProgramTypes.Expr): Stdlib.Pretty
           exprDoc(ctx, value)))
 
     Stdlib.Pretty.Doc.Concat(Stdlib.Pretty.text("Dict "), spacedParts(ctx, "{", "}", parts))
+  // Elements in the order written: a literal's text is kept as it was, and the set orders them
+  // when it is built.
+  | ESet(_id, items) ->
+    let parts = items |> Stdlib.List.map(fun i -> exprDoc(ctx, i))
+    Stdlib.Pretty.Doc.Concat(Stdlib.Pretty.text("Set "), spacedParts(ctx, "{", "}", parts))
   | EEnum(_id, typeName, typeArgs, caseName, fields) ->
     let typeNamePart = NameResolution.typeName(ctx, typeName)
 
@@ -3174,6 +3184,7 @@ let typeVariables(acc: List<String>, t: LanguageTools.ProgramTypes.TypeReference
   | TVariable(name) ->
     if Stdlib.List.contains(acc, name) then acc else Stdlib.List.append(acc, name)
   | TList(inner) -> typeVariables(acc, inner)
+  | TSet(inner) -> typeVariables(acc, inner)
   | TStream(inner) -> typeVariables(acc, inner)
   | TDict(key, value) -> typeVariables(typeVariables(acc, key), value)
   | TTuple(first, second, rest) ->
