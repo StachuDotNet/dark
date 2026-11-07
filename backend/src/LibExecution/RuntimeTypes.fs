@@ -228,6 +228,8 @@ type KnownType =
 
   | KTDict of key : ValueType * value : ValueType
 
+  | KTSet of element : ValueType
+
 /// Represents the actual type of a Dval
 ///
 /// "Unknown" represents the concept of "bottom" in
@@ -404,6 +406,7 @@ type TypeReference =
   | TTuple of TypeReference * TypeReference * List<TypeReference>
   | TList of TypeReference
   | TDict of key : TypeReference * value : TypeReference
+  | TSet of element : TypeReference
   | TFn of NEList<TypeReference> * TypeReference
   | TCustomType of
     NameResolution<FQTypeName.FQTypeName> *
@@ -447,6 +450,7 @@ type TypeReference =
         isConcrete t1 && isConcrete t2 && List.forall isConcrete ts
       | TList t -> isConcrete t
       | TDict(k, v) -> isConcrete k && isConcrete v
+      | TSet t -> isConcrete t
 
       | TCustomType(_, ts) -> List.forall isConcrete ts
 
@@ -894,6 +898,9 @@ type Instruction =
 
   | CreateDict of createTo : Register * entries : List<Register * Register>
 
+  /// Create a set; a repeated element is kept once
+  | CreateSet of createTo : Register * items : List<Register>
+
 
   // == Working with Custom Data ==
   // -- Records --
@@ -1086,6 +1093,7 @@ and DictKey private () =
     | DPromise _ -> 27
     | DFloat32 _ -> 28
     | DDecimal _ -> 29
+    | DSet _ -> 30
 
   static member compare (a : Dval) (b : Dval) : int =
     DvalOrdering.compareForDictKey a b
@@ -1121,6 +1129,10 @@ and DictKey private () =
       |> Array.fold
         (fun acc (struct (k, v)) -> acc * 31 + DictKey.hash k * 31 + DictKey.hash v)
         17
+      |> combine
+    | DSet(_, xs) ->
+      xs.Entries
+      |> Array.fold (fun acc (struct (k, _)) -> acc * 31 + DictKey.hash k) 17
       |> combine
     | DRecord(_, tn, _, fields) ->
       fields.Entries
@@ -1195,6 +1207,13 @@ and DvalOrdering private () =
         mode
         (x.Entries |> Array.map (fun (struct (k, v)) -> (k, v)) |> List.ofArray)
         (y.Entries |> Array.map (fun (struct (k, v)) -> (k, v)) |> List.ofArray)
+
+    | DSet(_, x), DSet(_, y) ->
+      System.Runtime.CompilerServices.RuntimeHelpers.EnsureSufficientExecutionStack()
+      DvalOrdering.compareList
+        mode
+        (x.Entries |> Array.map (fun (struct (k, _)) -> k) |> List.ofArray)
+        (y.Entries |> Array.map (fun (struct (k, _)) -> k) |> List.ofArray)
 
     | DRecord(_, x, _, xFields), DRecord(_, y, _, yFields) ->
       System.Runtime.CompilerServices.RuntimeHelpers.EnsureSufficientExecutionStack()
@@ -1561,6 +1580,9 @@ and [<NoComparison>] Dval =
   | DList of ValueType * List<Dval>
   | DTuple of first : Dval * second : Dval * theRest : List<Dval>
   | DDict of keyType : ValueType * valueType : ValueType * entries : DictMap
+  /// A set: a `DictMap` whose values are all `DUnit`, so its elements are kept in
+  /// the same structural order a dict's keys are, and need the same of them.
+  | DSet of elementType : ValueType * elements : DictMap
 
   // TODO: go through all instances of DRecord and DEnum
   // and make sure the typeNames are in the correct order
@@ -2311,6 +2333,17 @@ module RuntimeError =
         actualType : ValueType *
         actualKey : Dval
 
+  module Sets =
+    type Error =
+      /// An element whose type is not the type of the elements before it
+      | TriedToAddMismatchedData of
+        expectedType : ValueType *
+        actualType : ValueType *
+        actualValue : Dval
+
+      /// A function, a stream, or a value holding one: it has no order to keep
+      | UnsupportedElementType of elementType : ValueType * value : Dval
+
 
   module Lets =
     // TODO consider some kinda _path_ thing like with JSON errors:
@@ -2557,6 +2590,7 @@ module RuntimeError =
 
     | List of Lists.Error
     | Dict of Dicts.Error
+    | Set of Sets.Error
 
     | Let of Lets.Error
     | VariableNotFound of attemptedVarName : string
@@ -2835,6 +2869,8 @@ module Dval =
 
   let private dictVTs = Cache<ValueType, Cache<ValueType, ValueType>>()
 
+  let private setVTs = Cache<ValueType, ValueType>()
+
   let private customVTs = Cache<FQTypeName.FQTypeName, ValueType>()
 
   let rec toValueType (dv : Dval) : ValueType =
@@ -2883,6 +2919,14 @@ module Dval =
         let result = ValueType.Known(KTDict(kt, vt))
         byValue.AddOrUpdate(vt, result)
         result
+    | DSet(t, _) ->
+      let mutable hit = Unchecked.defaultof<ValueType>
+      if setVTs.TryGetValue(t, &hit) then
+        hit
+      else
+        let vt = ValueType.Known(KTSet t)
+        setVTs.AddOrUpdate(t, vt)
+        vt
     | DTuple(first, second, theRest) ->
       ValueType.Known(
         KTTuple(toValueType first, toValueType second, List.map toValueType theRest)
@@ -2952,6 +2996,7 @@ module Dval =
       isUsableDictKey a && isUsableDictKey b && List.forall isUsableDictKey rest
     | DDict(_, _, entries) ->
       entries |> DictMap.forall (fun k v -> isUsableDictKey k && isUsableDictKey v)
+    | DSet(_, elements) -> elements |> DictMap.forall (fun k _ -> isUsableDictKey k)
     | DRecord(_, _, _, fields) -> fields |> RecordFields.forall isUsableDictKey
     | DEnum(_, _, _, _, fields) -> List.forall isUsableDictKey fields
 
@@ -2984,12 +3029,20 @@ module Dval =
       )
       |> raiseUntargetedRTE
 
+  /// A set's elements are kept in key order, so they need what a dict key needs.
+  let assertUsableSetElement (element : Dval) : unit =
+    if not (isUsableDictKey element) then
+      RuntimeError.Error.Set(
+        RuntimeError.Sets.UnsupportedElementType(toValueType element, element)
+      )
+      |> raiseUntargetedRTE
+
 
   /// Generic Dval-rewriting walker. At each node, asks `f`:
   ///   - `Some dv'` → substitute, do not recurse further into the original
   ///   - `None`     → recurse into containers and rebuild
   ///
-  /// Recurses into DList/DTuple/DDict/DRecord/DEnum and into
+  /// Recurses into DList/DTuple/DDict/DSet/DRecord/DEnum and into
   /// DApplicable closures (closed registers + a receiver call's bound receiver).
   /// The closure recursion is required for persistence boundaries —
   /// a lambda capturing an ephemeral blob or a stream must have its
@@ -3062,6 +3115,10 @@ module Dval =
           | DDict(kt, vt, entries) ->
             let! entries' = walkDictEntries kt entries
             return (if same entries' entries then dv else DDict(kt, vt, entries'))
+
+          | DSet(et, elements) ->
+            let! elements' = walkDictEntries et elements
+            return (if same elements' elements then dv else DSet(et, elements'))
 
           | DRecord(src, rt, typeArgs, fields) ->
             let! entries = walkFields fields.Entries
@@ -3950,7 +4007,9 @@ module Opcode =
        "RaiseNRE"
        "VarNotFound"
        "CheckIfFirstExprIsUnit"
-       "Unwrap" |]
+       "Unwrap"
+       "TraceExpr"
+       "CreateSet" |]
 
   let index (i : Instruction) : int =
     match i with
@@ -3979,6 +4038,7 @@ module Opcode =
     | CheckIfFirstExprIsUnit _ -> 22
     | Unwrap _ -> 23
     | TraceExpr _ -> 24
+    | CreateSet _ -> 25
 
 
 /// Every `InterpreterStats` created while telemetry is on, so the process can total them at exit. A VM is
@@ -4867,6 +4927,7 @@ module Types =
     | TTuple(t1, t2, rest) -> TTuple(r t1, r t2, List.map r rest)
     | TList t -> TList(r t)
     | TDict(k, v) -> TDict(r k, r v)
+    | TSet t -> TSet(r t)
 
     | TCustomType(typ, args) -> TCustomType(typ, List.map r args)
 
@@ -5021,6 +5082,7 @@ module TypeReference =
     | TTuple _
     | TList _
     | TDict _
+    | TSet _
     | TCustomType _
     | TFn _ ->
       uply {
@@ -5043,6 +5105,10 @@ module TypeReference =
           let! key = toVT types tst key
           let! value = toVT types tst value
           return ValueType.Known(KTDict(key, value))
+
+        | TSet inner ->
+          let! inner = toVT types tst inner
+          return ValueType.Known(KTSet inner)
 
         | TCustomType({ resolved = Ok typeName }, typeArgs) ->
           let! typeArgs = typeArgs |> Ply.List.mapSequentially (toVT types tst)
@@ -5095,6 +5161,7 @@ module TypeReference =
     | KTStream inner -> TStream(fromVT inner)
     | KTList inner -> TList(fromVT inner)
     | KTDict(key, value) -> TDict(fromVT key, fromVT value)
+    | KTSet inner -> TSet(fromVT inner)
     | KTTuple(first, second, rest) ->
       TTuple(fromVT first, fromVT second, List.map fromVT rest)
     | KTCustomType(typeName, typeArgs) ->
@@ -5141,6 +5208,7 @@ module TypeReference =
     | TList inner -> TList(r inner)
     | TStream inner -> TStream(r inner)
     | TDict(key, value) -> TDict(r key, r value)
+    | TSet inner -> TSet(r inner)
     | TTuple(first, second, rest) -> TTuple(r first, r second, List.map r rest)
     | TCustomType(typeName, typeArgs) -> TCustomType(typeName, List.map r typeArgs)
     | TFn(args, ret) -> TFn(NEList.map r args, r ret)

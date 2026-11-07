@@ -54,6 +54,12 @@ test typeReferencesStreamOfGeneric =
         "int64 dict alias",
         "type MyDict = Dict<String, Int64>",
         "type MyDict =\n  Dict<String, Int64>")
+      roundTrip("int64 set alias", "type MySet = Set<Int64>", "type MySet =\n  Set<Int64>")
+      roundTrip(
+        "nested set alias",
+        "type MySets = Set<Set<String>>",
+        "type MySets =\n  Set<Set<String>>")
+      roundTrip("generic set alias", "type MySet = Set<'a>", "type MySet =\n  Set<'a>")
       roundTripWith(
         myString,
         "custom type dict alias",

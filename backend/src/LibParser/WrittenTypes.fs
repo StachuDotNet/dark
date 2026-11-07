@@ -122,6 +122,12 @@ and TypeReference =
     symbolComma : Range *
     value : TypeReference *
     closeBracket : Range
+  | TSet of
+    Range *
+    keywordSet : Range *
+    openBracket : Range *
+    inner : TypeReference *
+    closeBracket : Range
   | TCustom of QualifiedTypeIdentifier
   | TVariable of Range * tick : Range * name : (Range * string) // `'a`
   | TTuple of
@@ -366,6 +372,13 @@ and Expr =
     Range *
     contents : List<Range * Expr * Range * Expr> *  // (entry, key, `:` range, value)
     keywordDict : Range *
+    symbolOpenBrace : Range *
+    symbolCloseBrace : Range
+  // `Set { a, b, … }`: a set literal. `Set` is a keyword, as `Dict` is.
+  | ESet of
+    Range *
+    contents : List<Expr> *
+    keywordSet : Range *
     symbolOpenBrace : Range *
     symbolCloseBrace : Range
   | ERecordUpdate of
@@ -669,6 +682,7 @@ let exprRange (e : Expr) : Range =
   | ELambda(r, _, _, _, _)
   | ERecord(r, _, _, _, _)
   | EDict(r, _, _, _, _)
+  | ESet(r, _, _, _, _)
   | ERecordUpdate(r, _, _, _, _, _)
   | EEnum(r, _, _, _, _)
   | EMatch(r, _, _, _, _)
@@ -701,6 +715,7 @@ let typeReferenceRange (t : TypeReference) : Range =
   | TBytes r
   | TList(r, _, _, _, _)
   | TDict(r, _, _, _, _, _, _)
+  | TSet(r, _, _, _, _)
   | TVariable(r, _, _)
   | TTuple(r, _, _, _, _, _, _)
   | TFn(r, _, _) -> r
@@ -952,6 +967,7 @@ let typeReferenceHeadName (t : TypeReference) : string =
   | TBytes _ -> "Bytes"
   | TList _ -> "List"
   | TDict _ -> "Dict"
+  | TSet _ -> "Set"
   | TTuple _ -> "Tuple"
   | TFn _ -> "Fn"
   | TVariable(_, _, (_, name)) -> name

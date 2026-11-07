@@ -261,6 +261,7 @@ let withoutWrittenNames(
       Stdlib.List.map(rest, fun r -> withoutWrittenNames(r))
     )
   | TList(inner) -> LanguageTools.RuntimeTypes.TypeReference.TList(withoutWrittenNames(inner))
+  | TSet(inner) -> LanguageTools.RuntimeTypes.TypeReference.TSet(withoutWrittenNames(inner))
   | TDict(k, v) ->
     LanguageTools.RuntimeTypes.TypeReference.TDict(withoutWrittenNames(k), withoutWrittenNames(v))
   | TCustomType(nr, args) ->

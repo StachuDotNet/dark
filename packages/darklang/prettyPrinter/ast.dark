@@ -180,6 +180,10 @@ let expr(ctx: PrettyPrinter.ProgramTypes.Context, depth: Int64, e: LanguageTools
     let n = Stdlib.toString(Stdlib.List.length(items))
     Stdlib.List.concat(here("List", $"{n} items"), children(items))
 
+  | ESet(_, items) ->
+    let n = Stdlib.toString(Stdlib.List.length(items))
+    Stdlib.List.concat(here("Set", $"{n} items"), children(items))
+
   | EDict(_, pairs) ->
     let n = Stdlib.toString(Stdlib.List.length(pairs))
     let pairLines =

@@ -120,6 +120,7 @@ let inlineDval(branchId: Uuid, dv: LanguageTools.RuntimeTypes.Dval): String =
     if Stdlib.Float32.isFinite(f) then (Stdlib.toString(f)) + "f32" else Stdlib.toString(f)
   | DDecimal(d) -> Stdlib.toString(d) + "dec"
   | DList(_, items) -> $"[{Stdlib.toString(Stdlib.List.length(items))} items]"
+  | DSet(_, elements) -> $"Set {{{Stdlib.toString(Stdlib.Set.size(elements))} items}}"
   | DDict(_, _, entries) ->
     let n = Stdlib.List.length(Stdlib.Dict.keys(entries))
     $"{{{Stdlib.toString(n)} entries}}"
@@ -158,6 +159,7 @@ let opcode(i: LanguageTools.RuntimeTypes.Instruction): String =
   | CreateTuple(_, _, _, _) -> "CreateTuple"
   | CreateList(_, _) -> "CreateList"
   | CreateDict(_, _) -> "CreateDict"
+  | CreateSet(_, _) -> "CreateSet"
   | CreateRecord(_, _, _, _) -> "CreateRecord"
   | CloneRecordWithUpdates(_, _, _) -> "CloneRecordWithUpdates"
   | GetRecordField(_, _, _) -> "GetRecordField"
@@ -217,6 +219,7 @@ let operands(branchId: Uuid, index: Int64, i: LanguageTools.RuntimeTypes.Instruc
     $"{register(t)} <- ({all})"
   | CreateList(t, items) -> $"{register(t)} <- [{registers(items)}]"
   | CreateDict(t, entries) -> $"{register(t)} <- {{{registerPairs(entries)}}}"
+  | CreateSet(t, items) -> $"{register(t)} <- Set {{{registers(items)}}}"
   | CreateRecord(t, typeName, _, fields) ->
     let n = PrettyPrinter.RuntimeTypes.typeName(branchId, typeName)
     $"{register(t)} <- {n} {{{namedRegisters(fields)}}}"

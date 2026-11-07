@@ -133,6 +133,10 @@ let rec serialize (threadID : ThreadID) (w : Utf8JsonWriter) (dv : Dval) : unit 
 
   | DList(_, items) -> w.writeArray (fun () -> List.iter r items)
 
+  // An array, in the set's order.
+  | DSet(_, elements) ->
+    w.writeArray (fun () -> elements |> DictMap.iter (fun e _ -> r e))
+
   | DDict(_, _, fields) ->
     // `iter` rather than `toList |> List.iter`: the latter builds a tuple and a cons per
     // field, for a list that is walked once and dropped. Both visit in ascending key order.
@@ -617,6 +621,14 @@ let parse
       |> Ply.List.flatten
       |> Ply.map (TypeChecker.DvalCreator.list threadID VT.unknownTODO)
 
+    // An array; a repeated element is kept once, as `Set.fromList` keeps it.
+    | TSet nested, JsonValueKind.Array ->
+      j.EnumerateArray()
+      |> Seq.mapi (fun i v -> convert nested (JsonPath.Part.Index i :: pathSoFar) v)
+      |> Seq.toList
+      |> Ply.List.flatten
+      |> Ply.map (TypeChecker.DvalCreator.set threadID VT.unknownTODO)
+
     | TTuple(t1, t2, rest), JsonValueKind.Array ->
       let values = j.EnumerateArray() |> Seq.toList
       let types = t1 :: t2 :: rest
@@ -834,6 +846,7 @@ let parse
     | TTuple _, _
     | TList _, _
     | TDict _, _
+    | TSet _, _
     | TCustomType _, _ -> raiseCantMatchWithType typ j pathSoFar
 
   let parsed =

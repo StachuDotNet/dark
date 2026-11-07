@@ -388,6 +388,7 @@ let typeReferenceDocWithFnParens(
   match t with
   | TStream(inner) -> angled("Stream", [ typeReferenceDocWithFnParens(ctx, false, inner) ])
   | TList(inner) -> angled("List", [ typeReferenceDocWithFnParens(ctx, false, inner) ])
+  | TSet(inner) -> angled("Set", [ typeReferenceDocWithFnParens(ctx, false, inner) ])
   | TDict(key, value) ->
     angled(
       "Dict",
@@ -494,6 +495,10 @@ let typeReferenceFlatAtPrecedence(
     let k = typeReferenceFlatAtPrecedence(ctx, false, key)
     let v = typeReferenceFlatAtPrecedence(ctx, false, value)
     $"Dict<{k}, {v}>"
+
+  | TSet(inner) ->
+    let i = typeReferenceFlatAtPrecedence(ctx, false, inner)
+    $"Set<{i}>"
 
   | TCustomType(typ, args) ->
     let argsPart =
@@ -1228,6 +1233,12 @@ let exprDoc(ctx: Context, e: LanguageTools.ProgramTypes.Expr): Stdlib.Pretty.Doc
           exprDoc(ctx, value)))
 
     Stdlib.Pretty.concat(txt("Dict "), wrapExprs("{", "}", ",", Stdlib.Pretty.line, parts))
+
+  // Elements in the order written: a literal's text is kept as it was, and the set orders them
+  // when it is built.
+  | ESet(_id, items) ->
+    let parts = items |> Stdlib.List.map(fun i -> exprDoc(ctx, i))
+    Stdlib.Pretty.concat(txt("Set "), wrapExprs("{", "}", ",", Stdlib.Pretty.line, parts))
 
   | EEnum(_id, typeName, typeArgs, caseName, fields) ->
     let typeNamePart = NameResolution.typeName(ctx, typeName)

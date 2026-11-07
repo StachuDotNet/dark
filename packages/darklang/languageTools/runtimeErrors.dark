@@ -53,6 +53,15 @@ module Dicts =
       actualType: ValueType,
       actualKey: Dval)
 
+module Sets =
+  type Error =
+    | TriedToAddMismatchedData(
+      expectedType: ValueType,
+      actualType: ValueType,
+      actualValue: Dval)
+
+    | UnsupportedElementType(elementType: ValueType, value: Dval)
+
 module Lets =
   type Error =
     | PatternDoesNotMatch(dval: Dval, pat: LetPattern)
@@ -187,6 +196,7 @@ type Error =
 
   | List(Lists.Error)
   | Dict(Dicts.Error)
+  | Set(Sets.Error)
 
   | Let(Lets.Error)
   | VariableNotFound(attemptedVarName: String)

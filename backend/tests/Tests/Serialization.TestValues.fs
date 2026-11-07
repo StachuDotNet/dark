@@ -63,6 +63,7 @@ module RuntimeTypes =
       RT.TTuple(RT.TBool, RT.TBool, [ RT.TBool ])
       RT.TList RT.TInt64
       RT.TDict(RT.TString, RT.TBool)
+      RT.TSet RT.TString
 
       RT.TFn(NEList.singleton RT.TBool, RT.TBool)
 
@@ -104,6 +105,7 @@ module RuntimeTypes =
       known (RT.KnownType.KTTuple(ktUnit, ktUnit, []))
       known (RT.KnownType.KTList ktUnit)
       known (RT.KnownType.KTDict(ktUnit, ktUnit))
+      known (RT.KnownType.KTSet ktUnit)
 
       known (RT.KnownType.KTFn(NEList.singleton ktUnit, ktUnit))
 
@@ -320,6 +322,7 @@ module ProgramTypes =
         TList TInt64
         TTuple(TBool, TBool, [ TBool ])
         TDict(TString, TBool)
+        TSet TString
         TCustomType(NameResolution.ok (FQTypeName.Package hashPT), [ TBool ])
         TCustomType(NameResolution.ok (FQTypeName.Package hashPT), [ TBool ])
         TVariable "test"
@@ -692,7 +695,11 @@ module ProgramTypes =
                                                           LPVariable(id, "statement"),
                                                           EStatement(
                                                             id,
-                                                            EUnit id,
+                                                            ESet(
+                                                              id,
+                                                              [ EInt64(id, 1L)
+                                                                EInt64(id, 2L) ]
+                                                            ),
                                                             EInt64(id, 1L)
                                                           ),
                                                           e

@@ -122,6 +122,7 @@ type TypeReference =
   | TList(TypeReference)
   | TTuple(TypeReference, TypeReference, List<TypeReference>)
   | TDict(key: TypeReference, value: TypeReference)
+  | TSet(TypeReference)
 
   | TCustomType(
     NameResolution<FQTypeName.FQTypeName>,
@@ -291,6 +292,9 @@ type Expr =
 
   | EDict(ID, List<Expr * Expr>)
 
+  /// `Set { a, b }`: a repeated element is kept once
+  | ESet(ID, List<Expr>)
+
   | ETuple(ID, Expr, Expr, List<Expr>)
 
   | ERecord(
@@ -386,6 +390,7 @@ module Expr =
     | EApply(id, _, _, _)
     | EList(id, _)
     | EDict(id, _)
+    | ESet(id, _)
     | ETuple(id, _, _, _)
     | EPipe(id, _, _)
     | ERecord(id, _, _, _)
