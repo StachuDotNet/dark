@@ -1051,8 +1051,8 @@ let aFailedModuleSaveDoesNotEndOnATick =
 
 /// Every example in the authoring help pages and the agent guide RUNS.
 ///
-/// Each of these used to be refused as printed: bare names with no owner, the
-/// reserved `Darklang` owner, and `./scripts/run-cli`, which nobody who installed the CLI has.
+/// Each of these used to be refused as printed: bare names with no owner, and
+/// `./scripts/run-cli`, which nobody who installed the CLI has.
 /// An example nobody executed is how that happened, so this executes them: every `dark ...` line
 /// in a page, and every `<<'EOF'` block with its body on stdin, in order, in a fresh store, and
 /// fails on a nonzero exit or anything that reads as a refusal.
@@ -1137,7 +1137,7 @@ module private HelpExamples =
   let refusal =
     System.Text.RegularExpressions.Regex(
       "Encountered a Runtime Error|couldn't be found|Parse error|Invalid location|"
-      + "not found|Not found|type error|Unresolved|Error:|reserved owner|Could not save"
+      + "not found|Not found|type error|Unresolved|Error:|Could not save"
     )
 
   let runPage (page : List<string>) (heredocsOnly : bool) (floor : int) =

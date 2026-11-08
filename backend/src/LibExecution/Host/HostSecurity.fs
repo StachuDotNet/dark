@@ -198,8 +198,7 @@ let canAffectPolicyPath (path : string) : bool =
 /// The instance's package store (`data.db`) path, set by the CLI at startup (it
 /// owns the config). Guest file and SQLite operations must not touch it:
 /// bundled trust is derived from its `locations` rows, so a guest write could
-/// forge the exemption, and the reserved-owner op guards do not cover a direct
-/// SQLite write. `None` until configured.
+/// forge the exemption. `None` until configured.
 let mutable private packageDbPath : string option = None
 
 let setPackageDbPath (path : string) : unit =

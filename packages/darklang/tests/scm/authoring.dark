@@ -4,7 +4,7 @@ module Darklang.SCM.Tests.Authoring
 //
 // Every package test runs against its own writable copy of the store, so these author
 // for real, through the path every authoring surface takes, and nothing reaches the
-// developer's store or another test. Owner `Tests`, because `Darklang` is reserved.
+// developer's store or another test. They use the owner `Tests`.
 
 let main(): Uuid = Darklang.SCM.Branch.mainBranchId
 

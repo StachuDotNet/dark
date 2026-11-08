@@ -123,7 +123,7 @@ let help(_state: Cli.AppState): String =
     "to use the new version."
     ""
     "A name is Owner.Name, or Owner.Module.Name to put it in a module. `Me` is a"
-    "fine owner to start with; `Darklang` is reserved for the standard library."
+    "fine owner to start with."
     ""
     "Examples:"
     "  dark type Me.Demo.Status '| Active | Inactive'"

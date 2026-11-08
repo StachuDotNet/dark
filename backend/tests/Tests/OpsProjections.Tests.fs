@@ -384,7 +384,7 @@ let durableReleaseCarriesForward =
   }
 
 let invalidReferenceSnapshotsAreRejectedBeforeStorage =
-  testTask "invalid and protected reference snapshots are rejected before storage" {
+  testTask "invalid reference snapshots are rejected before storage" {
     let location : PT.PackageLocation =
       { owner = "Darklang"; modules = [ "Stdlib"; "List" ]; name = "head" }
     let! hash = LibDB.ProgramTypes.Fn.find PT.BranchId.Main location |> Ply.toTask
@@ -401,15 +401,6 @@ let invalidReferenceSnapshotsAreRejectedBeforeStorage =
         name = System.Guid.NewGuid().ToString("N") }
     let ownNew = { own with name = own.name + "Moved" }
     let invalid = PT.PackageOp.SetReferenceNames(own, target, [], None)
-    let protectedOp = PT.PackageOp.SetReferenceNames(location, target, names, None)
-    let nested =
-      PT.PackageOp.Rename(
-        own,
-        ownNew,
-        target,
-        [ { location = location; target = target; names = names; restating = None } ],
-        "invalid-owner"
-      )
     let nestedInvalid =
       PT.PackageOp.Rename(
         own,
@@ -436,10 +427,10 @@ let invalidReferenceSnapshotsAreRejectedBeforeStorage =
           )
           restore own names ]
     Expect.isNone valid "valid rename and restore snapshots pass validation"
-    let! validProtected = LibDB.ReferenceNamesContent.validate [ protectedOp ]
-    Expect.isNone
-      validProtected
-      "content validation leaves reserved-owner policy to the write paths"
+    let! validBundled =
+      LibDB.ReferenceNamesContent.validate
+        [ PT.PackageOp.SetReferenceNames(location, target, names, None) ]
+    Expect.isNone validBundled "valid names on a bundled location pass validation"
     let branch = PT.BranchId.Id(System.Guid.NewGuid())
     do!
       LibDB.Branches.registerIfNew
@@ -447,17 +438,6 @@ let invalidReferenceSnapshotsAreRejectedBeforeStorage =
         ("snapshot-validation-" + branch.Guid.ToString("N"))
         PT.BranchId.Main
     let! before = countRows "package_ops"
-    let protectedRename =
-      PT.PackageOp.Rename(location, ownNew, target, [], "protected-source")
-    let protectedDestination =
-      PT.PackageOp.Rename(own, location, target, [], "protected-destination")
-    let protectedOverride =
-      PT.PackageOp.Decision(
-        System.Guid.NewGuid().ToString(),
-        location,
-        "test",
-        PT.DecisionKind.Override target
-      )
     let expectRejected label (write : unit -> Task<int64>) =
       task {
         let mutable rejected = false
@@ -468,18 +448,7 @@ let invalidReferenceSnapshotsAreRejectedBeforeStorage =
           rejected <- true
         Expect.isTrue rejected label
       }
-    for op in
-      [ invalid
-        protectedOp
-        nested
-        nestedInvalid
-        restore own []
-        restore location names
-        protectedRename
-        protectedDestination
-        protectedOverride
-        PT.PackageOp.Unbind(location, None)
-        PT.PackageOp.SetName(location, target, None) ] do
+    for op in [ invalid; nestedInvalid; restore own [] ] do
       let! result = LibDB.Inserts.insertUntrustedOps PT.BranchId.Main [ op ]
       match result with
       | Error _ -> ()

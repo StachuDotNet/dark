@@ -111,7 +111,7 @@ let authorOps
       let stabilizedOps = stabilizedOps @ referenceNames
 
       // These package changes came from running Dark code, so they land through the guarded path:
-      // reserved bundled names and placeholder hashes are rejected here.
+      // placeholder hashes are rejected here.
       match! LibDB.Inserts.insertUntrustedOps branchId stabilizedOps with
       | Error reason -> return Error reason
       | Ok insertedCount ->

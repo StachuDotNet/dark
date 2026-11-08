@@ -468,17 +468,11 @@ exactly this: the instance policy bounds all interpreted code, and escaping it
 needs a runtime exploit or a spawned process, neither of which is confined
 here.
 
-**The bundled owner is reserved.** Packages owned by `Darklang` are the
-bundled, trusted set, exempt from consumer approval. A malicious package could
-otherwise publish itself under `owner = "Darklang"` and look like built-in
-code, so before package operations are inserted the code looks at the owner on
-every operation, rejects `Darklang`-owned operations that come from guest
-input, and allows only trusted internal seeding to create those entries.
-The check applies across normal writes, propagated updates, reverts and atomic
-undo. It protects the package APIs; the bundled set is
-still computed from the mutable `owner` column, so anything that can write the
-package database directly could forge trust. Moving that anchor into the
-protected policy store is part of the deferred sandbox work.
+**The bundled owner is not protected yet.** Packages owned by `Darklang` are
+the bundled, trusted set, exempt from consumer approval, and that set is
+computed from the `owner` column. Package writes do not check the owner, so
+code that writes a package name under `Darklang` gets that trust. Who may write
+under which owner is part of the permissions design still to come.
 
 ## Diagnostics
 

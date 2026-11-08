@@ -330,8 +330,6 @@ let authorOn
     }
 
 
-let reservedOwnerViolation = OpValidation.reservedOwnerViolation
-
 /// Detect a parser placeholder instead of a real content hash. Placeholders
 /// are empty or contain the package location; real hashes contain only hex
 /// digits and are produced during stabilization.
@@ -361,21 +359,15 @@ let placeholderHashViolation (ops : List<PT.PackageOp>) : Option<string> =
 let insertAndApplyOps (ops : List<PT.PackageOp>) : Task<int64> =
   authorOn PT.BranchId.Main "op" ops
 
-/// Safely insert package operations submitted by RUNNING Dark code. On main, rejects protected
-/// `Darklang` bindings and unstabilized hashes before insertion; trusted seeding does not come through
-/// here.
+/// Safely insert package operations submitted by RUNNING Dark code. On main, rejects unstabilized
+/// hashes before insertion; trusted seeding does not come through here.
 let insertUntrustedOps
   (branch : PT.BranchId)
   (ops : List<PT.PackageOp>)
   : Task<Result<int64, string>> =
   task {
-    // Reserved names on every branch: bundled code changes only by propagation, which does not come
-    // through here. Placeholder hashes are main's question; a branch repairs them before a merge.
-    let violation =
-      if branch.IsMain then
-        Option.orElse (placeholderHashViolation ops) (reservedOwnerViolation ops)
-      else
-        reservedOwnerViolation ops
+    // Placeholder hashes are main's question; a branch repairs them before a merge.
+    let violation = if branch.IsMain then placeholderHashViolation ops else None
     match violation with
     | Some reason -> return Error reason
     | None ->
