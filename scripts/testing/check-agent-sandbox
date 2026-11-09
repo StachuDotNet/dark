@@ -13,6 +13,10 @@
 # not run and the settings do not take effect. A debug build embeds no digests of its code, so
 # with one (DARK_CHECK_STORE set) the rewritten code runs and that check says it skipped.
 #
+# Last, an impl the agent saves for a type the build already ships one for (`ToString for
+# Int64`): outside, calls run the shipped one, and dark says once that the agent's does not run.
+# A debug build ships nothing, so with one the agent's runs and that check says it skipped.
+#
 # Needs bubblewrap and unprivileged user namespaces, so it runs on a host, not in the dev
 # container (Docker's AppArmor profile refuses bwrap's mounts). Exits 77 when bwrap cannot start
 # here, 1 when a check fails, 0 when all pass. `Tests.AgentSandbox` runs it when it can.
@@ -200,6 +204,37 @@ done
 if dark config get exec.policy 2>&1 | grep -q "Agent.Evil"; then fail "outside: exec.policy from the store took effect"; else pass "outside: exec.policy from the store does not take effect"; fi
 dark config set http.loopback on > /dev/null
 if dark config get http.loopback 2>&1 | grep -q "= on"; then pass "outside: the person can still set http.loopback"; else fail "outside: config set http.loopback did not take"; fi
+
+# A rival for a shipped impl. Saving it is allowed (it is ordinary code in the agent's own
+# package); running it in place of the shipped one is not.
+cat > "$WORK/rival.dark" <<'EOF'
+impl ToString for Int64 =
+  let toString(i: Int64): String = "the agent's"
+EOF
+out="$(inside "'$CLI' impl Agent.Evil '$WORK/rival.dark' > /dev/null 2>&1 && echo authored" 2>&1)" || true
+if grep -qx "authored" <<< "$out"; then pass "inside: a rival for a shipped impl can be saved"; else fail "inside: the rival impl was not saved: $out"; fi
+
+said="$(dark eval 'Stdlib.toString(5)' 2> "$WORK/rival.err")" || true
+told="$(grep -c "ToString for Int64: dark runs the impl it ships, not Agent.Evil.Int64.ToString" "$WORK/rival.err" || true)"
+if [[ "$said" == "5" ]]; then
+  pass "outside: a call runs the shipped impl, not the newer one"
+  if [[ "$told" == "1" ]]; then
+    pass "outside: dark says once that the newer one does not run"
+  else
+    fail "outside: dark said it $told times: $(cat "$WORK/rival.err")"
+  fi
+elif [[ -n "${DARK_CHECK_STORE:-}" ]]; then
+  echo "skip  outside: a debug build ships no impls to prefer"
+else
+  fail "outside: the call ran the agent's impl: $said"
+fi
+if dark impls ToString 2>&1 | grep "Agent.Evil.Int64.ToString" | grep -q "dark runs the implementation it ships"; then
+  pass "outside: dark impls marks the newer one not used"
+elif [[ -n "${DARK_CHECK_STORE:-}" ]]; then
+  echo "skip  outside: a debug build ships no impls to mark"
+else
+  fail "outside: dark impls does not mark it: $(dark impls ToString 2>&1)"
+fi
 
 if [[ "$failures" -gt 0 ]]; then
   echo "$failures check(s) failed"

@@ -320,8 +320,13 @@ let detectRivalImplementations(branchId: Uuid): List<Finding> =
             let cHash = LanguageTools.ProgramTypes.hashToString(c.source)
             let dHash = LanguageTools.ProgramTypes.hashToString(d.source)
 
+            // A shipped implementation runs over any the store holds; otherwise the newer one.
             let choice =
-              if c.stamp == "" && d.stamp == "" then
+              if c.shipped && Stdlib.Bool.not(d.shipped) then
+                RivalChoice.Mine
+              else if d.shipped && Stdlib.Bool.not(c.shipped) then
+                RivalChoice.Theirs
+              else if c.stamp == "" && d.stamp == "" then
                 RivalChoice.Neither
               else if SCM.Conflicts.beats(c.stamp, cHash, d.stamp, dHash) then
                 RivalChoice.Mine

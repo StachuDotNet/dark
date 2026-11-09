@@ -3645,6 +3645,9 @@ type ImplCandidate =
     /// somewhere other than the op log (a script's own impls, an in-memory package manager), and
     /// then it cannot win, so a call that finds only unstamped rivals still errors.
     stamp : string
+    /// Whether this build's seed ships the impl. A shipped impl beats any rival the store holds
+    /// for the same type, newer or not (`Traits.select`). False in a build that embeds no digests.
+    shipped : bool
   }
 
 

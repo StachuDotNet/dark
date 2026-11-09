@@ -445,7 +445,8 @@ module ImplCandidate =
           "self", TypeReference.toDT c.self
           "methods", methods
           "source", Hash.toDT c.source
-          "stamp", DString c.stamp ]
+          "stamp", DString c.stamp
+          "shipped", DBool c.shipped ]
     )
 
 

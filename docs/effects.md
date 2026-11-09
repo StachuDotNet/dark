@@ -544,6 +544,7 @@ What enforces what:
 | Changing the policy | `dark` | becomes a request; only the person answers one |
 | The network, tracing and scheduling settings | bwrap | `http.loopback`, `http.private`, `trace.record` and `exec.policy` live in the policy directory; `config set` of one is refused |
 | The CLI's own Dark code in the store | `dark` | a release `dark` carries a digest of every item its seed ships, and refuses a store copy that differs before it runs |
+| An impl beside a shipped one, for the same trait and type | `dark` | calls run the shipped impl; the other is reported on stderr |
 
 So the policy governs Dark code, inside the sandbox and out, and bwrap governs
 the agent's own processes: they can read what this user can read and use the
@@ -564,12 +565,24 @@ ids, and leaves the shipped row as it was. Checking costs about 0.008 billion CP
 instructions a command, most of it loading the system SHA-256 (OpenSSL), beside
 0.12 billion for all of `dark eval 1+1`.
 
+An impl the agent adds for a trait and type the seed already ships one for does
+not change what runs either. Trait dispatch picks the shipped impl over any
+other the store holds for that type, however new (`Traits.select`), and a save
+records the shipped one for the calls it resolves. A call whose saved code
+recorded another impl keeps it. The first time a command meets such an impl,
+dark says so in one line on stderr, naming the trait and the type:
+
+    Darklang.Stdlib.ToString for Int64: dark runs the impl it ships, not Agent.Evil.Int64.ToString from the store
+
+and `dark impls` marks it not used. For a type the seed ships no impl for, the
+newer impl still wins. Dispatch is no slower for it: `fib` stays at 1.28 billion
+CPU instructions and `lists` at 0.765 billion.
+
 What it does not cover: commands the person later runs from a writable
 directory (a build script the agent edited runs outside the sandbox); code the
 agent adds to the store, which runs with the person's policy when the person
-runs it, and that includes an impl it adds for a shipped trait and type, which
-trait dispatch prefers when it is newer; a debug build, which embeds no
-digests; abstract Unix sockets (shared with the network namespace); and
+runs it; a debug build, which embeds no digests and so ships no impls to
+prefer; abstract Unix sockets (shared with the network namespace); and
 anything run without `dark agent run`. Run it from the project directory: started from the home
 directory, the whole home is writable. Linux only for now; macOS prints that it
 is not supported. A kernel that forbids unprivileged user namespaces makes

@@ -883,15 +883,47 @@ let ptForBranch (branchId : PT.BranchId) : PT.PackageManager =
     fun b -> withLocationDocs b (if b.IsMain then pt else ptOn b)
   )
 
-/// The stamp of the op that added an impl, put on the candidate. The item does not carry it (it is
-/// not content), so the store is the only place it can come from; a candidate the store has never
-/// seen keeps "" and cannot win a tie with a stamped rival.
-let private stampedWith
+/// The stamp of the op that added an impl, put on the candidate, and whether the build ships it.
+/// The item carries neither (they are not content). A candidate the store has never seen keeps ""
+/// and cannot win a tie with a stamped rival.
+let private fromStore
   (stamps : Map<string, string>)
   (c : RT.ImplCandidate)
   : RT.ImplCandidate =
   let (RT.Hash h) = c.source
-  { c with stamp = stamps |> Map.tryFind h |> Option.defaultValue "" }
+  { c with
+      stamp = stamps |> Map.tryFind h |> Option.defaultValue ""
+      shipped = ShippedCode.ships ShippedCode.Impl h }
+
+/// Say on stderr, once for each, that an impl in the store does not run because the build ships
+/// one for the same type: dispatch never reaches it, and nothing else would tell its author. Also
+/// said when a save records the shipped one over it (`TraitCalls`).
+let sayOutranked : RT.ImplCandidate -> Ply<unit> =
+  // By the impl, not the whole candidate: the save's copy has no stamp yet.
+  let said =
+    Caching.withCache
+      (fun (source : RT.Hash, trait_ : RT.Hash, self : RT.TypeReference) ->
+        let nameOf (RT.Hash h) = ShippedCode.nameOf h
+        let self = LibExecution.Traits.describeSelf nameOf self
+        System.Console.Error.WriteLine(
+          $"{nameOf trait_} for {self}: dark runs the impl it ships, not "
+          + $"{nameOf source} from the store"
+        )
+        Ply(Some()))
+  fun rival ->
+    said (rival.source, rival.trait_, rival.self) |> Ply.map ignore<Option<unit>>
+
+/// The candidates a shipped one outranks: not shipped, and for a type a shipped one is for.
+let private outranked (cs : List<RT.ImplCandidate>) : List<RT.ImplCandidate> =
+  match cs |> List.filter (fun c -> c.shipped) with
+  | [] -> []
+  | shipped ->
+    cs
+    |> List.filter (fun c ->
+      not c.shipped
+      && shipped
+         |> List.exists (fun s ->
+           s.trait_ = c.trait_ && LibExecution.Traits.competes s.self c.self))
 
 
 /// What dispatch on <param branch> may pick among <param impls>: the ones the branch binds at a name,
@@ -920,12 +952,14 @@ let private candidatesOn =
         let (Hash h) = i.hash
         (bound |> Option.exists (fun b -> b.Contains h))
         && not (Set.contains h deprecated)
-      return
+      let candidates =
         impls
         |> List.filter isCandidate
         |> List.choose PT2RT.ImplCandidate.ofImpl
         |> List.distinctBy (fun c -> c.source)
-        |> List.map (stampedWith stampMap)
+        |> List.map (fromStore stampMap)
+      do! outranked candidates |> Ply.List.iterSequentially sayOutranked
+      return candidates
     }
 
 

@@ -297,7 +297,10 @@ type ImplCandidate =
     /// When the op that added this implementation was written. Two implementations of
     /// one trait for one type are ordered by it: the newer one runs. Empty for an
     /// implementation that never came from an op, and then neither one wins.
-    stamp: String }
+    stamp: String
+    /// Whether this dark ships the implementation. A shipped one runs, however new a
+    /// rival for the same type in the store is.
+    shipped: Bool }
 
 type Dval =
   | DUnit

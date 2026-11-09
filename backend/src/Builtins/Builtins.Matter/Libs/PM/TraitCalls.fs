@@ -708,6 +708,32 @@ let private resolveIn
             let implHashes =
               implHashes
               |> List.filter (fun (PT.Hash h) -> not (Set.contains h deprecated))
+            // A shipped implementation beats the store's rivals for its type, as at run time
+            // (`Traits.select`), so the call records the one the build ships.
+            let shipped (PT.Hash h) =
+              LibDB.ShippedCode.ships LibDB.ShippedCode.Impl h
+            let! implHashes =
+              match List.filter shipped implHashes with
+              | [] -> Ply implHashes
+              | kept ->
+                uply {
+                  do!
+                    implHashes
+                    |> List.filter (shipped >> not)
+                    |> Ply.List.iterSequentially (fun h ->
+                      uply {
+                        match! getTraitImpl h with
+                        | Some impl ->
+                          match
+                            LibExecution.ProgramTypesToRuntimeTypes.ImplCandidate.ofImpl
+                              impl
+                          with
+                          | Some c -> return! LibDB.PackageManager.sayOutranked c
+                          | None -> return ()
+                        | None -> return ()
+                      })
+                  return kept
+                }
             // One implementation is not an ordering question: it is the answer. Several are,
             // and an unstamped pair has no answer, so the call is left to resolve at run time
             // and `dark constraints` reports the pair.

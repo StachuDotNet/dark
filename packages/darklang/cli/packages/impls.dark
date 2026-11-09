@@ -5,7 +5,8 @@ module Darklang.Cli.Packages.Impls
 //
 // Reads the same candidates the interpreter does (`Trait.impls`), so what this
 // lists is what a call can reach. Two implementations for one type are both bound and only
-// the newer one runs, so the older is marked rather than silently listed alongside it.
+// one runs (the shipped one, or else the newer), so the other is marked rather than silently
+// listed alongside it.
 
 let describeSelf(branchId: Uuid, self: LanguageTools.RuntimeTypes.TypeReference): String =
   PrettyPrinter.RuntimeTypes.typeReference(branchId, self)
@@ -93,8 +94,9 @@ let sourceNameOf(
 
 
 /// Which of `active`, `shadowed` and `unordered` this implementation is, against the others for
-/// the same type. `shadowed` means a newer implementation for that type runs instead;
-/// `unordered` means neither came from an op, so nothing says which is newer and a call errors.
+/// the same type. `shadowed` means another implementation for that type runs instead: one this
+/// dark ships, or else a newer one. `unordered` means neither came from an op, so nothing says
+/// which is newer and a call errors.
 let statusOf(
   branchId: Uuid,
   candidates: List<LanguageTools.RuntimeTypes.ImplCandidate>,
@@ -109,7 +111,13 @@ let statusOf(
       (LanguageTools.ProgramTypes.hashToString(d.source) != cHash)
       && (describeSelf(branchId, d.self) == selfStr))
 
-  if rivals |> Stdlib.List.any(fun d -> d.stamp == "" && c.stamp == "") then
+  // A shipped implementation runs over any the store holds, so only shipped ones are its rivals.
+  let shippedRivals = rivals |> Stdlib.List.filter(fun d -> d.shipped)
+  let rivals = if c.shipped then shippedRivals else rivals
+
+  if Stdlib.Bool.not(c.shipped) && Stdlib.Bool.not(Stdlib.List.isEmpty(shippedRivals)) then
+    "shadowed"
+  else if rivals |> Stdlib.List.any(fun d -> d.stamp == "" && c.stamp == "") then
     "unordered"
   else if
     rivals
@@ -216,7 +224,15 @@ let execute(state: Cli.AppState, args: List<String>): Cli.AppState =
               Stdlib.Cli.UI.Colors.dimText(
                 "  nothing orders these two, so a call errors; deprecate one")
             | "shadowed" ->
-              Stdlib.Cli.UI.Colors.dimText("  not used; a newer implementation for this type runs")
+              let byShipped =
+                Stdlib.Bool.not(c.shipped)
+                && (candidates
+                    |> Stdlib.List.any(fun d ->
+                      d.shipped && describeSelf(state.currentBranchId, d.self) == selfStr))
+              if byShipped then
+                Stdlib.Cli.UI.Colors.dimText("  not used; dark runs the implementation it ships")
+              else
+                Stdlib.Cli.UI.Colors.dimText("  not used; a newer implementation for this type runs")
             | _ -> ""
 
           Stdlib.printLine(
@@ -238,7 +254,8 @@ let help(_state: Cli.AppState): String =
     "Usage: impls <trait-path> [--json]"
     ""
     "  The trait's methods print once at the top, then one line per type, sorted. A line"
-    "  marked `not used` has a newer implementation for that type running instead."
+    "  marked `not used` has another implementation for that type running instead: the"
+    "  one dark ships, or else the newer one."
     ""
     "  A bare name is looked for in the current module, then under Stdlib, so"
     "  `dark impls Compare` finds the operator trait from anywhere."

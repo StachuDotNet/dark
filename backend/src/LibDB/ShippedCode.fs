@@ -127,11 +127,11 @@ type Check =
   /// The build does not ship this item.
   | NotShipped
 
-/// Whether <param bytes>, the store's row for the <param kind> at <param hash>, is the copy the
-/// build shipped. A binary search over the records; no allocation beyond the key and the digest.
-let check (Digests records) (kind : Kind) (hash : string) (bytes : byte[]) : Check =
+/// The index of the record for the <param kind> at <param hash>, if the build ships it. A binary
+/// search over the records; no allocation beyond the key.
+let private find (records : byte[]) (kind : Kind) (hash : string) : Option<int> =
   match keyOf kind hash with
-  | None -> NotShipped
+  | None -> None
   | Some key ->
     let rec search (lo : int) (hi : int) : Option<int> =
       if lo > hi then
@@ -146,22 +146,23 @@ let check (Digests records) (kind : Kind) (hash : string) (bytes : byte[]) : Che
         if order = 0 then Some mid
         elif order < 0 then search (mid + 1) hi
         else search lo (mid - 1)
-    match search 0 (records.Length / recordSize - 1) with
-    | None -> NotShipped
-    | Some i ->
-      if
-        System.MemoryExtensions.SequenceEqual(
-          System.ReadOnlySpan(
-            records,
-            i * recordSize + keySize,
-            recordSize - keySize
-          ),
-          System.ReadOnlySpan(digestOf bytes)
-        )
-      then
-        Matches
-      else
-        Differs
+    search 0 (records.Length / recordSize - 1)
+
+/// Whether <param bytes>, the store's row for the <param kind> at <param hash>, is the copy the
+/// build shipped.
+let check (Digests records) (kind : Kind) (hash : string) (bytes : byte[]) : Check =
+  match find records kind hash with
+  | None -> NotShipped
+  | Some i ->
+    if
+      System.MemoryExtensions.SequenceEqual(
+        System.ReadOnlySpan(records, i * recordSize + keySize, recordSize - keySize),
+        System.ReadOnlySpan(digestOf bytes)
+      )
+    then
+      Matches
+    else
+      Differs
 
 /// The digests this binary embeds, or None in a build that embeds none.
 let shipped : Lazy<Option<Digests>> =
@@ -180,9 +181,21 @@ let shipped : Lazy<Option<Digests>> =
      with _ ->
        None)
 
-/// The name the store gives <param hash>, for the refusal. The store is what is in doubt, so this
-/// is a label and nothing more.
-let private nameOf (hash : string) : string =
+/// Whether the build ships the <param kind> at <param hash>. Its bytes are not looked at: every
+/// load of the item checks those (`verify`).
+let shipsIn (Digests records) (kind : Kind) (hash : string) : bool =
+  (find records kind hash).IsSome
+
+/// Whether this binary ships the <param kind> at <param hash>. Never, in a build that embeds no
+/// digests.
+let ships (kind : Kind) (hash : string) : bool =
+  match shipped.Force() with
+  | None -> false
+  | Some digests -> shipsIn digests kind hash
+
+/// The name the store gives <param hash>, for a message. The store may be what is in doubt, so
+/// this is a label and nothing more.
+let nameOf (hash : string) : string =
   try
     use conn =
       new SqliteConnection($"Data Source={Sqlite.currentDbPath};Mode=ReadOnly")

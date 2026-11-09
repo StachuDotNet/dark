@@ -160,29 +160,97 @@ let applicable
   | fitting -> fitting
 
 /// The candidate for a self type, if exactly one applies.
+///
+/// When several apply and this build ships any of them, only the shipped ones are in the running:
+/// the CLI's own code and the stdlib mean what the build means, whatever the store has gained
+/// since. A saved call is not asked at all, because it recorded its choice (`Chosen`) when it was
+/// saved, and the save asks this same rule (`TraitCalls`).
 let select (candidates : List<ImplCandidate>) (self : KnownType) : Selection =
   match applicable candidates self with
   | [] -> NoImpl
   | [ one ] -> Selected one
   | several ->
-    // Two implementations for one type: the one written later runs, by the stamp of the op that
-    // added it and the rule the op-fold uses for two bindings of one name. Both stay in the
-    // store; `dark constraints` reports the pair, and deprecating one settles it.
-    //
-    // TODO: nothing stops the later one belonging to somebody who owns neither the trait nor the
-    // type. Writing `impl Stdlib.ToString for Int64` in your own package is allowed, the save says
-    // only `Created`, and from then on `Stdlib.toString 42L` answers what you wrote, for all new
-    // code; saved calls keep what they resolved to, so the exposure is to what is written next.
-    // Which of our stable traits that can reach is currently an accident of `FastOps`, not a
-    // policy: `1L + 2L` ignores a rival because the fast path answers builtin numeric pairs
-    // directly, and `10L / 2L` takes it, because `Divide` is not in that table. `ToString` is not
-    // either. Measured, both of them. This is the orphan instance problem and the languages with
-    // traits all answer it with an ownership rule; the PR description carries the options.
-    let stamped =
-      several
-      |> List.map (fun c ->
-        let (Hash h) = c.source
-        (c, c.stamp, h))
-    match Lww.winnerOf stamped with
-    | Some winner -> Selected winner
-    | None -> Ambiguous several
+    match several |> List.filter (fun c -> c.shipped) with
+    | [ shipped ] -> Selected shipped
+    | shipped ->
+      let rivals = if List.isEmpty shipped then several else shipped
+      // Two implementations for one type, neither shipped (or both): the one written later runs,
+      // by the stamp of the op that added it and the rule the op-fold uses for two bindings of one
+      // name. Both stay in the store; `dark constraints` reports the pair, and deprecating one
+      // settles it.
+      //
+      // TODO: a rival for a type the build ships no impl for still wins by being newer, whoever
+      // wrote it. Writing `impl Stdlib.ToString for Point` in your own package, beside the
+      // `Point` owner's, is allowed, the save says only `Created`, and from then on new code
+      // calling `Stdlib.toString p` answers what you wrote. This is the orphan instance problem,
+      // and the languages with traits all answer it with an ownership rule.
+      let stamped =
+        rivals
+        |> List.map (fun c ->
+          let (Hash h) = c.source
+          (c, c.stamp, h))
+      match Lww.winnerOf stamped with
+      | Some winner -> Selected winner
+      | None -> Ambiguous rivals
+
+
+/// Whether a value could be of both types, so an impl for each would compete for it. A type
+/// variable in an argument fits anything; a blanket impl's own `'a` competes only with another
+/// blanket, because a specific impl always beats one.
+let competes (a : TypeReference) (b : TypeReference) : bool =
+  let rec fits (a : TypeReference) (b : TypeReference) : bool =
+    match a, b with
+    | TVariable _, _
+    | _, TVariable _ -> true
+    | TList a, TList b
+    | TStream a, TStream b -> fits a b
+    | TDict(k, v), TDict(k', v') -> fits k k' && fits v v'
+    | TTuple(a, b, rest), TTuple(a', b', rest') ->
+      fits a a'
+      && fits b b'
+      && List.length rest = List.length rest'
+      && List.forall2 fits rest rest'
+    | TFn(args, ret), TFn(args', ret') ->
+      NEList.length args = NEList.length args'
+      && List.forall2 fits (NEList.toList args) (NEList.toList args')
+      && fits ret ret'
+    | TCustomType({ resolved = Ok h }, targs),
+      TCustomType({ resolved = Ok h' }, targs') ->
+      h = h'
+      && (List.isEmpty targs
+          || List.isEmpty targs'
+          || List.length targs = List.length targs' && List.forall2 fits targs targs')
+    | _ ->
+      match headOfTypeReference a, headOfTypeReference b with
+      | Some(Head.Prim x), Some(Head.Prim y) -> x = y
+      | _ -> false
+  match a, b with
+  | TVariable _, TVariable _ -> true
+  | TVariable _, _
+  | _, TVariable _ -> false
+  | _ -> fits a b
+
+
+/// A self type as it is written, with <param nameOf> naming the custom types: `List<Int64>`,
+/// `Darklang.Stdlib.Option.Option<'a>`. For messages.
+let rec describeSelf
+  (nameOf : FQTypeName.Package -> string)
+  (t : TypeReference)
+  : string =
+  let d = describeSelf nameOf
+  let args (ts : List<TypeReference>) =
+    if List.isEmpty ts then
+      ""
+    else
+      "<" + (ts |> List.map d |> String.concat ", ") + ">"
+  match t with
+  | TVariable name -> "'" + name
+  | TList a -> "List" + args [ a ]
+  | TStream a -> "Stream" + args [ a ]
+  | TDict(k, v) -> "Dict" + args [ k; v ]
+  | TTuple(a, b, rest) ->
+    "(" + (a :: b :: rest |> List.map d |> String.concat " * ") + ")"
+  | TFn(ps, ret) ->
+    (NEList.toList ps |> List.map d |> String.concat " -> ") + " -> " + d ret
+  | TCustomType({ resolved = Ok(FQTypeName.Package h) }, ts) -> nameOf h + args ts
+  | other -> primHeadName other |> Option.defaultValue (string other)

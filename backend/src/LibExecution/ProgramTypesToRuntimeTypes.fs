@@ -1515,7 +1515,9 @@ module ImplCandidate =
           source = Hash.toRT i.hash
           // The stamp is not in the item: it is the op's, and the store fills it in
           // (`LibDB.PackageManager`). An impl that never came from an op keeps "".
-          stamp = "" }
+          stamp = ""
+          // Also the store's to say, from the digests the build embeds.
+          shipped = false }
     | Error _ -> None
 
   /// Every impl of a trait the package manager can see and still names.
