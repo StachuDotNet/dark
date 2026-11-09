@@ -124,6 +124,15 @@ let executePretty(state: AppState): AppState =
       Stdlib.printErrorLine(
         Stdlib.Cli.UI.Colors.hint("  -> `dark commit` to review + commit (it asks first)"))
 
+  // Permission changes an agent asked for inside `dark agent run`. One dim line, only when there are
+  // any: they wait on a person, and this is where a person looks.
+  match Darklang.Cli.Permissions.Command.waitingRequests() with
+  | [] -> ()
+  | waiting ->
+    Stdlib.printErrorLine(
+      (Stdlib.Cli.UI.Colors.dimText(
+        $"""{Cli.Text.plural(Stdlib.List.length(waiting), "permission request")} waiting -> `dark permissions requests`""")))
+
   // Store health, reported here rather than behind a verb: a check you have to remember to run is a check
   // nobody runs. Silent when the store is fine, which is almost always. On stderr, as a warning: the
   // draft line above is the answer, and a pipe reading it should not get the store's health too.

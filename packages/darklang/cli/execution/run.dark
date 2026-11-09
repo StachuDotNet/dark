@@ -287,6 +287,8 @@ let handleResult(
       && Stdlib.Bool.not(options.sandbox)
       && Stdlib.Bool.not(options.warnPermissions)
       && Stdlib.Cli.UI.Prompt.canAsk()
+      // Inside `dark agent run` the rule cannot be saved; the denial says what to ask for instead.
+      && Darklang.Cli.Permissions.Command.policyWritable()
     match denied.rule with
     | Some(rule) when canAsk ->
       match LanguageTools.Permissions.parseRuleText(rule) with

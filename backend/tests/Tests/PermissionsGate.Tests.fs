@@ -406,7 +406,12 @@ let private hostOnlyPolicyBuiltins =
       "pmPolicyApproveVersion"
       "pmPolicyOutsideChange"
       "pmPolicyReview"
-      "pmPolicyLog" ]
+      "pmPolicyLog"
+      "pmPolicyWritable"
+      "pmPolicyRequest"
+      "pmPolicyRequests"
+      "pmPolicyAnswerRequest"
+      "pmAgentRun" ]
 
 let everyPolicyBuiltinRefusesGuestCode =
   testTask "every policy builtin but the named reads refuses guest code" {

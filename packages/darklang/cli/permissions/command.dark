@@ -763,6 +763,114 @@ let printLog(): Unit =
       $"{at}  {what}\n    by {how}")
     |> Stdlib.printLines
 
+// ── requests: asking where the policy is read-only ──────────────────────────────
+
+/// Whether these `permissions` arguments change the policy. Inside `dark agent run` those become
+/// requests.
+let writes(args: List<String>): Bool =
+  match args with
+  | ["profile", ...rest] -> Stdlib.List.contains(rest, "--yes") || Stdlib.List.contains(rest, "-y")
+  | [ "review" ] -> false
+  | [ "review", _ ] -> true
+  | [subcommand, ...] ->
+    Stdlib.List.contains(
+      [ "allow", "deny", "remove", "clear", "set", "approve", "update", "unapprove", "revoke-package" ],
+      subcommand)
+  | [] -> false
+
+/// `--why <text>` taken out of <param args>: what a request says it is for.
+let takeWhy(args: List<String>): (String * List<String>) =
+  let go(remaining: List<String>, kept: List<String>, why: String): (String * List<String>) =
+    match remaining with
+    | [ "--why", text, ...rest ] -> go(rest, kept, text)
+    | [ a, ...rest ] -> go(rest, Stdlib.List.prepend(kept, a), why)
+    | [] -> (why, Stdlib.List.reverse(kept))
+  go(args, [], "")
+
+/// Whether this process can write the policy; false inside `dark agent run`.
+let policyWritable(): Bool = Builtin.pmPolicyWritable()
+
+/// The requests nobody has answered, oldest first: id, when, who asked, why, and the arguments.
+let waitingRequests(): List<(String * String * String * String * List<String>)> =
+  Builtin.pmPolicyRequests()
+
+/// Record the person's answer to request <param id>.
+let answerRequest(id: String, approved: Bool): Unit =
+  let _ = Builtin.pmPolicyAnswerRequest(id, approved)
+  ()
+
+/// Ask the person for `dark permissions <args>`.
+let request(args: List<String>, why: String): Bool =
+  let id = Builtin.pmPolicyRequest(args, why)
+  Stdlib.printLine(
+    $"The policy is read-only here, so this is request {id}; the person will see it in `dark permissions requests`.")
+  true
+
+let requestLines(
+  request: (String * String * String * String * List<String>))
+  : List<String> =
+  let (id, at, by, why, args) = request
+  let because = if why == "" then "" else $": {why}"
+  [ $"{id}  dark permissions {Stdlib.String.join(args, " ")}"
+    Stdlib.Cli.UI.Colors.dimText($"      {at}, by {by}{because}") ]
+
+/// `permissions requests [approve|deny <id>]`.
+let requests(state: Cli.AppState, args: List<String>): Cli.AppState =
+  let waiting = Command.waitingRequests()
+  let find(id: String): Stdlib.Option.Option<(String * String * String * String * List<String>)> =
+    waiting |> Stdlib.List.findFirst(fun r -> let (rid, _, _, _, _) = r in rid == id)
+  match args with
+  | [] ->
+    match waiting with
+    | [] ->
+      Stdlib.printLine("no permission requests waiting")
+      state
+    | _ ->
+      waiting |> Stdlib.List.iter(fun r -> Stdlib.printLines(Command.requestLines(r)))
+      Stdlib.printLine("")
+      Stdlib.printLine("  permissions requests approve <id>   apply it, as if you had typed it")
+      Stdlib.printLine("  permissions requests deny <id>      drop it")
+      state
+  | [ answer, id ] when Stdlib.List.contains([ "approve", "deny" ], answer) ->
+    if Stdlib.Bool.not(Command.policyWritable()) then
+      Cli.printErr("only the person can answer requests, from outside `dark agent run`")
+      Cli.failed(state)
+    else
+      match find(id) with
+      | None ->
+        Cli.printErr($"no request {id} is waiting; `permissions requests` lists them")
+        Cli.failed(state)
+      | Some(request) ->
+        let (_, _, _, _, asked) = request
+        if answer == "deny" then
+          Command.answerRequest(id, false)
+          Cli.printOk($"✓ denied: dark permissions {Stdlib.String.join(asked, " ")}")
+          state
+        else
+          match asked with
+          | ["requests", ...] ->
+            Cli.printErr("a request cannot answer another request; deny it")
+            Cli.failed(state)
+          | _ ->
+            Stdlib.printLine($"applying: dark permissions {Stdlib.String.join(asked, " ")}")
+            let after = Command.run(state, asked)
+            if after.exitCode == 0 then
+              Command.answerRequest(id, true)
+              after
+            else
+              Cli.printErr($"request {id} is still waiting: the change did not apply")
+              after
+  | _ ->
+    Cli.printErr("usage: permissions requests [approve <id> | deny <id>]")
+    Cli.failed(state)
+
+let execute(state: Cli.AppState, args: List<String>): Cli.AppState =
+  let (why, args) = Command.takeWhy(args)
+  if Command.writes(args) && Stdlib.Bool.not(Command.policyWritable()) then
+    Cli.exitWith(state, Command.request(args, why))
+  else
+    Command.run(state, args)
+
 /// Every subcommand with the usage it prints when its argument is missing;
 /// None for the ones that take no argument. Drives `execute`'s
 /// missing-argument arm and `complete`.
@@ -785,6 +893,7 @@ val subcommands =
     ("approvals", Stdlib.Option.Option.None)
     ("revoke-package", Stdlib.Option.Option.Some("revoke-package <hash>"))
     ("review", Stdlib.Option.Option.None)
+    ("requests", Stdlib.Option.Option.None)
     ("log", Stdlib.Option.Option.None) ]
 
 /// The usage line for a subcommand given without its argument, if it needs one.
@@ -793,7 +902,7 @@ let usageOf(subcommand: String): Stdlib.Option.Option<String> =
   |> Stdlib.List.findFirst(fun((name, _usage)) -> name == subcommand)
   |> Stdlib.Option.andThen(fun((_name, usage)) -> usage)
 
-let execute(state: Cli.AppState, args: List<String>): Cli.AppState =
+let run(state: Cli.AppState, args: List<String>): Cli.AppState =
   match args with
   | []
   | [ "list" ] ->
@@ -804,6 +913,7 @@ let execute(state: Cli.AppState, args: List<String>): Cli.AppState =
     state
   | ["profile", ...args] -> Cli.exitWith(state, Command.profile(args))
   | ["review", ...args] -> Cli.exitWith(state, Command.review(args))
+  | ["requests", ...args] -> Command.requests(state, args)
   | [ "log" ] ->
     Command.printLog()
     state
@@ -915,6 +1025,7 @@ let complete(
   | [ "profile", "read-only", _ ]
   | [ "profile", "local-dev", _ ] -> [ Cli.Completion.simple("--yes") ]
   | [ "review" ] -> [ Cli.Completion.simple("keep"), Cli.Completion.simple("undo") ]
+  | [ "requests" ] -> [ Cli.Completion.simple("approve"), Cli.Completion.simple("deny") ]
   | ["profile", ...] -> []
   | _ ->
     Command.subcommands
@@ -929,6 +1040,7 @@ let help(_state: Cli.AppState): String =
     "                   | requirements <fn|hash> | show <fn|hash>"
     "                   | approvals | revoke-package <hash>"
     "                   | log | review [keep|undo]"
+    "                   | requests [approve <id> | deny <id>]"
     ""
     "The instance policy is local and deny-by-default. Every actual host operation"
     "must be allowed by the instance, run and package layers."
@@ -962,6 +1074,14 @@ let help(_state: Cli.AppState): String =
     "  log            every change dark made to the policy, and the command that made it"
     "  review         a change made to the policy file by something other than dark;"
     "                 until you keep or undo it, code runs under deny-all"
+    ""
+    "Requests:"
+    "  Inside `dark agent run` the policy is read-only, so a change asked for there"
+    "  (allow, approve, ...) is written down as a request instead; add --why <text>"
+    "  to say what it is for. Outside, the person answers them:"
+    "  requests                 the requests waiting"
+    "  requests approve <id>    apply one, as if you had typed it"
+    "  requests deny <id>       drop one"
     ""
     "Rules:"
     "  <effect>                         e.g. clock, random, stdout, http, process,"

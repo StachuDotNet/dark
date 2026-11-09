@@ -178,6 +178,29 @@ let read (fileName : string) : ReadResult =
   | :? DirectoryNotFoundException -> Missing
   | error -> Unreadable error
 
+/// Whether this process can write the policy directory. A sandbox (`dark agent run`) mounts it
+/// read-only, and there a change to the policy becomes a request instead. Tried rather than
+/// worked out from modes: a read-only mount leaves the modes saying writable.
+let writable () : bool =
+  match LibExecution.HostSecurity.policyDirectory () with
+  | Error _ -> false
+  | Ok directory ->
+    try
+      Directory.CreateDirectory directory |> ignore<DirectoryInfo>
+      let probe = Path.Combine(directory, $".probe-{Guid.NewGuid():N}")
+      use _ =
+        new FileStream(
+          probe,
+          FileMode.CreateNew,
+          FileAccess.Write,
+          FileShare.None,
+          1,
+          FileOptions.DeleteOnClose
+        )
+      true
+    with _ ->
+      false
+
 /// Add one line to a policy file, creating it owner-only. For the grant log, which only grows.
 let appendLine (fileName : string) (line : string) : unit =
   let filePath = resolve fileName

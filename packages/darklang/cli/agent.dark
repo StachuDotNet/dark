@@ -1,0 +1,51 @@
+/// `dark agent run <cmd...>`: run an agent where it can ask for permissions but not grant them.
+///
+/// Part of `Darklang.Cli`.
+module Darklang.Cli.Agent
+
+
+/// `--write <path>`s before the command, and the command.
+let parseRun(args: List<String>): (List<String> * List<String>) =
+  let go(remaining: List<String>, writable: List<String>): (List<String> * List<String>) =
+    match remaining with
+    | [ "--write", path, ...rest ] -> go(rest, Stdlib.List.prepend(writable, path))
+    | [ "--", ...rest ] -> (Stdlib.List.reverse(writable), rest)
+    | _ -> (Stdlib.List.reverse(writable), remaining)
+  go(args, [])
+
+let execute(state: AppState, args: List<String>): AppState =
+  match args with
+  | ["run", ...rest] ->
+    match Agent.parseRun(rest) with
+    | (_, []) ->
+      Cli.printErr("usage: agent run [--write <path>]... <command> [args...]")
+      Cli.failed(state)
+    | (writable, command) ->
+      // Replaces this process; it comes back only when the sandbox could not start.
+      let code = Builtin.pmAgentRun(writable, command)
+      { state with exitCode = code }
+  | _ ->
+    Stdlib.printErrorLine(Agent.help(state))
+    Cli.failed(state)
+
+
+let complete(_state: AppState, args: List<String>): List<Completion.CompletionItem> =
+  match args with
+  | [] -> [ Completion.simple("run") ]
+  | _ -> []
+
+
+let help(_state: AppState): String =
+  [ "Usage: agent run [--write <path>]... <command> [args...]"
+    ""
+    "Runs <command> (an agent, a shell, anything) in a sandbox where the permission"
+    "policy and the dark binary are read-only. Inside it, `dark permissions allow ...`"
+    "and the other changes become requests; answer them outside with"
+    "`dark permissions requests`."
+    ""
+    "The command can write the current directory, the store, a private /tmp, and each"
+    "--write path. Everything else is read-only. Linux only, with bubblewrap installed."
+    ""
+    "  dark agent run claude"
+    "  dark agent run --write ~/.claude -- claude" ]
+  |> Stdlib.String.join("\n")

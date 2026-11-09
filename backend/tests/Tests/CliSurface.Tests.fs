@@ -803,8 +803,7 @@ let private everyCommandAnswersHelp =
 /// what it was written for.
 ///
 /// Also asserted to be REGISTERED, below: an exclusion for a command that no longer exists is the
-/// same failure by a different route. `agent` is excluded from the bogus-argument sweep only -- the
-/// bare sweep is the one that catches what `agent` does with no subcommand.
+/// same failure by a different route.
 let private notSweepable =
   Set.ofList
     [ "quit" // ends the session
@@ -815,7 +814,8 @@ let private notSweepable =
       "serve" // binds a port and blocks
       "typecheck" // audits every declaration; swept with a module in tests/cli/jsonShapes.dark
       "export-seed" // takes its argument as a path and writes a multi-MB database there
-      "clear" ] // clears the screen, taking the sweep's own output with it
+      "clear" // clears the screen, taking the sweep's own output with it
+      "agent" ] // runs a command under bubblewrap, which the dev container cannot start
 
 /// Every `--help` opens with a sentence saying what the command IS.
 ///

@@ -474,7 +474,8 @@ same OS user can rewrite `policies.written` and the log as easily as the
 policy, so a careful agent run without a sandbox can hide its change. It
 catches the obvious routes: an agent hand-editing the file, copying a
 `policies.bin` from a throwaway install it widened, or deleting the file.
-Stopping an agent takes keeping it from writing the policy directory at all.
+Stopping an agent takes keeping it from writing the policy directory at all,
+which is what `dark agent run` does.
 
 **This is runtime authorization, not OS isolation.** Every effect a Darklang
 program performs *through the interpreter* is checked against the instance
@@ -494,11 +495,65 @@ It deliberately does **not** contain, and must not be relied on to contain:
 - **Denial of service.** Permissions authorize effects; they do not limit CPU,
   memory, time, output, concurrent tasks, open handles, or request sizes.
 
-Containing those requires an OS-level sandbox, which is separate deferred
-work. Until it lands, the trust boundary is
-exactly this: the instance policy bounds all interpreted code, and escaping it
-needs a runtime exploit or a spawned process, neither of which is confined
-here.
+Containing a spawned process takes an OS sandbox. `dark agent run` is that
+sandbox for an agent; without it, the trust boundary is exactly this: the
+instance policy bounds all interpreted code, and escaping it needs a runtime
+exploit or a spawned process, neither of which is confined here.
+
+## Agents: `dark agent run`
+
+Nothing inside `dark` can tell an agent from the person when both run as the
+same OS user: an agent can type `y` into a pty, set any variable, or write the
+policy file itself. So the boundary is outside `dark`. `dark agent run <cmd...>`
+runs the command (an agent, a shell, anything) under bubblewrap (`bwrap`), as
+the same user, where the policy and the `dark` binary are mounted read-only:
+
+```text
+dark agent run claude
+dark agent run --write ~/.claude -- claude
+```
+
+Inside, `dark permissions allow …` and every other change (`deny`, `remove`,
+`set`, `clear`, `approve`, `update`, `unapprove`, `revoke-package`, an applied
+`profile`, `review keep|undo`) writes a request instead and prints one line
+saying so; `--why <text>` says what it is for. A request goes to
+`permission-requests` in the store directory, which stays writable. Outside,
+`dark permissions requests` lists them, and `requests approve <id>` runs the
+asked-for command as the person, so it is logged like one they typed (`by dark
+permissions requests approve <id>`). `requests deny <id>` drops it. The answers
+live in the policy directory, which the sandbox cannot write, and a request's
+id is a hash of what it asks for, so editing a request after the person read it
+makes a different request. `dark status` shows `N permission requests waiting`,
+and so does the first command after a new one arrives, in one dim line.
+
+What enforces what:
+
+| Concern | Enforced by | Inside `dark agent run` |
+|---|---|---|
+| Policy, approvals, grant log | bwrap | the policy directory is mounted read-only |
+| The `dark` binary | bwrap | its directory is mounted read-only |
+| Swapping either out | bwrap | every directory from a writable root down to them is a mount point, which cannot be renamed |
+| Other files | bwrap | `/` read-only; writable: the working directory, the store directory, a private `/tmp`, each `--write` path |
+| Git hooks | bwrap | the repository's `.git/config` and `.git/hooks` are read-only |
+| Processes | bwrap | own PID, IPC and user namespaces; no nested user namespaces; no session bus (`systemd-run --user`) or Docker socket; a new session when stdin is not a terminal |
+| Network | not limited | shared with the host: an agent needs its API |
+| Dark code the agent runs | `dark` | the instance policy, as anywhere: effects, resources, approvals |
+| Changing the policy | `dark` | becomes a request; only the person answers one |
+
+So the policy governs Dark code, inside the sandbox and out, and bwrap governs
+the agent's own processes: they can read what this user can read and use the
+network, but cannot write the policy, the binary or anything outside the
+writable paths. An agent that needs a state directory of its own gets it with
+`--write`.
+
+What it does not cover: commands the person later runs from a writable
+directory (a build script the agent edited runs outside the sandbox); the store,
+which the agent must write to save code, so code and settings it puts there run
+with the person's policy when the person runs them; abstract Unix sockets
+(shared with the network namespace); and anything run without `dark agent run`. Run it from the project directory: started from the home
+directory, the whole home is writable. Linux only for now; macOS prints that it
+is not supported. A kernel that forbids unprivileged user namespaces makes
+bwrap refuse to start, and it says why.
 
 **The bundled owner is reserved.** Packages owned by `Darklang` are the
 bundled, trusted set, exempt from consumer approval. A malicious package could

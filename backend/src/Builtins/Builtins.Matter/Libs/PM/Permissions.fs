@@ -381,6 +381,106 @@ let fns () : List<BuiltInFn> =
           }
         | _ -> incorrectArgs ())
 
+    hostOnly
+      "pmPolicyWritable"
+      [ Param.make "unit" TUnit "" ]
+      TBool
+      ("Whether this process can write the policy. False inside `dark agent run`, which "
+       + "mounts it read-only; a change asked for there becomes a request. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DUnit |] -> uply { return DBool(LibDB.LocalFile.writable ()) }
+        | _ -> incorrectArgs ())
+
+    hostOnly
+      "pmPolicyRequest"
+      [ Param.make
+          "args"
+          (TList TString)
+          "The `dark permissions` arguments asked for"
+        Param.make "why" TString "Why, in the asker's words; may be empty" ]
+      TString
+      ("Ask the person for a policy change this process cannot make. Returns the "
+       + "request's id. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DList(_, Items(asked)); DString why |] ->
+          uply {
+            let asked =
+              asked
+              |> List.map (function
+                | DString a -> a
+                | _ -> incorrectArgs ())
+            return DString(LibDB.PermissionRequests.record asked why)
+          }
+        | _ -> incorrectArgs ())
+
+    hostOnly
+      "pmPolicyRequests"
+      [ Param.make "unit" TUnit "" ]
+      (TList(TTuple(TString, TString, [ TString; TString; TList TString ])))
+      ("The requests nobody has answered, oldest first: id, when, who asked, why, and the "
+       + "`dark permissions` arguments. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DUnit |] ->
+          uply {
+            let rows =
+              LibDB.PermissionRequests.pending ()
+              |> List.map (fun r ->
+                DTuple(
+                  DString r.id,
+                  DString r.at,
+                  [ DString r.by
+                    DString r.why
+                    DList(VT.string, Items(r.args |> List.map DString)) ]
+                ))
+            return
+              DList(
+                VT.tuple
+                  VT.string
+                  VT.string
+                  [ VT.string; VT.string; VT.list VT.string ],
+                Items(rows)
+              )
+          }
+        | _ -> incorrectArgs ())
+
+    hostOnly
+      "pmPolicyAnswerRequest"
+      [ Param.make "id" TString "The request"
+        Param.make "approved" TBool "Approved, or denied" ]
+      TBool
+      ("Record the person's answer to a request. False when no pending request has that "
+       + "id. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DString id; DBool approved |] ->
+          uply { return DBool(LibDB.PermissionRequests.answer id approved) }
+        | _ -> incorrectArgs ())
+
+    hostOnly
+      "pmAgentRun"
+      [ Param.make "writable" (TList TString) "More paths the command may write"
+        Param.make "command" (TList TString) "The command and its arguments" ]
+      TInt64
+      ("Replace this process with <param command>, run in the sandbox `dark agent run` "
+       + "describes. Returns only when it cannot start, with the exit code. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DList(_, Items(writable)); DList(_, Items(command)) |] ->
+          uply {
+            let strings =
+              List.map (function
+                | DString s -> s
+                | _ -> incorrectArgs ())
+            return
+              DInt64(
+                int64 (LibDB.AgentSandbox.run (strings writable) (strings command))
+              )
+          }
+        | _ -> incorrectArgs ())
+
     policyFn
       "pmFnPermissionRequirements"
       [ Param.make "hash" TString "The package-fn hash to analyze" ]

@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Check the boundary `dark agent run` draws, against a throwaway install.
+#
+#   scripts/testing/check-agent-sandbox <dark-binary>
+#
+# Inside the sandbox: the policy cannot be written or replaced, the binary cannot be written or
+# moved, nested user namespaces are refused, the store can still be written, and
+# `dark permissions allow` writes a request rather than a grant. Outside: the request can be
+# approved, and a policy file edited by hand is noticed.
+#
+# Needs bubblewrap and unprivileged user namespaces, so it runs on a host, not in the dev
+# container (Docker's AppArmor profile refuses bwrap's mounts). Exits 77 when bwrap cannot start
+# here, 1 when a check fails, 0 when all pass. `Tests.AgentSandbox` runs it when it can.
+
+set -euo pipefail
+
+CLI="$(realpath "${1:?usage: $0 <dark-binary>}")"
+# Not under /tmp: the sandbox has a /tmp of its own, and the files staged here must be visible in it.
+mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
+WORK="$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/dark-agent-check-XXXXXX")"
+trap 'chmod -R u+w "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
+
+if ! bwrap --unshare-user --disable-userns --ro-bind / / --proc /proc true 2>/dev/null; then
+  echo "skip: bwrap cannot start a sandbox here"
+  exit 77
+fi
+
+# A copy of a live (WAL) store, through SQLite rather than cp. Python's, so no sqlite3 binary is needed.
+copy_store() {
+  python3 -c 'import sqlite3, sys; sqlite3.connect(sys.argv[1]).backup(sqlite3.connect(sys.argv[2]))' "$1" "$2"
+}
+
+failures=0
+pass() { echo "ok    $1"; }
+fail() { echo "FAIL  $1"; failures=$((failures + 1)); }
+
+# A throwaway install of its own. A debug build has no store inside it, so give it a copy of
+# DARK_CHECK_STORE when that is set.
+export HOME="$WORK/home"
+export DARK_CONFIG_TELEMETRY_EXPORTER=none
+mkdir -p "$HOME/.darklang" "$WORK/project"
+if [[ -n "${DARK_CHECK_STORE:-}" ]]; then
+  export DARK_CONFIG_DB_NAME=data.db
+  copy_store "$DARK_CHECK_STORE" "$HOME/.darklang/data.db"
+fi
+cd "$WORK/project"
+dark() { "$CLI" "$@"; }
+inside() { dark agent run sh -c "$1"; }
+
+dark permissions list > /dev/null
+POLICY="$HOME/.darklang/policy"
+before="$(sha256sum "$POLICY/policies.bin")"
+
+# A widened policy from another install: the obvious way around `dark` for an agent.
+OTHER="$WORK/other"
+mkdir -p "$OTHER/.darklang"
+if [[ -n "${DARK_CHECK_STORE:-}" ]]; then
+  copy_store "$DARK_CHECK_STORE" "$OTHER/.darklang/data.db"
+fi
+HOME="$OTHER" "$CLI" permissions allow all > /dev/null
+cp "$OTHER/.darklang/policy/policies.bin" "$WORK/widened.bin"
+
+out="$(inside "
+  cp '$WORK/widened.bin' '$POLICY/policies.bin' 2>/dev/null && echo policy-replaced
+  cp '$WORK/widened.bin' '$POLICY/policies.written' 2>/dev/null && echo copy-replaced
+  true >> '$POLICY/policies.bin' 2>/dev/null && echo policy-writable
+  mv '$POLICY' '$POLICY.moved' 2>/dev/null && echo policy-dir-moved
+  mv '$HOME/.darklang' '$HOME/.darklang.moved' 2>/dev/null && echo store-dir-moved
+  true >> '$CLI' 2>/dev/null && echo binary-writable
+  touch '$(dirname "$CLI")/agent-probe' 2>/dev/null && echo binary-dir-writable
+  mv '$(dirname "$CLI")' '$(dirname "$CLI").moved' 2>/dev/null && echo binary-dir-moved
+  unshare -Ur true 2>/dev/null && echo nested-userns
+  touch '$HOME/.darklang/agent-probe' && echo store-writable
+  touch '$WORK/project/agent-probe' && echo project-writable
+  touch '$HOME/agent-probe' 2>/dev/null && echo home-writable
+  true
+" 2>&1)" || true
+
+# Put back anything that moved, so a broken sandbox cannot break the next run.
+[[ -d "$POLICY.moved" ]] && mv "$POLICY.moved" "$POLICY"
+[[ -d "$HOME/.darklang.moved" ]] && mv "$HOME/.darklang.moved" "$HOME/.darklang"
+[[ -d "$(dirname "$CLI").moved" ]] && mv "$(dirname "$CLI").moved" "$(dirname "$CLI")"
+rm -f "$(dirname "$CLI")/agent-probe"
+
+for bad in policy-replaced copy-replaced policy-writable policy-dir-moved store-dir-moved \
+  binary-writable binary-dir-writable binary-dir-moved nested-userns home-writable; do
+  if grep -qx "$bad" <<< "$out"; then fail "inside: $bad"; else pass "inside: not $bad"; fi
+done
+for good in store-writable project-writable; do
+  if grep -qx "$good" <<< "$out"; then pass "inside: $good"; else fail "inside: not $good"; fi
+done
+if [[ "$(sha256sum "$POLICY/policies.bin")" == "$before" ]]; then
+  pass "the policy file is unchanged"
+else
+  fail "the policy file changed"
+fi
+
+# The `dark permissions allow` path makes a request, not a grant.
+asked="$(dark agent run "$CLI" permissions allow all --why 'the check asks' 2>&1)" || true
+if grep -q "this is request" <<< "$asked"; then pass "inside: allow writes a request"; else fail "inside: allow said: $asked"; fi
+if dark permissions list | grep -qx "all"; then fail "the request granted itself"; else pass "the request granted nothing"; fi
+if dark status 2>&1 | grep -q "1 permission request waiting"; then pass "status shows the request"; else fail "status does not show the request"; fi
+
+listed="$(dark permissions requests)"
+id="$(awk '/dark permissions allow all/ {print $1; exit}' <<< "$listed")"
+if [[ -n "$id" ]]; then pass "requests lists it"; else fail "requests does not list it: $listed"; fi
+dark agent run "$CLI" permissions requests approve "$id" > /dev/null 2>&1 || true
+if dark permissions list | grep -qx "all"; then fail "the sandbox answered its own request"; else pass "the sandbox cannot answer a request"; fi
+dark permissions requests approve "$id" > /dev/null
+if dark permissions list | grep -qx "all"; then pass "approving applies it"; else fail "approving did not apply it"; fi
+if dark permissions log | grep -q "by dark permissions requests approve $id"; then
+  pass "the log says it came from a request"
+else
+  fail "the log does not say how it was granted"
+fi
+
+# Outside the sandbox, a hand edit is noticed and does not take effect.
+dark permissions clear > /dev/null
+cp "$WORK/widened.bin" "$POLICY/policies.bin"
+noticed="$(dark permissions list 2>&1)"
+if grep -q "changed outside dark:.*allowed all" <<< "$noticed"; then pass "outside: a hand edit is noticed"; else fail "outside: a hand edit went unnoticed"; fi
+if grep -qx "all" <<< "$noticed"; then fail "outside: the hand edit took effect"; else pass "outside: the hand edit does not take effect"; fi
+
+if [[ "$failures" -gt 0 ]]; then
+  echo "$failures check(s) failed"
+  exit 1
+fi
+echo "all checks passed"

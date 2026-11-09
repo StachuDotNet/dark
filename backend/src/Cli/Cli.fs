@@ -429,6 +429,21 @@ let private runCli (args : string[]) : int =
         )
       | None -> ()
 
+    // Permission requests an agent made inside `dark agent run`, said once, dim, the first time
+    // a command runs after a new one arrives. `newlyWaiting` is None inside the sandbox.
+    match List.ofArray args with
+    | ("permissions" | "perms") :: "requests" :: _
+    | "status" :: _ -> ()
+    | _ ->
+      match LibDB.PermissionRequests.newlyWaiting () with
+      | Some n ->
+        let requests =
+          if n = 1 then "1 permission request" else $"{n} permission requests"
+        NonBlockingConsole.writeErrLine (
+          $"\u001b[2m{requests} waiting; `dark permissions requests`\u001b[0m"
+        )
+      | None -> ()
+
     // Prevent scoped guest file operations from targeting the package store.
     LibExecution.HostSecurity.setPackageDbPath LibConfig.Config.dbPath
 

@@ -811,23 +811,31 @@ let kill (pid : int) (signal : int) : Result<unit, int * string> =
 /// descendants even after the worker exits.
 /// Replaces this launcher with the worker, keeping the same PID. That PID
 /// also identifies the process group the parent cleans up.
+let private execHere
+  (program : string)
+  (arguments : List<string>)
+  : Result<unit, int * string> =
+  let environment =
+    System.Environment.GetEnvironmentVariables()
+    |> Seq.cast<System.Collections.DictionaryEntry>
+    |> Seq.map (fun entry -> $"{entry.Key}={entry.Value}")
+    |> Seq.toList
+  execve_raw (program, arguments, environment) |> ignore<int>
+  // A successful exec never returns.
+  Error(lastError ())
+
 let execInNewSession
   (program : string)
   (arguments : List<string>)
   : Result<unit, int * string> =
-  if not isPosix then
-    Managed.enosys ()
-  elif setsid_raw () < 0 then
-    Error(lastError ())
-  else
-    let environment =
-      System.Environment.GetEnvironmentVariables()
-      |> Seq.cast<System.Collections.DictionaryEntry>
-      |> Seq.map (fun entry -> $"{entry.Key}={entry.Value}")
-      |> Seq.toList
-    execve_raw (program, arguments, environment) |> ignore<int>
-    // A successful exec never returns.
-    Error(lastError ())
+  if not isPosix then Managed.enosys ()
+  elif setsid_raw () < 0 then Error(lastError ())
+  else execHere program arguments
+
+/// Replace this process with `program`, keeping its PID, session and terminal: `dark agent run`
+/// becomes the sandbox it starts, so the person's shell waits on it and gets its exit code.
+let exec (program : string) (arguments : List<string>) : Result<unit, int * string> =
+  if not isPosix then Managed.enosys () else execHere program arguments
 
 let fdRead (fd : int) (count : int) : Result<byte[], int * string> =
   if count < 0 then

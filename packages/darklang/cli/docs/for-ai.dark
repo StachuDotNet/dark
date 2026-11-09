@@ -228,6 +228,15 @@ rules allow (or deny) additional effects and resources:
   permissions requirements <fn|hash>   # complete transitive permission requirements
   permissions show <fn|hash>           # requirements, approvals, and effective policies
 
+Run agents under `dark agent run <agent>`: there the policy and the CLI program
+itself are read-only. Inside it, do not try to grant yourself anything. Ask instead:
+
+  permissions allow http GET https://api.stripe.com/v1 --why "fetch the prices"
+
+That writes a request and says so; the person answers it with `permissions
+requests` outside the sandbox. A change made to the policy file any other way is
+noticed, and the policy then denies everything until the person reviews it.
+
 Consumer approvals are local to this installation, like the instance policy,
 with one approved version per logical function name. The
 normal workflow uses the logical function name; immutable hashes stay behind

@@ -100,6 +100,8 @@ RUN DEBIAN_FRONTEND=noninteractive \
       psmisc \
       # CLI integration tests
       expect \
+      # `dark agent run`, and the tests that check its sandbox
+      bubblewrap \
       && apt clean \
       && rm -rf /var/lib/apt/lists/*
 
