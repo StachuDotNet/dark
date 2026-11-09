@@ -160,7 +160,9 @@ let private provablyEffectFree
         PackagePermissions.Load.fromStore
         callEffectsFor
         test.body
-    return result.complete && Set.isEmpty result.requiredEffects
+    return
+      result.complete
+      && not (LibExecution.Effects.performsAny result.requiredEffects)
   }
 
 // Shared state: concurrent runs read and write it, and it keeps a stopped test `false` for good.
@@ -395,7 +397,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       previewable = Impure
       // The callback may write. Keep it in program order, rather than letting
       // the interpreter defer this scope as an asynchronous package read.
-      callEffects = set [ Effect.Native ]
+      callEffects = set [ Effect.Native; Effect.Raise ]
       deprecated = NotDeprecated }
 
     { name = fn "pmTestWorkerExecute" 0
@@ -517,7 +519,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
           count |> int64 |> Dval.int64 |> Ply
         | _ -> incorrectArgs ())
       previewable = Impure
-      callEffects = Set.empty
+      callEffects = set [ Effect.Raise ]
       deprecated = NotDeprecated }
 
     { name = fn "pmTestRaiseRuntimeError" 0
@@ -536,7 +538,7 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       // Pure: inside a test, the same message always raises the same error, so a test that
       // checks how an error propagates can run in-process and keep its cached pass.
       previewable = Pure
-      callEffects = Set.empty
+      callEffects = set [ Effect.Raise ]
       deprecated = NotDeprecated }
 
     { name = fn "pmTestRunsInProcess" 0
