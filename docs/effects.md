@@ -453,6 +453,29 @@ Guest code cannot change instance, run, or package approval policy. The
 policy builtins are host-only (`ExecutionState.canManagePolicies`), granted
 only to the trusted `dark permissions` command.
 
+**Every change is logged.** Each write through `dark` appends a line to
+`policy/grants.log`: the time, the command that made it (`dark permissions
+allow …`, `dark run …` when a denial's prompt saved a rule, `first run`), and
+what changed (rules added and removed, approvals moved or withdrawn, package
+policies added). `permissions log` prints it.
+
+**A change made outside `dark` is noticed.** Beside `policies.bin`, `dark`
+keeps `policies.written`, the bytes it last wrote. When the two differ,
+something else changed the policy: an editor, a copy from another install, a
+script. Every command then prints one line, `the permission policy was changed
+outside dark: <what changed>; dark permissions review`. Until the person runs
+`permissions review keep` or `permissions review undo`, the policy reads as
+deny-all and every change through `dark` refuses, so an outside widening never
+takes effect silently and is never blessed by the next ordinary write. A
+deleted policy file counts as an outside change too.
+
+This is detection, and only for the unsandboxed case. Anything running as the
+same OS user can rewrite `policies.written` and the log as easily as the
+policy, so a careful agent run without a sandbox can hide its change. It
+catches the obvious routes: an agent hand-editing the file, copying a
+`policies.bin` from a throwaway install it widened, or deleting the file.
+Stopping an agent takes keeping it from writing the policy directory at all.
+
 **This is runtime authorization, not OS isolation.** Every effect a Darklang
 program performs *through the interpreter* is checked against the instance
 policy: scoped resources cross `Host.perform`, while ambient and `Native`

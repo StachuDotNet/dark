@@ -719,6 +719,50 @@ let printListOrNone(items: List<String>): Unit =
   else Stdlib.printLines(items)
 
 
+/// What changed in the policy file since `dark` last wrote it, when something else changed it.
+let outsideChange(): Stdlib.Option.Option<String> =
+  Builtin.pmPolicyOutsideChange()
+
+/// `permissions review [keep|undo]`: show an outside change to the policy file, or settle it.
+let review(args: List<String>): Bool =
+  match args with
+  | [] ->
+    match Command.outsideChange() with
+    | None ->
+      Stdlib.printLine("nothing to review: the policy file is as dark last wrote it")
+      true
+    | Some(what) ->
+      Stdlib.printLines(
+        [ $"the permission policy was changed outside dark: {what}"
+          "Until you choose, code runs under deny-all and dark changes nothing."
+          "  permissions review keep   keep the file as it is now"
+          "  permissions review undo   go back to what dark last wrote" ])
+      true
+  | [ choice ] when Stdlib.List.contains([ "keep", "undo" ], choice) ->
+    if Builtin.pmPolicyReview(choice == "keep") then
+      if choice == "keep" then
+        Cli.printOk("✓ kept the policy file as it is")
+      else
+        Cli.printOk("✓ policy restored to what dark last wrote")
+      true
+    else
+      Stdlib.printLine("nothing to review: the policy file is as dark last wrote it")
+      true
+  | _ ->
+    Cli.printErr("usage: permissions review [keep|undo]")
+    false
+
+/// `permissions log`: every change dark made to the policy, and the command that made it.
+let printLog(): Unit =
+  match Builtin.pmPolicyLog() with
+  | [] -> Stdlib.printLine("no changes recorded")
+  | entries ->
+    entries
+    |> Stdlib.List.map(fun entry ->
+      let (at, how, what) = entry
+      $"{at}  {what}\n    by {how}")
+    |> Stdlib.printLines
+
 /// Every subcommand with the usage it prints when its argument is missing;
 /// None for the ones that take no argument. Drives `execute`'s
 /// missing-argument arm and `complete`.
@@ -739,7 +783,9 @@ val subcommands =
     ("requirements", Stdlib.Option.Option.Some("requirements <fn|hash>"))
     ("show", Stdlib.Option.Option.Some("show <fn|hash>"))
     ("approvals", Stdlib.Option.Option.None)
-    ("revoke-package", Stdlib.Option.Option.Some("revoke-package <hash>")) ]
+    ("revoke-package", Stdlib.Option.Option.Some("revoke-package <hash>"))
+    ("review", Stdlib.Option.Option.None)
+    ("log", Stdlib.Option.Option.None) ]
 
 /// The usage line for a subcommand given without its argument, if it needs one.
 let usageOf(subcommand: String): Stdlib.Option.Option<String> =
@@ -757,6 +803,10 @@ let execute(state: Cli.AppState, args: List<String>): Cli.AppState =
     Stdlib.printLine(Command.help(state))
     state
   | ["profile", ...args] -> Cli.exitWith(state, Command.profile(args))
+  | ["review", ...args] -> Cli.exitWith(state, Command.review(args))
+  | [ "log" ] ->
+    Command.printLog()
+    state
   // Before the `[<subcommand>, ...args]` arms: a subcommand given with no
   // argument must report usage, not run with an empty argument list (`set`
   // with nothing would replace the policy with deny-all).
@@ -864,6 +914,7 @@ let complete(
   | [ "profile", "default" ]
   | [ "profile", "read-only", _ ]
   | [ "profile", "local-dev", _ ] -> [ Cli.Completion.simple("--yes") ]
+  | [ "review" ] -> [ Cli.Completion.simple("keep"), Cli.Completion.simple("undo") ]
   | ["profile", ...] -> []
   | _ ->
     Command.subcommands
@@ -877,6 +928,7 @@ let help(_state: Cli.AppState): String =
     "                   | approved"
     "                   | requirements <fn|hash> | show <fn|hash>"
     "                   | approvals | revoke-package <hash>"
+    "                   | log | review [keep|undo]"
     ""
     "The instance policy is local and deny-by-default. Every actual host operation"
     "must be allowed by the instance, run and package layers."
@@ -905,6 +957,11 @@ let help(_state: Cli.AppState): String =
     "  approved       the names with an approved version, and which version"
     "  approvals      the approved versions (hashes); revoke-package drops one and"
     "                 the dependencies nothing else needs"
+    ""
+    "History:"
+    "  log            every change dark made to the policy, and the command that made it"
+    "  review         a change made to the policy file by something other than dark;"
+    "                 until you keep or undo it, code runs under deny-all"
     ""
     "Rules:"
     "  <effect>                         e.g. clock, random, stdout, http, process,"

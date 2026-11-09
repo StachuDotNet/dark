@@ -416,6 +416,19 @@ let private runCli (args : string[]) : int =
         (System.IO.Path.Combine(LibConfig.Config.runDir, "policy"))
         e.Message
 
+    // One line on every command while the policy file has a change made outside `dark`, except
+    // `permissions review`, which shows it at length. Here rather than in the Dark entry point,
+    // where the functions it calls would be fetched from the store on every start.
+    match List.ofArray args with
+    | ("permissions" | "perms") :: "review" :: _ -> ()
+    | _ ->
+      match LibDB.PolicyStore.outsideChange () with
+      | Some what ->
+        NonBlockingConsole.writeErrLine (
+          $"\u001b[33mthe permission policy was changed outside dark: {what}; `dark permissions review`\u001b[0m"
+        )
+      | None -> ()
+
     // Prevent scoped guest file operations from targeting the package store.
     LibExecution.HostSecurity.setPackageDbPath LibConfig.Config.dbPath
 

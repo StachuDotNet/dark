@@ -178,6 +178,18 @@ let read (fileName : string) : ReadResult =
   | :? DirectoryNotFoundException -> Missing
   | error -> Unreadable error
 
+/// Add one line to a policy file, creating it owner-only. For the grant log, which only grows.
+let appendLine (fileName : string) (line : string) : unit =
+  let filePath = resolve fileName
+  secureDirectory (Path.GetDirectoryName filePath)
+  use stream =
+    new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read)
+  if OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() then
+    File.SetUnixFileMode(filePath, UnixFileMode.UserRead ||| UnixFileMode.UserWrite)
+  let bytes = Text.Encoding.UTF8.GetBytes(line + "\n")
+  stream.Write(bytes, 0, bytes.Length)
+  stream.Flush(true)
+
 /// Write a policy file atomically and with owner-only Unix permissions.
 let writeAtomic (fileName : string) (bytes : byte[]) : unit =
   let filePath = resolve fileName

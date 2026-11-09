@@ -382,9 +382,10 @@ let private runOnce
                   "CLICOLOR_FORCE", Some "1" ]
               directories = [ ".darklang/policy"; "tmp" ]
               files =
-                [ "request.bin", request
-                  ".darklang/policy/policies.bin", PolicyStore.testWorkerStore ()
-                  "access.bin", buffer.ToArray() ]
+                [ yield "request.bin", request
+                  for name, bytes in PolicyStore.testWorkerStore () do
+                    yield $".darklang/policy/{name}", bytes
+                  yield "access.bin", buffer.ToArray() ]
               resultFile = "result.bin" }
           spec)
       let! outcome =

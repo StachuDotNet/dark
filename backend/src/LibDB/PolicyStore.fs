@@ -66,6 +66,14 @@ let formatVersion = 9
 
 let private fileName = "policies.bin"
 
+/// The copy of `policies.bin` as `dark` last wrote it. A policy file that differs from it was
+/// changed by something other than `dark`, and reads as deny-all until the person reviews it.
+let private writtenFileName = "policies.written"
+
+/// One line per change `dark` made to the policy: when, the command that made it, and what
+/// changed. It only grows.
+let private logFileName = "grants.log"
+
 let empty : Store =
   { instance = P.Policy.denyAll
     packages = Map.empty
@@ -192,6 +200,112 @@ let storedVersion (bytes : byte[]) : Option<int> =
   with _ ->
     None
 
+
+// ── describing a change ───────────────────────────────────────────────────────
+
+let private scopeText<'a> (show : 'a -> string) (scope : P.Scope<'a>) : string =
+  match scope with
+  | P.Scope.All -> "*"
+  | P.Scope.Only value -> show value
+
+let private textScope (scope : P.Scope<string>) : string =
+  scopeText (fun t -> t) scope
+
+let private portScope (scope : P.Scope<int>) : string =
+  scopeText (fun (n : int) -> n.ToString()) scope
+
+let private accessText (access : P.AccessKind) : string =
+  match access with
+  | P.AccessKind.Read -> "read"
+  | P.AccessKind.Write -> "write"
+
+/// A rule as `permissions allow` takes it, near enough to recognise.
+let ruleText (rule : P.Rule) : string =
+  match rule with
+  | P.Rule.All -> "all"
+  | P.Rule.Effect effect -> LibExecution.Effects.name effect
+  | P.Rule.Http http ->
+    let host =
+      match http.host with
+      | P.HostRule.Any -> "*"
+      | P.HostRule.Exact host -> host
+      | P.HostRule.SubdomainsOf host -> $"*.{host}"
+    let port = portScope http.port
+    let path = textScope http.pathPrefix
+    let query =
+      match http.query with
+      | P.Scope.All -> ""
+      | P.Scope.Only q -> $"?{q}"
+    let path = if path = "*" then "" else path
+    $"http {textScope http.method} {textScope http.scheme}://{host}:{port}{path}{query}"
+  | P.Rule.HttpServer port -> $"http-server {portScope port}"
+  | P.Rule.File(access, roots) -> $"file {accessText access} {textScope roots}"
+  | P.Rule.Env(access, names) -> $"env {accessText access} {textScope names}"
+  | P.Rule.Process rule ->
+    let args =
+      match rule.args with
+      | P.Scope.All -> " *"
+      | P.Scope.Only [] -> ""
+      | P.Scope.Only args -> " " + String.concat " " args
+    $"process {textScope rule.executable}{args}"
+
+let private short (hash : string) : string = hash.Substring(0, min 8 hash.Length)
+
+/// What changed from `before` to `after`, one phrase per difference.
+let describeChange (before : Store) (after : Store) : List<string> =
+  let added (a : List<'x>) (b : List<'x>) =
+    b |> List.filter (fun x -> not (List.contains x a))
+  let beforeAllow, beforeDeny = P.Policy.rules before.instance
+  let afterAllow, afterDeny = P.Policy.rules after.instance
+  let rules =
+    [ yield!
+        added beforeAllow afterAllow |> List.map (fun r -> $"allowed {ruleText r}")
+      yield!
+        added afterAllow beforeAllow
+        |> List.map (fun r -> $"removed allow {ruleText r}")
+      yield! added beforeDeny afterDeny |> List.map (fun r -> $"denied {ruleText r}")
+      yield!
+        added afterDeny beforeDeny
+        |> List.map (fun r -> $"removed deny {ruleText r}") ]
+  let nameOf ((account, name) : ScopedKey) =
+    match account with
+    | None -> name
+    | Some id -> $"{name} (account {short (string id)})"
+  let versions =
+    [ for KeyValue(key, hash) in after.approvedVersions do
+        match Map.tryFind key before.approvedVersions with
+        | Some old when old = hash -> ()
+        | _ -> yield $"approved {nameOf key} at {short hash}"
+      for KeyValue(key, _) in before.approvedVersions do
+        if not (Map.containsKey key after.approvedVersions) then
+          yield $"withdrew {nameOf key}" ]
+  let count (n : int) (what : string) = if n = 1 then $"1 {what}" else $"{n} {what}s"
+  let packages =
+    let gained =
+      after.packages
+      |> Map.filterWithIndex (fun k _ -> not (Map.containsKey k before.packages))
+    let lost =
+      before.packages
+      |> Map.filterWithIndex (fun k _ -> not (Map.containsKey k after.packages))
+    let changed =
+      after.packages
+      |> Map.filterWithIndex (fun k v ->
+        match Map.tryFind k before.packages with
+        | Some old -> old <> v
+        | None -> false)
+    [ if not (Map.isEmpty gained) then
+        yield count (Map.count gained) "package policy" + " added"
+      if not (Map.isEmpty changed) then
+        yield count (Map.count changed) "package policy" + " changed"
+      if not (Map.isEmpty lost) then
+        yield count (Map.count lost) "package policy" + " removed" ]
+  rules @ versions @ packages
+
+let private summary (changes : List<string>) : string =
+  match changes with
+  | [] -> "no change"
+  | changes -> String.concat "; " changes
+
 // ── file access ───────────────────────────────────────────────────────────────
 
 /// Parsed-store cache keyed on the file's (mtime, ctime, length) stamp.
@@ -204,8 +318,16 @@ let private cacheLock = obj ()
 let mutable private cache : Option<Option<struct (int64 * int64 * int64)> * Store> =
   None
 
+/// Whether two reads hold the same bytes. Two missing files agree.
+let private sameFile (a : LocalFile.ReadResult) (b : LocalFile.ReadResult) : bool =
+  match a, b with
+  | LocalFile.Missing, LocalFile.Missing -> true
+  | LocalFile.Read x, LocalFile.Read y -> x = y
+  | _ -> false
+
 /// Read the host policy. Missing, malformed, or unreadable state is
-/// restrictive and never restores authority.
+/// restrictive and never restores authority, and so is a file changed by
+/// something other than `dark` (see [outsideChange]).
 let get () : Store =
   // A missing file stamps as None and is cached too — the fresh-install case
   // must not pay a failed open per package-fn resolution.
@@ -216,20 +338,103 @@ let get () : Store =
     | _ ->
       let store =
         match LocalFile.read fileName with
-        | LocalFile.Read bytes ->
+        | LocalFile.Read bytes as file when
+          sameFile file (LocalFile.read writtenFileName)
+          ->
           try
             fromBytes bytes
           with _ ->
             empty
-        // A present but inaccessible policy file must not restore authority.
+        // A present but inaccessible policy file must not restore authority, and neither does
+        // one changed outside `dark`.
+        | LocalFile.Read _
         | LocalFile.Missing
         | LocalFile.Unreadable _ -> empty
       cache <- Some(stamp, store)
       store)
 
+/// Write the policy and the copy that says `dark` wrote it.
 let private writeFile (store : Store) : unit =
-  LocalFile.writeAtomic fileName (toBytes store)
+  let bytes = toBytes store
+  LocalFile.writeAtomic fileName bytes
+  LocalFile.writeAtomic writtenFileName bytes
   lock cacheLock (fun () -> cache <- None)
+
+/// The command this process was started as, for the grant log.
+let private commandLine () : string =
+  let quote (arg : string) =
+    if arg = "" || arg |> Seq.exists System.Char.IsWhiteSpace then
+      $"'{arg}'"
+    else
+      arg
+  match System.Environment.GetCommandLineArgs() |> List.ofArray with
+  | [] -> "dark"
+  | _ :: args -> "dark " + (args |> List.map quote |> String.concat " ")
+
+let private oneLine (text : string) : string =
+  text.Replace('\t', ' ').Replace('\n', ' ').Replace('\r', ' ')
+
+/// Add a line to the grant log: when, how (the command that did it), and what changed.
+let private log (how : string) (what : string) : unit =
+  let at = System.DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+  LocalFile.appendLine logFileName $"{at}\t{oneLine how}\t{oneLine what}"
+
+/// One line of the grant log.
+type LogEntry = { at : string; how : string; what : string }
+
+/// Every change `dark` recorded, oldest first.
+let grantLog () : List<LogEntry> =
+  match LocalFile.read logFileName with
+  | LocalFile.Read bytes ->
+    (System.Text.Encoding.UTF8.GetString bytes).Split('\n')
+    |> List.ofArray
+    |> List.choose (fun line ->
+      match line.Split('\t', 3) with
+      | [| at; how; what |] -> Some { at = at; how = how; what = what }
+      | _ -> None)
+  | _ -> []
+
+let private parsedOr (file : LocalFile.ReadResult) : Option<Store> =
+  match file with
+  | LocalFile.Missing -> Some empty
+  | LocalFile.Read bytes ->
+    try
+      Some(fromBytes bytes)
+    with _ ->
+      None
+  | LocalFile.Unreadable _ -> None
+
+/// What changed in the policy file since `dark` last wrote it, when something else changed it:
+/// an editor, a copy from another install, a script. Such a policy reads as deny-all and every
+/// change through `dark` refuses until `permissions review` keeps or undoes it.
+///
+/// Detection only. Anything running as this user can rewrite the copy too; stopping an agent
+/// takes keeping it from writing the policy directory at all.
+let private outsideChangeOf () : Option<string> =
+  let current = LocalFile.read fileName
+  match current with
+  | LocalFile.Unreadable _ -> None
+  | _ ->
+    let written = LocalFile.read writtenFileName
+    if sameFile current written then
+      None
+    else
+      match current, parsedOr written, parsedOr current with
+      | LocalFile.Missing, _, _ -> Some "the policy file was deleted"
+      | _, _, None -> Some "the policy file no longer reads as a policy"
+      | _, None, Some now -> Some(summary (describeChange empty now))
+      | _, Some before, Some now -> Some(summary (describeChange before now))
+
+/// [outsideChangeOf], without parsing anything when the two files agree, as they almost always
+/// do: every command asks.
+let outsideChange () : Option<string> =
+  if sameFile (LocalFile.read fileName) (LocalFile.read writtenFileName) then
+    None
+  else
+    outsideChangeOf ()
+
+let private outsideChangeRefusal : string =
+  "Nothing changed: the permission policy has an outside change nobody has reviewed. `dark permissions review` shows it."
 
 /// Read the store before mutation. A present but invalid file is an error so a
 /// write cannot replace approvals and approved versions with an empty store.
@@ -266,13 +471,42 @@ let private getForWrite () : Store =
 
 /// One locked read-modify-write. The change may refuse (returning `Error`),
 /// in which case nothing is written.
+///
+/// A policy changed outside `dark` refuses every change until it is reviewed: writing over it
+/// would make the outside change look like `dark`'s own.
 let private update (change : Store -> Result<Store, 'e>) : Result<unit, 'e> =
   LocalFile.withExclusiveLock (fun () ->
-    match change (getForWrite ()) with
+    let before = getForWrite ()
+    match outsideChangeOf () with
+    | Some _ -> Exception.raiseStoreCondition outsideChangeRefusal []
+    | None -> ()
+    match change before with
     | Ok store ->
       writeFile store
+      log (commandLine ()) (summary (describeChange before store))
       Ok()
     | Error e -> Error e)
+
+/// Settle an outside change: `keep` makes the file as it is now the policy, otherwise the policy
+/// goes back to what `dark` last wrote (deny-all when there is no such copy). Logged either way.
+/// False when there was nothing to review.
+let review (keep : bool) : bool =
+  LocalFile.withExclusiveLock (fun () ->
+    match outsideChangeOf () with
+    | None -> false
+    | Some what ->
+      if keep then
+        let store = getForWrite ()
+        writeFile store
+        log (commandLine ()) $"kept an outside change: {what}"
+      else
+        let restored =
+          match parsedOr (LocalFile.read writtenFileName) with
+          | Some store -> store
+          | None -> empty
+        writeFile restored
+        log (commandLine ()) $"undid an outside change: {what}"
+      true)
 
 /// [update] for a change that never refuses.
 let private set (change : Store -> Store) : unit =
@@ -346,7 +580,9 @@ let seedInstanceIfMissing (instance : P.Policy) : unit =
       match seedAction file (isInitialized ()) with
       | SeedAction.Leave -> ()
       | SeedAction.WriteDefault ->
-        writeFile { empty with instance = instance }
+        let store = { empty with instance = instance }
+        writeFile store
+        log "first run" (summary (describeChange empty store))
         stampInitialized ()
       | SeedAction.BackUpAndReset version ->
         match file with
@@ -354,6 +590,9 @@ let seedInstanceIfMissing (instance : P.Policy) : unit =
           LocalFile.writeAtomic $"{fileName}.v{version}.bak" bytes
         | _ -> ()
         writeFile empty // deny-all at the current version, never re-widen
+        log
+          "first run of this version"
+          $"reset to deny-all; the old file is {fileName}.v{version}.bak"
         stampInitialized ())
 
 // ── approval metadata fingerprint ─────────────────────────────────────────────
@@ -697,8 +936,9 @@ let testState
 
 /// Disposable test workers and any CLI children they start use the same test
 /// instance policy. Only this serialized copy is widened; never write it back.
-let testWorkerStore () : byte[] =
-  { get () with instance = P.Policy.allowAll } |> toBytes
+let testWorkerStore () : List<string * byte[]> =
+  let bytes = { get () with instance = P.Policy.allowAll } |> toBytes
+  [ fileName, bytes; writtenFileName, bytes ]
 
 /// The hash a named applicable calls, for the approval root. A lambda or a builtin has none.
 let rootOf (applicable : RT.Applicable) : List<RT.Hash> =

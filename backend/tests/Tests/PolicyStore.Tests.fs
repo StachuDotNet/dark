@@ -611,6 +611,60 @@ let suiteNeverUsesTheClonesPolicy =
     | Error e -> failtest e
   }
 
+/// An agent run without a sandbox can write the policy file itself. That cannot be stopped from
+/// inside `dark`, but it is noticed: the edited file does not take effect, `dark` changes
+/// nothing until the person reviews it, and the review is logged.
+let handEditIsNoticed =
+  testSequenced
+  <| test "a policy file edited outside dark is noticed and does not take effect" {
+    let dir = System.IO.Directory.CreateTempSubdirectory("dark-policy-edit-")
+    let restore = LibExecution.HostSecurity.policyDirectoryForTesting dir.FullName
+    try
+      PolicyStore.setInstancePolicy Permission.Policy.defaultInstance
+      Expect.isNone
+        (PolicyStore.outsideChange ())
+        "dark's own write is not an outside change"
+      let lastEntry () =
+        match PolicyStore.grantLog () |> List.rev with
+        | entry :: _ -> entry
+        | [] -> failtest "nothing logged"
+      let last = lastEntry ()
+      Expect.stringContains last.what "allowed stdout" "the log says what changed"
+      Expect.stringStarts last.how "dark" "and the command that changed it"
+
+      let widened =
+        { PolicyStore.empty with instance = Permission.Policy.allowAll }
+        |> PolicyStore.toBytes
+      System.IO.File.WriteAllBytes(
+        System.IO.Path.Combine(dir.FullName, "policies.bin"),
+        widened
+      )
+      match PolicyStore.outsideChange () with
+      | Some what -> Expect.stringContains what "allowed all" "it says what changed"
+      | None -> failtest "a hand edit went unnoticed"
+      Expect.isFalse
+        (Permission.Policy.isAllowAll (PolicyStore.instancePolicy ()))
+        "the widened file does not take effect"
+      Expect.throws
+        (fun () -> PolicyStore.editInstancePolicy [ Permission.Rule.All ] [] [])
+        "dark changes nothing until it is reviewed"
+
+      Expect.isTrue (PolicyStore.review false) "undo"
+      Expect.isNone (PolicyStore.outsideChange ()) "settled"
+      Expect.equal
+        (PolicyStore.instancePolicy ())
+        Permission.Policy.defaultInstance
+        "back to what dark last wrote"
+      let last = lastEntry ()
+      Expect.stringStarts
+        last.what
+        "undid an outside change: allowed all"
+        "the undo is logged"
+    finally
+      restore.Dispose()
+      dir.Delete true
+  }
+
 let tests =
   testList
     "policyStore"
@@ -628,4 +682,5 @@ let tests =
       approvingADependencyKeepsItsOwnRootApproval
       approvalAndPinAreOneTransaction
       reapprovingOneRootLeavesOthersStale
-      originNamesTheApprovingRoots ]
+      originNamesTheApprovingRoots
+      handEditIsNoticed ]

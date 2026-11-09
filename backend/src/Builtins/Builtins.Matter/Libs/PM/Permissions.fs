@@ -332,6 +332,55 @@ let fns () : List<BuiltInFn> =
           }
         | _ -> incorrectArgs ())
 
+    hostOnly
+      "pmPolicyOutsideChange"
+      [ Param.make "unit" TUnit "" ]
+      (TypeReference.option TString)
+      ("What changed in the policy file since `dark` last wrote it, when something else "
+       + "changed it; None when nothing did. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DUnit |] ->
+          uply {
+            return
+              PolicyStore.outsideChange ()
+              |> Option.map DString
+              |> Dval.option KTString
+          }
+        | _ -> incorrectArgs ())
+
+    hostOnly
+      "pmPolicyReview"
+      [ Param.make
+          "keep"
+          TBool
+          "Keep the file as it is now, or undo the outside change" ]
+      TBool
+      ("Settle an outside change to the policy file: keep it, or go back to what `dark` "
+       + "last wrote. False when there was nothing to review. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DBool keep |] -> uply { return DBool(PolicyStore.review keep) }
+        | _ -> incorrectArgs ())
+
+    hostOnly
+      "pmPolicyLog"
+      [ Param.make "unit" TUnit "" ]
+      (TList(TTuple(TString, TString, [ TString ])))
+      ("Every change `dark` made to the policy, oldest first: when, the command that "
+       + "made it, and what changed. Host-only.")
+      (fun _ args ->
+        match args with
+        | [| DUnit |] ->
+          uply {
+            let entries =
+              PolicyStore.grantLog ()
+              |> List.map (fun e ->
+                DTuple(DString e.at, DString e.how, [ DString e.what ]))
+            return DList(VT.tuple VT.string VT.string [ VT.string ], Items(entries))
+          }
+        | _ -> incorrectArgs ())
+
     policyFn
       "pmFnPermissionRequirements"
       [ Param.make "hash" TString "The package-fn hash to analyze" ]
