@@ -275,7 +275,7 @@ let requireBuiltinEffectsWithAccess
   (effects : Set<Effect.Effect>)
   (builtinName : string)
   : unit =
-  for effect in effects do
+  for effect in Effect.permissionEffects effects do
     if not (Effect.isScoped effect) then
       checkRequestWithAccess
         state

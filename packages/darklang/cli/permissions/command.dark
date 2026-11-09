@@ -31,13 +31,24 @@ let editInstancePolicy(
   : Unit =
   Command.changePolicy(LanguageTools.Permissions.PolicyEdit.Change(allow, deny, remove))
 
+/// The effects a policy decides on: all but `Raise`, which no rule grants or denies.
+let permissionEffects(
+  effects: List<LanguageTools.Permissions.Effect>)
+  : List<LanguageTools.Permissions.Effect> =
+  effects |> Stdlib.List.filter(fun e -> e != LanguageTools.Permissions.Effect.Raise)
+
+/// The effects a function reaches, `Raise` included, and whether analysis was complete.
+let effectsForHash(hash: String): (List<LanguageTools.Permissions.Effect> * Bool) =
+  Builtin.pmFnPermissionRequirements(hash)
+
 /// The transitive permission requirements and whether analysis was complete.
 /// Incomplete analysis returns the effects found with `false`; fetch once and
 /// pass the result around because this walks the function's closure.
 let permissionRequirementsForHash(
   hash: String)
   : (List<LanguageTools.Permissions.Effect> * Bool) =
-  Builtin.pmFnPermissionRequirements(hash)
+  let (effects, complete) = Command.effectsForHash(hash)
+  (Command.permissionEffects(effects), complete)
 
 /// Take an approval back: a name's approved version, or a hash's approval. They are separate
 /// records; withdrawing one leaves the other.
@@ -218,11 +229,16 @@ let ceilingForHash(
 /// declared, and a warning when the two disagree — a ceiling narrower than a
 /// complete requirement set means those calls are denied at runtime.
 let policyLinesForHash(hash: String): List<String> =
-  let (effects, complete) = Command.permissionRequirementsForHash(hash)
+  let (found, complete) = Command.effectsForHash(hash)
+  let effects = Command.permissionEffects(found)
   let requirementsLine =
     $"permission requirements: {Command.describeRequirements((effects, complete))}"
+  let raiseLines =
+    if Stdlib.List.contains(found, LanguageTools.Permissions.Effect.Raise) then
+      [ "can raise a runtime error" ]
+    else []
   match Command.ceilingForHash(hash) with
-  | None -> [ requirementsLine ]
+  | None -> Stdlib.List.prepend(raiseLines, requirementsLine)
   | Some(ceiling) ->
     let row = LanguageTools.Permissions.ceilingRow(Stdlib.Option.Option.Some(ceiling))
     let exceeding =
@@ -233,7 +249,7 @@ let policyLinesForHash(hash: String): List<String> =
           + Command.requirementSummary(exceeding)
           + ", which the ceiling denies at runtime" ]
       else []
-    Stdlib.List.concat([ requirementsLine, $"function ceiling: {row}" ], warning)
+    Stdlib.List.flatten([ [ requirementsLine ], raiseLines, [ $"function ceiling: {row}" ], warning ])
 
 /// A policy as rule lines; an empty policy is spelled out as `deny all`.
 let policyLines(policy: LanguageTools.Permissions.Policy): List<String> =

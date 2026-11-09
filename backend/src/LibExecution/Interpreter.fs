@@ -1413,7 +1413,7 @@ let private awaitsElsewhere : Set<string> =
 /// instead of running the lambda (losing every per-iteration value) or stop a preview at an await.
 /// An orchestrator that declares an effect of its own is still intercepted.
 let private isLogged (fn : BuiltInFn) : bool =
-  if not (Set.isEmpty fn.callEffects) then
+  if Effects.performsAny fn.callEffects then
     true
   else
     fn.previewable = Impure
@@ -1445,7 +1445,7 @@ let private isPlainPure (fn : BuiltInFn) : bool =
   List.isEmpty fn.typeParams
   && not (FreeTVars.builtinHasAny fn)
   && not (hasFnParam fn.parameters)
-  && Set.isEmpty fn.callEffects
+  && not (Effects.performsAny fn.callEffects)
   && fn.previewable <> Impure
   && not (spreadRefuses fn)
 
@@ -1864,7 +1864,7 @@ let private invokeBuiltin
         []
       )
       |> raiseRTE vm.threadID
-    if not (Set.isEmpty fn.callEffects) then
+    if Effects.performsAny fn.callEffects then
       // `Native` names what no rule can scope, so a policy grants it whole or not at all --
       // which would put the CLI's own commands (the test runner, seed export, raw descriptors)
       // behind `permissions allow native` on a stock install. Bundled first-party code is
@@ -2618,7 +2618,7 @@ let private detectThinWrapper
   // the whole of the win here anyway -- `Dict.get`, `Option`, `Tuple2` -- so this costs nothing
   // worth having.
   let sameSignature (bi : BuiltInFn) =
-    Set.isEmpty bi.callEffects
+    not (Effects.performsAny bi.callEffects)
     && sameType fn.returnType bi.returnType
     && List.length bi.parameters = NEList.length fn.parameters
     && List.forall2

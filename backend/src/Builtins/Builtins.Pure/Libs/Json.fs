@@ -906,7 +906,7 @@ let fns () : List<BuiltInFn> =
           Ply(DString(writeJson (fun w -> serialize vm.threadID w arg)))
         | _ -> incorrectArgs ())
       previewable = Pure
-      callEffects = Set.empty
+      callEffects = set [ LibExecution.Effects.Effect.Raise ]
       deprecated = NotDeprecated }
 
 
@@ -944,7 +944,7 @@ let fns () : List<BuiltInFn> =
           }
         | _ -> incorrectArgs ())
       previewable = Pure
-      callEffects = Set.empty
+      callEffects = set [ LibExecution.Effects.Effect.Raise ]
       deprecated = NotDeprecated } ]
 
 

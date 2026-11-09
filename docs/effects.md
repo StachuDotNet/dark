@@ -27,6 +27,14 @@ without making every function effectful.
   `PackageRead`, ...) are checked once at the interpreter gate before the body
   runs; scoped effects name a resource and are checked by the body or, for the
   OS-facing ones, by the host boundary from the `Operation`.
+- `Raise`: the call can stop with a runtime error on arguments of its declared
+  types (dividing by zero, an argument out of range, `unwrap` of `None`). It is
+  information, not a permission: no rule grants or denies it, it reaches no
+  gate, it is not logged, and a call whose only effect is `Raise` stays pure. It
+  flows through the call graph like any effect, so `view` says when a function
+  can raise; permission requirements, approvals and ceilings leave it out.
+  `Builtin.Tests.raisingBuiltinsDeclareRaise` holds every builtin with a raise
+  site in its source to it.
 - `PermissionRequirements`: the complete, transitive set used for review.
 - `Request`: one exact runtime operation, such as `GET
   https://api.stripe.com:443/v1/payment_intents?expand=charges`. "Exact"

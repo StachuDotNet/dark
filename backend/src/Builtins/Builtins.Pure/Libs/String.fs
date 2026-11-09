@@ -260,7 +260,7 @@ let fns () : List<BuiltInFn> =
           DString(String.repeat s (int64ToInt32 vm count)) |> Ply
         | _ -> incorrectArgs ())
       previewable = Pure
-      callEffects = Set.empty
+      callEffects = set [ LibExecution.Effects.Effect.Raise ]
       deprecated = NotDeprecated }
 
 

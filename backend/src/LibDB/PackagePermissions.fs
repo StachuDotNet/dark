@@ -260,6 +260,9 @@ let private signatureOf (fn : PT.PackageFn.PackageFn) =
    fn.parameters |> NEList.toList |> List.map (fun p -> p.name, p.typ),
    fn.returnType)
 
+let private permissionEffects (result : Requirements.Result) =
+  LibExecution.Effects.permissionEffects result.requiredEffects
+
 let private describeEffects (effects : Set<LibExecution.Effects.Effect>) : string =
   if Set.isEmpty effects then
     "effect-free"
@@ -297,12 +300,13 @@ let compareContracts
             "the author's permission ceiling changed"
           if not (oldRequirements.complete && newRequirements.complete) then
             "permission analysis is incomplete"
-          elif
-            oldRequirements.requiredEffects <> newRequirements.requiredEffects
-          then
-            $"permission requirements changed from "
-            + $"{describeEffects oldRequirements.requiredEffects} to "
-            + $"{describeEffects newRequirements.requiredEffects}" ]
+          else
+            let before = permissionEffects oldRequirements
+            let after = permissionEffects newRequirements
+            if before <> after then
+              $"permission requirements changed from "
+              + $"{describeEffects before} to "
+              + $"{describeEffects after}" ]
       if List.isEmpty differences then
         return ContractComparison.Match
       else
@@ -320,7 +324,7 @@ let private closurePolicies
   |> List.map (fun (hash, result) ->
     let policy =
       if result.complete then
-        P.Policy.allowEffects result.requiredEffects
+        P.Policy.allowEffects (permissionEffects result)
       else
         P.Policy.allowAll
     hash, policy)
@@ -335,7 +339,7 @@ let private uncoveredEffects
   match P.Policy.coverableEffects policy with
   | None -> []
   | Some coverable ->
-    Set.difference requirements.requiredEffects coverable
+    Set.difference (permissionEffects requirements) coverable
     |> Set.toList
     |> List.map LibExecution.Effects.name
 
