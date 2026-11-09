@@ -69,6 +69,7 @@
     <Compile Include="Releases.fs" />
     <Compile Include="Seed.fs" />
     <Compile Include="OpSync.fs" />
+    <Compile Include="SyncLink.fs" />
     <Compile Include="PackagePermissions.fs" />
 
     <!-- ex-LibCloud SQLite-bound modules /-->

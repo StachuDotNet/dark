@@ -81,6 +81,7 @@ module Registry =
   let acceptsOps(): Accepts.Accepts = (Accepts.subcommands([ ("list", Accepts.upTo(1, [])), ("show", Accepts.between(1, 1, [])) ], Accepts.upTo(1, [])))
   let acceptsPs(): Accepts.Accepts = (Accepts.everywhere([ "--json" ], [], Accepts.subcommands([ ("show", Accepts.between(1, 1, [ "--full" ])), ("cancel", Accepts.between(1, 1, [])), ("kill", Accepts.between(1, 1, [])) ], Accepts.flagsOnly([ "--watch" ]))))
   let acceptsWorkbench(): Accepts.Accepts = Accepts.flagsOnly([ "--live" ])
+  let acceptsSync(): Accepts.Accepts = Accepts.text(0)
 
   let allCommands(): List<CommandHandler> =
     [ ("quit", "Exit the CLI", [ "exit", "q" ], acceptsQuit, Quit.execute, Quit.help, Quit.complete)
@@ -133,6 +134,7 @@ module Registry =
       ("ack", "Leave a constraint finding for now (`dark ack --all`)", [], acceptsAck, Cli.ConstraintsCmd.executeAckCmd, Cli.ConstraintsCmd.help, Cli.ConstraintsCmd.complete)
       ("undeprecate", "Put a deprecated fn/type/value/trait/impl/test back on the shelf", [ "restore" ], acceptsUndeprecate, Packages.Deprecate.executeUndeprecate, Packages.Deprecate.undeprecateHelp, Packages.Deprecate.complete)
       ("backups", "Copies of the store: what exists, take one, prune", [], acceptsBackups, Cli.Backups.execute, Cli.Backups.help, Cli.Backups.complete)
+      ("sync", "Keep this store in step with a machine you own, over ssh", [], acceptsSync, Cli.Sync.execute, Cli.Sync.help, Cli.Sync.complete)
       ("builtins", "List all builtin functions and values", [], acceptsBuiltins, Builtins.execute, Builtins.help, Builtins.complete)
       ("find-values", "Find values of a given type", [], acceptsFindValues, Packages.FindValues.execute, Packages.FindValues.help, Packages.FindValues.complete)
       ("impls", "List the implementations of a trait on this branch", [], acceptsImpls, Packages.Impls.execute, Packages.Impls.help, Packages.Impls.complete)
@@ -273,7 +275,7 @@ module Registry =
   let commandGroups(): List<(String * List<String>)> =
     [ ("Packages", [ "nav", "ls", "view", "tree", "back", "search", "typecheck", "test", "find-values", "deps", "val", "fn", "type", "trait", "impl", "impls", "module", "edit", "rename", "hash", "deprecate", "delete", "undeprecate" ])
       ("Changes",
-       [ "status", "commit", "commits", "show", "discard", "undo", "conflicts", "constraints", "ack", "ops" ])
+       [ "status", "commit", "commits", "show", "discard", "undo", "conflicts", "constraints", "ack", "ops", "sync" ])
       ("Branches", [ "branch", "branches", "switch", "merge", "rebase", "diff", "log", "resolve" ])
       ("Execution", [ "run-script", "eval", "ps", "traces", "serve" ])
       ("Installation", [ "install", "update", "uninstall", "version", "install-status" ])
