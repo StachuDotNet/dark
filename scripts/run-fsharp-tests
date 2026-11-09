@@ -139,8 +139,16 @@ cd ..
 
 if [[ "${DARK_CONFIG_PACKAGES_SOURCE:-disk}" == "seed" ]]; then
   # Seed mode: copy seed as test DB, Tests exe auto-grows on startup
+  # Outside CI, copy YOUR store: it is already folded, and it holds what you just authored,
+  # which the seed does not. `.backup`, not `cp`: the store is WAL, and a plain copy drops what
+  # is still in `data.db-wal`. CI has no store of its own and keeps the seed.
   SEED_PATH="${HOME}/.darklang/seed.db"
-  if [[ -f "$SEED_PATH" ]]; then
+  LIVE_PATH="${HOME}/.darklang/data.db"
+  if [[ ! -v CI && -f "$LIVE_PATH" ]]; then
+    echo "Copying data.db as test database"
+    rm -f "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"
+    sqlite3 -cmd ".timeout 10000" "$LIVE_PATH" ".backup '$DB_PATH'"
+  elif [[ -f "$SEED_PATH" ]]; then
     echo "Copying seed.db as test database"
     cp "$SEED_PATH" "$DB_PATH"
   else
