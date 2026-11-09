@@ -19,10 +19,12 @@
     <Compile Include="OriginTs.fs" />
     <Compile Include="Sqlite.fs" />
     <Compile Include="StoreBackups.fs" />
+    <Compile Include="ShippedCode.fs" />
     <Compile Include="PreparedBatch.fs" />
     <Compile Include="Caching.fs" />
     <Compile Include="Layers.fs" />
     <Compile Include="Deprecations.fs" />
+    <Compile Include="LocalFile.fs" />
     <Compile Include="Config.fs" />
     <Compile Include="TestResults.fs" />
     <Compile Include="TraitCallCache.fs" />
@@ -59,7 +61,6 @@
     <Compile Include="RuntimeTypes.fs" />
     <Compile Include="Impls.fs" />
     <Compile Include="EphemeralPackages.fs" />
-    <Compile Include="LocalFile.fs" />
     <Compile Include="PolicyStore.fs" />
     <Compile Include="PermissionRequests.fs" />
     <Compile Include="AgentSandbox.fs" />

@@ -184,6 +184,11 @@
     <EmbeddedResource Include="../../../rundir/seed.db.gz">
       <LogicalName>data.db.gz</LogicalName>
     </EmbeddedResource>
+    <!-- The digests of the code that seed ships, written beside it by `export-seed`. A store row
+         for that code that does not match is refused rather than run (`LibDB.ShippedCode`). -->
+    <EmbeddedResource Include="../../../rundir/seed.db.digests">
+      <LogicalName>shipped-digests.bin</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="README-to-embed.md">
       <LogicalName>README.md</LogicalName>
     </EmbeddedResource>
@@ -209,6 +214,9 @@
   <Target Name="CheckDatabaseExists" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(Configuration)' == 'Release' And !Exists('../../../rundir/seed.db')"
            Text="No seed to embed (rundir/seed.db). Build one from your store first: scripts/run-local-exec export-seed rundir/seed.db" />
+    <!-- Without them the binary would run whatever a store holds for its own code. -->
+    <Error Condition="'$(Configuration)' == 'Release' And !Exists('../../../rundir/seed.db.digests')"
+           Text="No digests for the seed (rundir/seed.db.digests). export-seed writes them beside the seed: scripts/run-local-exec export-seed rundir/seed.db" />
   </Target>
 
   <!-- Warn when the seed predates the package sources it is supposed to carry. A bare `dotnet publish`
@@ -261,6 +269,7 @@
        This declares the dependency only; it has not been confirmed against the AOT publish path. -->
   <ItemGroup Condition="'$(Configuration)' == 'Release' And Exists('../../../rundir/seed.db.gz')">
     <CustomAdditionalCompileInputs Include="../../../rundir/seed.db.gz" />
+    <CustomAdditionalCompileInputs Include="../../../rundir/seed.db.digests" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

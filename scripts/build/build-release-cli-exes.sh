@@ -279,7 +279,7 @@ sha256_of() {
 # in their bytes, because every package reload adds a commit row stamped with the time.
 TREE_HASH="$(release_tree_hash)"
 if [[ -n "$SEED_PATH" ]]; then
-  SEED_KEY="$(sha256_of "$SEED_PATH")"
+  SEED_KEY="$(sha256_of "$SEED_PATH") $(sha256_of "$SEED_PATH.digests")"
 else
   SEED_KEY="exported from the tree"
 fi
@@ -346,11 +346,17 @@ if [[ -n "$SEED_PATH" ]]; then
     echo "--seed=$SEED_PATH does not exist"
     exit 1
   fi
+  # The digests of the code the seed ships, which export-seed writes beside it.
+  if [[ ! -f "$SEED_PATH.digests" ]]; then
+    echo "--seed=$SEED_PATH has no $SEED_PATH.digests beside it; export-seed writes both"
+    exit 1
+  fi
   echo "Using pre-exported seed: $SEED_PATH"
   mkdir -p rundir
   # cp refuses to copy a file onto itself.
   if [[ ! "$SEED_PATH" -ef rundir/seed.db ]]; then
     cp "$SEED_PATH" rundir/seed.db
+    cp "$SEED_PATH.digests" rundir/seed.db.digests
   fi
 else
   # Refresh LocalExec and packages before exporting this checkout's seed.

@@ -64,6 +64,10 @@ let checkpointWal (dbPath : string) : unit =
 
 /// Export a seed database to the given output path: copy the full source DB, then strip everything
 /// that belongs to the machine that built it rather than to the package set (see the DELETEs below).
+///
+/// Beside it, `<output>.digests`: what a release build embeds so it can tell its own code from a
+/// changed copy in a store (`ShippedCode`). Taken from the source's projections, which the seed
+/// does not keep.
 let export (outputPath : string) : Task<unit> =
   task {
     LibExecution.PackageRefs.validate ()
@@ -73,6 +77,11 @@ let export (outputPath : string) : Task<unit> =
     if System.IO.File.Exists outputPath then System.IO.File.Delete outputPath
 
     checkpointWal sourcePath
+
+    System.IO.File.WriteAllBytes(
+      outputPath + ".digests",
+      ShippedCode.ofStore sourcePath
+    )
 
     System.IO.File.Copy(sourcePath, outputPath)
 

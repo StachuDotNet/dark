@@ -169,7 +169,9 @@ def ensure_seed():
   # The store is WAL mode, so its newest writes may only have touched data.db-wal.
   store_mtime = max((os.path.getmtime(f) for f in (STORE, STORE + "-wal") if os.path.exists(f)),
                     default=None)
-  if os.path.exists(SEED) and (store_mtime is None or os.path.getmtime(SEED) >= store_mtime):
+  # The Release build embeds the digests beside the seed too, so a seed without them is exported again.
+  if os.path.exists(SEED) and os.path.exists(SEED + ".digests") and \
+      (store_mtime is None or os.path.getmtime(SEED) >= store_mtime):
     return True  # current, or there is no store to export a newer one from
   if not (os.path.exists(STORE) and os.path.exists(DEBUG_LOCAL_EXEC)):
     print(f"--optimize embeds {SEED}, exported from {STORE} by the Debug LocalExec, "

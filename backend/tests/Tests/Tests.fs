@@ -228,6 +228,7 @@ let main (args : string array) : int =
         Tests.PermissionEscape.tests
         Tests.PolicyStore.tests
         Tests.AgentSandbox.tests
+        Tests.ShippedCode.tests
         Tests.Host.tests ]
 
     let cancelationTokenSource = new System.Threading.CancellationTokenSource()

@@ -17,49 +17,118 @@ open LibDB.Sqlite
 
 open Prelude
 
+/// The settings that open HTTP's network guard, decide what traces record, or name a function
+/// the CLI runs with every permission (`exec.policy`). They are the person's to change, like the
+/// permission policy: `dark config set` or the `DARK_CONFIG_*` variables, never code Dark runs,
+/// whatever that code was granted.
+///
+/// So they are kept with the policy too, in `settings` in the policy directory, and not in the
+/// store: an agent in `dark agent run` writes the store but not that directory, so nothing it does
+/// there changes them for the person. A value for one of them in `config_v0` is never read.
+let personOnly : List<string> =
+  [ "http.loopback"; "http.private"; "trace.record"; "exec.policy" ]
+
+let private isPersonOnly (key : string) : bool = List.contains key personOnly
+
+/// `settings` in the policy directory: one `key=value` per line.
+let private settingsFile = "settings"
+
+let private readPersonSettings () : Map<string, string> =
+  match LocalFile.read settingsFile with
+  | LocalFile.Read bytes ->
+    (System.Text.Encoding.UTF8.GetString bytes).Split('\n')
+    |> Array.choose (fun line ->
+      match line.IndexOf '=' with
+      | -1 -> None
+      | i -> Some(line.Substring(0, i), line.Substring(i + 1)))
+    |> Array.filter (fun (k, _) -> isPersonOnly k)
+    |> Map.ofArray
+  | LocalFile.Missing
+  | LocalFile.Unreadable _ -> Map.empty
+
+let private changePersonSettings
+  (change : Map<string, string> -> Map<string, string>)
+  : unit =
+  LocalFile.withExclusiveLock (fun () ->
+    let text =
+      readPersonSettings ()
+      |> change
+      |> Map.toList
+      |> List.map (fun (k, v) -> $"{k}={v}\n")
+      |> String.concat ""
+    LocalFile.writeAtomic settingsFile (System.Text.Encoding.UTF8.GetBytes text))
+
+/// Whether this process may change `key`: false for a `personOnly` key inside `dark agent run`,
+/// where the policy directory is read-only.
+let canChange (key : string) : bool = not (isPersonOnly key) || LocalFile.writable ()
+
+/// What `config set` inside `dark agent run` is told for a `personOnly` key.
+let sandboxRefusal (key : string) : string =
+  $"{key} is the person's to change, and the policy directory is read-only here: run "
+  + $"`dark config set {key} …` outside `dark agent run`"
+
 /// The value for `key`, or None if unset.
 let get (key : string) : Task<string option> =
-  Sql.query "SELECT value FROM config_v0 WHERE key = @key"
-  |> Sql.parameters [ "key", Sql.string key ]
-  |> Sql.executeRowOptionAsync (fun read -> read.string "value")
+  if isPersonOnly key then
+    Task.FromResult(Map.tryFind key (readPersonSettings ()))
+  else
+    Sql.query "SELECT value FROM config_v0 WHERE key = @key"
+    |> Sql.parameters [ "key", Sql.string key ]
+    |> Sql.executeRowOptionAsync (fun read -> read.string "value")
 
 /// The values of several keys in one query, keyed by name; unset keys are absent.
 /// For a startup that reads a handful of settings: one round trip, not one per key.
 let getMany (keys : List<string>) : Task<Map<string, string>> =
   task {
-    let names = keys |> List.mapi (fun i _ -> $"@k{i}") |> String.concat ", "
+    let person, stored = keys |> List.partition isPersonOnly
     let! rows =
-      Sql.query $"SELECT key, value FROM config_v0 WHERE key IN ({names})"
-      |> Sql.parameters (keys |> List.mapi (fun i k -> $"k{i}", Sql.string k))
-      |> Sql.executeAsync (fun read -> read.string "key", read.string "value")
-    return Map.ofList rows
+      if List.isEmpty stored then
+        Task.FromResult []
+      else
+        let names = stored |> List.mapi (fun i _ -> $"@k{i}") |> String.concat ", "
+        Sql.query $"SELECT key, value FROM config_v0 WHERE key IN ({names})"
+        |> Sql.parameters (stored |> List.mapi (fun i k -> $"k{i}", Sql.string k))
+        |> Sql.executeAsync (fun read -> read.string "key", read.string "value")
+    let personValues =
+      if List.isEmpty person then
+        []
+      else
+        let settings = readPersonSettings ()
+        person
+        |> List.choose (fun k ->
+          Map.tryFind k settings |> Option.map (fun v -> k, v))
+    return Map.ofList (rows @ personValues)
   }
 
 /// Set `key` to `value` (upsert).
 let set (key : string) (value : string) : Task<unit> =
   task {
-    let! (_ : int) =
-      Sql.query
-        """
-        INSERT INTO config_v0 (key, value) VALUES (@key, @value)
-        ON CONFLICT(key) DO UPDATE SET value = @value
-        """
-      |> Sql.parameters [ "key", Sql.string key; "value", Sql.string value ]
-      |> Sql.executeNonQueryAsync
-
-    return ()
+    if isPersonOnly key then
+      changePersonSettings (Map.add key value)
+    else
+      let! (_ : int) =
+        Sql.query
+          """
+          INSERT INTO config_v0 (key, value) VALUES (@key, @value)
+          ON CONFLICT(key) DO UPDATE SET value = @value
+          """
+        |> Sql.parameters [ "key", Sql.string key; "value", Sql.string value ]
+        |> Sql.executeNonQueryAsync
+      ()
   }
 
 
 /// Forget `key`, so whatever reads it falls back to its default. A no-op if it is not set.
 let unset (key : string) : Task<unit> =
   task {
-    let! (_ : int) =
-      Sql.query "DELETE FROM config_v0 WHERE key = @key"
-      |> Sql.parameters [ "key", Sql.string key ]
-      |> Sql.executeNonQueryAsync
-
-    return ()
+    if isPersonOnly key then
+      changePersonSettings (Map.remove key)
+    else
+      let! (_ : int) =
+        Sql.query "DELETE FROM config_v0 WHERE key = @key"
+        |> Sql.parameters [ "key", Sql.string key ]
+        |> Sql.executeNonQueryAsync
+      ()
   }
 
 
@@ -82,15 +151,10 @@ let settings : List<string> =
     "trace.maxMb"
     "instance.name" ]
 
-/// The settings that open HTTP's network guard or decide what traces record. They are the
-/// person's to change, like the permission policy: `dark config set` or the `DARK_CONFIG_*`
-/// variables, never code Dark runs, whatever that code was granted.
-let personOnly : List<string> = [ "http.loopback"; "http.private"; "trace.record" ]
-
 /// What code that tried to change a `personOnly` key is told.
 let refusal (key : string) : string =
-  $"permission denied: code cannot change `{key}`, which decides what code may reach or "
-  + $"what traces record. To change it yourself: `dark config set {key} on|off`"
+  $"permission denied: code cannot change `{key}`, which decides what code may reach, what "
+  + $"traces record, or what runs with every permission. To change it yourself: `dark config set {key} …`"
 
 /// Every key `dark config` answers for: the settings, and `instance.id`, which is read but
 /// never set.

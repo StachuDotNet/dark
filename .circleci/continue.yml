@@ -521,6 +521,8 @@ jobs:
           root: /home/dark/.darklang
           paths:
             - seed.db
+            # The digests of the code it ships, which every build embeds beside it.
+            - seed.db.digests
       - persist_to_workspace:
           root: "."
           paths:

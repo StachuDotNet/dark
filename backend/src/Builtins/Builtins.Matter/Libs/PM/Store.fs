@@ -175,7 +175,8 @@ let fns () : List<BuiltInFn> =
         + "to the default. Local + unsynced. Refuses a key nothing reads, a value the reader "
         + "would not take, and the keys only the runtime writes (`current_branch`, "
         + "`instance.id`), saying why in the Error. Code cannot change the settings that open "
-        + "the network guard or decide what traces record; only `dark config set` can."
+        + "the network guard, decide what traces record or name the scheduling policy; only "
+        + "`dark config set` can, and not inside `dark agent run`."
       fn =
         (function
         | state, _, _, [| DString key; DEnum(_, _, _, "Some", [ DString value ]) |] ->
@@ -185,6 +186,12 @@ let fns () : List<BuiltInFn> =
               LibDB.PackageManager.resolveFnRef name |> Option.isSome
             match LibDB.Config.check resolves key value with
             | Error e -> return Dval.resultError KTUnit KTString (DString e)
+            | Ok() when not (LibDB.Config.canChange key) ->
+              return
+                Dval.resultError
+                  KTUnit
+                  KTString
+                  (DString(LibDB.Config.sandboxRefusal key))
             | Ok() ->
               // A name set before anything asked for the id must not stop the old file's id
               // from moving in.
@@ -197,6 +204,12 @@ let fns () : List<BuiltInFn> =
             requireThePerson state key
             match LibDB.Config.checkUnset key with
             | Error e -> return Dval.resultError KTUnit KTString (DString e)
+            | Ok() when not (LibDB.Config.canChange key) ->
+              return
+                Dval.resultError
+                  KTUnit
+                  KTString
+                  (DString(LibDB.Config.sandboxRefusal key))
             | Ok() ->
               do! LibDB.Config.unset key
               return Dval.resultOk KTUnit KTString DUnit

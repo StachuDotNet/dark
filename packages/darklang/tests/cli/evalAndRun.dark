@@ -437,9 +437,9 @@ test internalNamesHiddenUntilAsked =
         Instance.says(deps, "addSeconds", "deps by name lists its dependents") ]))
 
 
-/// The settings that open HTTP's network guard or decide what traces record are the
-/// person's: code holding package-write still cannot change them, and is told how
-/// the person can. `config set` itself goes on working.
+/// The settings that open HTTP's network guard, decide what traces record or name the
+/// scheduling policy are the person's: code holding package-write still cannot change
+/// them, and is told how the person can. `config set` itself goes on working.
 test codeCannotChangeTheNetworkGuard =
   Instance.withInstance(fun i ->
     let allowed = Instance.ran(i, [ "permissions", "allow", "package-write" ])
@@ -449,6 +449,7 @@ test codeCannotChangeTheNetworkGuard =
         "Stdlib.LocalStore.configSet(\"http.private\", \"on\")"
         "Stdlib.LocalStore.configSet(\"trace.record\", \"on\")"
         "Stdlib.LocalStore.configUnset(\"trace.record\")"
+        "Stdlib.LocalStore.configSet(\"exec.policy\", \"Darklang.Stdlib.Exec.Policy.roundRobin\")"
         "Builtin.tracesApplyRecording(false)" ]
       |> Stdlib.List.map(fun code -> Instance.ran(i, [ "eval", code ]))
 

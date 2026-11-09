@@ -82,6 +82,7 @@
     <Compile Include="PermissionEscape.Tests.fs" />
     <Compile Include="PolicyStore.Tests.fs" />
     <Compile Include="AgentSandbox.Tests.fs" />
+    <Compile Include="ShippedCode.Tests.fs" />
     <Compile Include="Host.Tests.fs" />
 
     <Compile Include="Tests.fs" />

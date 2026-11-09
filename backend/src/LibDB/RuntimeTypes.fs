@@ -66,7 +66,9 @@ module Type =
       "type"
       "SELECT rt_def FROM package_types WHERE hash = @hash"
       "rt_def"
-      BS.RT.PackageType.deserialize
+      (fun (Hash hashStr as h) bytes ->
+        ShippedCode.verify ShippedCode.Type hashStr bytes
+        BS.RT.PackageType.deserialize h bytes)
       hash
 
 
@@ -82,7 +84,9 @@ module Value =
       "value"
       "SELECT rt_dval FROM package_values WHERE hash = @hash AND rt_dval IS NOT NULL"
       "rt_dval"
-      BS.RT.PackageValue.deserialize
+      (fun (Hash hashStr as h) bytes ->
+        ShippedCode.verify ShippedCode.Value hashStr bytes
+        BS.RT.PackageValue.deserialize h bytes)
       hash
 
   /// Whether the value at <param hash> has a runtime value stored: false for a value whose
@@ -139,6 +143,7 @@ module Fn =
       match row with
       | None -> return None
       | Some(instrBytes, symbolBytes) ->
+        ShippedCode.verify ShippedCode.Fn hashStr instrBytes
         let fn = BS.RT.PackageFn.deserialize hashStr instrBytes
         match symbolBytes with
         | None -> return Some fn

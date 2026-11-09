@@ -333,10 +333,13 @@ grant is a raise where a missing key is `Error(BadUrl(InvalidHost))`.
 Only the person running Dark sets them: `dark config set`, or
 `DARK_CONFIG_HTTP_LOOPBACK` / `DARK_CONFIG_HTTP_PRIVATE` for one environment.
 Code Dark runs cannot, whatever it was granted. `configSet` refuses
-`http.loopback`, `http.private` and `trace.record` (`LibDB.Config.personOnly`)
-unless the CLI itself is the caller (`canManagePolicies`), the same line policy
-edits use, and says what to run instead. They are not a grant, because
-`permissions allow all` would then open the guard too.
+`http.loopback`, `http.private`, `trace.record` and `exec.policy`
+(`LibDB.Config.personOnly`) unless the CLI itself is the caller
+(`canManagePolicies`), the same line policy edits use, and says what to run
+instead. They are not a grant, because `permissions allow all` would then open
+the guard too. They are kept with the policy, in `settings` in the policy
+directory, not in the store: a value for one of them in `config_v0` is never
+read.
 
 **A configured proxy is trusted.** HTTP clients use .NET's configured proxy
 (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`). The guard checks the
@@ -539,6 +542,8 @@ What enforces what:
 | Network | not limited | shared with the host: an agent needs its API |
 | Dark code the agent runs | `dark` | the instance policy, as anywhere: effects, resources, approvals |
 | Changing the policy | `dark` | becomes a request; only the person answers one |
+| The network, tracing and scheduling settings | bwrap | `http.loopback`, `http.private`, `trace.record` and `exec.policy` live in the policy directory; `config set` of one is refused |
+| The CLI's own Dark code in the store | `dark` | a release `dark` carries a digest of every item its seed ships, and refuses a store copy that differs before it runs |
 
 So the policy governs Dark code, inside the sandbox and out, and bwrap governs
 the agent's own processes: they can read what this user can read and use the
@@ -546,11 +551,26 @@ network, but cannot write the policy, the binary or anything outside the
 writable paths. An agent that needs a state directory of its own gets it with
 `--write`.
 
+The store stays writable, since the agent saves code there, and it also holds
+the CLI's own code (`Darklang.Cli.*`, the stdlib), which runs with every
+permission. So a release `dark` carries the digests of what its seed ships
+(`LibDB.ShippedCode`, written by `export-seed`) and checks each such item as it
+loads it: a function's instructions, a type's and a value's runtime form, an
+impl's definition. A row that differs stops the command with what was refused
+and how to restore a backup. The fold that builds those rows is deterministic,
+so an untouched store always matches, and a fold never writes other bytes over
+a shipped row: the same function authored again compiles with fresh expression
+ids, and leaves the shipped row as it was. Checking costs about 0.008 billion CPU
+instructions a command, most of it loading the system SHA-256 (OpenSSL), beside
+0.12 billion for all of `dark eval 1+1`.
+
 What it does not cover: commands the person later runs from a writable
-directory (a build script the agent edited runs outside the sandbox); the store,
-which the agent must write to save code, so code and settings it puts there run
-with the person's policy when the person runs them; abstract Unix sockets
-(shared with the network namespace); and anything run without `dark agent run`. Run it from the project directory: started from the home
+directory (a build script the agent edited runs outside the sandbox); code the
+agent adds to the store, which runs with the person's policy when the person
+runs it, and that includes an impl it adds for a shipped trait and type, which
+trait dispatch prefers when it is newer; a debug build, which embeds no
+digests; abstract Unix sockets (shared with the network namespace); and
+anything run without `dark agent run`. Run it from the project directory: started from the home
 directory, the whole home is writable. Linux only for now; macOS prints that it
 is not supported. A kernel that forbids unprivileged user namespaces makes
 bwrap refuse to start, and it says why.

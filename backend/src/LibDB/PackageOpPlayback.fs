@@ -391,6 +391,13 @@ let private applyAddFn
     // Compiled once. Both columns come out of the same compilation, and doing it twice was
     // doing the whole of PT2RT twice for every function written.
     let rt = PT2RT.PackageFn.toRT fn
+    let instrs = BS.RT.PackageFn.serialize hashStr rt
+    // The same function compiled again carries fresh expression ids, so its instructions differ
+    // in bytes. Over a function this build ships, only the shipped bytes are written: a person
+    // or agent authoring the same content must not turn the build's own row into one that
+    // `ShippedCode` refuses.
+    let mayRewriteExisting =
+      mayRewriteExisting && ShippedCode.mayStore ShippedCode.Fn hashStr instrs
 
     do!
       upsertContentAddressed
@@ -400,7 +407,7 @@ let private applyAddFn
         hash
         [ "pt_def",
           box (storedBytes opBlob (fun () -> BS.PT.PackageFn.serialize hashStr fn))
-          "rt_instrs", box (BS.RT.PackageFn.serialize hashStr rt)
+          "rt_instrs", box instrs
           // The other half of what the compiler makes: which instruction produced which
           // expression's value. Its own column, because running the code never reads it.
           "debug_symbols",

@@ -19,8 +19,11 @@ module BS = LibSerialization.Binary.Serialization
 
 
 let private readImpl (read : RowReader) : PT.TraitImpl.TraitImpl =
-  let hash = Hash(read.string "hash")
-  BS.PT.TraitImpl.deserialize hash (read.bytes "pt_def")
+  let hashStr = read.string "hash"
+  let bytes = read.bytes "pt_def"
+  // An impl names the functions its methods run, so a shipped one is checked like they are.
+  ShippedCode.verify ShippedCode.Impl hashStr bytes
+  BS.PT.TraitImpl.deserialize (Hash hashStr) bytes
 
 let private implsFor (traitHash : Hash) : Ply<List<PT.TraitImpl.TraitImpl>> =
   uply {

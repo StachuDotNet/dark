@@ -183,5 +183,6 @@ let help(_state: Cli.AppState): String =
     "  config unset trace.record"
     ""
     "`config list` names every key a person sets, with its default; any other key is refused."
-    "http.loopback, http.private and trace.record are yours alone: code you run cannot change them." ]
+    "http.loopback, http.private, trace.record and exec.policy are yours alone: code you run cannot change"
+    "them, and they are kept beside the permission policy, where `dark agent run` cannot write." ]
   |> Stdlib.String.join("\n")

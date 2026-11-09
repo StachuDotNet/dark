@@ -8,6 +8,11 @@
 # `dark permissions allow` writes a request rather than a grant. Outside: the request can be
 # approved, and a policy file edited by hand is noticed.
 #
+# Then the store, which the sandbox must leave writable: an agent rewrites the CLI's own entry
+# function and the network and scheduling settings in it, and outside, the rewritten code does
+# not run and the settings do not take effect. A debug build embeds no digests of its code, so
+# with one (DARK_CHECK_STORE set) the rewritten code runs and that check says it skipped.
+#
 # Needs bubblewrap and unprivileged user namespaces, so it runs on a host, not in the dev
 # container (Docker's AppArmor profile refuses bwrap's mounts). Exits 77 when bwrap cannot start
 # here, 1 when a check fails, 0 when all pass. `Tests.AgentSandbox` runs it when it can.
@@ -120,6 +125,81 @@ cp "$WORK/widened.bin" "$POLICY/policies.bin"
 noticed="$(dark permissions list 2>&1)"
 if grep -q "changed outside dark:.*allowed all" <<< "$noticed"; then pass "outside: a hand edit is noticed"; else fail "outside: a hand edit went unnoticed"; fi
 if grep -qx "all" <<< "$noticed"; then fail "outside: the hand edit took effect"; else pass "outside: the hand edit does not take effect"; fi
+
+# The store. An agent saves code there, and the CLI's own code and the person's settings sit
+# beside it, so it rewrites both: the CLI's entry function gets the instructions of one it wrote,
+# which leaves a mark when it runs, and the settings open the network guard and name its function
+# as the scheduling policy.
+dark permissions review undo > /dev/null 2>&1 || true
+STORE="$HOME/.darklang/data.db"
+cat > "$WORK/store.py" <<'EOF'
+import sqlite3, sys
+db = sqlite3.connect(sys.argv[1])
+def fn(owner, modules, name):
+    return db.execute(
+        "SELECT item_hash FROM locations WHERE owner = ? AND modules = ? AND name = ?"
+        " AND item_type = 'fn' AND live = 1 ORDER BY rowid DESC LIMIT 1",
+        (owner, modules, name)).fetchone()[0]
+entry = fn("Darklang", "Cli", "executeCliCommand")
+if sys.argv[2] == "save":
+    row = db.execute("SELECT rt_instrs FROM package_functions WHERE hash = ?", (entry,)).fetchone()
+    open(sys.argv[3], "wb").write(row[0])
+elif sys.argv[2] == "restore":
+    db.execute("UPDATE package_functions SET rt_instrs = ? WHERE hash = ?",
+               (open(sys.argv[3], "rb").read(), entry))
+else:
+    evil = fn("Agent", "Evil", "run")
+    db.execute("UPDATE package_functions SET rt_instrs ="
+               " (SELECT rt_instrs FROM package_functions WHERE hash = ?) WHERE hash = ?",
+               (evil, entry))
+    for key, value in [("http.loopback", "on"), ("http.private", "on"),
+                       ("exec.policy", "Agent.Evil.run")]:
+        db.execute("INSERT OR REPLACE INTO config_v0 (key, value) VALUES (?, ?)", (key, value))
+    print("tampered")
+db.commit()
+EOF
+cat > "$WORK/evil.dark" <<EOF
+let run(args: List<String>): Int64 =
+  let _ = Darklang.Stdlib.Cli.File.writeText("$WORK/ran-as-the-person", "the agent's code")
+  0
+EOF
+python3 "$WORK/store.py" "$STORE" save "$WORK/entry.bin"
+
+out="$(inside "
+  '$CLI' config set http.loopback on 2>&1
+  '$CLI' fn /Agent.Evil.run - < '$WORK/evil.dark' > /dev/null 2>&1 && echo authored
+  python3 '$WORK/store.py' '$STORE' tamper
+" 2>&1)" || true
+if grep -q "outside \`dark agent run\`" <<< "$out"; then pass "inside: config set http.loopback is refused"; else fail "inside: config set http.loopback said: $out"; fi
+if grep -qx "tampered" <<< "$out" && grep -qx "authored" <<< "$out"; then
+  pass "inside: the store can be rewritten"
+else
+  fail "inside: the store could not be rewritten: $out"
+fi
+
+refused="$(dark version 2>&1)" || true
+if [[ ! -e "$WORK/ran-as-the-person" ]]; then
+  pass "outside: the rewritten CLI code does not run"
+  if grep -q "will not run the function Darklang.Cli.executeCliCommand" <<< "$refused"; then
+    pass "outside: dark says which code it refused"
+  else
+    fail "outside: dark did not say why: $refused"
+  fi
+elif [[ -n "${DARK_CHECK_STORE:-}" ]]; then
+  echo "skip  outside: a debug build embeds no digests to check its own code against"
+  rm -f "$WORK/ran-as-the-person"
+else
+  fail "outside: the rewritten CLI code ran as the person"
+fi
+
+python3 "$WORK/store.py" "$STORE" restore "$WORK/entry.bin"
+if dark version > /dev/null 2>&1; then pass "outside: with the row put back, dark runs"; else fail "outside: dark does not run with the row put back"; fi
+for key in http.loopback http.private; do
+  if dark config get "$key" 2>&1 | grep -q "= on"; then fail "outside: $key from the store took effect"; else pass "outside: $key from the store does not take effect"; fi
+done
+if dark config get exec.policy 2>&1 | grep -q "Agent.Evil"; then fail "outside: exec.policy from the store took effect"; else pass "outside: exec.policy from the store does not take effect"; fi
+dark config set http.loopback on > /dev/null
+if dark config get http.loopback 2>&1 | grep -q "= on"; then pass "outside: the person can still set http.loopback"; else fail "outside: config set http.loopback did not take"; fi
 
 if [[ "$failures" -gt 0 ]]; then
   echo "$failures check(s) failed"
