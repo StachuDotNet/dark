@@ -49,7 +49,7 @@ let withServer(args: List<String>): Stdlib.Result.Result<Stdlib.Cli.Process.Outp
           |> Stdlib.Result.mapError(fun e -> e.message)
         | Some(Error(e)) -> Stdlib.Result.Result.Error($"The package server could not start: {e}")
         | Some(Ok(_)) -> Stdlib.Result.Result.Error("The package server stopped before the compile.")
-      let _ = Stdlib.Exec.stop(server, true)
+      let _ = Stdlib.Exec.stop(server, Stdlib.Exec.Stop.Kill)
       result
 
 
