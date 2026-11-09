@@ -141,6 +141,10 @@ let export (outputPath : string) : Task<unit> =
       -- delete; every projection went above.
       DELETE FROM package_ops WHERE commit_hash IS NULL;
 
+      -- The builder's sync journal, last, because the deletes above write to it. Its entries are
+      -- the builder's history with its own machines, and an install starts with none.
+      DELETE FROM sync_journal;
+
       UPDATE package_ops SET applied = 0;
       """
     cleanCmd.ExecuteNonQuery() |> ignore<int>
