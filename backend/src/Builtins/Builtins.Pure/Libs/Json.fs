@@ -915,7 +915,7 @@ let fns () : List<BuiltInFn> =
             RTE.Jsons.CannotSerializeValue dv |> RTE.Json |> raiseRTE vm.threadID
         | _ -> incorrectArgs ())
       previewable = Pure
-      callEffects = Set.empty
+      callEffects = set [ LibExecution.Effects.Effect.Raise ]
       deprecated = NotDeprecated }
 
 
@@ -943,7 +943,7 @@ let fns () : List<BuiltInFn> =
             Ply(Dval.resultError KTString errType (RT2DT.Dval.toDT dv))
         | _ -> incorrectArgs ())
       previewable = Pure
-      callEffects = set [ LibExecution.Effects.Effect.Raise ]
+      callEffects = Set.empty
       deprecated = NotDeprecated }
 
 
@@ -981,7 +981,7 @@ let fns () : List<BuiltInFn> =
           }
         | _ -> incorrectArgs ())
       previewable = Pure
-      callEffects = set [ LibExecution.Effects.Effect.Raise ]
+      callEffects = Set.empty
       deprecated = NotDeprecated } ]
 
 

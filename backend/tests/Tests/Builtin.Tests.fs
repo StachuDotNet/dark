@@ -833,6 +833,8 @@ let private raisesWithoutRaise : Map<string, string> =
       "stringJoin" ]
     "the guest's errors come back in the Result",
     [ "cliParseAndExecuteScript"; "cliViewTrace"; "cliEvaluateExpression" ]
+    "the error comes back in the Result",
+    [ "jsonParse"; "jsonCheckedSerialize" ]
     "a permission refusal, which the permission effects describe",
     [ "pmPolicyEditInstance"
       "pmPolicyWithdraw"

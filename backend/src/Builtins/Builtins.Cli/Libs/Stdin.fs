@@ -661,7 +661,7 @@ let fns () : List<BuiltInFn> =
               |> raiseRTE vm.threadID)
         | _ -> incorrectArgs ())
       previewable = Impure
-      callEffects = set [ Effect.Stdin ]
+      callEffects = set [ Effect.Stdin; Effect.Raise ]
       deprecated = NotDeprecated }
 
 
@@ -689,7 +689,7 @@ let fns () : List<BuiltInFn> =
             | Error _ -> Dval.resultError okType KTUnit DUnit)
         | _ -> incorrectArgs ())
       previewable = Impure
-      callEffects = set [ Effect.Stdin; Effect.Raise ]
+      callEffects = set [ Effect.Stdin ]
       deprecated = NotDeprecated }
 
 
