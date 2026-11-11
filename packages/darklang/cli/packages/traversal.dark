@@ -262,9 +262,9 @@ let searchModulesByPrefix(
       // Return path up to and including the matching segment
       Stdlib.Option.Option.Some(Stdlib.List.take(modulePath, idx + 1))
     | None -> Stdlib.Option.Option.None)
-  |> Stdlib.List.unique
-  |> Stdlib.List.sort
   |> Stdlib.List.map(fun path -> Stdlib.String.join(path, "."))
+  |> Stdlib.List.unique
+  |> Stdlib.String.sortList
 
 // Get all available items at a location for completion
 let getAvailableItems(

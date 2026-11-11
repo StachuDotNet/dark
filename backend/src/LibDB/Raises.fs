@@ -19,11 +19,15 @@ module Requirements = LibExecution.CallGraph.Requirements
 /// another (`Builtin.add` raises past Decimal's range). As `LibExecution.NumOps` has it, the
 /// fixed-width integers wrap, BigInt grows, and Float and Float32 follow IEEE.
 ///
+/// The typed sorts: `List.sort` raises only for a custom type with rival `Compare` impls.
+///
 /// The checked functions, which test their arguments for every case where what they call raises,
 /// and return an `Error` instead.
 let cannotRaise : Set<string> =
   let guarded =
-    [ "Int64.checkedDivide"
+    [ "String.sortList"
+      "Int64.sortList"
+      "Int64.checkedDivide"
       "Int64.checkedRemainder"
       "Int64.checkedMod"
       "BigInt.checkedDivide"

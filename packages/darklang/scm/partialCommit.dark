@@ -25,12 +25,12 @@ type Selected =
     metadataBefore: Stdlib.Option.Option<String> }
 
 /// Is stamp <param a> after stamp <param b>? Stamps are fixed-width ISO text, so the ordinal order
-/// `Stdlib.List.sort` uses is chronological.
+/// `Stdlib.String.sortList` uses is chronological.
 let stringGt(a: String, b: String): Bool =
   if a == b then
     false
   else
-    match Stdlib.List.sort([ a, b ]) with
+    match Stdlib.String.sortList([ a, b ]) with
     | [ lower, _ ] -> lower == b
     | _ -> false
 

@@ -460,13 +460,13 @@ let orPattern(
   match results with
   | [] -> ([], nothing())
   | [(firstBindings, firstConstraints), ...rest] ->
-    let firstNames = Stdlib.List.sort(Stdlib.List.unique(names(firstBindings)))
+    let firstNames = Stdlib.String.sortList(Stdlib.List.unique(names(firstBindings)))
 
     let agreement =
       rest
       |> Stdlib.List.map(fun((bindings, _)) ->
         let mismatch =
-          let theseNames = Stdlib.List.sort(Stdlib.List.unique(names(bindings)))
+          let theseNames = Stdlib.String.sortList(Stdlib.List.unique(names(bindings)))
 
           if theseNames == firstNames then
             []

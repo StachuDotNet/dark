@@ -209,7 +209,7 @@ let closestNames(branchId: Uuid, originalName: List<String>): List<String> =
         |> Stdlib.Option.map(fun d ->
           (d, Stdlib.String.join(Stdlib.List.flatten([ written, [ candidate ] ]), ".")))))
     |> Stdlib.List.flatten
-    |> Stdlib.List.sort
+    |> Stdlib.List.sortBy(fun pair -> pair)
     |> nearestOnly
     |> Stdlib.List.map(fun((_, full)) -> full)
     |> Stdlib.List.unique

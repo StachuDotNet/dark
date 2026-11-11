@@ -19,7 +19,7 @@ let builtinHints(state: State): List<(String * String)> =
 let loadBuiltinItems(): List<BodyItem> =
   LanguageTools.allBuiltinFns()
   |> Stdlib.List.map(fun fn -> fn.name.name)
-  |> Stdlib.List.sort
+  |> Stdlib.String.sortList
   |> Stdlib.List.map(fun n -> BodyItem { name = n, kind = "builtin", isModule = false, desc = "" })
 
 let builtinDetailLines(state: State): List<String> =

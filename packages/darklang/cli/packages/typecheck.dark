@@ -100,7 +100,7 @@ let itemLabelIn(
     locationsFor(branchId, reference)
     |> Stdlib.List.map(fullPath)
     |> Stdlib.List.unique
-    |> Stdlib.List.sort
+    |> Stdlib.String.sortList
   let inside = Stdlib.List.filter(all, fun p -> inScope(scope, p))
   let paths = if Stdlib.List.isEmpty(inside) then all else inside
   match paths with

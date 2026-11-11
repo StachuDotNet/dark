@@ -223,7 +223,7 @@ let printJson(
   : Unit =
   let methods =
     match candidates with
-    | [c, ...] -> c.methods |> Stdlib.Dict.keys |> Stdlib.List.sort
+    | [c, ...] -> c.methods |> Stdlib.Dict.keys |> Stdlib.String.sortList
     | [] -> []
 
   let methodsJson =
@@ -279,7 +279,7 @@ let execute(state: Cli.AppState, args: List<String>): Cli.AppState =
         // Sorted, because the store returns candidates in whatever order its index does.
         let methodNames =
           match candidates with
-          | [c, ...] -> c.methods |> Stdlib.Dict.keys |> Stdlib.List.sort |> Stdlib.String.join(", ")
+          | [c, ...] -> c.methods |> Stdlib.Dict.keys |> Stdlib.String.sortList |> Stdlib.String.join(", ")
           | [] -> ""
 
         Stdlib.printLine($"{traitPath}  ({methodNames})")
@@ -359,6 +359,6 @@ let complete(
 
     Stdlib.List.flatten([ here, stdlib ])
     |> Stdlib.List.unique
-    |> Stdlib.List.sort
+    |> Stdlib.String.sortList
     |> Stdlib.List.map(Cli.Completion.simple)
   | _ -> []

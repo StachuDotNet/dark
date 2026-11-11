@@ -178,7 +178,7 @@ let getDirectSubmodules(results: LanguageTools.ProgramTypes.Search.SearchResults
       else
         Stdlib.Option.Option.Some(nextPart))
   |> Stdlib.List.unique
-  |> Stdlib.List.sort
+  |> Stdlib.String.sortList
 
 
 /// Deprecation filters for `ls`/`tree`/`search`.

@@ -480,6 +480,10 @@ let charAt(str: String, index: Int64): Option.Option<Char> =
 let compare(a: String, b: String): Int64 = Builtin.stringCompare(a, b)
 
 
+/// Returns <param list> sorted by <fn String.compare>
+let sortList(list: List<String>): List<String> = Stdlib.List.sort(list)
+
+
 /// `"a" < "b"`, and with it `Stdlib.max`, `min` and `clamp` on Strings.
 impl Compare for String =
   let lessThan(a: String, b: String): Bool = (Stdlib.String.compare(a, b)) < 0

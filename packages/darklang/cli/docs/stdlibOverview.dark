@@ -47,7 +47,7 @@ let execute(state: Cli.AppState, _args: List<String>): Cli.AppState =
       results.types |> Stdlib.List.map(fun i -> topLevelBucket(i.location))))
     |> Stdlib.List.unique
     |> Stdlib.List.filter(fun k -> k != "(root)")
-    |> Stdlib.List.sort
+    |> Stdlib.String.sortList
 
   Stdlib.printLine("# Darklang.Stdlib top-level modules")
   Stdlib.printLine("")

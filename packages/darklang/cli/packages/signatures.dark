@@ -312,7 +312,7 @@ let executeFiltered(
     (Stdlib.List.flatten(
       [ Stdlib.Dict.keys(fnsBy), Stdlib.Dict.keys(typesBy), Stdlib.Dict.keys(implsBy) ]))
     |> Stdlib.List.unique
-    |> Stdlib.List.sort
+    |> Stdlib.String.sortList
 
   let ctx = rootContext(branchId, rootPath)
 
