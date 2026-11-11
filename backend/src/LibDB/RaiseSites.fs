@@ -33,12 +33,17 @@ let isLibrary (name : string) : bool = name.StartsWith "Darklang.Stdlib."
 /// another (`Builtin.add` raises past Decimal's range). As `LibExecution.NumOps` has it, the
 /// fixed-width integers wrap, BigInt grows, and Float and Float32 follow IEEE.
 ///
-/// The checked arithmetic, which tests the operands for every case where the operator raises and
-/// returns an `Error` instead.
+/// The checked functions, which test their arguments for every case where what they call raises,
+/// and return an `Error` instead.
 let private cannotRaise : Set<string> =
   let guarded =
-    [ "checkedDivide"; "checkedRemainder"; "checkedMod" ]
-    |> List.map (fun f -> $"Darklang.Stdlib.Int64.{f}")
+    [ "Int64.checkedDivide"
+      "Int64.checkedRemainder"
+      "Int64.checkedMod"
+      "String.checkedRepeat"
+      "List.checkedRepeat"
+      "List.checkedRange" ]
+    |> List.map (fun f -> $"Darklang.Stdlib.{f}")
   let ints =
     [ "Int8"
       "Int16"
