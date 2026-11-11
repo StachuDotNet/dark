@@ -2,7 +2,12 @@ module Darklang.Cli.Installation.Status
 
 
 let execute(state: AppState, args: List<String>): AppState =
-  let host = (Stdlib.Cli.Host.getRuntimeHost()) |> Builtin.unwrap
+  match Stdlib.Cli.Host.getRuntimeHost() with
+  | Error(e) ->
+    Stdlib.printErrorLine(e)
+    Cli.failed(state)
+  | Ok(host) ->
+
   let version = Helpers.versionInfoWithUpdateCheck()
 
   let installationStatus =

@@ -3,7 +3,11 @@ module Darklang.Cli.Installation.Update
 
 let execute(state: AppState, args: List<String>): AppState =
   let currentVersion = Helpers.cliVersion()
-  let host = (Stdlib.Cli.Host.getRuntimeHost()) |> Builtin.unwrap
+  match Stdlib.Cli.Host.getRuntimeHost() with
+  | Error(e) ->
+    Stdlib.printErrorLine(e)
+    Cli.failed(state)
+  | Ok(host) ->
 
   let parsed =
     Cli.FlagParser.parse(

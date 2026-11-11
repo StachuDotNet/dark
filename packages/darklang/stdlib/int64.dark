@@ -64,7 +64,7 @@ impl Compare for Int64 =
 let random(start: Int64, ``end``: Int64): Int64 =
   Stdlib.BigInt.random(Stdlib.BigInt.fromInt64(start), Stdlib.BigInt.fromInt64(``end``))
   |> Stdlib.BigInt.toInt64
-  |> Builtin.unwrap
+  |> Stdlib.Option.withDefault(start)
 
 
 /// Get the square root of an <type Int64>
@@ -113,32 +113,32 @@ let parse(s: String): Stdlib.Result.Result<Int64, Stdlib.Int64.ParseError> =
 
 /// Converts an <type Int8> to an <type Int64>.
 let fromInt8(i: Int8): Int64 =
-  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromInt8(i)) |> Builtin.unwrap
+  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromInt8(i)) |> Stdlib.Option.withDefault(0)
 
 
 /// Converts a <type UInt8> to an <type Int64>.
 let fromUInt8(i: UInt8): Int64 =
-  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromUInt8(i)) |> Builtin.unwrap
+  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromUInt8(i)) |> Stdlib.Option.withDefault(0)
 
 
 /// Converts an <type Int16> to an <type Int64>.
 let fromInt16(i: Int16): Int64 =
-  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromInt16(i)) |> Builtin.unwrap
+  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromInt16(i)) |> Stdlib.Option.withDefault(0)
 
 
 /// Converts a <type UInt16> to an <type Int64>.
 let fromUInt16(i: UInt16): Int64 =
-  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromUInt16(i)) |> Builtin.unwrap
+  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromUInt16(i)) |> Stdlib.Option.withDefault(0)
 
 
 /// Converts an <type Int32> to an <type Int64>.
 let fromInt32(i: Int32): Int64 =
-  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromInt32(i)) |> Builtin.unwrap
+  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromInt32(i)) |> Stdlib.Option.withDefault(0)
 
 
 /// Converts a <type UInt32> to an <type Int64>.
 let fromUInt32(i: UInt32): Int64 =
-  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromUInt32(i)) |> Builtin.unwrap
+  Stdlib.BigInt.toInt64(Stdlib.BigInt.fromUInt32(i)) |> Stdlib.Option.withDefault(0)
 
 
 /// Converts a <type UInt64> to an <type Int64>. Returns {{None}} if the value is greater than 9223372036854775807
