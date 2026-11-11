@@ -335,7 +335,7 @@ let executeFiltered(
     Stdlib.List.flatten(
       [ Stdlib.Dict.keys(fnsBy), Stdlib.Dict.keys(typesBy), Stdlib.Dict.keys(implsBy) ])
     |> Stdlib.List.unique
-    |> Stdlib.List.sort
+    |> Stdlib.String.sortList
 
   let ctx = rootContext(branchId, rootPath)
   let sections =
@@ -456,7 +456,7 @@ let namedLike(
           | None -> false)
         |> Stdlib.List.map(fun f -> trimRoot(rootName, moduleKey(f.location)))
         |> Stdlib.List.unique
-        |> Stdlib.List.sort
+        |> Stdlib.String.sortList
 
       let named =
         shown
@@ -464,7 +464,7 @@ let namedLike(
           Stdlib.String.contains(Stdlib.String.toLowercase(f.location.name), word))
         |> Stdlib.List.map(fun f ->
           trimRoot(rootName, moduleKey(f.location)) + "." + f.location.name)
-        |> Stdlib.List.sort
+        |> Stdlib.String.sortList
 
       Stdlib.List.concat(modules, named) |> Stdlib.List.take(8)
     else

@@ -1855,6 +1855,13 @@ test compare =
       |> Stdlib.Test.equal([ "a", "é", "ｱ", "😀" ]) ])
 
 
+test sortList =
+  Stdlib.Test.all(
+    [ Stdlib.String.sortList([ "😀", "ｱ", "é", "a" ])
+      |> Stdlib.Test.equal([ "a", "é", "ｱ", "😀" ])
+      Stdlib.String.sortList([]) |> Stdlib.Test.equal([]) ])
+
+
 test head =
   Stdlib.Test.all(
     [ Stdlib.String.head("hello world")

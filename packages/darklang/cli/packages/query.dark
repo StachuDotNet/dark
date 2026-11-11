@@ -185,7 +185,7 @@ let getDirectSubmodules(
     | [nextPart, ...] ->
       if Stdlib.String.isEmpty(nextPart) then Option.None else Option.Some(nextPart))
   |> Stdlib.List.unique
-  |> Stdlib.List.sort
+  |> Stdlib.String.sortList
 
 
 /// Deprecation filters for `ls`/`tree`/`search`.
