@@ -227,7 +227,7 @@ let printJson(
     | [c, ...] ->
       c.methods
       |> Stdlib.Dict.keys
-      |> Stdlib.List.sort
+      |> Stdlib.String.sortList
     | [] -> []
 
   let methodsJson =
@@ -288,7 +288,7 @@ let execute(state: AppState, args: List<String>): AppState =
           | [c, ...] ->
             c.methods
             |> Stdlib.Dict.keys
-            |> Stdlib.List.sort
+            |> Stdlib.String.sortList
             |> Stdlib.String.join(", ")
           | [] -> ""
 
@@ -367,6 +367,6 @@ let complete(state: AppState, args: List<String>): List<Completion.CompletionIte
 
     Stdlib.List.flatten([ here, stdlib ])
     |> Stdlib.List.unique
-    |> Stdlib.List.sort
+    |> Stdlib.String.sortList
     |> Stdlib.List.map(Completion.simple)
   | _ -> []

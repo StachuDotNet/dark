@@ -7,7 +7,7 @@ let darkFiles(path: String): List<String> =
   if Stdlib.Cli.FileSystem.isDirectory(path) then
     Stdlib.Cli.FileSystem.listDirectory(path)
     |> Stdlib.Result.withDefault([])
-    |> Stdlib.List.sort
+    |> Stdlib.String.sortList
     |> Stdlib.List.map(fun p -> darkFiles(p))
     |> Stdlib.List.flatten
   else if Stdlib.String.endsWith(path, ".dark") then

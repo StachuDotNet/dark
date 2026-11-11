@@ -1,9 +1,7 @@
 1 Darklang.Cli.Completion.addSlashToDirectories Darklang.Stdlib.Cli.FileSystem.isDirectoryAtPath
 1 Darklang.Cli.Completion.completeFilesystemPath Darklang.Stdlib.Cli.FileSystem.isDirectoryAtPath
-1 Darklang.Cli.Docs.StdlibOverview.execute Darklang.Stdlib.List.sort
 1 Darklang.Cli.Format.darkFiles Darklang.Stdlib.Cli.FileSystem.isDirectory
 1 Darklang.Cli.Format.darkFiles Darklang.Stdlib.Cli.FileSystem.listDirectory
-1 Darklang.Cli.Format.darkFiles Darklang.Stdlib.List.sort
 1 Darklang.Cli.Format.formatFiles Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Format.formatFiles Darklang.Stdlib.List.parallelMap
 1 Darklang.Cli.Format.settle Darklang.Stdlib.Cli.File.writeText
@@ -31,17 +29,9 @@
 1 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.Dir.createTemp
 1 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.File.writeText
-1 Darklang.Cli.Packages.Errors.closestNames Darklang.Stdlib.List.sort
-1 Darklang.Cli.Packages.Impls.complete Darklang.Stdlib.List.sort
-1 Darklang.Cli.Packages.Impls.execute Darklang.Stdlib.List.sort
-1 Darklang.Cli.Packages.Impls.printJson Darklang.Stdlib.List.sort
 1 Darklang.Cli.Packages.ModuleCommand.readAndSave Darklang.Stdlib.Cli.File.readText
-1 Darklang.Cli.Packages.Query.getDirectSubmodules Darklang.Stdlib.List.sort
-1 Darklang.Cli.Packages.Signatures.executeFiltered Darklang.Stdlib.List.sort
 1 Darklang.Cli.Packages.Test.runScriptTests Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Packages.Test.runSelected Darklang.Stdlib.Exec.select
-1 Darklang.Cli.Packages.Traversal.searchModulesByPrefix Darklang.Stdlib.List.sort
-1 Darklang.Cli.Packages.Typecheck.itemLabelIn Darklang.Stdlib.List.sort
 1 Darklang.Cli.Packages.definitionFromArgs Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Ps.signalMachine Darklang.Stdlib.Cli.Posix.kill
 1 Darklang.Cli.Run.askPermission Darklang.Stdlib.Cli.FileSystem.isDirectory
@@ -54,7 +44,6 @@
 1 Darklang.Cli.Tracing.executeClearBefore Darklang.Stdlib.DateTime.subtractSeconds
 1 Darklang.Cli.Tracing.followLoop Darklang.Stdlib.Cli.Posix.sleep
 1 Darklang.Cli.Workbench.execute Darklang.Stdlib.Cli.Sys.hostname
-1 Darklang.Cli.Workbench.loadBuiltinItems Darklang.Stdlib.List.sort
 1 Darklang.Cli.runInteractiveLoop Darklang.Stdlib.Host.await
 1 Darklang.GitHub.__fetchString Darklang.Stdlib.HttpClient.get
 1 Darklang.LanguageTools.AtRestTypeChecker.Run.checkQuery Darklang.Stdlib.List.parallelMap
@@ -68,10 +57,7 @@
 1 Darklang.PrettyPrinter.ProgramTypes.packageValueNamed Darklang.Stdlib.Pretty.render
 1 Darklang.PrettyPrinter.RuntimeTypes.dvalWith Darklang.Stdlib.Pretty.render
 1 Darklang.SCM.Deps.dependentsFor Builtin.unwrap
-1 Darklang.SCM.PartialCommit.stringGt Darklang.Stdlib.List.sort
 2 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.Dir.deleteRecursive
-2 Darklang.Cli.Packages.Signatures.namedLike Darklang.Stdlib.List.sort
-2 Darklang.LanguageTools.AtRestTypeChecker.Generate.orPattern Darklang.Stdlib.List.sort
 2 Darklang.LanguageTools.PackageManager.Test.Worker.main Darklang.Stdlib.Cli.FileSystem.readFile
 2 Darklang.PrettyPrinter.ProgramTypes.packageTypeNamed Darklang.Stdlib.Pretty.render
 3 Darklang.Cli.Completion.completeFilesystemPath Darklang.Stdlib.Cli.FileSystem.getDirectoryContents
