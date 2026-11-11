@@ -96,11 +96,6 @@
 1 Darklang.Cli.Workbench.agoText Darklang.Stdlib.DateTime.parse
 1 Darklang.Cli.Workbench.execute Darklang.Stdlib.Cli.Sys.hostname
 1 Darklang.Cli.Workbench.loadBuiltinItems Darklang.Stdlib.List.sort
-1 Darklang.Cli.Workbench.renderBranchPicker Darklang.Stdlib.Cli.UI.ListView.render
-1 Darklang.Cli.Workbench.renderFull Darklang.Stdlib.Cli.UI.Layout.vstack
-1 Darklang.Cli.Workbench.renderNavbarRows Darklang.Stdlib.Cli.UI.ListView.render
-1 Darklang.Cli.Workbench.renderSearchResults Darklang.Stdlib.Cli.UI.ListView.render
-1 Darklang.Cli.Workbench.renderTreeList Darklang.Stdlib.Cli.UI.ListView.render
 1 Darklang.Cli.handleKeyInput Darklang.Stdlib.Cli.Stdin.readLine
 1 Darklang.Cli.runInteractiveLoop Darklang.Stdlib.Host.await
 1 Darklang.GitHub.Releases.getDownload Darklang.Stdlib.Json.parse
@@ -112,9 +107,7 @@
 1 Darklang.LanguageTools.PackageManager.Test.Worker.main Darklang.Stdlib.Cli.FileSystem.overwriteFile
 1 Darklang.LanguageTools.PackageManager.Test.withStoreSnapshot Builtin.pmTestWithStoreSnapshot
 1 Darklang.LanguageTools.Perf.counters Darklang.Stdlib.Json.parse
-1 Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.segmentsToString Darklang.Stdlib.English.toOrdinal
 1 Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.segmentsToString Darklang.Stdlib.Json.serialize
-1 Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.segmentsToString Darklang.Stdlib.Text.ellipsis
 1 Darklang.SCM.Conflicts.conflictFromRow Darklang.Stdlib.Json.parse
 1 Darklang.SCM.Deps.namedReferencesFor Builtin.unwrap
 1 Darklang.SCM.Deps.review Builtin.unwrap
