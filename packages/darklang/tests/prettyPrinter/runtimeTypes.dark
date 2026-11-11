@@ -170,6 +170,17 @@ test records =
       |> Stdlib.Test.equal(
         "Darklang.LanguageTools.ProgramTypes.PackageLocation {\n  owner: \"Darklang\",\n  modules: List<_> [],\n  name: \"x\"\n}") ])
 
+// Two record types of one shape are one type with two names, and a value of it can't say which
+// it was built as. Naming either would be wrong half the time, so neither is named.
+module SameShape =
+  type Width = { pixels: Int64 }
+  type Height = { pixels: Int64 }
+
+test sameShapedRecords =
+  Stdlib.Test.all(
+    [ pp(SameShape.Width { pixels = 3 }) |> Stdlib.Test.equal("{ pixels: 3 }")
+      pp(SameShape.Height { pixels = 3 }) |> Stdlib.Test.equal("{ pixels: 3 }") ])
+
 // Enums
 //
 // Option and Result print their case alone: `Some`, `None`, `Ok`, `Error` are

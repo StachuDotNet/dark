@@ -96,12 +96,36 @@ let typeNameWith(
     | None -> Darklang.LanguageTools.RuntimeTypes.hashToString(hash)
 
 
+/// Several names for one type, and nothing in the reader's context to choose between them.
+///
+/// Types are content-addressed, so two declarations with the same shape ARE one type:
+/// `Stdlib.BigInt.ParseError`, `Stdlib.Float.ParseError` and `Stdlib.Uuid.ParseError` are all
+/// `| BadFormat`, which makes them a single type with three names. Printing one of those names is
+/// picking arbitrarily, and it picks wrong most of the time -- `Stdlib.BigInt.parse "abc"` reporting a
+/// `Stdlib.Uuid.ParseError` is a real thing this used to print.
+let hasNoOneName(
+    currentModule: List<String>,
+    locations: List<LanguageTools.ProgramTypes.PackageLocation>)
+  : Bool =
+  match locations with
+  | []
+  | [ _ ] -> false
+  | _ ->
+    locations
+    |> Stdlib.List.map(fun l ->
+      Darklang.LanguageTools.PackageManager.countMatchingPrefix(
+        currentModule,
+        Stdlib.List.prepend(l.modules, l.owner)))
+    |> Stdlib.List.fold(0, fun(acc, n) -> if n > acc then n else acc)
+    |> fun best -> best == 0
+
 /// Whether a value of this type says its type name before its case.
 ///
 /// `Some`, `None`, `Ok` and `Error` are unambiguous everywhere and resolve unqualified, so naming their
 /// type in front of them is pure noise: `Some(Some([1, 2, 3]))` says everything
 /// `Option.Some(Option.Some([1, 2, 3]))` does. Every other enum keeps its type name, because `Red` on
-/// its own doesn't tell you it came from `Color`.
+/// its own doesn't tell you it came from `Color`, unless the type has several names
+/// (`hasNoOneName`): then the case name alone is the most that can honestly be said.
 let caseNameStandsAlone(
     branchId: Uuid,
     currentModule: List<String>,
@@ -111,28 +135,7 @@ let caseNameStandsAlone(
   | Package(hash) ->
     let locations = Darklang.LanguageTools.PackageManager.Type.locations(branchId, ptHash(hash))
 
-    // Several names for one type, and nothing in the reader's context to choose between them.
-    //
-    // Types are content-addressed, so two declarations with the same shape ARE one type:
-    // `Stdlib.BigInt.ParseError`, `Stdlib.Float.ParseError` and `Stdlib.Uuid.ParseError` are all
-    // `| BadFormat`, which makes them a single type with three names. Printing one of those names is
-    // picking arbitrarily, and it picks wrong most of the time -- `Stdlib.BigInt.parse "abc"` reporting a
-    // `Stdlib.Uuid.ParseError` is a real thing this used to print. The case name alone is the most that
-    // can honestly be said, so say that.
-    let ambiguous =
-      match locations with
-      | []
-      | [ _ ] -> false
-      | _ ->
-        locations
-        |> Stdlib.List.map(fun l ->
-          Darklang.LanguageTools.PackageManager.countMatchingPrefix(
-            currentModule,
-            Stdlib.List.prepend(l.modules, l.owner)))
-        |> Stdlib.List.fold(0, fun(acc, n) -> if n > acc then n else acc)
-        |> fun best -> best == 0
-
-    if ambiguous then
+    if hasNoOneName(currentModule, locations) then
       true
     else
       match
@@ -917,7 +920,14 @@ module Dval =
           bracketed("(", ")", fields |> Stdlib.List.map(fun f -> child(f))))
 
     | DRecord(_, typeName, typeArgs, o) ->
-      let typeStr = typeNameWith(branchId, opts, typeName)
+      // A record of a type with several names (`hasNoOneName`) is printed without one, as an
+      // enum's case is.
+      let typeStr =
+        match typeName with
+        | Package(hash) ->
+          let locations = Darklang.LanguageTools.PackageManager.Type.locations(branchId, ptHash(hash))
+          if hasNoOneName(opts.currentModule, locations) then ""
+          else typeNameWith(branchId, opts, typeName)
 
       let typeArgsPart =
         if Stdlib.Bool.not(opts.showTypeArgs) then
@@ -941,7 +951,9 @@ module Dval =
           Stdlib.Pretty.concat(txt($"{key}: "), child(value)))
 
       // The type name is part of the document, so it counts toward the fit.
-      Stdlib.Pretty.concat(txt($"{typeStr}{typeArgsPart} "), braced("{", "}", parts))
+      match typeStr with
+      | "" -> braced("{", "}", parts)
+      | _ -> Stdlib.Pretty.concat(txt($"{typeStr}{typeArgsPart} "), braced("{", "}", parts))
 
     | DApplicable(AppNamedFn(namedFn)) ->
       txt(PrettyPrinter.RuntimeTypes.fnName(branchId, namedFn.name))
