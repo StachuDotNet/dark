@@ -42,7 +42,6 @@
 1 Darklang.Cli.Installation.Update.execute Builtin.unwrap
 1 Darklang.Cli.Listing.shouldCap Darklang.Stdlib.Cli.Tui.TerminalSupport.currentFacts
 1 Darklang.Cli.LiveView.Host.bandRows Darklang.Stdlib.Cli.Tui.Text.wrapAtWords
-1 Darklang.Cli.LiveView.Host.moveFocus Darklang.Stdlib.Int64.Modulo.modulo
 1 Darklang.Cli.LiveView.Host.present Darklang.Stdlib.Cli.Tui.TerminalSession.presentAtSize
 1 Darklang.Cli.LiveView.Host.sessionLocation Darklang.Stdlib.DateTime.now
 1 Darklang.Cli.LiveView.Host.sessionLocation Darklang.Stdlib.DateTime.toStringISO8601BasicDateTime
@@ -59,7 +58,6 @@
 1 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.File.writeText
 1 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.Tui.TerminalSupport.current
 1 Darklang.Cli.Packages.Errors.closestNames Darklang.Stdlib.List.sort
-1 Darklang.Cli.Packages.Errors.nameDistance Darklang.Stdlib.Int64.Divide.divide
 1 Darklang.Cli.Packages.Impls.complete Darklang.Stdlib.List.sort
 1 Darklang.Cli.Packages.Impls.execute Darklang.Stdlib.List.sort
 1 Darklang.Cli.Packages.Impls.printJson Darklang.Stdlib.List.sort
@@ -94,7 +92,6 @@
 1 Darklang.Cli.Ps.signalMachine Darklang.Stdlib.Cli.Posix.kill
 1 Darklang.Cli.Ps.startedAgoText Darklang.Stdlib.DateTime.now
 1 Darklang.Cli.Ps.startedAgoText Darklang.Stdlib.DateTime.subtractMs
-1 Darklang.Cli.Ps.startedAgoText Darklang.Stdlib.Int64.Modulo.modulo
 1 Darklang.Cli.RelativeTime.ago Darklang.Stdlib.DateTime.now
 1 Darklang.Cli.Run.askPermission Darklang.Stdlib.Cli.UI.Prompt.select
 1 Darklang.Cli.Run.complete Darklang.Stdlib.Cli.FileSystem.currentDirectory
@@ -120,8 +117,6 @@
 1 Darklang.Cli.Telemetry.logWithContext Darklang.Stdlib.DateTime.Display.display
 1 Darklang.Cli.Telemetry.logWithContext Darklang.Stdlib.DateTime.now
 1 Darklang.Cli.Telemetry.now Darklang.Stdlib.DateTime.__monotonicMilliseconds
-1 Darklang.Cli.Text.bytes Darklang.Stdlib.Int64.Modulo.modulo
-1 Darklang.Cli.Text.count Darklang.Stdlib.Int64.Modulo.modulo
 1 Darklang.Cli.Text.wrap Darklang.Stdlib.Cli.Tui.Text.wrapAtWords
 1 Darklang.Cli.TraceVerbs.printCallsJson Darklang.Stdlib.Json.serialize
 1 Darklang.Cli.TraceVerbs.printInspectJson Darklang.Stdlib.Json.serialize
@@ -143,8 +138,6 @@
 1 Darklang.Cli.Workbench.execute Darklang.Stdlib.Cli.Sys.hostname
 1 Darklang.Cli.Workbench.execute Darklang.Stdlib.Cli.Tui.TerminalSupport.current
 1 Darklang.Cli.Workbench.loadBuiltinItems Darklang.Stdlib.List.sort
-1 Darklang.Cli.Workbench.matterSplitFor Darklang.Stdlib.Int64.Divide.divide
-1 Darklang.Cli.Workbench.paneGeometry Darklang.Stdlib.Int64.Divide.divide
 1 Darklang.Cli.Workbench.renderBranchPicker Darklang.Stdlib.Cli.UI.Box.panel
 1 Darklang.Cli.Workbench.renderBranchPicker Darklang.Stdlib.Cli.UI.Layout.clearRegion
 1 Darklang.Cli.Workbench.renderBranchPicker Darklang.Stdlib.Cli.UI.ListView.render
@@ -166,7 +159,6 @@
 1 Darklang.Cli.Workbench.renderTreeList Darklang.Stdlib.Cli.Tui.Text.clipToWidth
 1 Darklang.Cli.Workbench.renderTreeList Darklang.Stdlib.Cli.UI.Layout.at
 1 Darklang.Cli.Workbench.renderTreeList Darklang.Stdlib.Cli.UI.ListView.render
-1 Darklang.Cli.Workbench.renderTreeList Darklang.Stdlib.Int64.Divide.divide
 1 Darklang.Cli.Workbench.selectionRow Darklang.Stdlib.Cli.Tui.Text.fitToWidth
 1 Darklang.Cli.Workbench.titledLines Darklang.Stdlib.Cli.UI.Layout.at
 1 Darklang.Cli.Workbench.viewAtSize Darklang.Stdlib.Cli.UI.Canvas.toView
@@ -184,8 +176,6 @@
 1 Darklang.GitHub.__fetchString Darklang.Stdlib.HttpClient.get
 1 Darklang.LanguageTools.AtRestTypeChecker.Generate.constantDictKey Darklang.Stdlib.Decimal.normalize
 1 Darklang.LanguageTools.AtRestTypeChecker.Items.toUInt64 Builtin.unwrap
-1 Darklang.LanguageTools.AtRestTypeChecker.Run.checkQuery Darklang.Stdlib.Int64.Divide.divide
-1 Darklang.LanguageTools.AtRestTypeChecker.Run.checkQuery Darklang.Stdlib.Int64.Modulo.modulo
 1 Darklang.LanguageTools.AtRestTypeChecker.Run.checkQuery Darklang.Stdlib.List.parallelMap
 1 Darklang.LanguageTools.AtRestTypeChecker.Types.fnNameRef Darklang.Stdlib.Int64.fromInt32
 1 Darklang.LanguageTools.AtRestTypeChecker.Types.valueNameRef Darklang.Stdlib.Int64.fromInt32
@@ -200,9 +190,6 @@
 1 Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.segmentsToString Darklang.Stdlib.Json.serialize
 1 Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.segmentsToString Darklang.Stdlib.Text.ellipsis
 1 Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.toSegments Darklang.Stdlib.Int64.fromInt32
-1 Darklang.PrettyPrinter.RuntimeTypes.capForDisplay Darklang.Stdlib.Int64.Divide.divide
-1 Darklang.PrettyPrinter.__encodeChar Darklang.Stdlib.Int64.Divide.divide
-1 Darklang.PrettyPrinter.__encodeChar Darklang.Stdlib.Int64.Modulo.modulo
 1 Darklang.PrettyPrinter.__encodeChar Darklang.Stdlib.Int64.fromUInt8
 1 Darklang.SCM.Conflicts.conflictFromRow Darklang.Stdlib.Json.parse
 1 Darklang.SCM.Deps.namedReferencesFor Builtin.unwrap
@@ -213,18 +200,11 @@
 1 Darklang.SCM.PackageOps.withSavedReferenceNames Builtin.unwrap
 1 Darklang.SCM.PartialCommit.stringGt Darklang.Stdlib.List.sort
 2 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.Dir.deleteRecursive
-2 Darklang.Cli.Packages.NavInteractive.layout Darklang.Stdlib.Int64.Divide.divide
 2 Darklang.Cli.Packages.Test.runSelected Darklang.Stdlib.DateTime.__monotonicMilliseconds
 2 Darklang.Cli.Permissions.Command.updateNamed Darklang.Stdlib.Cli.UI.Prompt.confirm
 2 Darklang.Cli.RelativeTime.ago Darklang.Stdlib.DateTime.toSeconds
-2 Darklang.Cli.Tracing.formatFnCalls Darklang.Stdlib.Int64.Modulo.modulo
-2 Darklang.Cli.Tracing.ordinalSuffix Darklang.Stdlib.Int64.Modulo.modulo
-2 Darklang.Cli.Workbench.renderBranchPicker Darklang.Stdlib.Int64.Divide.divide
 2 Darklang.Cli.Workbench.renderHelpOverlay Darklang.Stdlib.Cli.UI.Layout.at
-2 Darklang.Cli.Workbench.renderHelpOverlay Darklang.Stdlib.Int64.Divide.divide
-2 Darklang.Cli.Workbench.renderNavbarOverlay Darklang.Stdlib.Int64.Divide.divide
 2 Darklang.Cli.Workbench.renderRepl Darklang.Stdlib.Cli.UI.Layout.at
-2 Darklang.Cli.Workbench.viewAtSize Darklang.Stdlib.Int64.Divide.divide
 2 Darklang.LanguageTools.AtRestTypeChecker.Generate.orPattern Darklang.Stdlib.List.sort
 2 Darklang.LanguageTools.Perf.measure Darklang.Stdlib.DateTime.__monotonicMilliseconds
 2 Darklang.PrettyPrinter.RuntimeTypes.RuntimeError.toSegments Darklang.Stdlib.Json.serialize
@@ -232,14 +212,8 @@
 3 Darklang.Cli.Installation.Download.replaceBinary Darklang.Stdlib.Cli.executeWithUnitOrStdErr
 3 Darklang.Cli.Installation.Download.smokeTest Darklang.Stdlib.Cli.execute
 3 Darklang.Cli.Packages.NavInteractive.viewAtSize Darklang.Stdlib.Cli.Tui.Text.clipToWidth
-3 Darklang.Cli.Text.bytes Darklang.Stdlib.Int64.Divide.divide
-3 Darklang.Cli.Text.count Darklang.Stdlib.Int64.Divide.divide
-3 Darklang.Cli.Workbench.ago Darklang.Stdlib.Int64.Divide.divide
 3 Darklang.Cli.Workbench.renderBranchPicker Darklang.Stdlib.Cli.UI.Layout.at
 3 Darklang.Cli.Workbench.renderEditing Darklang.Stdlib.Cli.UI.Layout.at
 3 Darklang.Cli.Workbench.renderFull Darklang.Stdlib.Cli.UI.Layout.at
 3 Darklang.PrettyPrinter.RuntimeTypes.Instructions.operands Darklang.Stdlib.Int64.fromInt32
-4 Darklang.Cli.Ps.startedAgoText Darklang.Stdlib.Int64.Divide.divide
-4 Darklang.Cli.TraceVerbs.microsText Darklang.Stdlib.Int64.Divide.divide
-5 Darklang.Cli.RelativeTime.ago Darklang.Stdlib.Int64.Divide.divide
 5 Darklang.Cli.Workbench.frameWithTitles Darklang.Stdlib.Cli.UI.Layout.at
