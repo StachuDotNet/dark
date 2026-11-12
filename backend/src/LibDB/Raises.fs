@@ -36,6 +36,7 @@ let cannotRaise : Set<string> =
       "List.checkedRepeat"
       "List.checkedRange"
       "DateTime.parse"
+      "DateTime.checkedSubtractSeconds"
       "DateTime.__now"
       "DateTime.__monotonicMilliseconds" ]
     |> List.map (fun f -> $"Darklang.Stdlib.{f}")

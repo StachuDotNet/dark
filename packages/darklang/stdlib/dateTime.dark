@@ -340,6 +340,23 @@ let subtractSeconds(d: DateTime, seconds: Int64): DateTime =
   __fromOffset(__ticks(d), -seconds, __ticksPerSecond())
 
 
+/// Returns {{Ok}} the <type DateTime> <param seconds> seconds before <param d>, or {{Error}} an
+/// <type Stdlib.Math.OutOfRange> if that falls outside -9998-01-01 to 9999-12-31.
+let checkedSubtractSeconds(
+  d: DateTime,
+  seconds: Int64)
+  : Stdlib.Result.Result<DateTime, Stdlib.Math.OutOfRange> =
+  let ticks = __ticks(d)
+  let earliest = -3776735808000000000
+  let latest = 2534023007999999999
+  Stdlib.Math.__inRange(
+    "number of seconds to subtract",
+    0 - (latest - ticks) / __ticksPerSecond(),
+    (ticks - earliest) / __ticksPerSecond(),
+    seconds,
+    fun s -> __fromOffset(ticks, 0 - s, __ticksPerSecond()))
+
+
 /// Returns whether {{<param d1> > <param d2>}}
 let greaterThan(d1: DateTime, d2: DateTime): Bool = __ticks(d1) > __ticks(d2)
 
@@ -583,7 +600,18 @@ let __sleepWith(sleep: (Int64, Int64) -> (Int64 * Bytes), seconds: Int64, nanos:
 let __sleepNanoseconds(seconds: Int64, nanos: Int64): Result.Result<Unit, Int64> =
   __sleepWith(Builtin.syscallNanosleep, seconds, nanos)
 
+/// Zero, negative and NaN waits return at once; one past what an Int64 of nanoseconds holds waits
+/// that long.
 let __sleepMilliseconds(milliseconds: Float): Unit =
-  let nanos = Stdlib.Float.toInt64(milliseconds * 1000000.0)
-  if Builtin.runtimeTargetOS() == "browser" then Builtin.runtimeDelayTicks(nanos / 100)
-  else __sleepNanoseconds(nanos / 1000000000, nanos % 1000000000) |> Builtin.unwrap
+  let nanos =
+    if milliseconds > 0.0 then
+      Stdlib.Int64.fromFloat(milliseconds * 1000000.0)
+      |> Stdlib.Option.withDefault(9223372036854775807)
+    else
+      0
+  if Builtin.runtimeTargetOS() == "browser" then
+    Builtin.runtimeDelayTicks(Stdlib.Int64.checkedDivide(nanos, 100) |> Stdlib.Result.withDefault(0))
+  else
+    let seconds = Stdlib.Int64.checkedDivide(nanos, 1000000000) |> Stdlib.Result.withDefault(0)
+    let rest = Stdlib.Int64.checkedMod(nanos, 1000000000) |> Stdlib.Result.withDefault(0)
+    __sleepNanoseconds(seconds, rest) |> Stdlib.Result.withDefault(())

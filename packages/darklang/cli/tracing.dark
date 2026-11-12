@@ -1656,12 +1656,15 @@ let executeClearBefore(
   | Error(msg) ->
     refuse(state, msg)
   | Ok(duration) ->
-    let now = Stdlib.DateTime.now()
-    // cleanup
-    let cutoffDt =
-      Stdlib.DateTime.subtractSeconds(now, Stdlib.Duration.toSeconds(duration))
-    let cutoff = Stdlib.display(cutoffDt)
-    let count = Darklang.Tracing.Store.clearBefore(cutoff)
+    // A cutoff before the earliest DateTime has no trace older than it.
+    let count =
+      match
+        Stdlib.DateTime.checkedSubtractSeconds(
+          Stdlib.DateTime.now(),
+          Stdlib.Duration.toSeconds(duration))
+      with
+      | Ok(cutoff) -> Darklang.Tracing.Store.clearBefore(Stdlib.display(cutoff))
+      | Error(_) -> 0
     match count with
     | 0 ->
       Cli.Stderr.line($"no kept trace is older than {durationStr}")

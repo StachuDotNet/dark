@@ -449,6 +449,29 @@ test subtractSeconds =
       sub("2020-11-26T04:37:46Z", -10)
       |> Stdlib.Test.equal(d("2020-11-26T04:37:56Z")) ])
 
+test checkedSubtractSeconds =
+  let csub = fun (seconds) ->
+    Stdlib.DateTime.checkedSubtractSeconds(Stdlib.DateTime.fromSeconds(0), seconds)
+    |> Stdlib.Result.map(fun date -> Stdlib.DateTime.toSeconds(date))
+  Stdlib.Test.all(
+    [ sub("2020-11-26T04:37:46Z", 1000000)
+      |> Ok
+      |> Stdlib.Test.equal(Stdlib.DateTime.checkedSubtractSeconds(d("2020-11-26T04:37:46Z"), 1000000))
+      csub(-10) |> Stdlib.Test.equal(Ok(10))
+      csub(-253402300799) |> Stdlib.Test.equal(Ok(253402300799))
+      csub(377673580801)
+      |> Stdlib.Result.mapError(fun e -> Stdlib.display(e))
+      |> Stdlib.Test.equal(
+        Error("377673580801 is not a valid number of seconds to subtract (-253402300799 to 377673580800)"))
+      csub(-253402300800) |> Stdlib.Result.isError |> Stdlib.Test.equal(true)
+      csub(-9223372036854775807 - 1) |> Stdlib.Result.isError |> Stdlib.Test.equal(true) ])
+
+test sleepMillisecondsReturnsAtOnceForNoWait =
+  Stdlib.Test.all(
+    [ Stdlib.DateTime.__sleepMilliseconds(-5.0) |> Stdlib.Test.equal(())
+      Stdlib.DateTime.__sleepMilliseconds(0.0 / 0.0) |> Stdlib.Test.equal(())
+      Stdlib.DateTime.__sleepMilliseconds(0.5) |> Stdlib.Test.equal(()) ])
+
 test subtract =
   Stdlib.Test.all(
     [ s("2020-11-26T04:37:46Z", "2020-11-26T04:37:46Z") |> Stdlib.Test.equal(Stdlib.Duration.Duration { seconds = 0 })
