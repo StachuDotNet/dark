@@ -1,6 +1,7 @@
-/// The two Decimal builtins Dark cannot do itself: taking a decimal apart into an integer and a
-/// scale, and putting one back together. Parsing, printing and rounding are written in Dark on
-/// top of these; arithmetic and ordering are the polymorphic operators in `NoModule`.
+/// The Decimal builtins Dark cannot do itself: taking a decimal apart into an integer and a
+/// scale, putting one back together, and arithmetic that answers None past the range rather
+/// than raising. Parsing, printing and rounding are written in Dark on top of these; the
+/// operators and ordering are the polymorphic ones in `NoModule`.
 module Builtins.Pure.Libs.Decimal
 
 open Prelude
@@ -15,6 +16,34 @@ module Dval = LibExecution.Dval
 let private magnitudeLimit = bigint.Pow(bigint 2, 96)
 
 let private mask32 = bigint 0xFFFFFFFFu
+
+
+/// <param op> as `+`, `-`, `*` or `/` compute it, or None where they raise: past the range,
+/// or dividing by zero.
+let private checkedOp
+  (name : string)
+  (what : string)
+  (op : decimal -> decimal -> decimal)
+  : BuiltInFn =
+  { name = fn name 0
+    typeParams = []
+    parameters = [ Param.make "a" TDecimal ""; Param.make "b" TDecimal "" ]
+    returnType = TypeReference.option TDecimal
+    description = $"{what}, or {{{{None}}}} where the result is out of range"
+    fn =
+      (function
+      | _, _, _, [| DDecimal a; DDecimal b |] ->
+        let result =
+          try
+            Some(op a b)
+          with
+          | :? System.OverflowException
+          | :? System.DivideByZeroException -> None
+        result |> Option.map DDecimal |> Dval.option KTDecimal |> Ply
+      | _ -> incorrectArgs ())
+    previewable = Pure
+    callEffects = Set.empty
+    deprecated = NotDeprecated }
 
 
 let fns () : List<BuiltInFn> =
@@ -70,6 +99,11 @@ let fns () : List<BuiltInFn> =
         | _ -> incorrectArgs ())
       previewable = Pure
       callEffects = Set.empty
-      deprecated = NotDeprecated } ]
+      deprecated = NotDeprecated }
+
+    checkedOp "decimalCheckedAdd" "<param a> plus <param b>" (+)
+    checkedOp "decimalCheckedSubtract" "<param a> minus <param b>" (-)
+    checkedOp "decimalCheckedMultiply" "<param a> times <param b>" (*)
+    checkedOp "decimalCheckedDivide" "<param a> divided by <param b>" (/) ]
 
 let builtins () = LibExecution.Builtin.make [] (fns ())

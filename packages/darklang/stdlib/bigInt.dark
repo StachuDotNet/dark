@@ -94,9 +94,20 @@ let checkedToFloat(a: BigInt): Result<Float, Math.Overflow> =
   Float.__noOverflow(toFloat(a))
 
 
-/// Converts a <type Float> to a <type BigInt>, truncating toward zero.
+/// Converts a <type Float> to a <type BigInt>, truncating toward zero. Raises for NaN and the
+/// infinities; <fn BigInt.checkedFromFloat> returns an {{Error}} instead.
 let fromFloat(a: Float): BigInt =
   Builtin.bigIntFromFloat(a)
+
+
+/// <fn BigInt.fromFloat>, or {{Error NotANumber}} for NaN and {{Error Overflow}} for an infinity
+let checkedFromFloat(a: Float): Result<BigInt, Math.NonFinite> =
+  if Float.isNaN(a) then
+    Result.Error(Math.NonFinite.NotANumber)
+  else if Float.isFinite(a) then
+    Result.Ok(fromFloat(a))
+  else
+    Result.Error(Math.NonFinite.Overflow)
 
 
 /// Returns the <type BigInt> value of a <type String>. Because <type BigInt> is

@@ -108,11 +108,25 @@ let fromFloat(a: Float): Option<Int64> =
 /// (ties to even). Returns {{None}} for NaN, infinity, or a result that
 /// doesn't fit.
 let fromFloatRounded(a: Float): Option<Int64> =
-  // 2^63 is exact as a Float, and every Float in [-2^63, 2^63) rounds into range
-  if a >= -9223372036854775808.0 && a < 9223372036854775808.0 then
-    Option.Some(Float.round(a))
-  else
-    Option.None
+  if __roundsIntoRange(a) then Option.Some(Float.round(a)) else Option.None
+
+
+/// Converts a <type Float> to an <type Int64>, rounding down. Returns {{None}} for NaN,
+/// infinity, or a result that doesn't fit.
+let fromFloatFloor(a: Float): Option<Int64> =
+  if __roundsIntoRange(a) then Option.Some(Float.floor(a)) else Option.None
+
+
+/// Converts a <type Float> to an <type Int64>, rounding up. Returns {{None}} for NaN,
+/// infinity, or a result that doesn't fit.
+let fromFloatCeiling(a: Float): Option<Int64> =
+  if __roundsIntoRange(a) then Option.Some(Float.ceiling(a)) else Option.None
+
+
+// 2^63 is exact as a Float, and every Float in [-2^63, 2^63) rounds into range whichever
+// way it rounds: the Floats nearest either end are whole numbers
+let __roundsIntoRange(a: Float): Bool =
+  a >= -9223372036854775808.0 && a < 9223372036854775808.0
 
 
 /// Parses a <type String> into an <type Int64>, returning {{Ok}} with the

@@ -306,6 +306,39 @@ test fromFloatRounded =
       |> Stdlib.Test.equal(Stdlib.Option.Option.Some(-2)) ])
 
 
+test fromFloatFloorAndCeiling =
+  Stdlib.Test.all(
+    [ Stdlib.Int64.fromFloatFloor(3.9)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.Some(3))
+
+      Stdlib.Int64.fromFloatFloor(-3.1)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.Some(-4))
+
+      Stdlib.Int64.fromFloatCeiling(3.1)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.Some(4))
+
+      Stdlib.Int64.fromFloatCeiling(-3.9)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.Some(-3))
+
+      Stdlib.Int64.fromFloatFloor(-9223372036854775808.0)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.Some(-9223372036854775808))
+
+      Stdlib.Int64.fromFloatCeiling(9223372036854775808.0)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.None)
+
+      Stdlib.Int64.fromFloatFloor(1e30)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.None)
+
+      Stdlib.Int64.fromFloatCeiling(-1e30)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.None)
+
+      Stdlib.Int64.fromFloatFloor(0.0 / 0.0)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.None)
+
+      Stdlib.Int64.fromFloatCeiling(1.0 / 0.0)
+      |> Stdlib.Test.equal(Stdlib.Option.Option.None) ])
+
+
 /// Wraps on overflow.
 test add =
   Stdlib.Test.all(

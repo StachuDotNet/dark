@@ -4,7 +4,8 @@ type ParseError =
   | BadFormat
 
 
-/// Round up to an integer value
+/// Round up to an integer value. Raises for NaN, infinity, or a result past Int64;
+/// <fn Int64.fromFloatCeiling> returns {{None}} instead.
 let ceiling(a: Float): Int64 =
   Builtin.floatCeiling(a)
 
@@ -17,7 +18,8 @@ let roundUp(a: Float): Int64 =
 /// Round down to an integer value.
 /// Consider <fn Float.truncate> if your goal
 /// is to discard the fractional part of a number: {{Float.floor(-1.9) == -2}}
-/// but {{Float.truncate(-1.9) == -1}}
+/// but {{Float.truncate(-1.9) == -1}}. Raises for NaN, infinity, or a result past
+/// Int64; <fn Int64.fromFloatFloor> returns {{None}} instead.
 let floor(a: Float): Int64 =
   Builtin.floatFloor(a)
 
@@ -29,17 +31,19 @@ let roundDown(a: Float): Int64 =
   floor(a)
 
 
-/// Round to the nearest integer value
+/// Round to the nearest integer value. Raises for NaN, infinity, or a result past Int64;
+/// <fn Int64.fromFloatRounded> returns {{None}} instead.
 let round(a: Float): Int64 =
   Builtin.floatRound(a)
 
 
-/// Returns the <type Float> value wrapped in a {{Result}} of the <type String>
+/// Discard the fractional portion of the float, rounding towards zero
 let roundTowardsZero(a: Float): Int64 =
   truncate(a)
 
 
-/// Discard the fractional portion of the float, rounding towards zero
+/// Discard the fractional portion of the float, rounding towards zero. Raises for NaN,
+/// infinity, or a result past Int64; <fn Int64.fromFloat> returns {{None}} instead.
 let truncate(a: Float): Int64 =
   Builtin.floatTruncate(a)
 
