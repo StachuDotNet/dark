@@ -22,6 +22,9 @@ module Requirements = LibExecution.CallGraph.Requirements
 /// The checked functions, which test their arguments for every case where what they call raises,
 /// and return an `Error` instead.
 ///
+/// The widening conversions, such as `Int64.fromInt8`: every value of the narrower type fits, so
+/// the `Option` they unwrap is always `Some`.
+///
 /// The clock: when its syscall fails, the runtime's own clock answers, and a reading is always in
 /// `DateTime`'s range.
 let cannotRaise : Set<string> =
@@ -55,6 +58,19 @@ let cannotRaise : Set<string> =
     |> List.collect (fun t ->
       ops
       |> List.map (fun (traitName, op) -> $"Darklang.Stdlib.{t}.{traitName}.{op}"))
+  let checkedFns (types : List<string>) (fns : List<string>) =
+    types
+    |> List.collect (fun t -> fns |> List.map (fun f -> $"Darklang.Stdlib.{t}.{f}"))
+  let bits = [ 8; 16; 32; 64; 128 ]
+  let widening =
+    bits
+    |> List.collect (fun n ->
+      bits
+      |> List.filter (fun m -> m < n)
+      |> List.collect (fun m ->
+        [ $"Darklang.Stdlib.Int{n}.fromInt{m}"
+          $"Darklang.Stdlib.Int{n}.fromUInt{m}"
+          $"Darklang.Stdlib.UInt{n}.fromUInt{m}" ]))
   let wrapping =
     [ ("Add", "add")
       ("Subtract", "subtract")
@@ -69,6 +85,14 @@ let cannotRaise : Set<string> =
         [ "Float"; "Float32" ]
         (wrapping @ [ ("Divide", "divide"); ("Power", "power") ])
     @ guarded
+    @ checkedFns
+        [ "Int8"; "Int16"; "Int32"; "Int128" ]
+        [ "checkedDivide"; "checkedRemainder"; "checkedMod"; "checkedPower" ]
+    @ checkedFns
+        [ "UInt8"; "UInt16"; "UInt32"; "UInt64"; "UInt128" ]
+        [ "checkedDivide"; "checkedMod"; "checkedPower" ]
+    @ checkedFns [ "Int64"; "BigInt" ] [ "checkedPower" ]
+    @ widening
   )
 
 /// Each live fn's name. A hash with several names keeps the first in order.
