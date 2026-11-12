@@ -19,6 +19,18 @@ let private make name parameters returnType body : BuiltInFn =
     callEffects = set [ Effect.Clock ]
     deprecated = NotDeprecated }
 
+/// Waits <param ticks>, at once for zero or less. `Task.Delay` throws on a negative delay or
+/// one past about 49 days, so a long one waits a day at a time.
+let rec private delay (ticks : int64) : Ply<Dval> =
+  uply {
+    if ticks <= 0L then
+      return DUnit
+    else
+      let step = min ticks System.TimeSpan.TicksPerDay
+      do! System.Threading.Tasks.Task.Delay(System.TimeSpan.FromTicks step)
+      return! delay (ticks - step)
+  }
+
 let fns () =
   [ make "runtimeRealtimeTicks" [ Param.make "unit" TUnit "" ] TInt64 (function
       | _, _, _, [| DUnit |] ->
@@ -40,19 +52,12 @@ let fns () =
            )
          )
        | _ -> incorrectArgs ())
-    // `Task.Delay` throws on a negative delay, or one past about 49 days.
-    { (make
-        "runtimeDelayTicks"
-        [ Param.make "ticks" TInt64 "100ns runtime timer ticks" ]
-        TUnit
-        (function
-         | _, _, _, [| DInt64 ticks |] ->
-           uply {
-             let delay = System.TimeSpan.FromTicks ticks
-             do! System.Threading.Tasks.Task.Delay delay
-             return DUnit
-           }
-         | _ -> incorrectArgs ())) with
-        callEffects = set [ Effect.Clock; Effect.Raise ] } ]
+    make
+      "runtimeDelayTicks"
+      [ Param.make "ticks" TInt64 "100ns runtime timer ticks" ]
+      TUnit
+      (function
+       | _, _, _, [| DInt64 ticks |] -> delay ticks
+       | _ -> incorrectArgs ()) ]
 
 let builtins () = Builtin.make [] (fns ())

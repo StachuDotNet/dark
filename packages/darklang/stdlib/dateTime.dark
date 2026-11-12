@@ -331,6 +331,7 @@ let today(): DateTime = Stdlib.DateTime.__today()
 
 
 /// Returns a <type DateTime> <param seconds> seconds after <param d>
+/// Raises outside -9998-01-01 to 9999-12-31; <fn checkedAddSeconds> returns an {{Error}} instead.
 let addSeconds(d: DateTime, seconds: Int64): DateTime =
   __fromOffset(__ticks(d), seconds, __ticksPerSecond())
 
@@ -370,8 +371,79 @@ let toSeconds(date: DateTime): Int64 = __floorDiv(__ticks(date), __ticksPerSecon
 
 
 /// Converts an <type Int64> representing seconds since the Unix epoch into a <type DateTime>
+/// Raises outside -9998-01-01 to 9999-12-31; <fn checkedFromSeconds> returns an {{Error}} instead.
 let fromSeconds(seconds: Int64): DateTime =
   __fromOffset(0, seconds, __ticksPerSecond())
+
+
+/// <fn DateTime.fromSeconds>, or {{Error}} an <type Stdlib.Math.OutOfRange> where it raises,
+/// outside -9998-01-01 to 9999-12-31
+let checkedFromSeconds(seconds: Int64): Stdlib.Result.Result<DateTime, Stdlib.Math.OutOfRange> =
+  __checkedAfter("number of seconds since the Unix epoch", 0, seconds, __ticksPerSecond())
+
+
+/// <fn DateTime.addSeconds>, or {{Error}} an <type Stdlib.Math.OutOfRange> where it raises,
+/// outside -9998-01-01 to 9999-12-31
+let checkedAddSeconds(
+  d: DateTime,
+  seconds: Int64)
+  : Stdlib.Result.Result<DateTime, Stdlib.Math.OutOfRange> =
+  __checkedAfter("number of seconds to add", __ticks(d), seconds, __ticksPerSecond())
+
+
+/// <fn DateTime.fromMilliseconds>, or {{Error}} an <type Stdlib.Math.OutOfRange> where it
+/// raises, outside -9998-01-01 to 9999-12-31
+let checkedFromMilliseconds(
+  milliseconds: Int64)
+  : Stdlib.Result.Result<DateTime, Stdlib.Math.OutOfRange> =
+  __checkedAfter(
+    "number of milliseconds since the Unix epoch",
+    0,
+    milliseconds,
+    __ticksPerMillisecond())
+
+
+/// <fn DateTime.addMilliseconds>, or {{Error}} an <type Stdlib.Math.OutOfRange> where it
+/// raises, outside -9998-01-01 to 9999-12-31
+let checkedAddMilliseconds(
+  d: DateTime,
+  milliseconds: Int64)
+  : Stdlib.Result.Result<DateTime, Stdlib.Math.OutOfRange> =
+  __checkedAfter("number of milliseconds to add", __ticks(d), milliseconds, __ticksPerMillisecond())
+
+
+/// <fn DateTime.subtractMilliseconds>, or {{Error}} an <type Stdlib.Math.OutOfRange> where it
+/// raises, outside -9998-01-01 to 9999-12-31
+let checkedSubtractMilliseconds(
+  d: DateTime,
+  milliseconds: Int64)
+  : Stdlib.Result.Result<DateTime, Stdlib.Math.OutOfRange> =
+  let ticks = __ticks(d)
+  let unit = __ticksPerMillisecond()
+  Stdlib.Math.__inRange(
+    "number of milliseconds to subtract",
+    0 - (__latestTicks() - ticks) / unit,
+    (ticks - __earliestTicks()) / unit,
+    milliseconds,
+    fun ms -> __fromOffset(ticks, 0 - ms, unit))
+
+/// <param count> units of <param unit> ticks after <param ticks>, if that is in range
+let __checkedAfter(
+  what: String,
+  ticks: Int64,
+  count: Int64,
+  unit: Int64)
+  : Stdlib.Result.Result<DateTime, Stdlib.Math.OutOfRange> =
+  Stdlib.Math.__inRange(
+    what,
+    0 - (ticks - __earliestTicks()) / unit,
+    (__latestTicks() - ticks) / unit,
+    count,
+    fun c -> __fromOffset(ticks, c, unit))
+
+/// -9998-01-01 and the last tick of 9999-12-31, the range a <type DateTime> holds
+let __earliestTicks(): Int64 = -3776735808000000000
+let __latestTicks(): Int64 = 2534023007999999999
 
 
 /// Returns the year portion of <param date> as an <type Int64>

@@ -35,6 +35,11 @@ let cannotRaise : Set<string> =
       "String.checkedRepeat"
       "List.checkedRepeat"
       "List.checkedRange"
+      "DateTime.checkedFromSeconds"
+      "DateTime.checkedAddSeconds"
+      "DateTime.checkedFromMilliseconds"
+      "DateTime.checkedAddMilliseconds"
+      "DateTime.checkedSubtractMilliseconds"
       "DateTime.parse"
       "DateTime.__now"
       "DateTime.__monotonicMilliseconds" ]

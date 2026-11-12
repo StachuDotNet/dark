@@ -400,6 +400,46 @@ test secondsRoundTrip =
       |> Stdlib.Test.equal("2019-07-28T22:42:36Z") ])
 
 // seconds whose ticks are past Int64 can't be represented; surface a Dark error
+test checkedFromSeconds =
+  let outOfRange(value: Int64) =
+    Stdlib.Math.OutOfRange
+      { what = "number of seconds since the Unix epoch", value = value, min = -377673580800, max = 253402300799 }
+  Stdlib.Test.all(
+    [ Stdlib.DateTime.checkedFromSeconds(253402300799)
+      |> Stdlib.Result.map(Stdlib.DateTime.toSeconds)
+      |> Stdlib.Test.equal(Ok(253402300799))
+      Stdlib.DateTime.checkedFromSeconds(-377673580800)
+      |> Stdlib.Result.map(Stdlib.DateTime.toSeconds)
+      |> Stdlib.Test.equal(Ok(-377673580800))
+      Stdlib.DateTime.checkedFromSeconds(253402300800)
+      |> Stdlib.Test.equal(Error(outOfRange(253402300800)))
+      Stdlib.DateTime.checkedFromSeconds(-9223372036854775808)
+      |> Stdlib.Test.equal(Error(outOfRange(-9223372036854775808))) ])
+
+test checkedAddAndSubtract =
+  let epoch = Stdlib.DateTime.fromSeconds(0)
+  Stdlib.Test.all(
+    [ Stdlib.DateTime.checkedAddSeconds(epoch, 60)
+      |> Stdlib.Test.equal(Ok(Stdlib.DateTime.fromSeconds(60)))
+      Stdlib.DateTime.checkedAddSeconds(epoch, 9223372036854775807)
+      |> Stdlib.Result.isError
+      |> Stdlib.Test.equal(true)
+      Stdlib.DateTime.checkedAddMilliseconds(epoch, 1500)
+      |> Stdlib.Test.equal(Ok(Stdlib.DateTime.fromMilliseconds(1500)))
+      Stdlib.DateTime.checkedAddMilliseconds(epoch, -9223372036854775807)
+      |> Stdlib.Result.isError
+      |> Stdlib.Test.equal(true)
+      Stdlib.DateTime.checkedSubtractMilliseconds(epoch, 1500)
+      |> Stdlib.Test.equal(Ok(Stdlib.DateTime.fromMilliseconds(-1500)))
+      Stdlib.DateTime.checkedSubtractMilliseconds(epoch, -9223372036854775808)
+      |> Stdlib.Result.isError
+      |> Stdlib.Test.equal(true)
+      Stdlib.DateTime.checkedFromMilliseconds(253402300799999)
+      |> Stdlib.Test.equal(Ok(Stdlib.DateTime.fromMilliseconds(253402300799999)))
+      Stdlib.DateTime.checkedFromMilliseconds(253402300800000)
+      |> Stdlib.Result.isError
+      |> Stdlib.Test.equal(true) ])
+
 test fromSecondsPastInt64Raises =
   (2 ** 62) |> Stdlib.DateTime.fromSeconds
   => raises "Seconds out of DateTime range (-9998-01-01 to 9999-12-31): 4611686018427387904"
