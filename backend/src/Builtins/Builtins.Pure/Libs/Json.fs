@@ -906,6 +906,114 @@ let parse
             [ value ]
       }
 
+  /// `convert` without a computation expression, for JSON that fits its type and a type the store
+  /// has already answered for. `ValueNone` leaves it to `convert`, which also says what is wrong;
+  /// so does anything raised here, which is why the caller discards it.
+  let rec convertSync (typ : TypeReference) (j : JsonElement) : Dval voption =
+    System.Runtime.CompilerServices.RuntimeHelpers.EnsureSufficientExecutionStack()
+    match typ, j.ValueKind with
+    | TUnit, JsonValueKind.Null -> ValueSome DUnit
+    | TBool, JsonValueKind.True -> ValueSome(DBool true)
+    | TBool, JsonValueKind.False -> ValueSome(DBool false)
+    | TInt64, JsonValueKind.Number ->
+      match j.TryGetInt64() with
+      | true, n -> ValueSome(DInt64 n)
+      | false, _ -> ValueNone
+    | TFloat, JsonValueKind.Number -> ValueSome(DFloat(j.GetDouble()))
+    | TString, JsonValueKind.String -> ValueSome(DString(j.GetString()))
+
+    | TList nested, JsonValueKind.Array ->
+      let rec items (js : List<JsonElement>) (acc : List<Dval>) =
+        match js with
+        | [] -> ValueSome(List.rev acc)
+        | v :: rest ->
+          match convertSync nested v with
+          | ValueSome v -> items rest (v :: acc)
+          | ValueNone -> ValueNone
+      match items (j.EnumerateArray() |> Seq.toList) [] with
+      | ValueSome values ->
+        ValueSome(TypeChecker.DvalCreator.list threadID VT.unknownTODO values)
+      | ValueNone -> ValueNone
+
+    | TCustomType({ resolved = Ok typeName }, typeArgs), kind when
+      kind = JsonValueKind.Object && (RangedInt.find typeName).IsNone
+      ->
+      let rec typeArgVTs (ts : List<TypeReference>) (acc : List<ValueType>) =
+        match ts with
+        | [] -> ValueSome(List.rev acc)
+        | t :: rest ->
+          match Ply.trySync (TypeReference.toVT types tst t) with
+          | ValueSome vt -> typeArgVTs rest (vt :: acc)
+          | ValueNone -> ValueNone
+      match typeArgVTs typeArgs [], Ply.trySync (Types.find types typeName) with
+      | ValueSome typeArgsVT, ValueSome(Some decl) ->
+        let fieldType (t : TypeReference) =
+          Types.substitute decl.typeParams typeArgs t
+        match decl.definition with
+        | TypeDeclaration.Record fields ->
+          let enumerated = j.EnumerateObject() |> Seq.toList
+          let rec values (defs : List<TypeDeclaration.RecordField>) acc =
+            match defs with
+            | [] -> ValueSome(List.rev acc)
+            | def :: rest ->
+              match enumerated |> List.filter (fun v -> v.Name = def.name) with
+              | [ found ] ->
+                match convertSync (fieldType def.typ) found.Value with
+                | ValueSome v -> values rest (struct (def.name, v) :: acc)
+                | ValueNone -> ValueNone
+              | _ -> ValueNone
+          match values (NEList.toList fields) [] with
+          | ValueSome fields ->
+            TypeChecker.DvalCreator.record
+              types
+              threadID
+              tst
+              typeName
+              typeArgsVT
+              (Array.ofList fields)
+            |> Ply.trySync
+          | ValueNone -> ValueNone
+
+        | TypeDeclaration.Enum cases ->
+          match j.EnumerateObject() |> Seq.toList with
+          | [ case ] when case.Value.ValueKind = JsonValueKind.Array ->
+            match cases |> NEList.find (fun c -> c.name = case.Name) with
+            | Some matching when
+              List.length matching.fields = case.Value.GetArrayLength()
+              ->
+              let rec values
+                (ts : List<TypeReference>)
+                (js : List<JsonElement>)
+                acc
+                =
+                match ts, js with
+                | t :: tRest, v :: vRest ->
+                  match convertSync (fieldType t) v with
+                  | ValueSome v -> values tRest vRest (v :: acc)
+                  | ValueNone -> ValueNone
+                | _ -> ValueSome(List.rev acc)
+              match
+                values matching.fields (case.Value.EnumerateArray() |> Seq.toList) []
+              with
+              | ValueSome fields ->
+                TypeChecker.DvalCreator.enum
+                  types
+                  threadID
+                  tst
+                  typeName
+                  typeArgsVT
+                  case.Name
+                  fields
+                |> Ply.trySync
+              | ValueNone -> ValueNone
+            | _ -> ValueNone
+          | _ -> ValueNone
+
+        | _ -> ValueNone
+      | _ -> ValueNone
+
+    | _ -> ValueNone
+
   let parsed =
     try
       Ok(parseJson str)
@@ -917,13 +1025,21 @@ let parse
   match parsed with
   | Error err -> Error err |> Ply
   | Ok parsed ->
-    uply {
+    let quick =
       try
-        let! converted = convert typ [ JsonPath.Part.Root ] parsed
-        return Ok converted
-      with ParseError.JsonException ex ->
-        return Error ex
-    }
+        convertSync typ parsed
+      with _ ->
+        ValueNone
+    match quick with
+    | ValueSome converted -> Ply(Ok converted)
+    | ValueNone ->
+      uply {
+        try
+          let! converted = convert typ [ JsonPath.Part.Root ] parsed
+          return Ok converted
+        with ParseError.JsonException ex ->
+          return Error ex
+      }
 
 
 let fns () : List<BuiltInFn> =
