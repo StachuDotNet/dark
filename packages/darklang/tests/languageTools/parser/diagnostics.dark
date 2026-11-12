@@ -480,3 +480,9 @@ test keywordAsName =
         "a missing name before the next line's `let` gets no keyword hint")
       clean("let ``match`` = \"x\"\n``match``")
       clean("r.``type``") ])
+
+
+test escapedQuoteInsideInterpolation =
+  says(
+    "Stdlib.printLine($\"{f(\\\"x\\\")}\")",
+    "inside `{ }` a string needs no backslashes")

@@ -1136,7 +1136,15 @@ let tokenize
           let endIndex = scanToLineEnd (index + 2)
           let (spannedToken, nextIndex, nextPosition) =
             emit TInterpString index endIndex position
-          addDiagnostic spannedToken.range "unterminated interpolated string"
+          // `\"` inside `{ }` ends the string early; quotes there are code
+          let line = input.Substring(index, endIndex - index)
+          let openBrace = line.IndexOf '{'
+          let message =
+            if openBrace >= 0 && line.IndexOf("\\\"", openBrace) >= 0 then
+              "unterminated interpolated string: inside `{ }` a string needs no backslashes, as in $\"{f(\"x\")}\""
+            else
+              "unterminated interpolated string"
+          addDiagnostic spannedToken.range message
           go nextIndex nextPosition (spannedToken :: tokensRev)
       else
         match refused |> List.tryFind (fun (text, _) -> matchesAt text index) with
