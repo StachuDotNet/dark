@@ -507,7 +507,7 @@ let fns () : List<BuiltInFn> =
               |> resultOk)
             resultError)
       previewable = Impure
-      callEffects = set [ Effect.Http; Effect.Raise ]
+      callEffects = set [ Effect.Http ]
       deprecated = NotDeprecated }
 
 
@@ -570,7 +570,7 @@ let fns () : List<BuiltInFn> =
               |> resultOk)
             resultError)
       previewable = Impure
-      callEffects = set [ Effect.Http; Effect.Raise ]
+      callEffects = set [ Effect.Http ]
       deprecated = NotDeprecated } ]
 
 
