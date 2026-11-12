@@ -583,6 +583,16 @@ test sort =
       |> Stdlib.Test.equal([ 2, 3, 6, 8 ])
       Stdlib.List.sort([]) |> Stdlib.Test.equal([]) ])
 
+test checkedSort =
+  Stdlib.Test.all(
+    [ Stdlib.List.checkedSort([ 6, 2, 8, 3 ]) |> Stdlib.Test.equal(Ok([ 2, 3, 6, 8 ]))
+      Stdlib.List.checkedSort([ "b", "a" ]) |> Stdlib.Test.equal(Ok([ "a", "b" ]))
+      Stdlib.List.checkedSort([]) |> Stdlib.Test.equal(Ok([]))
+      Stdlib.List.checkedSort([ Stdlib.Utf8.encode("b"), Stdlib.Utf8.encode("a") ])
+      |> Stdlib.Test.equal(Error(Stdlib.List.SortError.Unordered))
+      Stdlib.List.checkedSort([ fun x -> x + 1, fun x -> x + 2 ])
+      |> Stdlib.Test.equal(Error(Stdlib.List.SortError.Unordered)) ])
+
 test sortWith =
   let ascending = fun(a, b) ->
     if a < b then Stdlib.Ordering.Less

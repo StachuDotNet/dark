@@ -251,6 +251,69 @@ let private sortByLessThan
   sortK items (fun sorted -> Ply(DList(vt, Items(sorted))))
 
 
+/// <param list> sorted as `List.sort` has it, or the error it raises.
+///
+/// Consistent with `<`: a custom element type with its own `Compare` is sorted by that
+/// implementation's `lessThan`, one interpreted call per comparison, a cost only such a type
+/// pays. Every other list keeps the native structural sort, which builtin types' `Compare`
+/// agrees with, and which is the only order a type without an implementation has.
+let private sorted
+  (exeState : ExecutionState)
+  (vm : VMState)
+  (vt : ValueType)
+  (list : List<Dval>)
+  : Ply<Result<Dval, RTE.Error>> =
+  let structural () =
+    try
+      list
+      |> DvalComparator.sortWith DvalOrdering.compareForSort
+      |> (fun l -> Ok(DList(vt, Items(l))))
+    with
+    | :? DvalUnsortableException as e -> Error(RTE.List(RTE.Lists.CannotSort e.Value))
+    | :? DvalComparisonException as e ->
+      Error(
+        RTE.EqualityCheckOnIncompatibleTypes(
+          Dval.toValueType e.Left,
+          Dval.toValueType e.Right
+        )
+      )
+  match vt, list with
+  | ValueType.Known(KTCustomType _ as self), _ :: _ :: _ ->
+    uply {
+      let compareTrait = Hash(LibExecution.PackageRefs.Trait.Stdlib.Traits.compare ())
+      let! candidates = exeState.fns.implCandidates exeState.branchId compareTrait
+      match LibExecution.Traits.select candidates self with
+      | LibExecution.Traits.Selected c ->
+        match Map.tryFind "lessThan" c.methods with
+        | Some fnHash ->
+          let lessThan =
+            AppNamedFn
+              { name = FQFnName.Package fnHash
+                typeSymbolTable = TST.empty
+                typeArgs = []
+                approvalName = None
+                access = None
+                argsSoFar = []
+                boundImpls = [] }
+          let! sortedList = sortByLessThan vm lessThan vt list
+          return Ok sortedList
+        | None -> return structural ()
+      | LibExecution.Traits.NoImpl -> return structural ()
+      | LibExecution.Traits.Ambiguous cs ->
+        return
+          Error(
+            RTE.Trait(
+              RTE.Traits.DispatchAmbiguous(
+                FQTraitName.Package compareTrait,
+                vt,
+                cs |> List.map (fun c -> c.source)
+              )
+            )
+          )
+    }
+  | _ -> Ply(structural ())
+
+
 let fns () : List<BuiltInFn> =
   [ { name = fn "listFold" 0
       typeParams = []
@@ -458,7 +521,7 @@ let fns () : List<BuiltInFn> =
             items
         | _ -> incorrectArgs ())
       previewable = Pure
-      callEffects = Set.empty
+      callEffects = set [ LibExecution.Effects.Effect.Raise ]
       deprecated = NotDeprecated }
 
 
@@ -877,10 +940,6 @@ let fns () : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
-    // Consistent with `<`: a custom element type with its own `Compare` is sorted by that
-    // implementation's `lessThan`, one interpreted call per comparison, a cost only such a type
-    // pays. Every other list keeps the native structural sort, which builtin types' `Compare`
-    // agrees with, and which is the only order a type without an implementation has.
     { name = fn "listSort" 0
       typeParams = []
       parameters = [ Param.make "list" (TList varA) "" ]
@@ -893,50 +952,36 @@ let fns () : List<BuiltInFn> =
       fn =
         (function
         | exeState, vm, _, [| DList(vt, Items(list)) |] ->
-          let structural () =
-            list
-            |> DvalComparator.sortWith DvalComparator.compareDvalInt
-            |> (fun l -> DList(vt, Items(l)))
-            |> Ply
-          match vt, list with
-          | ValueType.Known(KTCustomType _ as self), _ :: _ :: _ ->
-            uply {
-              let compareTrait =
-                Hash(LibExecution.PackageRefs.Trait.Stdlib.Traits.compare ())
-              let! candidates =
-                exeState.fns.implCandidates exeState.branchId compareTrait
-              match LibExecution.Traits.select candidates self with
-              | LibExecution.Traits.Selected c ->
-                match Map.tryFind "lessThan" c.methods with
-                | Some fnHash ->
-                  let lessThan =
-                    AppNamedFn
-                      { name = FQFnName.Package fnHash
-                        typeSymbolTable = TST.empty
-                        typeArgs = []
-                        approvalName = None
-                        access = None
-                        argsSoFar = []
-                        boundImpls = [] }
-                  return! sortByLessThan vm lessThan vt list
-                | None -> return! structural ()
-              | LibExecution.Traits.NoImpl -> return! structural ()
-              | LibExecution.Traits.Ambiguous cs ->
-                return
-                  RTE.Trait(
-                    RTE.Traits.DispatchAmbiguous(
-                      FQTraitName.Package compareTrait,
-                      vt,
-                      cs |> List.map (fun c -> c.source)
-                    )
-                  )
-                  |> raiseRTE vm.threadID
-            }
-          | _ -> structural ()
+          uply {
+            match! sorted exeState vm vt list with
+            | Ok sortedList -> return sortedList
+            | Error error -> return raiseRTE vm.threadID error
+          }
         | _ -> incorrectArgs ())
       // Impure, like `sortBy`: it can call a person's `Compare` implementation.
       previewable = Impure
       callEffects = set [ LibExecution.Effects.Effect.Raise ]
+      deprecated = NotDeprecated }
+
+
+    { name = fn "listCheckedSort" 0
+      typeParams = []
+      parameters = [ Param.make "list" (TList varA) "" ]
+      returnType = TypeReference.option (TList varA)
+      description =
+        "<fn listSort>, or {{None}} where it raises: a value with no order (Bytes, a function "
+        + "or a stream), or an element type with more than one `Compare`."
+      fn =
+        (function
+        | exeState, vm, _, [| DList(vt, Items(list)) |] ->
+          uply {
+            match! sorted exeState vm vt list with
+            | Ok sortedList -> return Dval.optionSome (KTList vt) sortedList
+            | Error _ -> return Dval.optionNone (KTList vt)
+          }
+        | _ -> incorrectArgs ())
+      previewable = Impure
+      callEffects = Set.empty
       deprecated = NotDeprecated }
 
 
