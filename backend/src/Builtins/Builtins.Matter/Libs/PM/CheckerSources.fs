@@ -84,7 +84,8 @@ let rec private reachIn (expr : PT.Expr) : List<Reach> =
 let private runByBuiltin (b : RT.FQFnName.Builtin) : List<Reach> =
   match b.name with
   // A list of a type with `Compare` sorts by its `lessThan`.
-  | "listSort" ->
+  | "listSort"
+  | "listCheckedSort" ->
     [ Method(PT.Hash(PackageRefs.Trait.Stdlib.Traits.compare ()), "lessThan") ]
   | _ -> []
 
