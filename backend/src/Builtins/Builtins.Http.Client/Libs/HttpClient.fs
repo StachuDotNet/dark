@@ -210,7 +210,7 @@ let fns () : List<BuiltInFn> =
                     ("body", Bytes.newEphemeral response.body) ]
                 Ply(resultOk (DRecord(typ, typ, [], RecordFields.ofList fields)))))
       previewable = Impure
-      callEffects = set [ Effect.Http; Effect.Raise ]
+      callEffects = set [ Effect.Http ]
       deprecated = NotDeprecated }
 
 
@@ -278,7 +278,7 @@ let fns () : List<BuiltInFn> =
                     ("body", body) ]
                 Ply(resultOk (DRecord(typ, typ, [], RecordFields.ofList fields)))))
       previewable = Impure
-      callEffects = set [ Effect.Http; Effect.Raise ]
+      callEffects = set [ Effect.Http ]
       deprecated = NotDeprecated } ]
 
 

@@ -100,7 +100,7 @@ let fns () : List<BuiltInFn> =
           }
         | _ -> incorrectArgs ()
       previewable = Impure
-      callEffects = set [ Effect.Raise ]
+      callEffects = Set.empty
       deprecated = NotDeprecated } ]
 
 
