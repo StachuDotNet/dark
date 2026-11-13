@@ -2083,3 +2083,34 @@ module RangedInts =
           |> Stdlib.Test.equal(true)
           (Stdlib.Json.parse<Stdlib.Net.Port>("\"80\"")) |> Stdlib.Result.isError
           |> Stdlib.Test.equal(true) ])
+
+
+// `Stdlib.AltJson.Json` as a parse target takes any JSON value, so mixed data needs no
+// hand-written decoder; serialize writes it back as the same JSON.
+module AnyJson =
+  type Row = { name: String, extra: Stdlib.AltJson.Json }
+
+  test parseMixedValues =
+    Stdlib.Json.parse<Dict<String, Stdlib.AltJson.Json>>(
+      "{\"a\":1,\"b\":\"x\",\"c\":[true,null],\"d\":{\"e\":1.5}}")
+    |> Stdlib.Test.equal(
+      Ok(
+        Dict
+          { "a": Stdlib.AltJson.Json.Integer(1)
+            "b": Stdlib.AltJson.Json.String("x")
+            "c": Stdlib.AltJson.Json.Array([ Stdlib.AltJson.Json.Bool(true), Stdlib.AltJson.Json.Null ])
+            "d": Stdlib.AltJson.Json.Object([ ("e", Stdlib.AltJson.Json.Float(1.5)) ]) }))
+
+  test aRecordFieldOfAnyShape =
+    Stdlib.Json.parse<List<Row>>("[{\"name\":\"a\",\"extra\":7},{\"name\":\"b\",\"extra\":[\"x\"]}]")
+    |> Stdlib.Test.equal(
+      Ok(
+        [ Row { name = "a", extra = Stdlib.AltJson.Json.Integer(7) }
+          Row { name = "b", extra = Stdlib.AltJson.Json.Array([ Stdlib.AltJson.Json.String("x") ]) } ]))
+
+  test serializeWritesTheJsonItHolds =
+    let text = "[{\"n\":1,\"s\":\"x\",\"o\":{\"z\":null,\"a\":[1.5,false]}}]"
+    Stdlib.Json.parse<List<Stdlib.AltJson.Json>>(text)
+    |> Stdlib.Result.map(fun v -> Stdlib.Json.serialize<List<Stdlib.AltJson.Json>>(v))
+    |> Stdlib.Test.equal(Ok(text))
+

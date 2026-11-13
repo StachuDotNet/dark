@@ -71,7 +71,9 @@ non-zero. Under `--json` a refusal leaves stdout empty, so test the exit code.
   Stdlib.Json.serialize<Profile>(value)
 
 A JSON object parses into a record: extra fields are ignored, and a field that
-may be absent or `null` is an `Option` field.
+may be absent or `null` is an `Option` field. A value of any JSON type, as in
+data that mixes numbers and strings, is a `Stdlib.AltJson.Json`:
+`Stdlib.Json.parse<List<Dict<String, Stdlib.AltJson.Json>>>(text)`.
 
 Files and the network are denied until allowed. One step covers a project:
 

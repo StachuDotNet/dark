@@ -80,6 +80,7 @@ module JsonPath =
 
   type JsonPath = List<Part.Part>
 
+
   let toDT (path : JsonPath) : Dval =
     let partType = VT.customType (Part.typeName ()) []
     path |> List.map Part.toDT |> (fun parts -> DList(partType, Items(parts)))
@@ -128,6 +129,39 @@ module RangedInt =
 
   let make (typeName : FQTypeName.FQTypeName) (range : Range) (n : int64) : Dval =
     DRecord(typeName, typeName, [], RecordFields.ofList [ range.field, DInt64 n ])
+
+
+/// `Stdlib.AltJson.Json`: any JSON value. Asked for by name in `parse<'a>`, it takes whatever is
+/// there, so a record or dict can hold a field of mixed or unknown shape; `serialize` writes it back
+/// as that JSON.
+module AnyJson =
+  let isIt (h : string) : bool = h = PackageRefs.Type.Stdlib.AltJson.json ()
+
+  let typeName () = FQTypeName.fqPackage (PackageRefs.Type.Stdlib.AltJson.json ())
+
+  let rec ofElement (j : JsonElement) : Dval =
+    let typeName = typeName ()
+    let make caseName fields = DEnum(typeName, typeName, [], caseName, fields)
+    match j.ValueKind with
+    | JsonValueKind.Null -> make "Null" []
+    | JsonValueKind.True -> make "Bool" [ DBool true ]
+    | JsonValueKind.False -> make "Bool" [ DBool false ]
+    | JsonValueKind.Number ->
+      match j.TryGetInt64() with
+      | true, n -> make "Integer" [ DInt64 n ]
+      | false, _ -> make "Float" [ DFloat(j.GetDouble()) ]
+    | JsonValueKind.String -> make "String" [ DString(j.GetString()) ]
+    | JsonValueKind.Array ->
+      let items = j.EnumerateArray() |> Seq.map ofElement |> Seq.toList
+      make "Array" [ DList(VT.customType typeName [], Items(items)) ]
+    | _ ->
+      let fields =
+        j.EnumerateObject()
+        |> Seq.map (fun p -> DTuple(DString p.Name, ofElement p.Value, []))
+        |> Seq.toList
+      make
+        "Object"
+        [ DList(VT.tuple VT.string (VT.customType typeName []) [], Items(fields)) ]
 
 
 /// The value `serialize` found with no JSON form.
@@ -192,6 +226,26 @@ let rec serialize (w : Utf8JsonWriter) (dv : Dval) : unit =
           w.WritePropertyName k
           r v
         | _ -> raise (CannotSerialize dv)))
+
+  | DEnum(FQTypeName.Package(Hash h), _, _, caseName, fields) when AnyJson.isIt h ->
+    match caseName, fields with
+    | "Null", [] -> w.WriteNullValue()
+    | "Bool", [ b ] -> r b
+    | "Integer", [ n ] -> r n
+    | "Float", [ f ] -> r f
+    | "String", [ str ] -> r str
+    | "Array", [ DList(_, Items(items)) ] ->
+      w.writeArray (fun () -> List.iter r items)
+    | "Object", [ DList(_, Items(pairs)) ] ->
+      w.writeObject (fun () ->
+        pairs
+        |> List.iter (fun pair ->
+          match pair with
+          | DTuple(DString k, v, []) ->
+            w.WritePropertyName k
+            r v
+          | _ -> raise (CannotSerialize dv)))
+    | _ -> raise (CannotSerialize dv)
 
   // Enums and Records
   | DEnum(_, _, _, caseName, fields) ->
@@ -663,6 +717,11 @@ let parse
       |> Seq.toList
       |> Ply.List.flatten
       |> Ply.map (TypeChecker.DvalCreator.dict threadID VT.string VT.unknownTODO)
+
+    | TCustomType({ resolved = Ok(FQTypeName.Package(Hash h)) }, []), _ when
+      AnyJson.isIt h
+      ->
+      AnyJson.ofElement j |> Ply
 
     | TCustomType({ resolved = Ok typeName }, _), jsonValueKind when
       (RangedInt.find typeName).IsSome
