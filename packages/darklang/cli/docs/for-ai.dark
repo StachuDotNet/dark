@@ -68,6 +68,7 @@ non-zero. Under `--json` a refusal leaves stdout empty, so test the exit code.
   Stdlib.String.splitOnNewline(text)
   Stdlib.HttpClient.get(url, [("user-agent", "me")]) # r.statusCode, r.body (Bytes)
   Stdlib.Utf8.decode(r.body)                         # Result<String, String>
+  Stdlib.Bytes.readUInt32(b, i, Stdlib.Bytes.Endianness.LittleEndian) # Option; also readInt8..readInt64, readFloat64
   Stdlib.Json.parse<Profile>(text)                   # Result<Profile, ParseError>
   Stdlib.Json.serialize<Profile>(value)
 

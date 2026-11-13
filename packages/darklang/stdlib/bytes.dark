@@ -27,6 +27,106 @@ let getAt(bytes: Bytes, index: Int64): Stdlib.Option.Option<UInt8> =
   Builtin.bytesGetAt(bytes, index)
 
 
+/// The byte order of a number stored in <type Bytes>.
+type Endianness =
+  /// Least significant byte first.
+  | LittleEndian
+  /// Most significant byte first.
+  | BigEndian
+
+
+/// Returns {{Some}} the byte at <param offset> in <param bytes>, or {{None}}
+/// if <param offset> is out of range.
+let readUInt8(bytes: Bytes, offset: Int64): Stdlib.Option.Option<UInt8> =
+  Builtin.bytesReadUInt8(bytes, offset)
+
+
+/// Returns {{Some}} the byte at <param offset> in <param bytes> as a signed
+/// number, or {{None}} if <param offset> is out of range.
+let readInt8(bytes: Bytes, offset: Int64): Stdlib.Option.Option<Int8> =
+  Builtin.bytesReadInt8(bytes, offset)
+
+
+/// Returns {{Some}} the UInt16 in the 2 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readUInt16(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<UInt16> =
+  Builtin.bytesReadUInt16(bytes, offset, endianness == Endianness.BigEndian)
+
+
+/// Returns {{Some}} the Int16 in the 2 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readInt16(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<Int16> =
+  Builtin.bytesReadInt16(bytes, offset, endianness == Endianness.BigEndian)
+
+
+/// Returns {{Some}} the UInt32 in the 4 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readUInt32(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<UInt32> =
+  Builtin.bytesReadUInt32(bytes, offset, endianness == Endianness.BigEndian)
+
+
+/// Returns {{Some}} the Int32 in the 4 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readInt32(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<Int32> =
+  Builtin.bytesReadInt32(bytes, offset, endianness == Endianness.BigEndian)
+
+
+/// Returns {{Some}} the UInt64 in the 8 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readUInt64(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<UInt64> =
+  Builtin.bytesReadUInt64(bytes, offset, endianness == Endianness.BigEndian)
+
+
+/// Returns {{Some}} the Int64 in the 8 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readInt64(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<Int64> =
+  Builtin.bytesReadInt64(bytes, offset, endianness == Endianness.BigEndian)
+
+
+/// Returns {{Some}} the Float32 in the 4 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readFloat32(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<Float32> =
+  Builtin.bytesReadFloat32(bytes, offset, endianness == Endianness.BigEndian)
+
+
+/// Returns {{Some}} the Float in the 8 bytes at <param offset> in <param bytes>,
+/// in <param endianness> order, or {{None}} if they don't all fit.
+let readFloat64(
+  bytes: Bytes,
+  offset: Int64,
+  endianness: Endianness)
+  : Stdlib.Option.Option<Float> =
+  Builtin.bytesReadFloat64(bytes, offset, endianness == Endianness.BigEndian)
+
+
 /// Returns {{Some index}} of the first <param byte> in <param bytes> at or
 /// after <param start>, or {{None}} if there is none.
 let indexOfFrom(

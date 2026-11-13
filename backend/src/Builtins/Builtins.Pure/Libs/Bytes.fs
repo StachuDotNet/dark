@@ -11,6 +11,147 @@ module Dval = LibExecution.Dval
 module Bytes = LibExecution.Bytes
 
 
+type private BP = System.Buffers.Binary.BinaryPrimitives
+
+
+type private SpanReader = delegate of System.ReadOnlySpan<byte> -> Dval
+
+let private span (bs : byte[]) (start : int) (width : int) =
+  System.ReadOnlySpan<byte>(bs, start, width)
+
+// reads straight from the stored array, so in-memory bytes aren't copied
+let private readAt
+  (state : ExecutionState)
+  (ref : BytesRef)
+  (offset : int64)
+  (width : int)
+  (kt : KnownType)
+  (read : byte[] -> int -> Dval)
+  : Ply<Dval> =
+  let fits (length : int64) = offset >= 0L && offset <= length - int64 width
+  match ref with
+  | Ephemeral eph ->
+    if fits (int64 eph.count) then
+      Ply(Dval.optionSome kt (read eph.buffer (eph.offset + int offset)))
+    else
+      Ply(Dval.optionNone kt)
+  | _ ->
+    Bytes.withBytes state ref (fun bs ->
+      if fits (int64 bs.Length) then
+        Ply(Dval.optionSome kt (read bs (int offset)))
+      else
+        Ply(Dval.optionNone kt))
+
+let private byteReader
+  (name : string)
+  (typ : TypeReference)
+  (kt : KnownType)
+  (read : byte -> Dval)
+  : BuiltInFn =
+  { name = fn name 0
+    typeParams = []
+    parameters = [ Param.make "bytes" TBytes ""; Param.make "offset" TInt64 "" ]
+    returnType = TypeReference.option typ
+    description =
+      "Returns {{Some}} the byte at <param offset> in <param bytes>, or {{None}} if out of bounds."
+    fn =
+      (function
+      | state, _, _, [| DBytes ref; DInt64 offset |] ->
+        readAt state ref offset 1 kt (fun bs i -> read bs[i])
+      | _ -> incorrectArgs ())
+    previewable = Pure
+    callEffects = Set.empty
+    deprecated = NotDeprecated }
+
+let private numberReader
+  (name : string)
+  (typ : TypeReference)
+  (kt : KnownType)
+  (width : int)
+  (readLittle : SpanReader)
+  (readBig : SpanReader)
+  : BuiltInFn =
+  { name = fn name 0
+    typeParams = []
+    parameters =
+      [ Param.make "bytes" TBytes ""
+        Param.make "offset" TInt64 ""
+        Param.make "bigEndian" TBool "" ]
+    returnType = TypeReference.option typ
+    description =
+      $"Returns {{{{Some}}}} the number in the {width} bytes at <param offset> in <param bytes>, or {{{{None}}}} if they are out of bounds."
+    fn =
+      (function
+      | state, _, _, [| DBytes ref; DInt64 offset; DBool bigEndian |] ->
+        let read = if bigEndian then readBig else readLittle
+        readAt state ref offset width kt (fun bs i -> read.Invoke(span bs i width))
+      | _ -> incorrectArgs ())
+    previewable = Pure
+    callEffects = Set.empty
+    deprecated = NotDeprecated }
+
+
+let private readers () : List<BuiltInFn> =
+  [ byteReader "bytesReadUInt8" TUInt8 KTUInt8 Dval.uint8
+    byteReader "bytesReadInt8" TInt8 KTInt8 (fun b -> Dval.int8 (int8 b))
+    numberReader
+      "bytesReadUInt16"
+      TUInt16
+      KTUInt16
+      2
+      (SpanReader(fun s -> DUInt16(BP.ReadUInt16LittleEndian s)))
+      (SpanReader(fun s -> DUInt16(BP.ReadUInt16BigEndian s)))
+    numberReader
+      "bytesReadInt16"
+      TInt16
+      KTInt16
+      2
+      (SpanReader(fun s -> DInt16(BP.ReadInt16LittleEndian s)))
+      (SpanReader(fun s -> DInt16(BP.ReadInt16BigEndian s)))
+    numberReader
+      "bytesReadUInt32"
+      TUInt32
+      KTUInt32
+      4
+      (SpanReader(fun s -> DUInt32(BP.ReadUInt32LittleEndian s)))
+      (SpanReader(fun s -> DUInt32(BP.ReadUInt32BigEndian s)))
+    numberReader
+      "bytesReadInt32"
+      TInt32
+      KTInt32
+      4
+      (SpanReader(fun s -> DInt32(BP.ReadInt32LittleEndian s)))
+      (SpanReader(fun s -> DInt32(BP.ReadInt32BigEndian s)))
+    numberReader
+      "bytesReadUInt64"
+      TUInt64
+      KTUInt64
+      8
+      (SpanReader(fun s -> DUInt64(BP.ReadUInt64LittleEndian s)))
+      (SpanReader(fun s -> DUInt64(BP.ReadUInt64BigEndian s)))
+    numberReader
+      "bytesReadInt64"
+      TInt64
+      KTInt64
+      8
+      (SpanReader(fun s -> Dval.dint64 (BP.ReadInt64LittleEndian s)))
+      (SpanReader(fun s -> Dval.dint64 (BP.ReadInt64BigEndian s)))
+    numberReader
+      "bytesReadFloat32"
+      TFloat32
+      KTFloat32
+      4
+      (SpanReader(fun s -> DFloat32(BP.ReadSingleLittleEndian s)))
+      (SpanReader(fun s -> DFloat32(BP.ReadSingleBigEndian s)))
+    numberReader
+      "bytesReadFloat64"
+      TFloat
+      KTFloat
+      8
+      (SpanReader(fun s -> DFloat(BP.ReadDoubleLittleEndian s)))
+      (SpanReader(fun s -> DFloat(BP.ReadDoubleBigEndian s))) ]
+
+
 // Bytes dereferencing is value materialization, including reads of persistent
 // bytes from the host-owned blob store. It has no call effect; see
 // docs/effects.md for the local-storage boundary and its limits.
@@ -333,4 +474,4 @@ let values () : List<BuiltInValue> =
       body = DBytes(Persistent(Bytes.emptyHash, 0L)) } ]
 
 
-let builtins () = LibExecution.Builtin.make (values ()) (fns ())
+let builtins () = LibExecution.Builtin.make (values ()) (fns () @ readers ())
