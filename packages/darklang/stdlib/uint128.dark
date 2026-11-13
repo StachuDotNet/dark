@@ -220,3 +220,56 @@ let checkedDivide(
 /// where `%` raises
 let checkedMod(a: UInt128, b: UInt128): Stdlib.Result.Result<UInt128, Stdlib.Math.ModulusError> =
   if b == 0u128 then Error(Stdlib.Math.ModulusError.ZeroModulus) else Ok(a % b)
+
+
+/// Converts a <type Int8> to a <type UInt128>, returning {{None}} if it doesn't fit
+let fromInt8(a: Int8): Stdlib.Option.Option<UInt128> = Stdlib.BigInt.toUInt128(Stdlib.BigInt.fromInt8(a))
+
+
+/// Converts a <type Int16> to a <type UInt128>, returning {{None}} if it doesn't fit
+let fromInt16(a: Int16): Stdlib.Option.Option<UInt128> = Stdlib.BigInt.toUInt128(Stdlib.BigInt.fromInt16(a))
+
+
+/// Converts a <type Int32> to a <type UInt128>, returning {{None}} if it doesn't fit
+let fromInt32(a: Int32): Stdlib.Option.Option<UInt128> = Stdlib.BigInt.toUInt128(Stdlib.BigInt.fromInt32(a))
+
+
+/// Converts a <type Int64> to a <type UInt128>, returning {{None}} if it doesn't fit
+let fromInt64(a: Int64): Stdlib.Option.Option<UInt128> = Stdlib.BigInt.toUInt128(Stdlib.BigInt.fromInt64(a))
+
+
+/// Converts a <type Int128> to a <type UInt128>, returning {{None}} if it doesn't fit
+let fromInt128(a: Int128): Stdlib.Option.Option<UInt128> = Stdlib.BigInt.toUInt128(Stdlib.BigInt.fromInt128(a))
+
+/// Converts a <type UInt128> to a <type Int8>, returning {{None}} if it doesn't fit
+let toInt8(a: UInt128): Stdlib.Option.Option<Int8> = Stdlib.Int8.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type UInt8>, returning {{None}} if it doesn't fit
+let toUInt8(a: UInt128): Stdlib.Option.Option<UInt8> = Stdlib.UInt8.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type Int16>, returning {{None}} if it doesn't fit
+let toInt16(a: UInt128): Stdlib.Option.Option<Int16> = Stdlib.Int16.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type UInt16>, returning {{None}} if it doesn't fit
+let toUInt16(a: UInt128): Stdlib.Option.Option<UInt16> = Stdlib.UInt16.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type Int32>, returning {{None}} if it doesn't fit
+let toInt32(a: UInt128): Stdlib.Option.Option<Int32> = Stdlib.Int32.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type UInt32>, returning {{None}} if it doesn't fit
+let toUInt32(a: UInt128): Stdlib.Option.Option<UInt32> = Stdlib.UInt32.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type Int64>, returning {{None}} if it doesn't fit
+let toInt64(a: UInt128): Stdlib.Option.Option<Int64> = Stdlib.Int64.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type UInt64>, returning {{None}} if it doesn't fit
+let toUInt64(a: UInt128): Stdlib.Option.Option<UInt64> = Stdlib.UInt64.fromUInt128(a)
+
+/// Converts a <type UInt128> to a <type Int128>, returning {{None}} if it doesn't fit
+let toInt128(a: UInt128): Stdlib.Option.Option<Int128> = Stdlib.Int128.fromUInt128(a)
+
+/// Converts a <type UInt128> to an arbitrary-precision <type BigInt>
+let toBigInt(a: UInt128): BigInt = Stdlib.BigInt.fromUInt128(a)
+
+/// Converts a <type BigInt> to a <type UInt128>, returning {{None}} if it doesn't fit
+let fromBigInt(a: BigInt): Stdlib.Option.Option<UInt128> = Stdlib.BigInt.toUInt128(a)

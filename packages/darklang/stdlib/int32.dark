@@ -289,3 +289,36 @@ let checkedMod(a: Int32, b: Int32): Stdlib.Result.Result<Int32, Stdlib.Math.Modu
     Error(Stdlib.Math.ModulusError.NegativeModulus)
   else
     Ok(a % b)
+
+/// Converts a <type Int32> to a <type Int8>, returning {{None}} if it doesn't fit
+let toInt8(a: Int32): Stdlib.Option.Option<Int8> = Stdlib.Int8.fromInt32(a)
+
+/// Converts a <type Int32> to a <type UInt8>, returning {{None}} if it doesn't fit
+let toUInt8(a: Int32): Stdlib.Option.Option<UInt8> = Stdlib.UInt8.fromInt32(a)
+
+/// Converts a <type Int32> to a <type Int16>, returning {{None}} if it doesn't fit
+let toInt16(a: Int32): Stdlib.Option.Option<Int16> = Stdlib.Int16.fromInt32(a)
+
+/// Converts a <type Int32> to a <type UInt16>, returning {{None}} if it doesn't fit
+let toUInt16(a: Int32): Stdlib.Option.Option<UInt16> = Stdlib.UInt16.fromInt32(a)
+
+/// Converts a <type Int32> to a <type UInt32>, returning {{None}} if it doesn't fit
+let toUInt32(a: Int32): Stdlib.Option.Option<UInt32> = Stdlib.UInt32.fromInt32(a)
+
+/// Converts a <type Int32> to a <type Int64>
+let toInt64(a: Int32): Int64 = Stdlib.Int64.fromInt32(a)
+
+/// Converts a <type Int32> to a <type UInt64>, returning {{None}} if it doesn't fit
+let toUInt64(a: Int32): Stdlib.Option.Option<UInt64> = Stdlib.UInt64.fromInt32(a)
+
+/// Converts a <type Int32> to a <type Int128>
+let toInt128(a: Int32): Int128 = Stdlib.Int128.fromInt32(a)
+
+/// Converts a <type Int32> to a <type UInt128>, returning {{None}} if it doesn't fit
+let toUInt128(a: Int32): Stdlib.Option.Option<UInt128> = Stdlib.UInt128.fromInt32(a)
+
+/// Converts a <type Int32> to an arbitrary-precision <type BigInt>
+let toBigInt(a: Int32): BigInt = Stdlib.BigInt.fromInt32(a)
+
+/// Converts a <type BigInt> to a <type Int32>, returning {{None}} if it doesn't fit
+let fromBigInt(a: BigInt): Stdlib.Option.Option<Int32> = Stdlib.BigInt.toInt32(a)

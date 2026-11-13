@@ -285,3 +285,36 @@ let checkedMod(a: Int8, b: Int8): Stdlib.Result.Result<Int8, Stdlib.Math.Modulus
     Error(Stdlib.Math.ModulusError.NegativeModulus)
   else
     Ok(a % b)
+
+/// Converts a <type Int8> to a <type UInt8>, returning {{None}} if it doesn't fit
+let toUInt8(a: Int8): Stdlib.Option.Option<UInt8> = Stdlib.UInt8.fromInt8(a)
+
+/// Converts a <type Int8> to a <type Int16>
+let toInt16(a: Int8): Int16 = Stdlib.Int16.fromInt8(a)
+
+/// Converts a <type Int8> to a <type UInt16>, returning {{None}} if it doesn't fit
+let toUInt16(a: Int8): Stdlib.Option.Option<UInt16> = Stdlib.UInt16.fromInt8(a)
+
+/// Converts a <type Int8> to a <type Int32>
+let toInt32(a: Int8): Int32 = Stdlib.Int32.fromInt8(a)
+
+/// Converts a <type Int8> to a <type UInt32>, returning {{None}} if it doesn't fit
+let toUInt32(a: Int8): Stdlib.Option.Option<UInt32> = Stdlib.UInt32.fromInt8(a)
+
+/// Converts a <type Int8> to a <type Int64>
+let toInt64(a: Int8): Int64 = Stdlib.Int64.fromInt8(a)
+
+/// Converts a <type Int8> to a <type UInt64>, returning {{None}} if it doesn't fit
+let toUInt64(a: Int8): Stdlib.Option.Option<UInt64> = Stdlib.UInt64.fromInt8(a)
+
+/// Converts a <type Int8> to a <type Int128>
+let toInt128(a: Int8): Int128 = Stdlib.Int128.fromInt8(a)
+
+/// Converts a <type Int8> to a <type UInt128>, returning {{None}} if it doesn't fit
+let toUInt128(a: Int8): Stdlib.Option.Option<UInt128> = Stdlib.UInt128.fromInt8(a)
+
+/// Converts a <type Int8> to an arbitrary-precision <type BigInt>
+let toBigInt(a: Int8): BigInt = Stdlib.BigInt.fromInt8(a)
+
+/// Converts a <type BigInt> to a <type Int8>, returning {{None}} if it doesn't fit
+let fromBigInt(a: BigInt): Stdlib.Option.Option<Int8> = Stdlib.BigInt.toInt8(a)

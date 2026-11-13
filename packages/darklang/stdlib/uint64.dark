@@ -270,3 +270,36 @@ let checkedDivide(a: UInt64, b: UInt64): Stdlib.Result.Result<UInt64, Stdlib.Mat
 /// where `%` raises
 let checkedMod(a: UInt64, b: UInt64): Stdlib.Result.Result<UInt64, Stdlib.Math.ModulusError> =
   if b == 0u64 then Error(Stdlib.Math.ModulusError.ZeroModulus) else Ok(a % b)
+
+/// Converts a <type UInt64> to a <type Int8>, returning {{None}} if it doesn't fit
+let toInt8(a: UInt64): Stdlib.Option.Option<Int8> = Stdlib.Int8.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type UInt8>, returning {{None}} if it doesn't fit
+let toUInt8(a: UInt64): Stdlib.Option.Option<UInt8> = Stdlib.UInt8.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type Int16>, returning {{None}} if it doesn't fit
+let toInt16(a: UInt64): Stdlib.Option.Option<Int16> = Stdlib.Int16.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type UInt16>, returning {{None}} if it doesn't fit
+let toUInt16(a: UInt64): Stdlib.Option.Option<UInt16> = Stdlib.UInt16.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type Int32>, returning {{None}} if it doesn't fit
+let toInt32(a: UInt64): Stdlib.Option.Option<Int32> = Stdlib.Int32.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type UInt32>, returning {{None}} if it doesn't fit
+let toUInt32(a: UInt64): Stdlib.Option.Option<UInt32> = Stdlib.UInt32.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type Int64>, returning {{None}} if it doesn't fit
+let toInt64(a: UInt64): Stdlib.Option.Option<Int64> = Stdlib.Int64.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type Int128>
+let toInt128(a: UInt64): Int128 = Stdlib.Int128.fromUInt64(a)
+
+/// Converts a <type UInt64> to a <type UInt128>
+let toUInt128(a: UInt64): UInt128 = Stdlib.UInt128.fromUInt64(a)
+
+/// Converts a <type UInt64> to an arbitrary-precision <type BigInt>
+let toBigInt(a: UInt64): BigInt = Stdlib.BigInt.fromUInt64(a)
+
+/// Converts a <type BigInt> to a <type UInt64>, returning {{None}} if it doesn't fit
+let fromBigInt(a: BigInt): Stdlib.Option.Option<UInt64> = Stdlib.BigInt.toUInt64(a)
