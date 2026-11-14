@@ -508,7 +508,10 @@ let execute(state: AppState, args: List<String>): AppState =
           Stdlib.printLine("")
           listing(acc, Option.Some(filter)))
 
-    if finalState.exitCode == 0 && Stdlib.Bool.not(parsed.includeTypes) then
+    if
+      Stdlib.Cli.Posix.ExitCode.isSuccess(finalState.exitCode)
+      && Stdlib.Bool.not(parsed.includeTypes)
+    then
       Stdlib.printErrorLine(
         Stdlib.Cli.UI.Colors.hint(
           "Use --types to include type definitions. `view <name>` shows source/docs."))

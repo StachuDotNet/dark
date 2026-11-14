@@ -217,7 +217,7 @@ val addUsage = "Usage: test add <location> <body> | <source-file> | -"
 let addFailed(state: AppState, message: String): AppState =
   printErr(message)
   Stdlib.printErrorLine(addUsage)
-  { state with exitCode = 1 }
+  { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 /// `test add`: author one test at <param locationStr>. <param definition> is
@@ -243,7 +243,7 @@ let addTest(state: AppState, locationStr: String, definition: String): AppState 
     | Some(SourceFile(sourceFile)) ->
       // The parser may recover a tree after errors; do not save it.
       if Errors.reportParseErrors(diagnostics) then
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       else
         match sourceFile.declarations with
         | [Test(written)] ->
@@ -257,7 +257,7 @@ let addTest(state: AppState, locationStr: String, definition: String): AppState 
               location,
               LanguageTools.ProgramTypes.ItemKind.Test,
               "test",
-              { state with exitCode = 1 },
+              { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure },
               0,
               fun ctx ->
                 let (packageTest, unresolvedNames) =
@@ -294,7 +294,7 @@ let execute(state: AppState, args: List<String>): AppState =
     state
   | _ ->
     Stdlib.printLine(usage)
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 /// `dark test run [--force] [--jobs <count>] [filters]`: run the matching tests, from the cache
@@ -501,7 +501,7 @@ let runTestsInRun(
   | Error(message) ->
     printErr(message)
     Stdlib.printErrorLine(usage)
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Ok(options) ->
     // Filtered by whole name segments. Not the package search's text match:
     // that is fuzzy, so `WbTests.R` matched every test in every `Tests` module.
@@ -555,7 +555,10 @@ let runTestsInRun(
       Stdlib.printLine(
         $"{Stdlib.display(total)} test groups ({Stdlib.display(counts.tests)} tests): {Stdlib.display(counts.passed)} passed, {Stdlib.display(counts.failed)} failed; {Stdlib.display(counts.ran)} ran, {Stdlib.display(counts.cached)} cached; {Stdlib.display(counts.isolated)} isolated{reranNote}")
 
-    if counts.failed > 0 || total == 0 then { state with exitCode = 1 } else state
+    if counts.failed > 0 || total == 0 then
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
+    else
+      state
 
 
 /// One row of `test count`: a submodule with everything beneath it, or one test group.
@@ -657,7 +660,7 @@ let countTests(state: AppState, args: List<String>): AppState =
   let badArgs(message: String): AppState =
     printErr(message)
     Stdlib.printErrorLine(usage)
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
   match rest with
   | [_, _, ...] -> badArgs("test count takes at most one module")
@@ -684,7 +687,7 @@ let countTests(state: AppState, args: List<String>): AppState =
     | None ->
       if Stdlib.List.isEmpty(under) then
         printErr($"No package tests under {place}.")
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       else
         printCounts(place, prefix, under)
         state
@@ -692,7 +695,7 @@ let countTests(state: AppState, args: List<String>): AppState =
       match Deps.resolvePath(branchId, state.packageData.currentLocation, item) with
       | Error(message) ->
         printErr(message)
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | Ok((_, loc, name, kind)) ->
         let users =
           Deps.getTransitiveDependentsFor(branchId, [ (loc, kind) ])

@@ -64,7 +64,9 @@ let create(): Stdlib.Result.Result<T, String> =
           ".",
           $"sqlite3 -cmd '.timeout 10000' {src} '.backup {dir}/data.db' && sqlite3 {dir}/data.db 'DELETE FROM config_v0;'")
 
-      if copy.exitCode != 0 then
+      if
+        Stdlib.Bool.not(Stdlib.Cli.Posix.ExitCode.isSuccess(copy.exitCode))
+      then
         Stdlib.Result.Result.Error(
           $"could not seed {dir} from {src}: {copy.stderr}")
       else
@@ -178,7 +180,7 @@ let expectExit(i: T, args: List<String>, expected: Int64): Stdlib.Test.Result =
   match run(i, args) with
   | Error(e) -> Stdlib.Test.fail($"`{cmd}` could not run: {e}")
   | Ok(out) ->
-    if out.exitCode == expected then
+    if Stdlib.Cli.Posix.ExitCode.toInt64(out.exitCode) == expected then
       Stdlib.Test.Result.Pass
     else
       let got = Stdlib.display(out.exitCode)
@@ -194,7 +196,8 @@ let expectExit(i: T, args: List<String>, expected: Int64): Stdlib.Test.Result =
 let ran(i: T, args: List<String>): (Int64 * String) =
   match run(i, args) with
   | Error(e) -> (-1, $"could not run: {e}")
-  | Ok(out) -> (out.exitCode, out.stdout + out.stderr)
+  | Ok(out) ->
+    (Stdlib.Cli.Posix.ExitCode.toInt64(out.exitCode), out.stdout + out.stderr)
 
 
 /// Everything a command printed, both streams. See `ran`.

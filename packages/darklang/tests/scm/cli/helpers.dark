@@ -40,7 +40,11 @@ let runWithEnv(
           args,
           Stdlib.List.concat(Cli.Tests.Instance.env(dark), env)) with
   | Error(e) -> (-1, "", $"could not run: {e}")
-  | Ok(out) -> (out.exitCode, out.stdout, out.stdout + out.stderr)
+  | Ok(out) ->
+    (
+      Stdlib.Cli.Posix.ExitCode.toInt64(out.exitCode),
+      out.stdout,
+      out.stdout + out.stderr)
 
 
 let exec(

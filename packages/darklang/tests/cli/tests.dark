@@ -821,12 +821,12 @@ test notFoundSuggestsTheEnclosingStdlibName =
   let unprefixed = evalOutcome("Int64.toString(5)")
   let nowhere = evalOutcome("Stdlib.Nope.zzz(5)")
   if
-    moved.exitCode != 0
+    Stdlib.Bool.not(Stdlib.Cli.Posix.ExitCode.isSuccess(moved.exitCode))
     && Stdlib.String.contains(moved.stderr, "Did you mean `Stdlib.display`?")
     && Stdlib.String.contains(
       unprefixed.stderr,
       "Did you mean `Stdlib.display`?")
-    && nowhere.exitCode != 0
+    && Stdlib.Bool.not(Stdlib.Cli.Posix.ExitCode.isSuccess(nowhere.exitCode))
     && Stdlib.String.contains(nowhere.stderr, "Stdlib.Nope.zzz not found")
     && Stdlib.Bool.not(Stdlib.String.contains(nowhere.stderr, "Did you mean"))
   then
@@ -973,7 +973,7 @@ test int64ModSuggestsPercent =
   let evaluated = evalOutcome("Stdlib.Int64.mod(7, 3)")
   let searched = runWithBothStreams([ "search", "Int64.mod", "--fn" ])
   if
-    evaluated.exitCode != 0
+    Stdlib.Bool.not(Stdlib.Cli.Posix.ExitCode.isSuccess(evaluated.exitCode))
     && Stdlib.String.contains(evaluated.stderr, "Did you mean `a % b`?")
     && Stdlib.String.contains(searched, "Int64.mod is the operator: a % b")
   then
@@ -1012,7 +1012,7 @@ test notFoundSuggestsNamesSpelledNear =
 
   let _ = runWithCommand([ "branch", "archive", branchName, "-y" ])
   if
-    evaluated.exitCode != 0
+    Stdlib.Bool.not(Stdlib.Cli.Posix.ExitCode.isSuccess(evaluated.exitCode))
     && Stdlib.String.contains(
       evaluated.stderr,
       "Did you mean `Stdlib.List.length`?")
@@ -1726,14 +1726,15 @@ module ModuleSave =
       |> Builtin.unwrap
 
     Stdlib.Test.all(
-      [ result.exitCode |> Stdlib.Test.equal(1)
+      [ result.exitCode |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure)
 
         Stdlib.String.contains(result.stderr, "Invalid name: Circle")
         |> Stdlib.Test.equal(true)
 
-        viewed.exitCode |> Stdlib.Test.equal(1)
+        viewed.exitCode |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure)
 
-        shape.exitCode |> Stdlib.Test.equal(1) ]))
+        shape.exitCode
+        |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure) ]))
 
 
   test unresolvedNamesExitNonzeroAndKeepDraft = Instance.withInstance(fun i ->
@@ -1742,12 +1743,12 @@ module ModuleSave =
       Instance.run(i, [ "view", "Tests.ModuleSaveProbe.f" ]) |> Builtin.unwrap
 
     Stdlib.Test.all(
-      [ result.exitCode |> Stdlib.Test.equal(1)
+      [ result.exitCode |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure)
 
         Stdlib.String.contains(result.stderr, "UnresolvedValueName")
         |> Stdlib.Test.equal(true)
 
-        viewed.exitCode |> Stdlib.Test.equal(0)
+        viewed.exitCode |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.success)
 
         Stdlib.String.contains(viewed.stdout, "notYet")
         |> Stdlib.Test.equal(true) ]))
@@ -1755,7 +1756,7 @@ module ModuleSave =
 
   test checkedSaveExitsZero = Instance.withInstance(fun i ->
     let result = save(i, "let f(): Int64 = 42")
-    result.exitCode |> Stdlib.Test.equal(0))
+    result.exitCode |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.success))
 
 
   // The checker can run out of depth even when the code is valid.

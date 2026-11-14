@@ -514,7 +514,7 @@ module Registry =
             (fun(state, args) ->
                Stdlib.printErrorLine(View.formatError($"Unknown command: {name}"))
                Stdlib.printErrorLine("Use 'help' to see available commands.")
-               { state with exitCode = 1 })
+               { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure })
           help = (fun _state -> $"No help available for command: {name}")
           complete = (fun(_state, _args) -> []) }
 
@@ -549,7 +549,7 @@ module Registry =
       | Some(why) ->
         printErr(why)
         printHint($"  `dark {name} --help` shows what it takes.")
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | None ->
         let ex = handler.execute
         ex(state, args)

@@ -1512,7 +1512,7 @@ let executeReplay(state: AppState, traceID: String): AppState =
     Stderr.line($"rerunning {Text.shortIdText(traceID)}: {Text.oneLine(source)}")
     Stderr.line("")
     let result = TraceVerbs.executeScriptOrEval(state, input)
-    if result.exitCode == 0 then
+    if Stdlib.Cli.Posix.ExitCode.isSuccess(result.exitCode) then
       Stderr.line("")
       Stderr.line("rerun complete; it was kept as a trace of its own (`dark traces` lists it)")
     else

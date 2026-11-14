@@ -39,6 +39,7 @@ test shellQuote =
 // A child on this process's own terminal still hands back its exit code.
 test inheritedChildExitCode =
   Stdlib.Cli.Process.__childInteractive("/bin/sh", [ "-c", "exit 5" ])
+  |> Stdlib.Result.map(Stdlib.Cli.Posix.ExitCode.toInt64)
   |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(5))
 
 
@@ -46,7 +47,11 @@ test capturesOutputAndExit =
   (match Stdlib.Cli.Process.run(
            "/bin/sh",
            [ "-c", "printf out; printf err >&2; exit 7" ]) with
-   | Ok(output) -> (output.exitCode, output.stdout, output.stderr)
+   | Ok(output) ->
+     (
+       Stdlib.Cli.Posix.ExitCode.toInt64(output.exitCode),
+       output.stdout,
+       output.stderr)
    | Error(_) -> (-1, "", ""))
   |> Stdlib.Test.equal((7, "out", "err"))
 
@@ -58,7 +63,7 @@ test runBytesKeepsRawOutput =
            [ "-c", "printf '\\377a'; printf '\\376' >&2; exit 3" ]) with
    | Ok(output) ->
      (
-       output.exitCode,
+       Stdlib.Cli.Posix.ExitCode.toInt64(output.exitCode),
        Stdlib.Base16.encode(output.stdout),
        Stdlib.Base16.encode(output.stderr))
    | Error(_) -> (-1, "", ""))
@@ -79,7 +84,7 @@ test executeBytesKeepsRawOutput =
     Stdlib.Cli.executeBytes("printf '\\377\\000'; printf '\\376' >&2")
 
   (
-    outcome.exitCode,
+    Stdlib.Cli.Posix.ExitCode.toInt64(outcome.exitCode),
     Stdlib.Base16.encode(outcome.stdout),
     Stdlib.Base16.encode(outcome.stderr))
   |> Stdlib.Test.equal((0, "FF00", "FE"))
@@ -93,13 +98,16 @@ test executionTextMatchesExecute =
 
 test executeInDirectoryWithBytes =
   let outcome = Stdlib.Cli.Unix.executeInDirectoryWithBytes("/", "pwd")
-  (outcome.exitCode, Stdlib.Utf8.decodeWithReplacement(outcome.stdout))
+  (
+    Stdlib.Cli.Posix.ExitCode.toInt64(outcome.exitCode),
+    Stdlib.Utf8.decodeWithReplacement(outcome.stdout))
   |> Stdlib.Test.equal((0, "/\n"))
 
 
 test closesStdin =
   (match Stdlib.Cli.Process.run("/bin/cat", []) with
-   | Ok(output) -> (output.exitCode, output.stdout)
+   | Ok(output) ->
+     (Stdlib.Cli.Posix.ExitCode.toInt64(output.exitCode), output.stdout)
    | Error(_) -> (-1, ""))
   |> Stdlib.Test.equal((0, ""))
 
@@ -182,4 +190,4 @@ test closedStdinReturnsFailure =
   let _ = Stdlib.DateTime.__sleepMilliseconds(100.0)
   let response = Stdlib.Cli.Process.communicate(handle, "input")
   let _ = Stdlib.Cli.Process.terminate(handle)
-  response.exitCode |> Stdlib.Test.equal(-1)
+  response.exitCode |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure)

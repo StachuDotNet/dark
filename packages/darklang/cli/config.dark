@@ -161,7 +161,7 @@ let execute(state: AppState, args: List<String>): AppState =
     match LanguageTools.LocalStore.configSet(key, value) with
     | Error(problem) ->
       printErr(problem)
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Ok(_) ->
       Stdlib.printLine(Stdlib.Cli.UI.Colors.success($"Set {key} = {value}"))
       state
@@ -169,7 +169,7 @@ let execute(state: AppState, args: List<String>): AppState =
     match LanguageTools.LocalStore.configUnset(key) with
     | Error(problem) ->
       printErr(problem)
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Ok(_) ->
       let back =
         match defaultOf(key) with
@@ -180,13 +180,13 @@ let execute(state: AppState, args: List<String>): AppState =
       state
   | ["get", key] ->
     printErr(unknownKeyMessage(key))
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | ["unset", key] ->
     printErr(unknownKeyMessage(key))
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | ["set", key, _] ->
     printErr(unknownKeyMessage(key))
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | ["list"] ->
     let lines =
       settings()
@@ -208,7 +208,7 @@ let execute(state: AppState, args: List<String>): AppState =
     printErr("Invalid arguments")
     Stdlib.printErrorLine("")
     Stdlib.printErrorLine(help(state))
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 let complete(_state: AppState, args: List<String>): List<Completion.CompletionItem> =

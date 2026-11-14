@@ -267,7 +267,7 @@ let execute(state: AppState, args: List<String>): AppState =
           Stdlib.Cli.UI.Colors.dimText(
             $"  `dark search {traitPath} --trait` looks for a trait by name"))
 
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Ok(traitHash) ->
       let candidates = LanguageTools.PackageManager.Trait.impls(state.currentBranchId, traitHash)
       if json then
@@ -329,7 +329,7 @@ let execute(state: AppState, args: List<String>): AppState =
       printHint(
         "  `dark ls Stdlib` has a Traits section; `dark search <name> --trait` finds one anywhere")
 
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 let help(_state: AppState): String =

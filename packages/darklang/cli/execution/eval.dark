@@ -105,7 +105,7 @@ let execute(state: AppState, args: List<String>): AppState =
         | Ok(None) -> state
         | Error(message) ->
           Stdlib.printErrorLine($"Error: {message}")
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
       match stats with
       | Some(m) ->

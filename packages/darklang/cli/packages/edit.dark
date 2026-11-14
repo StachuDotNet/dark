@@ -90,7 +90,11 @@ let execute(state: AppState, args: List<String>): AppState =
         // No editor and no terminal: the shape a script or an agent uses.
         | Some(file) ->
           let result = applyFile(state, loc, file)
-          if result.exitCode == 0 then printTraceHint(result, location) else ()
+          if Stdlib.Cli.Posix.ExitCode.isSuccess(result.exitCode) then
+            printTraceHint(result, location)
+          else
+            ()
+
           result
         | None ->
           // An editor needs a terminal on both ends. Without one it starts anyway, paints
@@ -137,7 +141,7 @@ let execute(state: AppState, args: List<String>): AppState =
                         $"  Set $EDITOR, or edit {path} and run `dark edit {name} {path}`."))
 
                     failed(state)
-                  | Ok(code) when code != 0 ->
+                  | Ok(code) when Stdlib.Bool.not(Stdlib.Cli.Posix.ExitCode.isSuccess(code)) ->
                     // A non-zero editor is how you say "forget it" in most of them. The store
                     // is left alone and so is the file, so a long edit is not thrown away on a
                     // stray exit code.

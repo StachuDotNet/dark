@@ -116,7 +116,7 @@ let define(state: AppState, modulePath: String, source: String, caller: Caller):
   | Error(diagnostics) ->
     let _ = Errors.reportParseErrors(diagnostics)
     // Nothing was saved: an agent's authoring loop branches on the exit.
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Ok(SourceFile(sourceFile)) ->
     let declarations =
       let moduleDecls =
@@ -127,11 +127,11 @@ let define(state: AppState, modulePath: String, source: String, caller: Caller):
     let duplicateNames = duplicateDeclarationNames(declarations)
     if Stdlib.List.isEmpty(declarations) then
       printErr("Package source contains no declarations")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     else if Stdlib.Bool.not(Stdlib.List.isEmpty(duplicateNames)) then
       printErr("Package source contains duplicate declaration names:")
       duplicateNames |> Stdlib.List.iter(fun name -> printErr($"  - {name}"))
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     else
       // Resolve a synthetic item path below the requested module so the
       // module path follows the same rules as `fn`, `type`, and `val`.
@@ -173,7 +173,7 @@ let define(state: AppState, modulePath: String, source: String, caller: Caller):
           match SCM.PackageOps.addAuthored(branchId, ops) with
           | Error(message) ->
             printErr($"Failed to define module: {message}")
-            { state with exitCode = 1 }
+            { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
           | Ok(report) ->
             let followed =
               Propagate.repointSaved(
@@ -282,7 +282,7 @@ let execute(state: AppState, args: List<String>): AppState =
   match input with
   | Error(message) ->
     printErr(message)
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Ok((modulePath, source)) -> define(state, modulePath, source, Caller.Command)
 
 
@@ -294,7 +294,7 @@ let defineBundled(modulePath: String, source: String): Int64 =
   let state =
     { Cli.initState() with nonInteractive = true, currentBranchId = SCM.Branch.mainBranchId }
 
-  (define(state, modulePath, source, Caller.DevBuild)).exitCode
+  Stdlib.Cli.Posix.ExitCode.toInt64((define(state, modulePath, source, Caller.DevBuild)).exitCode)
 
 
 let help(_state: AppState): String =

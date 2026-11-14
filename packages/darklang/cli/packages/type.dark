@@ -62,7 +62,7 @@ let createTypeInline(
           location,
           LanguageTools.ProgramTypes.ItemKind.Type,
           "type",
-          { state with exitCode = 1 },
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure },
           0,
           fun ctx ->
             let (packageType, unresolvedNames) =

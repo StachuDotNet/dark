@@ -6,8 +6,12 @@ module Darklang.Cli.Tests.Flags
 test failedExitsOne =
   let state = Cli.initState()
   Stdlib.Test.all(
-    [ (Cli.failed(state)).exitCode |> Stdlib.Test.equal(1)
-      (Cli.exitWith(state, false)).exitCode |> Stdlib.Test.equal(1)
+    [ (Cli.failed(state)).exitCode
+      |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure)
+
+      (Cli.exitWith(state, false)).exitCode
+      |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure)
+
       (Cli.exitWith(state, true)).exitCode
       |> Stdlib.Test.equal(state.exitCode) ])
 

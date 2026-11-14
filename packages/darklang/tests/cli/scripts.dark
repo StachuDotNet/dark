@@ -2,20 +2,24 @@ module Darklang.Cli.Tests.Scripts
 
 test unitSucceeds =
   Cli.Run.exitCode(LanguageTools.RuntimeTypes.Dval.DUnit)
-  |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(0))
+  |> Stdlib.Test.equal(
+    Stdlib.Result.Result.Ok(Stdlib.Cli.Posix.ExitCode.success))
 
 
 test integerExitCodes =
   Stdlib.Test.all(
     [ Cli.Run.exitCode(LanguageTools.RuntimeTypes.Dval.DBigInt(7z))
+      |> Stdlib.Result.map(Stdlib.Cli.Posix.ExitCode.toInt64)
       |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(7))
 
       Cli.Run.exitCode(LanguageTools.RuntimeTypes.Dval.DInt64(3))
+      |> Stdlib.Result.map(Stdlib.Cli.Posix.ExitCode.toInt64)
       |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(3))
 
       Cli.Run.exitCode(
         LanguageTools.RuntimeTypes.Dval.DBigInt(9223372036854775808z))
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(1)) ])
+      |> Stdlib.Test.equal(
+        Stdlib.Result.Result.Ok(Stdlib.Cli.Posix.ExitCode.failure)) ])
 
 
 test invalidResultKeepsValue =

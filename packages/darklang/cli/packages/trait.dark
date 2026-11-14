@@ -29,7 +29,7 @@ let execute(state: AppState, args: List<String>): AppState =
           "" ]
         |> Stderr.lines
 
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       else
         createTraitInline(state.packageData.currentLocation, location, inlineDefinition, state)
 
@@ -75,9 +75,9 @@ let createTraitInline(
           Stdlib.Cli.UI.Colors.hint(
             $"Rename it to `trait {location.name}<...> = ...`, or change the target."))
 
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | Some(t) ->
-        let failState = { state with exitCode = 1 }
+        let failState = { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
         saveAuthored(
           state,
           location,
@@ -92,7 +92,7 @@ let createTraitInline(
             Option.Some((ops, packageTrait.hash, unresolvedNames)))
       | _ ->
         if hasParseError then
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
         else
           [ Stdlib.Cli.UI.Colors.error("Expected exactly one trait declaration")
             ""
@@ -101,7 +101,7 @@ let createTraitInline(
             "" ]
           |> Stderr.lines
 
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | None ->
       [ Stdlib.Cli.UI.Colors.error("Failed to parse trait definition")
         ""
@@ -110,10 +110,10 @@ let createTraitInline(
         "" ]
       |> Stderr.lines
 
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Error(msg) ->
     printErr($"Invalid location: {msg}")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 let help(_state: AppState): String =

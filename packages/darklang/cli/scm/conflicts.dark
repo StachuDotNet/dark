@@ -263,7 +263,7 @@ let executeShow(state: AppState, idPrefix: String): AppState =
   match SCM.Conflicts.getByIdPrefix(idPrefix) with
   | None ->
     printErr($"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them.")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Some(c) ->
     let dotted = SCM.Conflicts.fqn(c.owner, c.modules, c.name)
     let aboutABinding = SCM.Conflicts.aboutABinding(c.kind)
@@ -315,12 +315,12 @@ let executeAck(state: AppState, idPrefix: String): AppState =
   match SCM.Conflicts.getByIdPrefix(idPrefix) with
   | None ->
     printErr($"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them.")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Some(c) ->
     match SCM.Conflicts.ack(c.id) with
     | Error(e) ->
       printErr($"couldn't ack #{c.id}: {e}")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Ok(_) ->
       let dotted = SCM.Conflicts.fqn(c.owner, c.modules, c.name)
       printOk($"acked #{c.id} ({dotted}) -- the auto-pick stands.")
@@ -347,7 +347,7 @@ let executeOverride(state: AppState, idPrefix: String, choice: String): AppState
   match SCM.Conflicts.getByIdPrefix(idPrefix) with
   | None ->
     printErr($"no conflict matching \"{idPrefix}\" -- `dark conflicts` to list them.")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Some(c) when Stdlib.Bool.not(SCM.Conflicts.aboutABinding(c.kind)) ->
     // A wording disagreement is settled by SAYING something, not by binding a name: `override A|B`
     // takes one of the two texts, and `override -` shows both and hands the doc back to you, for
@@ -365,7 +365,7 @@ let executeOverride(state: AppState, idPrefix: String, choice: String): AppState
         printErr(
           $"no candidate \"{choice}\" on #{c.id} -- use A, B, or - to write a third wording.")
 
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | Some(cand) ->
         match SCM.Conflicts.settleWording(state.currentBranchId, c, cand.text) with
         | Ok(_) ->
@@ -374,7 +374,7 @@ let executeOverride(state: AppState, idPrefix: String, choice: String): AppState
           state
         | Error(e) ->
           printErr($"override failed: {e}")
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Some(c) ->
     let dotted = SCM.Conflicts.fqn(c.owner, c.modules, c.name)
     if choice == "-" then
@@ -411,7 +411,7 @@ let executeOverride(state: AppState, idPrefix: String, choice: String): AppState
             state
           | Error(e) ->
             printErr($"override failed: {e}")
-            { state with exitCode = 1 }
+            { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | Some(cand) ->
         if cand.hash == c.autoResolvedTo then
           printOk(

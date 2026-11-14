@@ -128,7 +128,7 @@ let addToPath(shell: Shell.Shell, dir: String): Result<Unit, String> =
 /// Gets the home directory of the current user using $HOME environment variable.
 let getHomeDirectory(): Result<String, String> =
   let dir = execute("echo $HOME")
-  if dir.exitCode == 0 then
+  if Posix.ExitCode.isSuccess(dir.exitCode) then
     let dir = dir.stdout |> String.trim
     Result.Ok(dir)
   else

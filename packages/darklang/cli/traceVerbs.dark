@@ -366,7 +366,7 @@ let executeScriptOrEval(state: AppState, input: Tracing.ScriptOrEvalInput): AppS
     | Ok(None) -> state
     | Error(message) ->
       printErr($"Error: {message}")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Script(filename, source, args, options) ->
     Run.runScript(state, filename, source, args, options, Run.Approval.Skip)
 
@@ -375,7 +375,7 @@ let resume(state: AppState, prefix: String): AppState =
   match find(prefix) with
   | Error(e) ->
     printErr(e)
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Ok(e) ->
     match e.scriptOrEvalInput with
     | None ->
@@ -388,7 +388,7 @@ let resume(state: AppState, prefix: String): AppState =
         printErr(
           $"{Text.shortIdText(e.id)} has no complete CLI invocation to resume; inspect its log or run the code again.")
 
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Some(input) ->
       if Tracing.Store.armResume(e.id) then
         Stdlib.printErrorLine(
@@ -408,7 +408,7 @@ let resume(state: AppState, prefix: String): AppState =
         executeScriptOrEval(state, input)
       else
         printErr($"{Text.shortIdText(e.id)} is gone: it was deleted while this command ran")
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 let fork(prefix: String, at: Option<Int64>): Bool =
@@ -1073,7 +1073,7 @@ let showCode(
     match Darklang.Tracing.Store.wentThrough(fnName, "", 1) with
     | [] ->
       Cli.printErr($"no function named {fnName} on this branch")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | _ ->
       Cli.printErr($"{fnName} ran, but its code is no longer in this store")
 
@@ -1085,7 +1085,7 @@ let showCode(
         (Stdlib.Cli.UI.Colors.dimText(
           "  its runs are still kept: dark traces calls <fn>, then dark traces inspect <id>")))
 
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   else
 
   let chosen =
@@ -1113,7 +1113,7 @@ let showCode(
   // which is an empty answer. Both leave nothing to print, and only the first is a failure.
   | None ->
     match tracePrefix with
-    | Some(_) -> { state with exitCode = 1 }
+    | Some(_) -> { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | None -> state
   | Some(trace) ->
     // The function is looked up BEFORE the trace is replayed: a replay is the whole cost of this
@@ -1121,13 +1121,13 @@ let showCode(
     match LanguageTools.PackageManager.Function.find(branchId, entry) with
     | None ->
       Cli.printErr($"no function named {fnName} on this branch")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Some(hash) ->
       match LanguageTools.PackageManager.Function.get(hash) with
       | None ->
         Cli.printErr(
           $"{fnName} resolves to a version this store cannot load; the store is damaged")
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | Some(fn) ->
         // One call: it loads the trace's log, replays the trace with every effect answered from it
         // and none performed, and hands back what every expression evaluated to, plus the frames
@@ -1219,11 +1219,11 @@ let showCode(
           else
             Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText($"  its loops are: {names}"))
 
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
         | (_, [loop, ...]) ->
           let n = Stdlib.display(Stdlib.List.length(loop.iterations))
           Cli.printErr($"`{loop.name}` ran {n} times, so that iteration does not exist")
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
         | _ ->
           let flat =
             collected

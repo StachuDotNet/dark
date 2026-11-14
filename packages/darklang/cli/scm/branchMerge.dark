@@ -353,7 +353,7 @@ let executeMergeCmd(state: AppState, args: List<String>): AppState =
   | [bad, ...] ->
     printErr($"unknown flag: {bad}")
     printHint("usage: dark merge [branch] [-y] [--allow-type-errors] [--dry-run]")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | [] ->
     match rest with
     | [] ->

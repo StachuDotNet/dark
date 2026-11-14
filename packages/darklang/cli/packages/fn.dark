@@ -90,9 +90,9 @@ let createFnInline(
             $"Rename it to `let {location.name} ...`, or change the " + "fn target."))
 
         // Nothing was saved: an agent's authoring loop branches on the exit.
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | Some(writtenFn) ->
-        let failState = { state with exitCode = 1 }
+        let failState = { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
         saveAuthored(
           state,
           location,
@@ -159,7 +159,7 @@ let createFnInline(
         // a precise parse error was already printed above; don't stack the
         // generic hint on top of it
         if hasParseError then
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
         else
           [ Stdlib.Cli.UI.Colors.error("Expected exactly one function declaration")
             ""
@@ -169,7 +169,7 @@ let createFnInline(
             "" ]
           |> Stderr.lines
 
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | None ->
       [ Stdlib.Cli.UI.Colors.error("Failed to parse function definition")
         ""
@@ -179,10 +179,10 @@ let createFnInline(
         "" ]
       |> Stderr.lines
 
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Error(msg) ->
     printErr($"Invalid location: {msg}")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 let help(_state: AppState): String =

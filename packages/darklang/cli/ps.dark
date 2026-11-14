@@ -380,7 +380,7 @@ let execute(state: AppState, args: List<String>): AppState =
     | Ok(_) -> state
     | Error(e) ->
       printErr(e)
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | ["show", pid] when Stdlib.Option.isSome(machineByPid(pid)) ->
     exitWith(state, printMachineShow(pid, wantsJson))
   | ["show", prefix] ->
@@ -409,7 +409,7 @@ let execute(state: AppState, args: List<String>): AppState =
       state
     | Error(e) ->
       printErr(e)
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | ["kill", target] ->
     match stop(target, Stdlib.Exec.Stop.Kill) with
     | Ok(msg) ->
@@ -417,16 +417,16 @@ let execute(state: AppState, args: List<String>): AppState =
       state
     | Error(e) ->
       printErr(e)
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | [verb] when Stdlib.List.contains([ "show", "cancel", "kill" ], verb) ->
     printErr($"ps {verb} needs an id prefix (or a pid) -- `dark ps` lists them")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | ["help", ...] ->
     Stdlib.printLine(help(state))
     state
   | [unknown, ...] ->
     printErr($"ps has no `{unknown}`. `dark ps help` lists what it does have.")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | _ ->
     Stdlib.printLine(help(state))
     state

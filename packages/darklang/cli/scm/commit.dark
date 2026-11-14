@@ -451,7 +451,7 @@ let executeJson(state: AppState, args: List<String>): AppState =
     exitWith(state, printed)
   else
     printErr(failure)
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 /// Refuse a commit that would put an unresolvable reference into history, and say which names.
@@ -544,12 +544,12 @@ let executePretty(state: AppState, args: List<String>): AppState =
   // Nothing was committed, so it is a refusal: `dark commit -y && dark push` must not carry on.
   if SCM.PackageOps.draftOpCount() == 0 then
     printErr("nothing to commit -- your draft is empty.")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   // A commit is what other machines pull, and its message is the one sentence they get. An empty
   // one is nearly always a slipped Enter, so it is refused rather than recorded forever.
   else if parsed.message == "" then
     printErr("a commit needs a message: `dark commit \"what changed\"`.")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   // An `--include` naming nothing in the draft is a typo, and the review screen would otherwise show
   // the WHOLE draft over a selection that commits none of it -- the one dishonesty a review screen
   // cannot afford.
@@ -560,11 +560,11 @@ let executePretty(state: AppState, args: List<String>): AppState =
     let unknown = Stdlib.String.join(SCM.PartialCommit.unknownNames(parsed.include), ", ")
     printErr($"--include names things not in your draft: {unknown}.")
     printHint("  names are exact item names; `dark status` lists what the draft holds.")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   else if refuseUnresolved(parsed) then
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   else if refuseTypeErrors(parsed) then
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   else
     let withPrevious = r.withPrevious
     Stderr.ok($"  CHANGED ({Stdlib.display(Stdlib.List.length(changed))})")
@@ -640,7 +640,7 @@ let executePretty(state: AppState, args: List<String>): AppState =
       match outcome with
       | Error(e) ->
         printErr(e)
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       | Ok((hash, committed, moved)) ->
         let movedNote = if moved == 0 then "" else $", {Text.plural(moved, "dependent")} repointed"
 
@@ -663,7 +663,7 @@ let execute(state: AppState, args: List<String>): AppState =
   // Before anything: a flag we don't understand means we don't know what was asked for, and this command
   // commits history.
   if refuseUnknownFlags(args) then
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   else if ScmJson.wantsJson(args) then
     executeJson(state, args)
   else

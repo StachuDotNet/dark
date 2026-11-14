@@ -104,16 +104,16 @@ let execute(state: AppState, args: List<String>): AppState =
       state
     | Error(e) ->
       printErr(e)
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | [] ->
     printErr("Usage: format [--check] <file-or-directory>...")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | paths ->
     match paths
           |> Stdlib.List.filter(fun p -> Stdlib.Bool.not(Stdlib.Cli.FileSystem.pathExists(p))) with
     | [missing, ...] ->
       printErr($"Nothing at {missing}.")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | [] -> formatAll(state, paths, check, showAsWritten)
 
 
@@ -165,7 +165,7 @@ let formatAll(state: AppState, paths: List<String>, check: Bool, showAsWritten: 
   let failures = if failed == 0 then "" else $", {Stdlib.display(failed)} failed"
   printQuiet(summary + failures)
   if failed > 0 || check && changed > 0 then
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   else
     state
 

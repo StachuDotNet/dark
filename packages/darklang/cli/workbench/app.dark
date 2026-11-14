@@ -179,7 +179,7 @@ let execute(cliState: AppState, args: List<String>): AppState =
         "  Everything it shows is a command too: `dark help`, or `dark docs for-ai`."))
 
     // A refusal: the workbench did not open, so a script or an agent must not read it as done.
-    { cliState with isExiting = true, exitCode = 1 }
+    { cliState with isExiting = true, exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Available ->
     let branchId = cliState.currentBranchId
     // Instance name: config override wins, else the machine hostname, else a safe fallback. Config-adjustable.

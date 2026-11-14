@@ -291,7 +291,11 @@ let execute(state: AppState, args: List<String>): AppState =
     let total = Stdlib.List.length(report.items)
 
     // An audit that found failures says so in its exit code, so a script or a gate can tell.
-    let finished = if totals.failedCount > 0 then { state with exitCode = 1 } else state
+    let finished =
+      if totals.failedCount > 0 then
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
+      else
+        state
 
     // Incomplete with no items is the checker failing over the whole batch, not a branch with
     // nothing in it (that comes back Checked), so it must not report the branch as type-checked.
@@ -301,7 +305,7 @@ let execute(state: AppState, args: List<String>): AppState =
     then
       printErr("The type audit could not run, so nothing was checked:")
       Stderr.lines(AtRestCheck.issueLines(state.currentBranchId, report.warnings))
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     // A module with nothing in it is not on this branch: modules exist only through what they hold.
     // Answering "checked 0" about a typo read as a clean audit.
     else if
@@ -309,7 +313,7 @@ let execute(state: AppState, args: List<String>): AppState =
     then
       let name = Stdlib.String.join(parsed.positionals, "")
       printErr($"no module named {name} on this branch")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     else if parsed.asJson then
       Stdlib.printLine(
         jsonReport(state.currentBranchId, scope, parsed.outputFilter, report, totals, total))

@@ -64,7 +64,7 @@ let createValueInline(
           location,
           LanguageTools.ProgramTypes.ItemKind.Value,
           "value",
-          { state with exitCode = 1 },
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure },
           0,
           fun ctx ->
             let (packageValue, unresolvedNames) =

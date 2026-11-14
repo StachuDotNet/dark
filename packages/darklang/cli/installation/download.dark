@@ -123,7 +123,9 @@ let smokeTest(binaryPath: String): Result<Unit, String> =
            Stdlib.String.contains(l, "Error") || Stdlib.String.contains(l, "Exception")))
         |> Stdlib.Option.withDefault(lastLine)
 
-      if result.exitCode == 0 && Stdlib.String.trim(lastLine) == "3" then
+      if
+        Stdlib.Cli.Posix.ExitCode.isSuccess(result.exitCode) && Stdlib.String.trim(lastLine) == "3"
+      then
         Result.Ok()
       else
         Result.Error(

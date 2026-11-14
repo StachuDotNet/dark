@@ -19,7 +19,7 @@ let executeCliCommand(args: List<String>): Int64 =
 
     // Exiting before the loop starts means the workbench refused to open; the loop's own exit is 0.
     if workbenchState.isExiting then
-      workbenchState.exitCode
+      Stdlib.Cli.Posix.ExitCode.toInt64(workbenchState.exitCode)
     else
       runInteractiveLoop(workbenchState)
   // Otherwise, execute command directly (shell already split args correctly)
@@ -31,4 +31,4 @@ let executeCliCommand(args: List<String>): Int64 =
     // interactive loop so it actually runs, instead of exiting the instant the command returns.
     match resultState.currentPage with
     | SubApp(_) -> runInteractiveLoop(resultState)
-    | _ -> resultState.exitCode
+    | _ -> Stdlib.Cli.Posix.ExitCode.toInt64(resultState.exitCode)

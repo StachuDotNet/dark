@@ -618,7 +618,8 @@ let refusesQuietly(
             Stdlib.String.contains(out.stderr, reason),
             $"should say '{reason}' on stderr. It said: {out.stderr}")
 
-          out.exitCode |> Stdlib.Test.equal(1) ]))
+          out.exitCode
+          |> Stdlib.Test.equal(Stdlib.Cli.Posix.ExitCode.failure) ]))
 
 
 /// `deprecate --json` and `delete --json` answer one object. A dry run, and `--json` without

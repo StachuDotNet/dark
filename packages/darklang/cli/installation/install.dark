@@ -32,7 +32,7 @@ let execute(state: AppState, args: List<String>): AppState =
           state
         | Error(e) ->
           Stdlib.printErrorLine(View.formatError(e))
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
       else
         printErr("Nothing installed.")
         printHint("  dark install --yes replaces it without asking")

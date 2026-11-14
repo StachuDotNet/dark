@@ -82,7 +82,7 @@ type AppState =
     /// command, a failed `eval`, and the `--json` failure paths do, so scripts and agents can
     /// branch on the exit rather than parse prose. (Most commands still report failure in prose
     /// only; they set this as they are touched.)
-    exitCode: Int64 }
+    exitCode: Stdlib.Cli.Posix.ExitCode }
 
 
 /// What the prompt shows to your left: where you are in the package tree, and WHICH BRANCH, when you're on
@@ -186,7 +186,7 @@ let exitWith(state: AppState, ok: Bool): AppState =
 /// The state a command hands back when it could not do what it was asked, and has printed why:
 /// exit code 1. <fn exitWith> is for when that is worked out at run time.
 let failed(state: AppState): AppState =
-  { state with exitCode = 1 }
+  { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 /// First 8 hex chars of a hash, for human-readable display.
@@ -259,7 +259,7 @@ let initState(): AppState =
       allCommandsCache = commands
       commandOptionsCache = commandOptions(commands)
       telemetryEnabled = Stdlib.Env.get("DARK_TELEMETRY") == Option.Some("1")
-      exitCode = 0 }
+      exitCode = Stdlib.Cli.Posix.ExitCode.success }
 
 
 type Msg =

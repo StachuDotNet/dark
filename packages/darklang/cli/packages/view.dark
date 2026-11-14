@@ -744,7 +744,7 @@ let viewOne(
     Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.error($"{failure}: {errorMsg}"))
     // Nonzero: `dark view X` in a script is asking a question whose answer here is "there is no
     // such thing", and a zero exit says the opposite to everything downstream of it.
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Ok(location) ->
     match mode with
     | Raw ->
@@ -754,7 +754,7 @@ let viewOne(
         state
       | Error(e) ->
         printErr(e)
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Source ->
       viewEntity(branchId, location, Tests.showIf(includeTests))
       // Show the trace hint only for the human-readable source view.
@@ -770,7 +770,7 @@ let execute(state: AppState, args: List<String>): AppState =
   | Error(e) ->
     Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.error($"Cannot view: {e}"))
     Stdlib.printErrorLine(help(state))
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | Ok(parsed) ->
     let (paths, mode, includeTests) = parsed
 

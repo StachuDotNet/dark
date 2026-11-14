@@ -121,7 +121,7 @@ let runScript(
         ".",
         $"expect -f {path} 2>&1")
 
-    if outcome.exitCode == 0 then
+    if Stdlib.Cli.Posix.ExitCode.isSuccess(outcome.exitCode) then
       Stdlib.Result.Result.Ok(outcome.stdout)
     else
       Stdlib.Result.Result.Error(outcome.stdout)

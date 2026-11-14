@@ -2054,7 +2054,7 @@ let private parkedOnAHostOperation =
     let s = Scheduler.Scheduler(Scheduler.defaultQuantum)
     // Shared Dark drains child pipes; the kernel-readiness leaf parks the VM.
     let! (p : Scheduler.Process) =
-      spawn s state """(Stdlib.Cli.execute("sleep 0.3")).exitCode"""
+      spawn s state """Stdlib.Cli.Posix.ExitCode.toInt64((Stdlib.Cli.execute("sleep 0.3")).exitCode)"""
     let running = runOnThread s p
     waitFor "the process to park on the host" (fun () ->
       match p.status with

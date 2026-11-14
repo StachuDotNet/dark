@@ -50,10 +50,10 @@ let execute(state: AppState, args: List<String>): AppState =
     match Location.parseRelativeTo(here, oldName), Location.parseRelativeTo(here, newName) with
     | Error(e), _ ->
       printErr($"the name to rename: {e}")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | _, Error(e) ->
       printErr($"the new name: {e}")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     | Ok(oldLoc), Ok(newLoc) ->
       let dotted(l: LanguageTools.ProgramTypes.PackageLocation): String =
         PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(l)
@@ -66,7 +66,7 @@ let execute(state: AppState, args: List<String>): AppState =
         | None ->
           printErr($"nothing here is named {dotted(oldLoc)}.")
           printHint("  `dark ls` lists what is; `dark search <text>` looks wider.")
-          { state with exitCode = 1 }
+          { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
         | Some(reference) ->
           // Refused rather than silently rebound: one name holds one item, so binding over a live
           // name would take the other item off the shelf as a side effect of renaming this one.
@@ -74,7 +74,7 @@ let execute(state: AppState, args: List<String>): AppState =
           | Some(_) ->
             printErr($"{dotted(newLoc)} already names something.")
             printHint("  pick another name, or retire that one first (`dark delete`).")
-            { state with exitCode = 1 }
+            { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
           | None ->
             let changes = ops(state.currentBranchId, oldLoc, newLoc, reference)
             match SCM.PackageOps.add(state.currentBranchId, changes) with
@@ -86,11 +86,11 @@ let execute(state: AppState, args: List<String>): AppState =
               state
             | Error(e) ->
               printErr($"couldn't rename: {e}")
-              { state with exitCode = 1 }
+              { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
   | _ ->
     printErr("usage: dark rename <name> <new-name>")
     printHint("  both names are relative to where you are (`dark nav` moves).")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 let help(_state: AppState): String =

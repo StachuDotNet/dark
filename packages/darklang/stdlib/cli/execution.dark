@@ -2,7 +2,7 @@ module Darklang.Stdlib.Cli
 
 /// The result of running a command in the CLI, typically with `Cli.execute`
 type ExecutionOutcome =
-  { exitCode: Int64
+  { exitCode: Posix.ExitCode
     stdout: String
     stderr: String }
 
@@ -10,7 +10,7 @@ type ExecutionOutcome =
 /// Like `ExecutionOutcome`, but with stdout and stderr exactly as the command
 /// wrote them, typically from `Cli.executeBytes`
 type ExecutionBytes =
-  { exitCode: Int64
+  { exitCode: Posix.ExitCode
     stdout: Bytes
     stderr: Bytes }
 
@@ -39,7 +39,10 @@ let execute(command: String): ExecutionOutcome =
 /// , or a `String` of stderr if not
 let executeWithUnitOrStdErr(command: String): Result<Unit, String> =
   let result = execute(command)
-  if result.exitCode == 0 then Result.Ok() else Result.Error(result.stderr)
+  if Posix.ExitCode.isSuccess(result.exitCode) then
+    Result.Ok()
+  else
+    Result.Error(result.stderr)
 
 
 /// Execute a command in the CLI,
@@ -47,7 +50,7 @@ let executeWithUnitOrStdErr(command: String): Result<Unit, String> =
 /// or `String` of stderr if not
 let executeWithStdOutOrStdErr(command: String): Result<String, String> =
   let result = execute(command)
-  if result.exitCode == 0 then
+  if Posix.ExitCode.isSuccess(result.exitCode) then
     Result.Ok(result.stdout)
   else
     Result.Error(result.stderr)

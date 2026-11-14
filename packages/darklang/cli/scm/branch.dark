@@ -403,7 +403,7 @@ let execute(state: AppState, args: List<String>): AppState =
       printErr($"\"{id}\" reads like a command, not a branch name, so nothing was created.")
       printHint("  the current branch:      dark branch")
       printHint($"  really start \"{id}\":    dark switch {id}")
-      { state with exitCode = 1 }
+      { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
     else
       match looksLikeTypoedSubcommand(id) with
       | Some(sub) ->

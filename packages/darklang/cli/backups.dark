@@ -47,7 +47,7 @@ let executeNow(state: AppState): AppState =
     state
   | Error(e) ->
     printErr($"couldn't copy the store: {e}")
-    { state with exitCode = 1 }
+    { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 /// `dark backups restore <name> [-y]`. Puts the named backup in place of the store. The store as it is
@@ -83,7 +83,7 @@ let executeRestore(state: AppState, name: String, confirm: Confirm): AppState =
         state
       | Error(e) ->
         printErr($"{e}.")
-        { state with exitCode = 1 }
+        { state with exitCode = Stdlib.Cli.Posix.ExitCode.failure }
 
 
 /// `dark backups prune <keep> [-y]`. Deletes the oldest, keeping the newest <keep>. Shows what would go
