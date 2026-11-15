@@ -587,17 +587,21 @@ test workbenchModuleInspectPreviewsChildren =
 /// The item page is built once per selection and drawn from `previews` after that: a scroll
 /// draws the page it already has, a move to the next item builds a new one, and a move back
 /// draws the first one again.
+///
+/// On a type: a fn's page also holds the live values of its newest recorded run, and replaying an
+/// `eval` or a script gives that run's own source new ids each time, so on a store that has run
+/// `List.map` a move back to it built a new page.
 test workbenchPageBuiltOncePerSelection =
   let location =
-    Cli.Packages.PackageLocation.Module([ "Darklang", "Stdlib", "List" ])
+    Cli.Packages.PackageLocation.Module([ "Darklang", "Stdlib", "Option" ])
 
   let start = workbenchState()
   let items = Cli.Workbench.loadItems(SCM.Branch.mainBranchId, location)
   let selected =
-    Stdlib.List.findFirstIndex(items, fun item -> item.name == "map")
+    Stdlib.List.findFirstIndex(items, fun item -> item.kind == "type")
     |> Stdlib.Option.withDefault(0)
 
-  let onMap =
+  let onType =
     Cli.Workbench.refresh(
       start,
       { start with
@@ -607,10 +611,10 @@ test workbenchPageBuiltOncePerSelection =
           selected = selected })
 
   let planted =
-    { onMap with
+    { onType with
         previews =
           [ Cli.Workbench.PreviewCache
-              { key = Cli.Workbench.previewKey(onMap)
+              { key = Cli.Workbench.previewKey(onType)
                 lines = [ "planted" ] } ] }
 
   let scrolled =
