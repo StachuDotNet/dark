@@ -191,6 +191,12 @@ checks into one test, and gives `FailedChecks` with the position of each check
 that failed. `named("emoji separator", check)` gives a check a name, and
 `group("parsing", [ ... ])` is a named `all` that can sit inside another `all`.
 
+`table(rows, fun (args) -> check)` makes one check per row. A failing row goes
+by its value, as in `("a", 1):`, kept to one line, and `row("empty", args)` in
+the list names it instead. Each row runs on its own, so a row that raises
+fails only itself, as `error: <message>`, and the other rows still run and
+report.
+
 When a check fails, the runner prints where it sits and reads its source from
 the stored body, so a check needs no name to be found:
 
@@ -214,9 +220,11 @@ without running it:
 
 - each item of a `Stdlib.Test.all([ ... ])` list is one check, a nested `all`
   adds its own items, and `named` and `group` count what they hold;
+- each row of a `Stdlib.Test.table([ ... ], f)` list is one check;
 - a `let` counts what follows it, and an `if` or `match` counts its biggest branch;
 - anything else is one check, including an `all` over a list built at run time,
-  such as `Stdlib.List.map(cases, f) |> Stdlib.Test.all`.
+  such as `Stdlib.List.map(cases, f) |> Stdlib.Test.all`. Written as a `table`
+  over the cases, the same test counts one check per row.
 
 `LanguageTools.PackageManager.Test.testCount` does the counting. A count belongs
 to the test's definition, so a cached pass reports the same checks as a fresh run

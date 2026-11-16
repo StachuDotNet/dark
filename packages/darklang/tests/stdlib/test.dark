@@ -87,6 +87,36 @@ test group =
           Stdlib.Test.Result.FailedChecks([ (2, Stdlib.Test.Result.Fail([ "a" ])) ]))) ])
 
 
+test table =
+  Stdlib.Test.all(
+    [ Stdlib.Test.table([ 1, 2 ], fun n -> Stdlib.Test.expect(n > 0, "not positive"))
+      |> is(Stdlib.Test.Result.Pass)
+
+      // Each failing row goes by its value.
+      Stdlib.Test.table([ (1, 2), (2, 2) ], fun((a, b)) -> a |> Stdlib.Test.equal(b))
+      |> is(
+        Stdlib.Test.Result.FailedChecks(
+          [ (1,
+             Stdlib.Test.Result.Named(
+               "(1, 2)",
+               Stdlib.Test.Result.Fail([ "expected 2, got 1" ]))) ]))
+
+      // A row that raises fails only itself; the rows after it still run.
+      Stdlib.Test.table([ 1, 0, 3 ], fun n -> (6 / n) |> Stdlib.Test.equal(2))
+      |> is(
+        Stdlib.Test.Result.FailedChecks(
+          [ (1, Stdlib.Test.Result.Named("1", Stdlib.Test.Result.Fail([ "expected 2, got 6" ])))
+            (2,
+             Stdlib.Test.Result.Named(
+               "0",
+               Stdlib.Test.Result.Fail([ "error: Cannot divide by 0" ]))) ]))
+
+      Stdlib.Test.row("five", 5) |> Stdlib.Test.equal(5)
+
+      Stdlib.Test.rowName(Stdlib.String.repeat("x", 80))
+      |> Stdlib.Test.equal("\"" + Stdlib.String.repeat("x", 58) + "…") ])
+
+
 test named =
   Stdlib.Test.all(
     [ Stdlib.Test.named("fine", Stdlib.Test.pass()) |> is(Stdlib.Test.Result.Pass)
@@ -135,6 +165,11 @@ test countedFixture =
       "outer",
       [ Stdlib.Test.pass(), Stdlib.Test.group("inner", [ Stdlib.Test.pass(), Stdlib.Test.pass() ]) ]) ]
   |> Stdlib.Test.all
+
+
+test tableFixture =
+  [ ("a", 1), Stdlib.Test.row("empty", ("", 0)), ("abc", 3) ]
+  |> Stdlib.Test.table(fun((s, n)) -> Stdlib.String.length(s) |> Stdlib.Test.equal(n))
 
 
 let fixtureBody(name: String): Option<LanguageTools.ProgramTypes.Expr> =
@@ -198,6 +233,26 @@ test failureLines =
 
         // A test that is not an `all` shows its messages alone.
         lines(Stdlib.Test.Result.Fail([ "a" ])) |> Stdlib.Test.equal([ "a" ]) ])
+
+
+test tableFailureLines =
+  match fixtureBody("tableFixture") with
+  | None -> Stdlib.Test.fail("tableFixture is not stored")
+  | Some(body) ->
+    let ctx = PrettyPrinter.ProgramTypes.Context.forBranch(SCM.Branch.mainBranchId)
+    let lines(position: Int64, name: String): List<String> =
+      LanguageTools.PackageManager.Test.failureLines(
+        ctx,
+        body,
+        Stdlib.Test.Result.FailedChecks(
+          [ (position, Stdlib.Test.Result.Named(name, Stdlib.Test.Result.Fail([ "no" ]))) ]))
+
+    Stdlib.Test.all(
+      [ // A row goes by its value, or by the name `row` gives it.
+        lines(3, "(\"abc\", 3)") |> Stdlib.Test.equal([ "(\"abc\", 3): no" ])
+        lines(2, "(\"\", 0)") |> Stdlib.Test.equal([ "empty: no" ])
+        // One check per row written out in place.
+        LanguageTools.PackageManager.Test.testCount(body) |> Stdlib.Test.equal(3) ])
 
 
 test testCount =

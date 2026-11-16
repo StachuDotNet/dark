@@ -789,6 +789,8 @@ let help(_state: AppState): String =
     "its position and source, or by the name `Stdlib.Test.named` gives it."
     "`Stdlib.Test.group(\"name\", [ ... ])` is a named `all` that can sit inside"
     "another: a failure inside reads `name > 2:`, and `test count` lists it."
+    "`Stdlib.Test.table(rows, fun (args) -> ...)` makes a check per row, named by"
+    "its value or by `Stdlib.Test.row(\"name\", args)`; a row that raises fails alone."
     "`test count` shows both for a module and each module under it, read from"
     "the definitions without running anything. `--for <item>` keeps only the"
     "tests that use that item, directly or through other code."

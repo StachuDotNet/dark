@@ -453,6 +453,20 @@ module Test =
       | _ -> Option.None
 
 
+  /// The rows of <param e> when it is a `Stdlib.Test.table` over a list written out in place.
+  let __tableRows(e: ProgramTypes.Expr): Option<List<ProgramTypes.Expr>> =
+    match __testCallArgs(e, "table") with
+    | Some([EList(_, rows), _]) -> Option.Some(rows)
+    | _ -> Option.None
+
+
+  /// The name a table row written as `Stdlib.Test.row("name", args)` gives itself.
+  let __rowName(e: ProgramTypes.Expr): Option<String> =
+    match __testCallArgs(e, "row") with
+    | Some([EString(_, [StringText(name)]), _]) -> Option.Some(name)
+    | _ -> Option.None
+
+
   /// What a failing <param e> names: the check of a `Stdlib.Test.named` call, or a
   /// `group` itself, whose checks `__checks` reads.
   let __namedCheck(e: ProgramTypes.Expr): Option<ProgramTypes.Expr> =
@@ -474,8 +488,9 @@ module Test =
 
   /// How many checks the test <param body> holds, read from its code, so a
   /// cached or unrun test has a count too. Each item of a `Stdlib.Test.all([ ... ])`
-  /// list is a check, nested `all`s add up, `named` counts what it names, a `let`
-  /// counts what follows it, and an `if` or `match` counts its biggest branch.
+  /// list is a check, as is each row of a `table` written out in place. Nested `all`s
+  /// add up, `named` and `group` count what they hold, a `let` counts what follows
+  /// it, and an `if` or `match` counts its biggest branch.
   /// Anything else is one check, including a list built at run time
   /// (`Stdlib.List.map(cases, f) |> Stdlib.Test.all`).
   let testCount(body: ProgramTypes.Expr): Int64 =
@@ -494,9 +509,12 @@ module Test =
       match __checks(e) with
       | Some(items) -> sum(items)
       | None ->
-        match __namedCheck(e) with
-        | Some(check) -> testCount(check)
-        | None -> 1
+        match __tableRows(e) with
+        | Some(rows) -> Stdlib.List.length(rows)
+        | None ->
+          match __namedCheck(e) with
+          | Some(check) -> testCount(check)
+          | None -> 1
 
 
   /// The `Stdlib.Test.group`s in <param body>, in order, each as how deep it sits
@@ -572,12 +590,21 @@ module Test =
       __failureLines(ctx, Stdlib.List.append(path, name), inner, check)
     | FailedChecks(checks) ->
       let items = Stdlib.Option.andThen(source, __checks)
+      let rows = Stdlib.Option.andThen(source, __tableRows)
       checks
       |> Stdlib.List.map(fun((position, check)) ->
         let itemSource = Stdlib.Option.andThen(items, fun i -> Stdlib.List.getAt(i, position - 1))
-        match check with
-        | Named(_, _) -> __failureLines(ctx, path, itemSource, check)
-        | _ ->
+        match check, rows with
+        // A table's row: its source is the row, not a check, so only its name shows.
+        | Named(name, inner), Some(rows) ->
+          let name =
+            Stdlib.List.getAt(rows, position - 1)
+            |> Stdlib.Option.andThen(__rowName)
+            |> Stdlib.Option.withDefault(name)
+
+          __failureLines(ctx, Stdlib.List.append(path, name), Option.None, inner)
+        | Named(_, _), None -> __failureLines(ctx, path, itemSource, check)
+        | _, _ ->
           __failureLines(
             ctx,
             Stdlib.List.append(path, Stdlib.display(position)),

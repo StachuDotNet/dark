@@ -62,65 +62,55 @@ test parseRejectsLowercaseZ =
 test parseOffsets =
   let ok = fun s -> Stdlib.Result.Result.Ok(s)
   let bad = Stdlib.Result.Result.Error("Invalid date format")
+  let parses = fun((text, expected)) -> p(text) |> Stdlib.Test.equal(expected)
   Stdlib.Test.all(
-    [ p("2026-03-10T13:55:36+02:00")
-      |> Stdlib.Test.equal(ok("2026-03-10T11:55:36Z"))
+    [ [ ("2026-03-10T13:55:36+02:00", ok("2026-03-10T11:55:36Z"))
+        ("2026-03-10T13:55:36-05:30", ok("2026-03-10T19:25:36Z"))
+        ("2026-03-10T13:55:36+00:00", ok("2026-03-10T13:55:36Z"))
+        ("2026-03-10T13:55:36-00:00", ok("2026-03-10T13:55:36Z"))
+        ("2026-03-10T13:55:36.250+02:00", ok("2026-03-10T11:55:36.250Z"))
+        ("2026-03-10T23:59:00+23:59", ok("2026-03-10T00:00:00Z"))
+        ("2026-03-10T00:00:00-23:59", ok("2026-03-10T23:59:00Z")) ]
+      |> Stdlib.Test.table(parses)
 
-      p("2026-03-10T13:55:36-05:30")
-      |> Stdlib.Test.equal(ok("2026-03-10T19:25:36Z"))
+      Stdlib.Test.named(
+        "across a day, a leap day and a year",
+        [ ("2026-03-01T01:00:00+02:00", ok("2026-02-28T23:00:00Z"))
+          ("2024-03-01T00:30:00+01:00", ok("2024-02-29T23:30:00Z"))
+          ("2025-12-31T23:30:00-01:00", ok("2026-01-01T00:30:00Z"))
+          ("0001-01-01T00:30:00+01:00", ok("0000-12-31T23:30:00Z")) ]
+        |> Stdlib.Test.table(parses))
 
-      p("2026-03-10T13:55:36+00:00")
-      |> Stdlib.Test.equal(ok("2026-03-10T13:55:36Z"))
+      Stdlib.Test.named(
+        "the same instant written two ways is equal",
+        Stdlib.Test.equal(d("2026-03-10T13:55:36+02:00"), d("2026-03-10T11:55:36Z")))
 
-      p("2026-03-10T13:55:36-00:00")
-      |> Stdlib.Test.equal(ok("2026-03-10T13:55:36Z"))
+      Stdlib.Test.named(
+        "the offset must be +hh:mm or -hh:mm, in range, and end the text",
+        [ "2026-03-10T13:55:36+24:00"
+          "2026-03-10T13:55:36+02:60"
+          "2026-03-10T13:55:36+0200"
+          "2026-03-10T13:55:36+02"
+          "2026-03-10T13:55:36+2:00"
+          "2026-03-10T13:55:36+02:00Z"
+          "2026-03-10T13:55:36+02:00:00"
+          "2026-03-10T13:55:36 +02:00"
+          "2026-03-10T13:55:36+"
+          "2026-03-10T13:55:36" ]
+        |> Stdlib.Test.table(fun text -> p(text) |> Stdlib.Test.equal(bad)))
 
-      p("2026-03-10T13:55:36.250+02:00")
-      |> Stdlib.Test.equal(ok("2026-03-10T11:55:36.250Z"))
+      Stdlib.Test.named(
+        "the local time is checked before the offset is taken off",
+        [ "2026-02-29T01:00:00+02:00"
+          "2026-03-10T24:00:00-01:00"
+          "2026-03-10T13:60:00+01:00"
+          "2026-03-10T13:55:60+01:00" ]
+        |> Stdlib.Test.table(fun text -> p(text) |> Stdlib.Test.equal(bad)))
 
-      p("2026-03-10T23:59:00+23:59")
-      |> Stdlib.Test.equal(ok("2026-03-10T00:00:00Z"))
-
-      p("2026-03-10T00:00:00-23:59")
-      |> Stdlib.Test.equal(ok("2026-03-10T23:59:00Z"))
-
-      // across a day, a leap day and a year
-      p("2026-03-01T01:00:00+02:00")
-      |> Stdlib.Test.equal(ok("2026-02-28T23:00:00Z"))
-
-      p("2024-03-01T00:30:00+01:00")
-      |> Stdlib.Test.equal(ok("2024-02-29T23:30:00Z"))
-
-      p("2025-12-31T23:30:00-01:00")
-      |> Stdlib.Test.equal(ok("2026-01-01T00:30:00Z"))
-
-      p("0001-01-01T00:30:00+01:00")
-      |> Stdlib.Test.equal(ok("0000-12-31T23:30:00Z"))
-
-      // the same instant written two ways is equal
-      Stdlib.Test.equal(
-        d("2026-03-10T13:55:36+02:00"),
-        d("2026-03-10T11:55:36Z"))
-
-      // the offset must be +hh:mm or -hh:mm, in range, and end the text
-      p("2026-03-10T13:55:36+24:00") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+02:60") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+0200") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+02") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+2:00") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+02:00Z") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+02:00:00") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36 +02:00") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36") |> Stdlib.Test.equal(bad)
-      // the local time is checked before the offset is taken off
-      p("2026-02-29T01:00:00+02:00") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T24:00:00-01:00") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:60:00+01:00") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:60+01:00") |> Stdlib.Test.equal(bad)
-      // only ASCII digits
-      p("2026-03-1١T13:55:36Z") |> Stdlib.Test.equal(bad)
-      p("2026-03-10T13:55:36+0١:00") |> Stdlib.Test.equal(bad) ])
+      Stdlib.Test.named(
+        "only ASCII digits",
+        [ "2026-03-1١T13:55:36Z", "2026-03-10T13:55:36+0١:00" ]
+        |> Stdlib.Test.table(fun text -> p(text) |> Stdlib.Test.equal(bad))) ])
 
 
 // Time zones aren't allowed
@@ -143,309 +133,110 @@ test parseRejectsTimeZones =
 
 // Fail in both
 test parseFailInBoth =
-  Stdlib.Test.all(
-    [ p("2000-11-22 09:10:15")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2000-11-22 09:10:15Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2012-01-31 23:59:59.999")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2012-01-31 23:59:59.999+0100")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2012-01-31 23:59:59.999-0100")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2018-09-09 10:43:54+0100")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2018-09-09 11:43:54+0200")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2018-09-24T17:48:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2018-09-24T18:09:24+0200")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-03-22T05:06:07+01:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Ok("1999-03-22T04:06:07Z"))
-
-      p("1999-03-22T05:06:07.000Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Ok("1999-03-22T05:06:07Z"))
-
-      p("2006-06-09T10:20:30.040")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-06-09T10:20:30.040+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Ok("2006-06-09T08:20:30.040Z"))
-
-      p("20061204T1020Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1020")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.1")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.12")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.123")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.1234")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.12345")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.123456")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.1234567")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.1234567Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.7752486-07:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41.7752486-04:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T10:20:54.67am")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T10:20:54.67am")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1020am")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1020AM")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1020PM")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1020pm")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("15/06/2008 08:30")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("18/08/2015 06:30:15.006542")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Mon, 15 Sep 2008 09:30:41 GMT")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2/16/2008 12:15:12 PM")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("16/02/2008 12:15:12")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("12 Juni 2008")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Friday, April 10, 2009")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2016-12-27 14:40:46 +0000")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2T102030Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("31-01-12")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("31-01-2012")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Jun 5 Sun")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Thursday, April 10, 2008")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("00:00:10.512345678")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("01-31-2012")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("10.5")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("10.5+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("10/04/2008")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("10:20:30.040")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("10:20:30.040+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("11:03:01")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("13:03:15.454+0530")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-03-22 AD")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-03-22+01:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("+2006-06-09")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("+2006-06-09T10:20:30.040")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-03-22T05:06:07+01:00[Europe/Paris]")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-03-22T05:06:07.000+01:00[Europe/Paris]")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-03-22T05:06:07.000[Europe/Paris]")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-081+01:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999-W13-2")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("19990322")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("19990322+0100")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("1999W132")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-06-09T+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-123")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-123T+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-123T10:20:30.040")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-123T10:20:30.040+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-W27-3")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-W27-3T+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-W27-3T10:20:30.040")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006-W27-3T10:20:30.040+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T10203Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T102Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T10Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006120T102030Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("200612T102030Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061T102030Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2006T102030Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("200T102030Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20T102030Z")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Friday the 16th of May")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Friday, May 16th 2014")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Sat Dec 01 00:00:00 IST 2018")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Saturday November 2012 10:45:42.720+0100")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Sunday, June 5, 2013")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("T10.5")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("T10.5+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("T10:20:30.040")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("T10:20:30.040+02:00")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Thu, Aug 2 1985 08:30 PM")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Thursday, August 2 1985 08:30 PM")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("Tue, 02 Jan 2018 18:07:59 IST")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("mardi janvier 2018 14:51:02.354+0530")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1020 am")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("20061204T1020 AM")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30:41 GMT")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format"))
-
-      p("2008-09-15T09:30.456")
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("Invalid date format")) ])
+  let invalid = Stdlib.Result.Result.Error("Invalid date format")
+
+  [ ("2000-11-22 09:10:15", invalid)
+    ("2000-11-22 09:10:15Z", invalid)
+    ("2012-01-31 23:59:59.999", invalid)
+    ("2012-01-31 23:59:59.999+0100", invalid)
+    ("2012-01-31 23:59:59.999-0100", invalid)
+    ("2018-09-09 10:43:54+0100", invalid)
+    ("2018-09-09 11:43:54+0200", invalid)
+    ("2018-09-24T17:48:00", invalid)
+    ("2018-09-24T18:09:24+0200", invalid)
+    ("1999-03-22T05:06:07+01:00", Stdlib.Result.Result.Ok("1999-03-22T04:06:07Z"))
+    ("1999-03-22T05:06:07.000Z", Stdlib.Result.Result.Ok("1999-03-22T05:06:07Z"))
+    ("2006-06-09T10:20:30.040", invalid)
+    ("2006-06-09T10:20:30.040+02:00", Stdlib.Result.Result.Ok("2006-06-09T08:20:30.040Z"))
+    ("20061204T1020Z", invalid)
+    ("20061204T1020", invalid)
+    ("2008-09-15T09:30:41.1", invalid)
+    ("2008-09-15T09:30:41.12", invalid)
+    ("2008-09-15T09:30:41.123", invalid)
+    ("2008-09-15T09:30:41.1234", invalid)
+    ("2008-09-15T09:30:41.12345", invalid)
+    ("2008-09-15T09:30:41.123456", invalid)
+    ("2008-09-15T09:30:41.1234567", invalid)
+    ("2008-09-15T09:30:41.1234567Z", invalid)
+    ("2008-09-15T09:30:41.7752486-07:00", invalid)
+    ("2008-09-15T09:30:41.7752486-04:00", invalid)
+    ("20061204T10:20:54.67am", invalid)
+    ("20061204T10:20:54.67am", invalid)
+    ("20061204T1020am", invalid)
+    ("20061204T1020AM", invalid)
+    ("20061204T1020PM", invalid)
+    ("20061204T1020pm", invalid)
+    ("15/06/2008 08:30", invalid)
+    ("18/08/2015 06:30:15.006542", invalid)
+    ("Mon, 15 Sep 2008 09:30:41 GMT", invalid)
+    ("2/16/2008 12:15:12 PM", invalid)
+    ("16/02/2008 12:15:12", invalid)
+    ("12 Juni 2008", invalid)
+    ("Friday, April 10, 2009", invalid)
+    ("2016-12-27 14:40:46 +0000", invalid)
+    ("2T102030Z", invalid)
+    ("31-01-12", invalid)
+    ("31-01-2012", invalid)
+    ("Jun 5 Sun", invalid)
+    ("Thursday, April 10, 2008", invalid)
+    ("00:00:10.512345678", invalid)
+    ("01-31-2012", invalid)
+    ("10.5", invalid)
+    ("10.5+02:00", invalid)
+    ("10/04/2008", invalid)
+    ("10:20:30.040", invalid)
+    ("10:20:30.040+02:00", invalid)
+    ("11:03:01", invalid)
+    ("13:03:15.454+0530", invalid)
+    ("1999-03-22 AD", invalid)
+    ("1999-03-22+01:00", invalid)
+    ("+2006-06-09", invalid)
+    ("+2006-06-09T10:20:30.040", invalid)
+    ("1999-03-22T05:06:07+01:00[Europe/Paris]", invalid)
+    ("1999-03-22T05:06:07.000+01:00[Europe/Paris]", invalid)
+    ("1999-03-22T05:06:07.000[Europe/Paris]", invalid)
+    ("1999-081+01:00", invalid)
+    ("1999-W13-2", invalid)
+    ("19990322", invalid)
+    ("19990322+0100", invalid)
+    ("1999W132", invalid)
+    ("2006-06-09T+02:00", invalid)
+    ("2006-123", invalid)
+    ("2006-123T+02:00", invalid)
+    ("2006-123T10:20:30.040", invalid)
+    ("2006-123T10:20:30.040+02:00", invalid)
+    ("2006-W27-3", invalid)
+    ("2006-W27-3T+02:00", invalid)
+    ("2006-W27-3T10:20:30.040", invalid)
+    ("2006-W27-3T10:20:30.040+02:00", invalid)
+    ("20061204T10203Z", invalid)
+    ("20061204T102Z", invalid)
+    ("20061204T10Z", invalid)
+    ("20061204T1Z", invalid)
+    ("2006120T102030Z", invalid)
+    ("200612T102030Z", invalid)
+    ("20061T102030Z", invalid)
+    ("2006T102030Z", invalid)
+    ("200T102030Z", invalid)
+    ("20T102030Z", invalid)
+    ("Friday the 16th of May", invalid)
+    ("Friday, May 16th 2014", invalid)
+    ("Sat Dec 01 00:00:00 IST 2018", invalid)
+    ("Saturday November 2012 10:45:42.720+0100", invalid)
+    ("Sunday, June 5, 2013", invalid)
+    ("T10.5", invalid)
+    ("T10.5+02:00", invalid)
+    ("T10:20:30.040", invalid)
+    ("T10:20:30.040+02:00", invalid)
+    ("Thu, Aug 2 1985 08:30 PM", invalid)
+    ("Thursday, August 2 1985 08:30 PM", invalid)
+    ("Tue, 02 Jan 2018 18:07:59 IST", invalid)
+    ("mardi janvier 2018 14:51:02.354+0530", invalid)
+    ("20061204T1020 am", invalid)
+    ("20061204T1020 AM", invalid)
+    ("2008-09-15T09:30:41 GMT", invalid)
+    ("2008-09-15T09:30.456", invalid) ]
+  |> Stdlib.Test.table(fun((text, expected)) -> p(text) |> Stdlib.Test.equal(expected))
 
 
 // a plain date is midnight UTC

@@ -8,7 +8,7 @@ type Result =
   | Fail(messages: List<String>)
   /// A failing check that `named` or `group` gave a name.
   | Named(name: String, result: Result)
-  /// The failing checks of an `all`, each with its position in the list, from 1.
+  /// The failing checks of an `all` or `table`, each with its position in the list, from 1.
   | FailedChecks(checks: List<(Int64 * Result)>)
 
 
@@ -97,3 +97,38 @@ let named(name: String, check: Result): Result =
 /// A failure inside it reads `parsing > 2: ...`, and `dark test count` lists it.
 let group(name: String, checks: List<Result>): Result =
   named(name, all(checks))
+
+
+/// <param check> on each of <param rows>, one check per row, reported under the row's
+/// value, as `("a", 1)`, or the name `row` gives it. Each row runs on its own, so a
+/// row that raises fails only itself and the others still run.
+let table(rows: List<'a>, check: 'a -> Result): Result =
+  rows
+  |> List.map(fun row ->
+    let result =
+      // A lambda, so the call runs under this test's policies rather than as an approval root.
+      match LanguageTools.Live.apply(fun r -> check(r), row) with
+      | Ok(result) -> result
+      | Error(message) -> Result.Fail([ $"error: {message}" ])
+
+    match result with
+    | Pass -> result
+    | _ -> named(rowName(row), result))
+  |> all
+
+
+/// <param args>, a row of a `table`'s list written out in place, reported under
+/// <param name> instead of its value.
+let row(name: String, args: 'a): 'a =
+  args
+
+
+/// How a `table` reports <param row>: its value, on one line and at most 60 characters.
+let rowName(row: 'a): String =
+  let shown =
+    inspect(row)
+    |> String.split("\n")
+    |> List.map(String.trim)
+    |> String.join(" ")
+
+  if String.length(shown) > 60 then String.first(shown, 59) + "…" else shown

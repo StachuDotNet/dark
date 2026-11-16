@@ -757,9 +757,8 @@ test roundTripExact =
     "http:///path"
     "http://bücher.de/"
     "http://[fe80::1%25eth0]:8080/" ]
-  |> Stdlib.List.map(fun s ->
+  |> Stdlib.Test.table(fun s ->
     roundTrip(s) |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(s)))
-  |> Stdlib.Test.all
 
 
 // Parsing normalizes the scheme, the host and an empty port, and what comes back
@@ -1058,15 +1057,13 @@ test resolve =
     ("g#s/./x", "http://a/b/c/g#s/./x")
     ("g#s/../x", "http://a/b/c/g#s/../x")
     ("http:g", "http:g") ]
-  |> Stdlib.List.map(fun pair ->
-    let (r, expected) = pair
+  |> Stdlib.Test.table(fun((r, expected)) ->
     (base
      |> Stdlib.Result.andThen(fun b ->
        Stdlib.Url.parseReference(r)
        |> Stdlib.Result.map(fun u ->
          Stdlib.Url.toString(Stdlib.Url.resolve(b, u)))))
     |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(expected)))
-  |> Stdlib.Test.all
 
 
 test resolveAgainstEmptyPath =
@@ -1561,9 +1558,8 @@ test whatwgRoundTrip =
     // WHATWG prints these two shortened to [1::] and [1:2::3]; we keep them.
     "http://[1:0::]"
     "non-special://[1:2:0:0:0:0:0:3]/" ]
-  |> Stdlib.List.map(fun s ->
+  |> Stdlib.Test.table(fun s ->
     roundTrip(s) |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(s)))
-  |> Stdlib.Test.all
 
 
 // WHATWG accepts these; RFC 3986 does not (a `%` must start an escape), and

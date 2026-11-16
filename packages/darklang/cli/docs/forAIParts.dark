@@ -126,7 +126,13 @@ One test at a time, quoting the body so the shell leaves `|>` alone:
 Several checks go in one test with `Stdlib.Test.all([ ... ])`. A failing check
 is shown by its position and its source; `Stdlib.Test.named("why", check)` shows
 a name instead. `Stdlib.Test.group("parsing", [ ... ])` is a named `all` that can
-sit inside another; a failure inside reads `parsing > 2:`.
+sit inside another; a failure inside reads `parsing > 2:`. For many cases of one
+check, use a table; a failing row goes by its value, `row` names one, and a row
+that raises fails only itself:
+
+  test lengths =
+    [ ("a", 1), Stdlib.Test.row("empty", ("", 0)) ]
+    |> Stdlib.Test.table(fun((s, n)) -> Stdlib.String.length(s) |> Stdlib.Test.equal(n))
 
 Run all tests with `test run`, or filter by name/module with `test run Example`.
 `search` leaves tests and `Tests` modules out; add `--include-tests`, or `--test`
