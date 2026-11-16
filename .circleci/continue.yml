@@ -201,6 +201,53 @@ commands:
                   - backend/src/Cli/lib
                 key: v1-sqlite-archive-ci-linux-x64-{{ checksum "../sqlite-checksum" }}
 
+  # A push that changes nothing under backend/ compiles the same LocalExec and tests as the last
+  # build of that backend/, so it takes them from that build instead of compiling them again,
+  # about 70s. The key is what they are compiled from: backend/, the image and this file. The CLI
+  # is built either way, since it embeds the packages.
+  #
+  # Branch and PR builds only, like the other caches: see the note at the top of this file.
+  # CircleCI keeps each fork's caches to that fork's PRs, so a PR only ever gets a build its own
+  # fork saved, and main compiles everything itself.
+  backend-build-restore:
+    steps:
+      - unless:
+          condition:
+            equal: [main, << pipeline.git.branch >>]
+          steps:
+            - run:
+                name: Hash what the backend is compiled from
+                command: |
+                  { git rev-parse HEAD:backend; echo "<< pipeline.parameters.ci-image >>"; shasum .circleci/continue.yml; } > ../backend-key
+            - restore_cache:
+                keys:
+                  - v1-backend-build-{{ checksum "../backend-key" }}
+            - run:
+                name: Use the restored build, if there is one
+                command: |
+                  if [[ -d ../backend-build ]]; then
+                    rm -rf backend/Build
+                    mv ../backend-build backend/Build
+                    echo "This backend/ was compiled before, so LocalExec and the tests aren't compiled again."
+                  fi
+  backend-build-save:
+    steps:
+      - unless:
+          condition:
+            equal: [main, << pipeline.git.branch >>]
+          steps:
+            - run:
+                name: Set the compiled backend aside, without the CLI
+                command: |
+                  [[ ! -f backend/Build/backend-key ]] || exit 0
+                  cp -al backend/Build ../backend-build
+                  rm -rf ../backend-build/out/Cli ../backend-build/obj/Cli
+                  cp ../backend-key ../backend-build/backend-key
+            - save_cache:
+                paths:
+                  - /home/dark/backend-build
+                key: v1-backend-build-{{ checksum "../backend-key" }}
+
   show-large-files-and-directories:
     steps:
       - run:
@@ -289,6 +336,11 @@ jobs:
     # an eleventh longer and costs about a sixth less. medium (2 CPUs, 4 GB) costs less
     # again but takes about three minutes longer and reaches its memory limit in the tests.
     resource_class: medium+
+    # Every cache this job saves is kept a day, not CircleCI's default 15, since storage is billed
+    # by size times days kept. Measured over a week, every reuse of a compiled backend came
+    # within 23 hours of its save.
+    retention:
+      caches: 1d
     #
     # NOT more nodes with `--shard`, though the runner supports it and it is tested. Measured
     # against the whole suite in one process, sharding LOSES: a sequenced group cannot be
@@ -300,7 +352,7 @@ jobs:
       - setup-app
       # Lint, format and the CI scripts' own tests: about half a minute, and the likeliest to
       # fail. Beside the restore and the first compile, which leave a CPU free; the job fails
-      # at the wait after that compile. See .circleci/beside.
+      # at the wait after the package load. See .circleci/beside.
       - run:
           name: Lint, formatting and the CI scripts' tests (beside the next steps)
           background: true
@@ -321,15 +373,15 @@ jobs:
                 key: v7-nuget-{{ checksum "../checksum" }}
       # DebugType=None and DebugSymbol=false tells dotnet not to copy .pdb files to publish/
 
+      - backend-build-restore
       # Each library is compiled once in this job, by this step, in Release so the package load
       # runs optimized. The two builds below reuse them: the package load rewrites
       # package-ref-hashes.txt, which only Cli embeds.
       - run:
           name: Build LocalExec for migrations (Release)
-          command: ./scripts/build/_dotnet-wrapper publish -c Release src/LocalExec/LocalExec.fsproj /p:DebugType=None /p:DebugSymbols=false
-      - run:
-          name: Wait for lint, formatting and the CI scripts' tests
-          command: .circleci/beside wait quick-checks
+          command: |
+            [[ ! -f backend/Build/backend-key ]] || exit 0
+            ./scripts/build/_dotnet-wrapper publish -c Release src/LocalExec/LocalExec.fsproj /p:DebugType=None /p:DebugSymbols=false
 
       # The tests compile beside the package load and the SQLite archive, which leave CPU free
       # and which the tests don't need. One after the other, the compile was about 45s more.
@@ -343,9 +395,13 @@ jobs:
           name: Build the tests (Release, beside the next steps)
           background: true
           command: |
-            .circleci/beside start tests-build -- ./scripts/build/_dotnet-wrapper publish -c Release \
-              tests/Tests/Tests.fsproj /p:BuildProjectReferences=false \
-              /p:DebugType=None /p:DebugSymbols=false
+            if [[ -f backend/Build/backend-key ]]; then
+              .circleci/beside start tests-build -- true
+            else
+              .circleci/beside start tests-build -- ./scripts/build/_dotnet-wrapper publish -c Release \
+                tests/Tests/Tests.fsproj /p:BuildProjectReferences=false \
+                /p:DebugType=None /p:DebugSymbols=false
+            fi
       - sqlite-archive
 
       - run:
@@ -354,6 +410,10 @@ jobs:
       - run:
           name: Load packages into database
           command: python3 .circleci/collect_diagnostics.py --run packages -- scripts/build/reload-packages --published
+      # Here rather than after the first compile, which a restored build skips.
+      - run:
+          name: Wait for lint, formatting and the CI scripts' tests
+          command: .circleci/beside wait quick-checks
       - assert-clean-worktree
       # The CLI embeds this seed, and the F# tests get their own copy of it instead of parsing
       # the same sources again.
@@ -376,6 +436,7 @@ jobs:
       - run:
           name: Wait for the tests to build
           command: .circleci/beside wait tests-build
+      - backend-build-save
 
       # No perf step. Performance is tracked over releases, outside CI: scripts/perf/track.
 
