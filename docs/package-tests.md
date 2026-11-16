@@ -188,7 +188,8 @@ always use the real one.
 `Stdlib.Test` provides helpers such as `expect`, `equal`, `notEqual` and `all`.
 `expect`, `equal` and `notEqual` produce `Pass` or `Fail`. `all` combines several
 checks into one test, and gives `FailedChecks` with the position of each check
-that failed. `named("emoji separator", check)` gives a check a name.
+that failed. `named("emoji separator", check)` gives a check a name, and
+`group("parsing", [ ... ])` is a named `all` that can sit inside another `all`.
 
 When a check fails, the runner prints where it sits and reads its source from
 the stored body, so a check needs no name to be found:
@@ -201,8 +202,9 @@ FAIL Demo.Tests.split
   emoji separator: expected ["a", "c"], got ["a", "b"]
 ```
 
-A named check prints its name instead of its position and source, and a nested
-`all` adds its positions after its own, as in `4 > 2:`. When the list is built at
+A named check prints its name instead of its position and source. A nested
+`all` adds its positions after its own, as in `4 > 2:`, and a group adds its
+name, as in `parsing > 2:`. When the list is built at
 run time, there is no source to show, so only the position is printed.
 
 ## Counting tests
@@ -211,7 +213,7 @@ Each `test` declaration is a test. Its checks are counted from its body,
 without running it:
 
 - each item of a `Stdlib.Test.all([ ... ])` list is one check, a nested `all`
-  adds its own items, and `named` counts what it names;
+  adds its own items, and `named` and `group` count what they hold;
 - a `let` counts what follows it, and an `if` or `match` counts its biggest branch;
 - anything else is one check, including an `all` over a list built at run time,
   such as `Stdlib.List.map(cases, f) |> Stdlib.Test.all`.
@@ -221,7 +223,8 @@ to the test's definition, so a cached pass reports the same checks as a fresh ru
 and nothing extra is stored with results.
 
 `dark test count [module]` prints the tests and checks under a module and in
-each module below it, rolled up. With `--for <item>`, it counts only the tests
+each module below it, rolled up. Where it lists single tests, each test's groups
+follow it as indented rows. With `--for <item>`, it counts only the tests
 that use that function, type or value, directly or through other code,
 from the same dependents index as `dark deps --deep`.
 

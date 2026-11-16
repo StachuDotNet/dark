@@ -6,7 +6,7 @@ module Darklang.Stdlib.Test
 type Result =
   | Pass
   | Fail(messages: List<String>)
-  /// A failing check that `named` gave a name.
+  /// A failing check that `named` or `group` gave a name.
   | Named(name: String, result: Result)
   /// The failing checks of an `all`, each with its position in the list, from 1.
   | FailedChecks(checks: List<(Int64 * Result)>)
@@ -91,3 +91,9 @@ let named(name: String, check: Result): Result =
   match check with
   | Pass -> Result.Pass
   | _ -> Result.Named(name, check)
+
+
+/// <param checks> as one check named <param name>, inside a test or another group.
+/// A failure inside it reads `parsing > 2: ...`, and `dark test count` lists it.
+let group(name: String, checks: List<Result>): Result =
+  named(name, all(checks))

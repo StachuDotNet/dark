@@ -434,18 +434,34 @@ module Test =
     | _ -> Option.None
 
 
-  /// The checks of <param e> when it is `Stdlib.Test.all` over a list written out in place.
+  /// The name and checks of <param e> when it is a `Stdlib.Test.group` with both
+  /// written out in place.
+  let __group(e: ProgramTypes.Expr): Option<(String * List<ProgramTypes.Expr>)> =
+    match __testCallArgs(e, "group") with
+    | Some([EString(_, [StringText(name)]), EList(_, items)]) -> Option.Some((name, items))
+    | _ -> Option.None
+
+
+  /// The checks of <param e> when it is `Stdlib.Test.all` or `group` over a list
+  /// written out in place.
   let __checks(e: ProgramTypes.Expr): Option<List<ProgramTypes.Expr>> =
     match __testCallArgs(e, "all") with
     | Some([EList(_, items)]) -> Option.Some(items)
-    | _ -> Option.None
+    | _ ->
+      match __testCallArgs(e, "group") with
+      | Some([_, EList(_, items)]) -> Option.Some(items)
+      | _ -> Option.None
 
 
-  /// The check <param e> names, when it is a `Stdlib.Test.named` call.
+  /// What a failing <param e> names: the check of a `Stdlib.Test.named` call, or a
+  /// `group` itself, whose checks `__checks` reads.
   let __namedCheck(e: ProgramTypes.Expr): Option<ProgramTypes.Expr> =
     match __testCallArgs(e, "named") with
     | Some([_, check]) -> Option.Some(check)
-    | _ -> Option.None
+    | _ ->
+      match __testCallArgs(e, "group") with
+      | Some(_) -> Option.Some(e)
+      | None -> Option.None
 
 
   /// What <param e> evaluates to, past its `let`s and statements.
@@ -481,6 +497,29 @@ module Test =
         match __namedCheck(e) with
         | Some(check) -> testCount(check)
         | None -> 1
+
+
+  /// The `Stdlib.Test.group`s in <param body>, in order, each as how deep it sits
+  /// (0 directly in the test), its name and its checks.
+  let testGroups(body: ProgramTypes.Expr): List<(Int64 * String * Int64)> =
+    __testGroups(0, body)
+
+
+  let __testGroups(depth: Int64, e: ProgramTypes.Expr): List<(Int64 * String * Int64)> =
+    let e = __resultExpr(e)
+    let inside(depth: Int64, items: List<ProgramTypes.Expr>): List<(Int64 * String * Int64)> =
+      Stdlib.List.flatten(Stdlib.List.map(items, fun item -> __testGroups(depth, item)))
+
+    match __group(e) with
+    | Some((name, items)) ->
+      Stdlib.List.prepend(inside(depth + 1, items), (depth, name, testCount(e)))
+    | None ->
+      match __checks(e) with
+      | Some(items) -> inside(depth, items)
+      | None ->
+        match __testCallArgs(e, "named") with
+        | Some([_, check]) -> __testGroups(depth, check)
+        | _ -> []
 
 
   /// What <param result> says went wrong, one line each: a failing check by where it

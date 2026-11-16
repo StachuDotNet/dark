@@ -568,13 +568,20 @@ let runTestsInRun(
 type CountRow =
   { name: String
     tests: Int64
-    checks: Int64 }
+    checks: Int64
+    /// A test's `Stdlib.Test.group`s, as `LanguageTools.PackageManager.Test.testGroups` reads them.
+    groups: List<(Int64 * String * Int64)> }
 
 
 /// <param groups> (full name segments, checks) rolled up one level below
 /// <param prefix>: a row per submodule, plus a row per test directly in
 /// <param prefix> when it has no submodules, or one row for them all when it has.
-let countRows(prefix: List<String>, groups: List<(List<String> * Int64)>): List<CountRow> =
+/// <param groupsOf> gives a test's groups, for a row of its own.
+let countRows(
+  prefix: List<String>,
+  groups: List<(List<String> * Int64)>,
+  groupsOf: List<String> -> List<(Int64 * String * Int64)>)
+  : List<CountRow> =
   let depth = Stdlib.List.length(prefix)
   let (direct, nested) =
     Stdlib.List.partition(groups, fun((path, _)) -> Stdlib.List.length(path) == depth + 1)
@@ -583,7 +590,8 @@ let countRows(prefix: List<String>, groups: List<(List<String> * Int64)>): List<
     CountRow
       { name = name
         tests = Stdlib.List.length(group)
-        checks = Stdlib.List.fold(group, 0, fun(total, (_, checks)) -> total + checks) }
+        checks = Stdlib.List.fold(group, 0, fun(total, (_, checks)) -> total + checks)
+        groups = [] }
 
   let modules =
     nested
@@ -598,7 +606,8 @@ let countRows(prefix: List<String>, groups: List<(List<String> * Int64)>): List<
     else if Stdlib.List.isEmpty(modules) then
       direct
       |> Stdlib.List.map(fun((path, tests)) ->
-        row(Stdlib.Option.withDefault(Stdlib.List.last(path), ""), [ (path, tests) ]))
+        { row(Stdlib.Option.withDefault(Stdlib.List.last(path), ""), [ (path, tests) ]) with
+            groups = groupsOf(path) })
       |> Stdlib.List.sortBy(fun r -> r.name)
     else
       [ row("(tests in this module)", direct) ]
@@ -632,20 +641,35 @@ let deepestShared(prefix: List<String>, groups: List<(List<String> * Int64)>): L
 
 /// Print the total for <param heading>, then a row per entry of `countRows`
 /// below the deepest module all of <param groups> share.
-let printCounts(heading: String, prefix: List<String>, groups: List<(List<String> * Int64)>): Unit =
+let printCounts(
+  heading: String,
+  prefix: List<String>,
+  groups: List<(List<String> * Int64)>,
+  groupsOf: List<String> -> List<(Int64 * String * Int64)>)
+  : Unit =
   let shared = deepestShared(prefix, groups)
-  let rows = countRows(shared, groups)
+  let rows = countRows(shared, groups, groupsOf)
   let total = Stdlib.List.fold(groups, 0, fun(total, (_, tests)) -> total + tests)
   let below = if shared == prefix then "" else $" (all in {Stdlib.String.join(shared, ".")})"
   Stdlib.printLine($"{heading}: {countLine(Stdlib.List.length(groups), total)}{below}")
-  let width = Stdlib.List.fold(rows, 0, fun(w, r) ->
-    let n = Stdlib.String.length(r.name)
+  // A test's groups sit under it, indented by how deep they are.
+  let lines =
+    rows
+    |> Stdlib.List.map(fun r ->
+      Stdlib.List.prepend(
+        Stdlib.List.map(r.groups, fun((depth, name, checks)) ->
+          let c = if checks == 1 then "check" else "checks"
+          (Stdlib.String.padEnd("", ' ', 2 * (depth + 1)) + name, $"{Stdlib.display(checks)} {c}")),
+        (r.name, countLine(r.tests, r.checks))))
+    |> Stdlib.List.flatten
+
+  let width = Stdlib.List.fold(lines, 0, fun(w, (name, _)) ->
+    let n = Stdlib.String.length(name)
     if n > w then n else w)
 
-  rows
-  |> Stdlib.List.iter(fun r ->
-    Stdlib.printLine(
-      $"  {Stdlib.String.padEnd(r.name, ' ', width)}  {countLine(r.tests, r.checks)}"))
+  lines
+  |> Stdlib.List.iter(fun((name, count)) ->
+    Stdlib.printLine($"  {Stdlib.String.padEnd(name, ' ', width)}  {count}"))
 
 
 /// `test count [--for <item>] [module]`: how many tests and checks are in
@@ -676,14 +700,26 @@ let countTests(state: AppState, args: List<String>): AppState =
       | _ -> []
 
     let depth = Stdlib.List.length(prefix)
-    let under =
+    let selected =
       liveTests(branchId)
       |> Stdlib.List.filterMap(fun item ->
         let path = Stdlib.String.split(fullPath(item), ".")
         if Stdlib.List.take(path, depth) == prefix then
-          Option.Some((path, LanguageTools.PackageManager.Test.testCount(item.entity.body)))
+          Option.Some((path, item.entity.body))
         else
           Option.None)
+
+    let under =
+      Stdlib.List.map(selected, fun((path, body)) ->
+        (path, LanguageTools.PackageManager.Test.testCount(body)))
+
+    let bodies = Stdlib.Dict.fromList(
+      Stdlib.List.map(selected, fun((path, body)) -> (Stdlib.String.join(path, "."), body)))
+
+    let groupsOf(path: List<String>): List<(Int64 * String * Int64)> =
+      match Stdlib.Dict.get(bodies, Stdlib.String.join(path, ".")) with
+      | Some(body) -> LanguageTools.PackageManager.Test.testGroups(body)
+      | None -> []
 
     let place = if depth == 0 then "All tests" else Stdlib.String.join(prefix, ".")
     match forItem with
@@ -692,7 +728,7 @@ let countTests(state: AppState, args: List<String>): AppState =
         printErr($"No package tests under {place}.")
         { state with exitCode = 1 }
       else
-        printCounts(place, prefix, under)
+        printCounts(place, prefix, under, groupsOf)
         state
     | Some(item) ->
       match Deps.resolvePath(branchId, state.packageData.currentLocation, item) with
@@ -719,7 +755,7 @@ let countTests(state: AppState, args: List<String>): AppState =
           else
             $"Tests in {place} that use {name}"
 
-        printCounts(heading, prefix, using)
+        printCounts(heading, prefix, using, groupsOf)
         state
 
 
@@ -751,6 +787,8 @@ let help(_state: AppState): String =
     "Each item of a `Stdlib.Test.all([ ... ])` list is a check, and any other"
     "test holds one. Passed and failed count tests. A failing check is shown by"
     "its position and source, or by the name `Stdlib.Test.named` gives it."
+    "`Stdlib.Test.group(\"name\", [ ... ])` is a named `all` that can sit inside"
+    "another: a failure inside reads `name > 2:`, and `test count` lists it."
     "`test count` shows both for a module and each module under it, read from"
     "the definitions without running anything. `--for <item>` keeps only the"
     "tests that use that item, directly or through other code."

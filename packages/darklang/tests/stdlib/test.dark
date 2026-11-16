@@ -76,6 +76,17 @@ test all =
             (3, Stdlib.Test.Result.Fail([ "another failure" ])) ])) ])
 
 
+test group =
+  Stdlib.Test.all(
+    [ Stdlib.Test.group("fine", [ Stdlib.Test.pass() ]) |> is(Stdlib.Test.Result.Pass)
+
+      Stdlib.Test.group("parsing", [ Stdlib.Test.pass(), Stdlib.Test.fail("a") ])
+      |> is(
+        Stdlib.Test.Result.Named(
+          "parsing",
+          Stdlib.Test.Result.FailedChecks([ (2, Stdlib.Test.Result.Fail([ "a" ])) ]))) ])
+
+
 test named =
   Stdlib.Test.all(
     [ Stdlib.Test.named("fine", Stdlib.Test.pass()) |> is(Stdlib.Test.Result.Pass)
@@ -110,7 +121,8 @@ test shownFixture =
     [ Stdlib.Test.pass()
       Stdlib.String.length("ab") |> Stdlib.Test.equal(2)
       Stdlib.Test.named("third", Stdlib.Test.pass())
-      Stdlib.Test.all([ Stdlib.Test.pass(), Stdlib.Test.pass() ]) ])
+      Stdlib.Test.all([ Stdlib.Test.pass(), Stdlib.Test.pass() ])
+      Stdlib.Test.group("parsing", [ Stdlib.Test.pass(), Stdlib.String.length("") |> Stdlib.Test.equal(0) ]) ])
 
 
 test countedFixture =
@@ -118,7 +130,10 @@ test countedFixture =
 
   [ Stdlib.Test.pass()
     Stdlib.Test.named("pair", Stdlib.Test.all([ Stdlib.Test.pass(), Stdlib.Test.pass() ]))
-    two |> Stdlib.Test.equal(2) ]
+    two |> Stdlib.Test.equal(2)
+    Stdlib.Test.group(
+      "outer",
+      [ Stdlib.Test.pass(), Stdlib.Test.group("inner", [ Stdlib.Test.pass(), Stdlib.Test.pass() ]) ]) ]
   |> Stdlib.Test.all
 
 
@@ -169,6 +184,18 @@ test failureLines =
                  [ (2, Stdlib.Test.Result.Fail([ "no" ])) ])) ]))
         |> Stdlib.Test.equal([ "4 > 2: Stdlib.Test.pass()", "       no" ])
 
+        // A group adds its name, and its checks keep their source.
+        lines(
+          Stdlib.Test.Result.FailedChecks(
+            [ (5,
+               Stdlib.Test.Result.Named(
+                 "parsing",
+                 Stdlib.Test.Result.FailedChecks(
+                   [ (2, Stdlib.Test.Result.Fail([ "expected 1, got 0" ])) ]))) ]))
+        |> Stdlib.Test.equal(
+          [ "parsing > 2: Stdlib.String.length(\"\") |> Stdlib.Test.equal(0)"
+            "             expected 1, got 0" ])
+
         // A test that is not an `all` shows its messages alone.
         lines(Stdlib.Test.Result.Fail([ "a" ])) |> Stdlib.Test.equal([ "a" ]) ])
 
@@ -177,5 +204,9 @@ test testCount =
   match fixtureBody("countedFixture") with
   | None -> Stdlib.Test.fail("countedFixture is not stored")
   | Some(body) ->
-    // `named` counts what it names; a `let` counts what follows it.
-    LanguageTools.PackageManager.Test.testCount(body) |> Stdlib.Test.equal(4)
+    // `named` and `group` count what they hold; a `let` counts what follows it.
+    Stdlib.Test.all(
+      [ LanguageTools.PackageManager.Test.testCount(body) |> Stdlib.Test.equal(7)
+
+        LanguageTools.PackageManager.Test.testGroups(body)
+        |> Stdlib.Test.equal([ (0, "outer", 3), (1, "inner", 2) ]) ])
