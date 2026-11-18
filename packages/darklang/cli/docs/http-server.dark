@@ -43,9 +43,11 @@ Handlers are values; `routeRequest` dispatches to them by method and path.
 ## Request
 
   type Stdlib.Http.Request =
-    { method: String, url: String, headers: List<String * String>, body: Bytes }
+    { method: String, url: String, headers: List<String * String>, body: Bytes,
+      clientAddress: String }
 
   req.method                            // "GET", "POST", ...
+  req.clientAddress                     // "127.0.0.1": the connection's IP, not a header
 
 The path is not a field - it's derived from the url:
 

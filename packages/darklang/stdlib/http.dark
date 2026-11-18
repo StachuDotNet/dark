@@ -4,7 +4,11 @@ type Request =
   { method: String
     url: String
     headers: List<(String * String)>
-    body: Bytes }
+    body: Bytes
+    /// The IP address the request came from, as the connection saw it ({{127.0.0.1}},
+    /// {{::1}}). Behind a proxy this is the proxy; an {{X-Forwarded-For}} header is only
+    /// what the client chose to send.
+    clientAddress: String }
 
 
 /// The path, query and fragment of <param url>, split the way a server splits a

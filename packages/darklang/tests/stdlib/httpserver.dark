@@ -22,7 +22,8 @@ let routeNotes(
         { method = method
           url = "/notes"
           headers = headers
-          body = Stdlib.Bytes.empty })
+          body = Stdlib.Bytes.empty
+          clientAddress = "127.0.0.1" })
 
   (response.statusCode, Stdlib.Utf8.decodeWithReplacement(response.body))
 
@@ -87,7 +88,11 @@ test getPath =
   |> Stdlib.Test.table(fun((url, expected)) ->
     Stdlib.HttpServer.getPath(
       Stdlib.Http.Request
-        { method = "GET", url = url, headers = [], body = Stdlib.Bytes.empty })
+        { method = "GET"
+          url = url
+          headers = []
+          body = Stdlib.Bytes.empty
+          clientAddress = "127.0.0.1" })
     |> Stdlib.Test.equal(expected))
 
 
@@ -97,7 +102,11 @@ test getPath =
 
 let __req(url: String, headers: List<(String * String)>): Stdlib.Http.Request =
   Stdlib.Http.Request
-    { method = "GET", url = url, headers = headers, body = Stdlib.Bytes.empty }
+    { method = "GET"
+      url = url
+      headers = headers
+      body = Stdlib.Bytes.empty
+      clientAddress = "127.0.0.1" }
 
 
 /// Answers with the url it saw as the body, and its request headers as its own.

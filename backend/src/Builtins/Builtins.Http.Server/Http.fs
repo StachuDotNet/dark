@@ -28,6 +28,7 @@ module Request =
     (uri : string)
     (headers : List<string * string>)
     (body : byte array)
+    (clientAddress : string)
     : RT.Dval =
     let headerType = RT.KTTuple(VT.string, VT.string, [])
 
@@ -46,7 +47,8 @@ module Request =
       [ "body", Bytes.newEphemeral body
         "headers", headers
         "method", RT.DString(String.normalizeOutside method)
-        "url", RT.DString(String.normalizeOutside uri) ]
+        "url", RT.DString(String.normalizeOutside uri)
+        "clientAddress", RT.DString clientAddress ]
     RT.DRecord(typ, typ, [], RT.RecordFields.ofList fields)
 
 

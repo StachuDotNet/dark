@@ -34,7 +34,8 @@ let req =
     { method = "GET"
       url = "GET /items/42?q=1 HTTP/1.1"
       headers = [ ("host", "localhost"), ("accept", "*/*") ]
-      body = Stdlib.Bytes.empty }
+      body = Stdlib.Bytes.empty
+      clientAddress = "127.0.0.1" }
 
 let routeN(i: Int64, acc: Int64): Int64 =
   if i == 0 then

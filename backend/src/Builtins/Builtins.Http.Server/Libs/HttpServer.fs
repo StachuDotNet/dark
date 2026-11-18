@@ -728,8 +728,21 @@ let private handleRequest
             // `X-Forwarded-Proto` is Dark's (`Stdlib.HttpServer.Middleware.trustForwardedProto`).
             let url = rawUrl
 
+            // An IPv4 client on a dual-stack socket arrives as `::ffff:1.2.3.4`.
+            let clientAddress =
+              match ctx.Request.RemoteEndPoint with
+              | null -> ""
+              | endPoint ->
+                let ip = endPoint.Address
+                (if ip.IsIPv4MappedToIPv6 then ip.MapToIPv4() else ip).ToString()
+
             let requestDval =
-              Http.Request.fromRequest ctx.Request.HttpMethod url reqHeaders reqBody
+              Http.Request.fromRequest
+                ctx.Request.HttpMethod
+                url
+                reqHeaders
+                reqBody
+                clientAddress
 
             // Per-request tracer — same shape as `eval`/`run` so HTTP traces
             // appear alongside CLI traces with no consumer-side changes.
