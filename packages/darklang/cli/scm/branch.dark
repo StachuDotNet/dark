@@ -407,7 +407,19 @@ let execute(state: AppState, args: List<String>): AppState =
         printErr($"`dark branch {id}` isn't a subcommand. Did you mean `dark branch {sub}`?")
         printHint($"  to start or switch to a branch actually named \"{id}\": dark switch {id}")
         failed(state)
-      | None -> executeSwitch(state, id)
+      | None ->
+        let isNew =
+          match SCM.PackageOps.resolveBranchRef(id) with
+          | NotFound -> true
+          | _ -> false
+
+        let after = executeSwitch(state, id)
+        // Still started: real names like `lost` are one edit from a subcommand.
+        match oneEditFromSubcommand(id) with
+        | Some(sub) when isNew && after.exitCode == 0 ->
+          printHint($"  Did you mean `dark branch {sub}`?")
+          after
+        | _ -> after
   | _ ->
     // Printing help alone reads as though nothing happened, so say what was not understood first.
     printErr($"`dark branch {Stdlib.String.join(args, " ")}` isn't a form of this command.")
@@ -447,6 +459,35 @@ let looksLikeTypoedSubcommand(arg: String): Option<String> =
   knownSubcommands
   |> Stdlib.List.findFirst(fun sub ->
     sub != arg && (Stdlib.String.startsWith(arg, sub) || Stdlib.String.startsWith(sub, arg)))
+
+
+/// The subcommand <param arg> is one edit from (a letter added, dropped or changed, or two
+/// neighbours swapped), or None.
+let oneEditFromSubcommand(arg: String): Option<String> =
+  knownSubcommands
+  |> Stdlib.List.findFirst(fun sub ->
+    sub != arg && (Config.editDistance(arg, sub) <= 1 || swapsNeighbours(arg, sub)))
+
+
+/// Whether <param b> is <param a> with two neighbouring characters swapped.
+let swapsNeighbours(a: String, b: String): Bool =
+  let xs = Stdlib.String.toList(a)
+  let ys = Stdlib.String.toList(b)
+  let diffs =
+    xs
+    |> Stdlib.List.indexedMap(fun(i, x) -> (i, x))
+    |> Stdlib.List.filter(fun pair ->
+      let (i, x) = pair
+      Stdlib.List.getAt(ys, i) != Option.Some(x))
+    |> Stdlib.List.map(fun pair ->
+      let (i, _) = pair
+      i)
+
+  match diffs with
+  | [i, j] when j == i + 1 && Stdlib.List.length(xs) == Stdlib.List.length(ys) ->
+    Stdlib.List.getAt(xs, i) == Stdlib.List.getAt(ys, j)
+    && Stdlib.List.getAt(xs, j) == Stdlib.List.getAt(ys, i)
+  | _ -> false
 
 
 /// `dark branches`

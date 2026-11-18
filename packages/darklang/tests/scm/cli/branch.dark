@@ -500,3 +500,23 @@ test branchSubcommandFlagsGoAnywhere =
         branches(dark),
         [ "feat <- main [merged]" ],
         "feat is merged and doomed is archived") ])
+
+
+test aBranchOneEditFromASubcommandStartsWithAHint =
+  scenario(fun dark ->
+    [ saysAll(
+        dark,
+        [ "branch", "craete" ],
+        [ "started branch \"craete\"", "Did you mean `dark branch create`?" ],
+        "a near-miss still starts the branch, and says what it was near")
+
+      onBranch(dark, "craete", "we are on it")
+      says(dark, [ "branch", "lost" ], "Did you mean `dark branch list`?", "lost is near list")
+      switch(dark, "main")
+      doesNotSay(
+        dark,
+        [ "branch", "craete" ],
+        "Did you mean",
+        "a branch that already exists gets no hint")
+
+      doesNotSay(dark, [ "branch", "feature" ], "Did you mean", "a far name gets no hint") ])
