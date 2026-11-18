@@ -1,4 +1,4 @@
-// Staged and run by `scripts/perf/bench`. Raw `Builtin.` calls on purpose: see arith.dark.
+// Staged and run by `scripts/perf/bench`. Calls nothing newer than the clock: see arith.dark.
 //
 // Same 4096 leaf calls, but all in one chain, so 4096 frames are live at the deepest point.
 let leaf(acc: Int64): Int64 =

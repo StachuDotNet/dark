@@ -106,25 +106,21 @@ let execute(state: AppState, args: List<String>): AppState =
       Options
         { allowHarmful = false
           sandbox = false
-          grants = LanguageTools.Permissions.Policy { allow = [], deny = [] } },
-      false)
+          grants = LanguageTools.Permissions.Policy { allow = [], deny = [] } })
 
 
-/// Parse the options before the script path. <param stats> is `--stats`: kept out of
-/// `ScriptOptions` because those are saved with the trace for replay, and a replay has no reason
-/// to report what the original cost.
+/// Parse the options before the script path.
 let executeOptions(
   state: AppState,
   flags: List<String>,
   script: List<String>,
-  options: Options,
-  stats: Bool)
+  options: Options)
   : AppState =
   match flags with
   | ["--allow-harmful", ...rest] ->
-    executeOptions(state, rest, script, { options with allowHarmful = true }, stats)
+    executeOptions(state, rest, script, { options with allowHarmful = true })
   | ["--sandbox", ...rest] ->
-    executeOptions(state, rest, script, { options with sandbox = true }, stats)
+    executeOptions(state, rest, script, { options with sandbox = true })
   | ["--allow", rules, ...rest] ->
     match Permissions.Command.replacePolicy([ rules ]) with
     | Error(message) ->
@@ -140,12 +136,11 @@ let executeOptions(
         LanguageTools.Permissions.Policy
           { allow = Stdlib.List.concat(options.grants.allow, grants.allow), deny = [] }
 
-      executeOptions(state, rest, script, { options with grants = merged }, stats)
-  | ["--stats", ...rest] -> executeOptions(state, rest, script, options, true)
+      executeOptions(state, rest, script, { options with grants = merged })
   | [] | ["--"] ->
     match script with
-    | ["-", ...scriptArgs] -> executeStdinScript(state, scriptArgs, options, stats)
-    | [scriptPath, ...scriptArgs] -> executeScript(state, scriptPath, scriptArgs, options, stats)
+    | ["-", ...scriptArgs] -> executeStdinScript(state, scriptArgs, options)
+    | [scriptPath, ...scriptArgs] -> executeScript(state, scriptPath, scriptArgs, options)
     | [] ->
       Stdlib.printLine(help(state))
       failed(state)
@@ -168,26 +163,24 @@ let looksLikePackageName(path: String): Bool =
 let executeStdinScript(
   state: AppState,
   args: List<String>,
-  options: Options,
-  stats: Bool)
+  options: Options)
   : AppState =
   match Stdlib.Cli.Stdin.readAll() with
   | Error(message) ->
     printErr(message)
     failed(state)
-  | Ok(source) -> runScriptMeasured(state, "-", source, args, options, Approval.Offer, stats)
+  | Ok(source) -> runScriptWith(state, "-", source, args, options, Approval.Offer)
 
 
 let executeScript(
   state: AppState,
   scriptPath: String,
   args: List<String>,
-  options: Options,
-  stats: Bool)
+  options: Options)
   : AppState =
   match Stdlib.Cli.FileSystem.readFile(scriptPath) with
   | Error(NotFound) when looksLikePackageName(scriptPath) ->
-    executePackageFn(state, scriptPath, args, options, stats)
+    executePackageFn(state, scriptPath, args, options)
   | Error(e) ->
     match e with
     | NotFound -> Stdlib.printErrorLine($"Script not found: {scriptPath}")
@@ -199,7 +192,7 @@ let executeScript(
     { state with exitCode = 1 }
   | Ok(script) ->
     let scriptSourceCode = Stdlib.Utf8.decodeWithReplacement(script)
-    runScriptMeasured(state, scriptPath, scriptSourceCode, args, options, Approval.Offer, stats)
+    runScriptWith(state, scriptPath, scriptSourceCode, args, options, Approval.Offer)
 
 
 /// Run the package function <param name> the way a script runs: under the same policy, with
@@ -209,8 +202,7 @@ let executePackageFn(
   state: AppState,
   name: String,
   args: List<String>,
-  options: Options,
-  stats: Bool)
+  options: Options)
   : AppState =
   let branchId = state.currentBranchId
   let fnName = TraceVerbs.canonicalFnName(branchId, name)
@@ -223,9 +215,9 @@ let executePackageFn(
     match LanguageTools.PackageManager.Function.getSignature(hash) with
     | Some(fn) ->
       match fn.parameters |> Stdlib.List.map(fun p -> p.typ) with
-      | [] | [TUnit] -> runNullary(state, name, fnName, args, options, stats)
+      | [] | [TUnit] -> runNullary(state, name, fnName, args, options)
       | [TList(TString)] ->
-        runScriptMeasured(state, fnName, $"{fnName}(args)", args, options, Approval.Offer, stats)
+        runScriptWith(state, fnName, $"{fnName}(args)", args, options, Approval.Offer)
       | _ ->
         let modulePath = Stdlib.List.prepend(location.modules, location.owner)
         let ctx = Packages.Signatures.rootContext(branchId, modulePath)
@@ -240,7 +232,7 @@ let executePackageFn(
 
         { state with exitCode = 1 }
     | None ->
-      runScriptMeasured(state, fnName, $"{fnName}(args)", args, options, Approval.Offer, stats)
+      runScriptWith(state, fnName, $"{fnName}(args)", args, options, Approval.Offer)
 
 
 /// <fn executePackageFn> for a function that takes nothing.
@@ -249,11 +241,10 @@ let runNullary(
   name: String,
   fnName: String,
   args: List<String>,
-  options: Options,
-  stats: Bool)
+  options: Options)
   : AppState =
   match args with
-  | [] -> runScriptMeasured(state, fnName, $"{fnName}()", args, options, Approval.Offer, stats)
+  | [] -> runScriptWith(state, fnName, $"{fnName}()", args, options, Approval.Offer)
   | _ ->
     Stdlib.printErrorLine($"{name} takes no arguments")
     { state with exitCode = 1 }
@@ -343,22 +334,19 @@ let runScript(
         sandbox = options.sandbox
         grants = LanguageTools.Permissions.Policy { allow = [], deny = [] } }
 
-  runScriptMeasured(state, scriptPath, code, args, invocation, approval, false)
+  runScriptWith(state, scriptPath, code, args, invocation, approval)
 
 
-/// <fn runScript>, and with <param stats> also what the run cost, the same block `eval --stats`
-/// prints. Interactive permission review time is included; use pre-approved access
-/// when measuring execution.
-let runScriptMeasured(
+/// <fn runScript> under <param options>.
+let runScriptWith(
   state: AppState,
   scriptPath: String,
   code: String,
   args: List<String>,
   options: Options,
-  approval: Approval,
-  stats: Bool)
+  approval: Approval)
   : AppState =
-  let run = fun () ->
+  let result =
     parseAndExecute(
       state.accountID,
       state.currentBranchId,
@@ -368,30 +356,9 @@ let runScriptMeasured(
       options,
       approval)
 
-  let (measurement, result) =
-    if stats then
-      // What the script cost, net of the measuring harness itself: see Perf.floor.
-      let harness = LanguageTools.Perf.floor()
-      let (raw, result) = LanguageTools.Perf.measure(run)
-      (Option.Some(LanguageTools.Perf.minus(raw, harness)), result)
-    else
-      (Option.None, run())
-
   let newState = handleResult(state, result)
   noteMisplacedAllow(newState, scriptPath, args)
-  match measurement with
-  | Some(m) ->
-    // stderr, as `eval --stats` does, so stdout carries only what the script printed.
-    let _ = Stdlib.printErrorLine("")
-
-    let _ = Stdlib.printErrorLine(LanguageTools.Perf.render(m))
-
-    let _ =
-      Stdlib.printErrorLine(
-        "  (includes parsing the script; Perf.measure inside it brackets execution alone)")
-
-    newState
-  | None -> newState
+  newState
 
 
 /// A failed run whose arguments hold `--allow` most likely meant it for `run`: everything after
@@ -453,7 +420,6 @@ let help(_state: AppState): String =
     "Examples:"
     "  run-script Me.Todo.main list      - Run a package function"
     "  run-script script.dark a b c      - Run a script file with args"
-    "  run-script --stats script.dark    - Run and report what it cost"
     "  run-script - a b < script.dark    - Read the script from stdin"
     ""
     "Everything after the name or path is passed unchanged, including flags and --."
@@ -470,9 +436,5 @@ let help(_state: AppState): String =
     "  --allow <rules>    - Allow resources for this run only (; separates rules)."
     "  --sandbox          - Add a deny-all run policy (not OS containment)."
     "                       By default a script runs under your instance policy (see `permissions`)."
-    "  --allow-harmful    - Opt out of Harmful-deprecation halting."
-    "  --stats            - Also report what the run cost: allocation, time, instructions,"
-    "                       calls and frame pushes, net of the measuring harness, tagged"
-    "                       with the build they came from. Includes parsing the script;"
-    "                       call Perf.measure inside it to measure the work alone." ]
+    "  --allow-harmful    - Opt out of Harmful-deprecation halting." ]
   |> Stdlib.String.join("\n")

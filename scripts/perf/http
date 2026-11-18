@@ -6,8 +6,9 @@
 #
 # Every other perf tool here runs one process, one script, start to finish, which misses the async
 # half of the runtime entirely: the accept loop, per-request state, contention. This starts the Dark
-# server, warms it, reads its allocation over its own /alloc route, fires N requests at concurrency
-# C, and reads again.
+# server, warms it, fires N requests at concurrency C and stops it. Allocation comes from outside:
+# the server runs twice, warmed and stopped with 0 requests and then with N, and the difference
+# between the two exits' telemetry is the N requests.
 #
 #   scripts/perf/http                 /json, 2000 requests, concurrency 16
 #   scripts/perf/http --route /hello  a route that does almost nothing
@@ -55,10 +56,9 @@ fi
 LOGDIR="${HOME}/.darklang/logs"
 SERVER_LOG="$LOGDIR/perf-http-server.log"
 TELEMETRY="$LOGDIR/telemetry.jsonl"
-rm -f "$TELEMETRY" "$SERVER_LOG"
 
-# The server serves until it's killed, so it has to be stopped on every exit path, including a
-# failed wait-for-listening. Killing the process group gets the dotnet child too.
+# The server serves until it's interrupted, so it has to be stopped on every exit path, including a
+# failed wait-for-listening.
 SERVER_PID=""
 cleanup() {
   if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -72,27 +72,41 @@ trap cleanup EXIT
 "$EXE" permissions allow env read PERF_HTTP_PORT < /dev/null > /dev/null 2>&1 || true
 "$EXE" permissions allow http-server 127.0.0.1 "$PORT" < /dev/null > /dev/null 2>&1 || true
 
-PERF_HTTP_PORT="$PORT" DARK_TELEMETRY="${PERF_TELEMETRY:-1}" DARK_CONFIG_TRACE_DETAIL=off \
-  "$EXE" run "$SERVER" > "$SERVER_LOG" 2>&1 &
-SERVER_PID=$!
+# Job control on, so the server is not started with SIGINT ignored: an interrupt is how it stops
+# cleanly and writes its exit telemetry.
+set -m
 
-for _ in $(seq 1 120); do
-  if grep -q LISTENING "$SERVER_LOG" 2>/dev/null; then break; fi
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-    echo "perf/http: server exited before listening:" >&2
-    cat "$SERVER_LOG" >&2
-    exit 1
-  fi
-  sleep 0.5
-done
+start_server() {
+  rm -f "$TELEMETRY" "$SERVER_LOG"
+  PERF_HTTP_PORT="$PORT" DARK_TELEMETRY=1 DARK_CONFIG_TRACE_DETAIL=off \
+    "$EXE" run "$SERVER" > "$SERVER_LOG" 2>&1 &
+  SERVER_PID=$!
 
-if ! grep -q LISTENING "$SERVER_LOG" 2>/dev/null; then
+  for _ in $(seq 1 120); do
+    if grep -q LISTENING "$SERVER_LOG" 2>/dev/null; then return 0; fi
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+      echo "perf/http: server exited before listening:" >&2
+      cat "$SERVER_LOG" >&2
+      exit 1
+    fi
+    sleep 0.5
+  done
   echo "perf/http: server never reported LISTENING" >&2
   cat "$SERVER_LOG" >&2
   exit 1
-fi
+}
 
-python3 - "$PORT" "$ROUTE" "$N" "$C" "$P" <<'PY'
+# Interrupts the server and sets ALLOC to what it allocated over its whole life.
+stop_server() {
+  kill -INT "$SERVER_PID"
+  wait "$SERVER_PID" || true
+  SERVER_PID=""
+  ALLOC=$(python3 ./scripts/perf/_total-alloc.py "$TELEMETRY")
+}
+
+# Warms the server, then sends $1 requests and prints the latencies.
+load() {
+python3 - "$PORT" "$ROUTE" "$1" "$C" "$P" <<'PY'
 import http.client, json, statistics, sys, threading, time, urllib.request
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
@@ -105,12 +119,6 @@ def hit():
         r.read()
     return (time.perf_counter() - t) * 1000
 
-def alloc():
-    # A server never exits, so there is no end-of-process reading to take. Asking costs one
-    # request's worth of work, which is why the readings are taken outside the measured window.
-    with urllib.request.urlopen(f"http://127.0.0.1:{port}/alloc", timeout=30) as r:
-        return int(r.read())
-
 def worker(spec):
     # One client process: its own share of the requests, at its own share of the concurrency.
     # Runs in a child, so its thread pool contends with no other pool for the GIL.
@@ -122,6 +130,8 @@ def worker(spec):
 # handler touches, which is thousands of times a steady-state request.
 for _ in range(200):
     hit()
+if n == 0:
+    sys.exit(0)
 
 # Split both the work and the concurrency across processes, so `-c` still means total in-flight
 # requests however many processes carry them. Remainders go to the earliest workers.
@@ -129,7 +139,6 @@ procs = max(1, min(procs, c))
 specs = [(n // procs + (1 if i < n % procs else 0),
           c // procs + (1 if i < c % procs else 0)) for i in range(procs)]
 
-before = alloc()
 t0 = time.perf_counter()
 if procs == 1:
     lats = worker(specs[0])
@@ -137,7 +146,6 @@ else:
     with ProcessPoolExecutor(max_workers=procs) as pool:
         lats = [x for part in pool.map(worker, specs) for x in part]
 wall = time.perf_counter() - t0
-after = alloc()
 
 lats.sort()
 print(f"  route            {route}")
@@ -147,8 +155,15 @@ print(f"  latency p50      {statistics.median(lats):.2f} ms")
 print(f"  latency p95      {lats[int(len(lats)*0.95)]:.2f} ms")
 print(f"  latency p99      {lats[int(len(lats)*0.99)]:.2f} ms")
 print(f"  latency max      {lats[-1]:.2f} ms")
-print(f"  alloc/request    {(after - before)/n/1024:.2f} KB")
 PY
+}
 
-cleanup
-SERVER_PID=""
+start_server
+load 0
+stop_server
+BASE=$ALLOC
+
+start_server
+load "$N"
+stop_server
+python3 -c "print(f'  alloc/request    {($ALLOC - $BASE) / $N / 1024:.2f} KB')"

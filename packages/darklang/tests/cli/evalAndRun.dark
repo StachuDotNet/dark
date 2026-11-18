@@ -287,46 +287,6 @@ test splitArgumentsLikeTheHost =
       |> Stdlib.Test.equal(([], [ "–v", "s.dark" ])) ])
 
 
-/// `run --stats` and `eval --stats` report what the run cost on stderr, so stdout carries only
-/// what the script printed or the value. After the path, `--stats` is the script's argument like
-/// any other flag, and reports nothing.
-test statsReportTheCostOnStderr = Instance.withInstance(fun i ->
-  let path =
-    script(
-      i,
-      "stats.dark",
-      "Stdlib.printLine(Stdlib.String.join(args, \",\"))\nStdlib.printLine(\"SCRIPT_RAN\")")
-
-  let streams = fun args ->
-    match Instance.run(i, args) with
-    | Ok(out) -> (out.exitCode, out.stdout, out.stderr)
-    | Error(e) -> (-1, "", e)
-
-  let (code, out, err) = streams([ "run", "--stats", path ])
-  let (evalCode, value, evalErr) = streams([ "eval", "--stats", "1 + 2" ])
-  let (afterCode, after, afterErr) = streams([ "run", path, "--stats" ])
-  Stdlib.Test.all(
-    [ Instance.exitedWith(code, 0, "run --stats succeeds")
-      Instance.says(out, "SCRIPT_RAN", "the script still runs")
-      Instance.doesNotSay(out, "allocated ", "stdout is the script's alone")
-      Instance.says(err, "build ", "the build the numbers came from")
-      Instance.says(err, "allocated ", "the allocation")
-      Instance.says(err, "instructions ", "the interpreter's counters")
-      Instance.exitedWith(evalCode, 0, "eval --stats succeeds")
-      Stdlib.String.trim(value) |> Stdlib.Test.equal("3")
-      Instance.says(evalErr, "allocated ", "eval reports on stderr")
-      Instance.exitedWith(
-        afterCode,
-        0,
-        "--stats after the path is a script argument")
-
-      Instance.says(after, "--stats", "the script received it")
-      Instance.doesNotSay(
-        after + afterErr,
-        "allocated ",
-        "and nothing was measured") ]))
-
-
 /// Remembering missing access continues the same run without replaying earlier
 /// work, and grants only this script version access on later runs.
 ///

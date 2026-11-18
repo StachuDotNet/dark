@@ -141,6 +141,19 @@ gate_perf_probes_run() {
     fi
   done
 
+  # scripts/perf/probe has no other caller: one row, one iteration.
+  started=$SECONDS
+  out=$(scripts/perf/probe "$smoke_dir/spread-canvas.dark" --iters 1 --cli "$(realpath "$CLI")" < /dev/null 2>&1)
+  rc=$?
+  elapsed=$(( SECONDS - started ))
+  if [[ $rc -ne 0 ]]; then
+    failed+=("scripts/perf/probe")
+    echo "  FAIL scripts/perf/probe (exit $rc, ${elapsed}s)"
+    printf '%s\n' "$out" | sed 's/^/        /'
+  else
+    echo "  ok   scripts/perf/probe (${elapsed}s)"
+  fi
+
   echo "  ran ${#probes[@]} probe(s), ${#failed[@]} failed"
 
   # scripts/perf/http has no other caller either. Its own HOME: it grants permissions.

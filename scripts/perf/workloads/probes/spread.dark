@@ -6,9 +6,12 @@
 //   dark config set exec.spreadCrossover 0
 //   dark run scripts/perf/workloads/probes/spread.dark
 //
-// Each cell prints
-// (cost, count, reps, total milliseconds, total bytes); divide by reps, with bytes counted process-wide, so a
-// chunk's allocation on another core is in it.
+// Each cell prints (cost, count, reps, total milliseconds); divide by reps.
+//
+// Allocation and instructions per pass over each cell, process-wide, so a chunk's allocation on
+// another core is in it:
+//
+//   scripts/perf/probe scripts/perf/workloads/probes/spread.dark --iters 3
 //
 // `cost` is the length of a fold inside the body, so a body is about three interpreted operations
 // per unit of cost; 0 is `i + 1`.
@@ -25,47 +28,50 @@ let body(cost: Int64): Int64 -> Int64 =
   else
     (fun i -> Stdlib.List.fold(Stdlib.List.range(1, cost), i, fun(a, x) -> a + x))
 
-let cell(cost: Int64, count: Int64): Unit =
+let cells =
+  [ 0, 10, 100, 1000, 10000 ]
+  |> Stdlib.List.map(fun cost ->
+    [ 2, 4, 8, 16, 64, 256, 1024 ] |> Stdlib.List.map(fun count -> (cost, count)))
+  |> Stdlib.List.flatten
+
+/// <param n> passes of `List.map` over the cell's list.
+let run(cost: Int64, count: Int64, n: Int64): Int64 =
   let items = Stdlib.List.range(1, count)
   let f = body(cost)
+  Stdlib.List.fold(Stdlib.List.range(1, n), 0, fun(acc, _) ->
+    acc + Stdlib.List.length(Stdlib.List.map(items, f)))
+
+let timed(cost: Int64, count: Int64): Unit =
   let work = count * (if cost == 0 then 1 else cost)
   let wanted = 3000000 / work
   // Keep every cost/count pair, including the largest body and list. Only repeat less.
   let reps = if smoke then 1 else if wanted < 3 then 3 else if wanted > 5000 then 5000 else wanted
-  let run(n: Int64): Int64 =
-    Stdlib.List.fold(Stdlib.List.range(1, n), 0, fun(acc, _) ->
-      acc + Stdlib.List.length(Stdlib.List.map(items, f)))
-  let _warm = run((if smoke then 1 else 2))
-  let before = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
-  let t0 = Stdlib.DateTime.now()
-  let _r = run(reps)
-  let t1 = Stdlib.DateTime.now()
-  let after = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
-  let ms = Stdlib.DateTime.subtractMs(t1, t0)
-  Stdlib.debug("cell", (cost, count, reps, ms, after - before))
+  let _warm = run(cost, count, (if smoke then 1 else 2))
+  let t0 = Stdlib.DateTime.__monotonicMilliseconds()
+  let _r = run(cost, count, reps)
+  let ms = Stdlib.DateTime.__monotonicMilliseconds() - t0
+  Stdlib.debug("cell", (cost, count, reps, ms))
 
-/// Instructions per element for one body, from the interpreter's own counter, in the original
-/// process only: run it with spreading off. Last, because turning the counter on slows every
-/// cell after it.
-let perElement(cost: Int64): Unit =
-  let items = Stdlib.List.range(1, 64)
-  let f = body(cost)
-  let _warm = Stdlib.List.map(items, f)
-  let _reset = Darklang.LanguageTools.InterpreterStats.reset()
-  let _r = Stdlib.List.map(items, f)
-  let stats = Darklang.LanguageTools.InterpreterStats.get()
-  let count =
-    match Stdlib.String.split(stats, "\"instructions\":") with
-    | [ _, rest ] ->
-      match Stdlib.String.split(rest, ",") with
-      | [n, ...] -> n
-      | [] -> "?"
-    | _ -> "?"
-  Stdlib.debug("instructions for 64 elements", (cost, count))
-
-let main(): Unit =
-  Stdlib.List.iter([ 0, 10, 100, 1000, 10000 ], fun cost ->
-    Stdlib.List.iter([ 2, 4, 8, 16, 64, 256, 1024 ], fun count -> cell(cost, count)))
-  Stdlib.List.iter([ 0, 10, 100, 1000, 10000 ], fun cost -> perElement(cost))
+/// `rows` prints the cells; `<row> <n>` runs one cell n times after a warm-up, for
+/// `scripts/perf/probe`; with no arguments every cell is timed.
+let main(): Int64 =
+  match args with
+  | [ "rows" ] ->
+    Stdlib.List.iter(cells, fun ((cost, count)) ->
+      Stdlib.printLine($"cost {Stdlib.display(cost)}, count {Stdlib.display(count)}"))
+    0
+  | [ row, n ] ->
+    match (Stdlib.Int64.parse(row), Stdlib.Int64.parse(n)) with
+    | (Ok(i), Ok(n)) ->
+      match Stdlib.List.getAt(cells, i) with
+      | Some((cost, count)) ->
+        let _warm = run(cost, count, 2)
+        let _r = run(cost, count, n)
+        0
+      | None -> 1
+    | _ -> 1
+  | _ ->
+    Stdlib.List.iter(cells, fun ((cost, count)) -> timed(cost, count))
+    0
 
 main()

@@ -645,7 +645,6 @@ let private hiddenStateBuiltins : Set<string> =
       "interpreterStatsReset"
       "interpreterStatsEnableDetailedTiming"
       "interpreterStatsGet"
-      "gcAllocatedBytes"
       "tracesRecording"
       "localDbPath"
       "cliGetLogDir"

@@ -1,6 +1,8 @@
 // `Canvas.compose`, unedited, over a 50-row frame of six styled spans a row: the per-row
 // `List.map` the concurrency surveys named, as a keystroke repaints it. Run serial and spread
-// as `spread.dark` says. Prints (frames, total milliseconds, total bytes).
+// as `spread.dark` says. Run directly it prints milliseconds for 200 frames; allocation per frame:
+//
+//   scripts/perf/probe scripts/perf/workloads/probes/spread-canvas.dark
 
 // perf-probes-run runs a copy with this set to true: every case, fewer repetitions.
 let smoke = false
@@ -19,18 +21,36 @@ let frame =
           text = "\u001b[1mcell\u001b[0m and some ordinary text" }))
   |> Stdlib.List.flatten
 
-let draw(n: Int64): Int64 =
-  Stdlib.List.fold(Stdlib.List.range(1, n), 0, fun(acc, _) ->
-    acc + Stdlib.List.length(Darklang.Stdlib.Cli.UI.Canvas.compose(160, 50, frame)))
+let run(f: Int64 -> Int64, n: Int64): Int64 =
+  Stdlib.List.fold(Stdlib.List.range(1, n), 0, fun(acc, i) -> acc + f(i))
 
-let main(): Unit =
-  let frames = if smoke then 1 else 200
-  let _warm = draw((if smoke then 1 else 5))
-  let before = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
-  let t0 = Stdlib.DateTime.now()
-  let _r = draw(frames)
-  let t1 = Stdlib.DateTime.now()
-  let after = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
-  Stdlib.debug("canvas", (frames, Stdlib.DateTime.subtractMs(t1, t0), after - before))
+let rows =
+  [ ("canvas", fun _ -> Stdlib.List.length(Darklang.Stdlib.Cli.UI.Canvas.compose(160, 50, frame))) ]
+
+/// `rows` prints the row labels; `<row> <n>` runs one row n times after a warm-up, for
+/// `scripts/perf/probe`; with no arguments every row runs once more and is timed.
+let main(): Int64 =
+  match args with
+  | [ "rows" ] ->
+    Stdlib.List.iter(rows, fun ((label, _)) -> Stdlib.printLine(label))
+    0
+  | [ row, n ] ->
+    match (Stdlib.Int64.parse(row), Stdlib.Int64.parse(n)) with
+    | (Ok(i), Ok(n)) ->
+      match Stdlib.List.getAt(rows, i) with
+      | Some((_, f)) ->
+        let _warm = run(f, (if smoke then 1 else 5))
+        let _r = run(f, n)
+        0
+      | None -> 1
+    | _ -> 1
+  | _ ->
+    Stdlib.List.iter(rows, fun ((label, f)) ->
+      let _warm = run(f, (if smoke then 1 else 5))
+      let t0 = Stdlib.DateTime.__monotonicMilliseconds()
+      let _r = run(f, (if smoke then 1 else 200))
+      let ms = Stdlib.DateTime.__monotonicMilliseconds() - t0
+      Stdlib.debug(label, ms))
+    0
 
 main()

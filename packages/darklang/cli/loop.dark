@@ -449,9 +449,6 @@ let runInteractiveLoop(state: AppState): Int64 =
     0
   else
     let tLoopStart = if state.telemetryEnabled then Telemetry.now() else 0
-    if state.telemetryEnabled then
-      let _ = LanguageTools.InterpreterStats.reset()
-      ()
 
     let location = locationStr(state)
     // Sampled once per pass. A resize while idle still repaints: SIGWINCH wakes the blocking read (see
@@ -514,11 +511,10 @@ let runInteractiveLoop(state: AppState): Int64 =
               [ ("char", keyInput.keyChar), ("repeats", Stdlib.display(times)) ])
 
             let loopWorkMs = Telemetry.elapsedMs(tLoopStart) - Telemetry.elapsedMs(tReadKey)
-            let interpStats = LanguageTools.InterpreterStats.get()
             Telemetry.logWithContext(
               "loopWork",
               tLoopStart,
-              [ ("workMs", Stdlib.display(loopWorkMs)), ("interp", interpStats) ])
+              [ ("workMs", Stdlib.display(loopWorkMs)) ])
 
           newState
         | StoreChanged(change) ->

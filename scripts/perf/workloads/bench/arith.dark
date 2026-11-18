@@ -2,9 +2,8 @@
 // since the two disagree substantially on per-Apply cost.
 //
 // Staged into `rundir/perf-workloads/` by `scripts/perf/bench`, which is also the only thing that
-// runs it. Raw `Builtin.` calls rather than the Dark wrappers on purpose: an A/B runs this source
-// against an OLDER published binary too, whose store may not carry today's wrapper. The clock
-// is the exception: there is no raw clock builtin, so it goes through
+// runs it, and times the whole process from outside. An A/B runs this source against an OLDER
+// published binary too, so it calls nothing newer than
 // `Stdlib.DateTime.__monotonicMilliseconds`, which needs a binary from mid-October 2026 on.
 let hot(n: Int64, acc: Int64): Int64 =
   if n <= 0 then
@@ -18,8 +17,7 @@ let hot(n: Int64, acc: Int64): Int64 =
     hot(n - 1, e)
 
 let _warm = hot(200, 0)
-let _reset = Builtin.interpreterStatsReset()
 let t0 = Stdlib.DateTime.__monotonicMilliseconds()
 let result = hot(4000, 0)
 let t1 = Stdlib.DateTime.__monotonicMilliseconds()
-Stdlib.printLine("elapsed_ms=" + (Stdlib.display(t1 - t0)) + " stats=" + (Builtin.interpreterStatsGet()))
+Stdlib.printLine("elapsed_ms=" + (Stdlib.display(t1 - t0)))

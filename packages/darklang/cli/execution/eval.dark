@@ -111,9 +111,7 @@ let execute(state: AppState, args: List<String>): AppState =
     else
       Harmful.Halt
 
-  // What the expression cost, net of the measuring harness itself: see Perf.floor.
-  let wantStats = Stdlib.List.contains(args, "--stats")
-  let args = args |> Stdlib.List.filter(fun a -> a != "--allow-harmful" && a != "--stats")
+  let args = args |> Stdlib.List.filter(fun a -> a != "--allow-harmful")
   let (rules, args) = allowRules([], args)
   match Permissions.Command.replacePolicy([ Stdlib.String.join(rules, ";") ]) with
   | Error(message) ->
@@ -122,7 +120,7 @@ let execute(state: AppState, args: List<String>): AppState =
   | Ok(grants) when Stdlib.Bool.not(Stdlib.List.isEmpty(grants.deny)) ->
     printErr("--allow takes allow rules only")
     failed(state)
-  | Ok(grants) -> executeUnder(state, args, harmful, wantStats, grants)
+  | Ok(grants) -> executeUnder(state, args, harmful, grants)
 
 
 /// The `--allow <rules>` at the front of <param args>, and what follows them.
@@ -136,7 +134,6 @@ let executeUnder(
   state: AppState,
   args: List<String>,
   harmful: Harmful,
-  wantStats: Bool,
   grants: LanguageTools.Permissions.Policy)
   : AppState =
   match args with
@@ -156,42 +153,14 @@ let executeUnder(
       printErr(message)
       failed(state)
     | Ok(expr) ->
-      let (stats, outcome) =
-        if wantStats then
-          let harness = LanguageTools.Perf.floor()
-          let (raw, result) =
-            LanguageTools.Perf.measure(fun () -> evaluateUnder(state, expr, harmful, grants))
-
-          (Option.Some(LanguageTools.Perf.minus(raw, harness)), result)
-        else
-          (Option.None, evaluateUnder(state, expr, harmful, grants))
-
-      let newState =
-        match outcome with
-        | Ok(Some(s)) ->
-          Stdlib.printLine(s)
-          state
-        | Ok(None) -> state
-        | Error(message) ->
-          Stdlib.printErrorLine($"Error: {message}")
-          { state with exitCode = 1 }
-
-      match stats with
-      | Some(m) ->
-        // stderr, so stdout carries only the value
-        let _ = Stdlib.printErrorLine("")
-
-        let _ = Stdlib.printErrorLine(LanguageTools.Perf.render(m))
-
-        // TODO: report the phases instead of warning about them. `cliEvaluateExpression` already
-        // splits `parseCliExpr` from `execute`, so bracketing each would turn this line into two
-        // rows. F# on the eval path, so it wants its own change and its own measurement.
-        let _ =
-          Stdlib.printErrorLine(
-            "  (includes parsing and name resolution; Perf.measure in a script brackets execution alone)")
-
-        newState
-      | None -> newState
+      match evaluateUnder(state, expr, harmful, grants) with
+      | Ok(Some(s)) ->
+        Stdlib.printLine(s)
+        state
+      | Ok(None) -> state
+      | Error(message) ->
+        Stdlib.printErrorLine($"Error: {message}")
+        { state with exitCode = 1 }
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
@@ -204,10 +173,6 @@ let help(_state: AppState): String =
     "Evaluate a Dark expression and display the result."
     ""
     "  --allow   allow resources for this evaluation only, as `run --allow` does"
-    "  --stats   also report what it cost: allocation, time, instructions, calls and"
-    "            frame pushes, net of the measuring harness, tagged with the build they"
-    "            came from. Inside a script, call Perf.measure instead: it measures the"
-    "            work rather than the whole process."
     ""
     "Examples:"
     "  eval 1 + 2                     - Arithmetic operations"

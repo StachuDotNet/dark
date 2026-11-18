@@ -919,7 +919,7 @@ let private runCli (args : string[]) : int =
     if Telemetry.isEnabled () then
       Telemetry.event
         "gc.stats"
-        [ "totalAllocatedBytes", string (System.GC.GetTotalAllocatedBytes(false))
+        [ "totalAllocatedBytes", string (System.GC.GetTotalAllocatedBytes(true))
           "gen0", string (System.GC.CollectionCount 0)
           "gen1", string (System.GC.CollectionCount 1)
           "gen2", string (System.GC.CollectionCount 2) ]

@@ -17,62 +17,32 @@ iterating.
 
 ## Asking what one thing costs
 
-Before reaching for any of the tools below: `Darklang.LanguageTools.Perf.measure` takes a thunk and
-gives back allocation, time and the interpreter's counters, with whatever the thunk returned.
+Measure from outside the process: run the work at 0 and at N iterations and take the difference
+of the two runs' exit telemetry (`DARK_TELEMETRY=1`). Startup, parsing and package loading are in
+both runs and cancel. `suite` does this for its workloads and `probe` for each row of a probe in
+`workloads/probes/`; to ask about something new, add a row to the probe closest to it, or a new
+probe, and run
 
-    let harness = Perf.floor()
-    let (raw, answer) = Perf.measure(fun () -> Stdlib.List.map(input, inc))
-    Perf.render(Perf.minus(raw, harness))
+    scripts/perf/probe scripts/perf/workloads/probes/costs.dark
 
-`floor` is what `measure` costs when the thunk does nothing; subtract it or small readings are
-mostly harness. One primitive on purpose: a function against its replacement, one function across
-five input sizes, a survey of twenty builtins, are all loops over it, which is cheaper than
-curating input sets per function.
-
-From the command line, `dark eval --stats <expr>` and `dark run --stats <file>` print the same
-block on stderr, after whatever the expression or script printed. Note what they measure: evaluating an
-expression or running a script parses and resolves it too, and for anything small that is most of
-the allocation, while the instruction count is execution only. Inside a script, `Perf.measure`
-brackets the work alone. Neither counts process startup, which `gate` measures on its own and takes
-off its workload's number (see below).
-
-To compare two pieces of Dark, `Perf.ab(a, b, rounds)` alternates them so drift lands on both
-sides, takes the harness off each reading and keeps the lowest of each field per side:
-
-    let (old, new) = Perf.ab(fun () -> oldWay(input), fun () -> newWay(input), 5)
-    Perf.render(old)
-    Perf.render(new)
-
-Every measurement carries the build that produced it, its mode (`debug`, `release-r2r`,
-`release-aot`) and its commit, because the same workload has three different right answers. `gate`
-and `suite` print the same pair for the binary they ran, and `suite --record` stores it.
+Every reading carries the build that produced it, its mode (`debug`, `release-r2r`,
+`release-aot`) and its commit, because the same workload has three different right answers. `gate`,
+`suite` and `probe` print that pair for the binary they ran, and `suite --record` stores it.
 
 ## What the interpreter counts
 
-`InterpreterStats.get ()` returns all of it as one JSON object; `Perf.measure` and `--stats` read
-the first few fields. Counting starts at the first `InterpreterStats.reset ()` (which `measure`
-does), and the per-fn and per-builtin timing only after `InterpreterStats.enableDetailedTiming
-true`, because a clock read can cost more than the call it times.
+With `DARK_TELEMETRY=1` every VM counts, and the exit dump in `logs/telemetry.jsonl` (under
+`rundir/` for the dev CLI, `~/.darklang/` for a published one) totals them: `vm.stats` has
+instructions, builtin and package calls, frame pushes, trait dispatches and misses, register slots
+allocated and type-symbol-table sizes; `opcode.*` has bytes and count per opcode;
+`builtinAlloc.*` allocation and calls per builtin by name; `applyStage.*` bytes per region of the
+Apply path (read the fine-grained stages; the three `*.total` ones bracket nested execution and can
+exceed what the process allocated); `gc.stats` the bytes the process allocated and its collections.
+`view-telemetry.py` reads it.
 
-| Field | What it is |
-| --- | --- |
-| `instructions` | VM instructions executed. Exact for a fixed workload, unlike allocation. |
-| `builtinCalls`, `packageCalls` | Calls into F# builtins and into package fns. |
-| `framePushes` | Call frames pushed: one per package fn or lambda application. |
-| `traitDispatches`, `traitDispatchMisses` | Trait calls resolved at run time, and how many of those missed the cache. |
-| `buildMode`, `buildHash` | Which build: mode and commit (`dev` for a Debug CLI not run through `scripts/run-cli`). |
-| `statSets` | 0: the counters are the whole process. Positive: they are the calling VM's share (see below). |
-| `byOpcode` | Per opcode, bytes allocated and count. |
-| `byStage` | Per region of the Apply path, bytes and count. Read the fine-grained stages; the three `*.total` ones bracket nested execution and can exceed what the process allocated. |
-| `builtinTiming`, `packageFnTiming` | With detailed timing on: nanoseconds and calls, per builtin by name and per package fn by hash. `fnprofile` turns the second into a ranked table with names. |
-
-With telemetry off, every VM shares one counter set and a read sees everything. With
-`DARK_TELEMETRY=1`, each VM gets its own, a read sees one VM's share (`statSets` says so), and the
-process total is in the exit dump in `logs/telemetry.jsonl` (under `rundir/` for the dev CLI,
-`~/.darklang/` for a published one), which `view-telemetry.py` reads. So the more instrumented mode
-tells you less from inside the script. That dump also has what `get` leaves out: allocation and
-calls per builtin by name (`builtinAlloc.*`), register slots allocated, type-symbol-table sizes, and
-the per-opcode totals across every VM.
+Per-package-fn time is the exception: `view.dark` and `route.dark` turn on detailed timing with
+`InterpreterStats.enableDetailedTiming true` and print `InterpreterStats.get ()`, whose
+`packageFnTiming` `fnprofile` turns into a ranked table with names.
 
 ## The recipe
 
@@ -114,6 +84,8 @@ the per-opcode totals across every VM.
   interleaves two binaries and reports the paired median, which is drift-proof.
 - `http` is allocation and latency per request under concurrency: the only tool here that sees the
   async half of the runtime.
+- `probe` is allocation and VM instructions per iteration for each row of a probe, from runs at 0
+  and at N iterations.
 - `keystroke` is one keypress in the interactive CLI, end to end. Needs a TTY, so it drives
   `expect`. `gate` budgets the headless half of it (see `workloads/ui/` below).
 - `alloc-profile` is allocation by type name, from GC allocation-tick events.
@@ -123,7 +95,8 @@ the per-opcode totals across every VM.
 - `view-telemetry.py` shows where a run's time went, from `rundir/logs/telemetry.jsonl`.
 - `_common` holds the shared shell helpers: where a published binary is, which mode it is, whether
   it is stale.
-- `_total-alloc.py` is the one parser for "bytes this run allocated", used by `gate` and `suite`.
+- `_total-alloc.py` is the one parser for "bytes this run allocated", used by `gate`, `suite` and
+  `http`.
 
 ## The workloads
 
@@ -150,11 +123,11 @@ Different contracts, which is why they are in different places:
   published binary, whose store may not carry today's wrapper.
 - `workloads/probes/` is hand-run. One file per question (what a view costs, what a lambda
   application costs, where routing time goes, where spreading starts to pay). Run them with
-  `./scripts/run-cli run <file>` and read the output; each file's header says what it answers and
-  how to read it. The `perf-probes-run` gate checks every probe with fewer repetitions by
+  `./scripts/run-cli run <file>` for time, or `scripts/perf/probe <file>` for allocation and
+  instructions per row; each file's header says what it answers and how to read it. The `perf-probes-run` gate checks every probe with fewer repetitions by
   running a copy with its `let smoke = false` line set to true. It keeps every workload row,
   list size, canvas size and workbench view; the operation probes use inputs on both sides of
-  their conditional examples. It also runs the allocation and profiling sections. Smoke output
+  their conditional examples. It also runs the profiling sections, and `probe` over one probe. Smoke output
   is labelled and must not be used as a performance measurement. Run by hand, a probe keeps
   its full repetitions. The switch is a constant rather than an environment variable because
   reading one needs `env read`, which the default instance policy prompts for. The gate

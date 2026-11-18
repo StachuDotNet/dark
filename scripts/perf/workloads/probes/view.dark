@@ -1,4 +1,4 @@
-// What building a workbench view costs: time, allocation, and where both go by package fn.
+// What building a workbench view costs: time, allocation, and where the time goes by package fn.
 //
 // One file rather than three, because the expensive half is the state and size setup below, and
 // three copies of it fall out of step with the views they build.
@@ -6,15 +6,15 @@
 //   ./scripts/run-cli run scripts/perf/workloads/probes/view.dark
 //   for i in 1 2 3; do ./scripts/run-cli run scripts/perf/workloads/probes/view.dark; done \
 //     | ./scripts/perf/fnprofile --divide 5
+//   scripts/perf/probe scripts/perf/workloads/probes/view.dark --iters 10
 //
-// `fnprofile` reads only the JSON line, so the two lines above it are ignored there. Feed it
-// several runs: it reports the minimum per call.
+// `fnprofile` reads only the JSON line, so the line above it is ignored there. Feed it several
+// runs: it reports the minimum per call. `probe` gives allocation per view build, from outside
+// the process.
 //
-// The three sections run in this order for a reason. Allocation goes first, on an otherwise fresh
-// process: run after the timing loop it drifts by a hundred-odd bytes, and being repeatable to the
-// byte is the whole reason to prefer it to the clock. Detailed timing goes last, because enabling
-// it perturbs everything after -- the interpreter's counters read the allocation counter twice per
-// builtin call, which inflates exactly the per-call figures the middle section is for.
+// Detailed timing goes last, because enabling it perturbs everything after -- the interpreter's
+// counters read the allocation counter twice per builtin call, which inflates exactly the per-call
+// figures the timing section is for.
 
 // perf-probes-run runs a copy with this set to true: every case, fewer repetitions.
 let smoke = false
@@ -23,7 +23,6 @@ let _smokeNotice =
   if smoke then Stdlib.printLine("SMOKE CHECK: figures are not performance measurements") else ()
 
 let iterations = if smoke then 1 else 400
-let allocationIterations = if smoke then 1 else 10
 
 let base =
   Darklang.Cli.Workbench.initialState(
@@ -42,37 +41,40 @@ let viewN(i: Int64, s: Darklang.Cli.Workbench.State, acc: Int64): Int64 =
     let v = Darklang.Cli.Workbench.viewAtSize(s, size)
     viewN(i - 1, s, acc + (Stdlib.List.length(v.rows)))
 
-// Allocation. Byte-deterministic for a fixed workload, so this is the number to compare across
-// sessions; the one above drifts with how loaded the machine is.
-let _warmAlloc = viewN((if smoke then 1 else 2), base, 0)
-let a0 = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
-let _alloc = viewN(allocationIterations, base, 0)
-let a1 = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
+/// One view build, for `scripts/perf/probe`: `rows` names it, `0 <n>` builds it n times after a
+/// warm-up.
+let rowMode(n: Int64): Unit =
+  let _warm = viewN(2, base, 0)
+  let _r = viewN(n, base, 0)
+  ()
 
-let _ =
-  Stdlib.printLine(
-    ("bytes per view build: "
-     + (Stdlib.display((a1 - a0) / allocationIterations))))
+let timed(): Unit =
+  let _warm = viewN((if smoke then 1 else 2), base, 0)
 
-// Time. Long enough that ~100 Hz sampling lands hundreds of samples inside it, so this is also the
-// section to run a sampling profiler against.
-let t0 = Darklang.Cli.Telemetry.now()
-let rows = viewN(iterations, base, 0)
-let elapsed = (Darklang.Cli.Telemetry.now()) - t0
+  // Time. Long enough that ~100 Hz sampling lands hundreds of samples inside it, so this is also the
+  // section to run a sampling profiler against.
+  let t0 = Darklang.Cli.Telemetry.now()
+  let rows = viewN(iterations, base, 0)
+  let elapsed = (Darklang.Cli.Telemetry.now()) - t0
 
-let _ =
-  Stdlib.printLine(
-    ((Stdlib.display(iterations))
-     + " views, "
-     + (Stdlib.display(elapsed))
-     + " ms, "
-     + (Stdlib.display(elapsed / iterations))
-     + " ms each ("
-     + (Stdlib.display(rows))
-     + " rows)"))
+  let _ =
+    Stdlib.printLine(
+      ((Stdlib.display(iterations))
+       + " views, "
+       + (Stdlib.display(elapsed))
+       + " ms, "
+       + (Stdlib.display(elapsed / iterations))
+       + " ms each ("
+       + (Stdlib.display(rows))
+       + " rows)"))
 
-// Per-fn profile, over five views. Pipe into fnprofile with `--divide 5`.
-let _on = Darklang.LanguageTools.InterpreterStats.enableDetailedTiming(true)
-let _reset = Darklang.LanguageTools.InterpreterStats.reset()
-let _profile = viewN((if smoke then 1 else 5), base, 0)
-Stdlib.printLine(Darklang.LanguageTools.InterpreterStats.get())
+  // Per-fn profile, over five views. Pipe into fnprofile with `--divide 5`.
+  let _on = Darklang.LanguageTools.InterpreterStats.enableDetailedTiming(true)
+  let _reset = Darklang.LanguageTools.InterpreterStats.reset()
+  let _profile = viewN((if smoke then 1 else 5), base, 0)
+  Stdlib.printLine(Darklang.LanguageTools.InterpreterStats.get())
+
+match args with
+| [ "rows" ] -> Stdlib.printLine("view build")
+| [ "0", n ] -> rowMode(Stdlib.Int64.parse(n) |> Stdlib.Result.withDefault(0))
+| _ -> timed()

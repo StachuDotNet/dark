@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+. ./scripts/devcontainer/_assert-in-container "$0" "$@"
+. ./scripts/devcontainer/_lower-priority "$0" "$@"
+
+# Allocation and VM instructions per iteration, row by row, for a probe in workloads/probes/.
+#
+# Measured from outside the process, the way `suite` does it: each row runs twice, at 0 and at N
+# iterations, and the difference between the two runs' exit telemetry is the row's work. Startup,
+# parsing and the row's warm-up are in both runs and cancel.
+#
+#   scripts/perf/probe scripts/perf/workloads/probes/costs.dark
+#   scripts/perf/probe <probe> --iters 500
+#   scripts/perf/probe <probe> --release
+#   scripts/perf/probe <probe> --cli <path>
+#
+# A probe takes `rows` (print its row labels, one per line) and `<row> <n>` (warm up, then run
+# row <row> n times).
+set -euo pipefail
+cd /home/dark/app
+. ./scripts/perf/_common
+
+EXE="backend/Build/out/Cli/Debug/net11.0/Cli"
+ITERS=200
+PROBE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --iters) ITERS="$2"; shift 2 ;;
+    --release) EXE=$(release_exe); shift ;;
+    --cli) EXE="$2"; shift 2 ;;
+    -*) echo "unknown flag: $1" >&2; exit 2 ;;
+    *) PROBE="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$PROBE" ]]; then
+  echo "usage: scripts/perf/probe <probe.dark> [--iters N] [--release]" >&2
+  exit 2
+fi
+if [[ ! -x "$EXE" ]]; then
+  echo "perf/probe: no CLI at $EXE" >&2
+  exit 2
+fi
+
+TELEMETRY=$(telemetry_path)
+
+# Prints "<allocated bytes> <instructions>" for one run.
+run_once() {
+  rm -f "$TELEMETRY"
+  DARK_TELEMETRY=1 DARK_CONFIG_TRACE_DETAIL=off "$EXE" run "$PROBE" "$1" "$2" < /dev/null > /dev/null
+  python3 - "$TELEMETRY" <<'PY'
+import json, sys
+alloc = instructions = None
+for line in open(sys.argv[1]):
+    try:
+        r = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if r.get("event") == "gc.stats":
+        alloc = int(r["ctx"]["totalAllocatedBytes"])
+    elif r.get("event") == "vm.stats":
+        instructions = int(r["ctx"]["instructions"])
+if alloc is None or instructions is None:
+    sys.exit("perf/probe: no gc.stats or vm.stats in telemetry -- did the run finish?")
+print(alloc, instructions)
+PY
+}
+
+LABELS=$("$EXE" run "$PROBE" rows < /dev/null 2>&1)
+mapfile -t ROWS <<< "$LABELS"
+# `dark run` exits 0 when the script itself fails, so a probe that does not parse shows up here.
+if grep -q "Script error" <<< "$LABELS"; then
+  echo "$LABELS" >&2
+  exit 1
+fi
+
+echo "measured on $(exe_build_tag "$EXE"), $ITERS iterations per row"
+printf '%14s %14s  %s\n' "bytes/iter" "instrs/iter" row
+for i in "${!ROWS[@]}"; do
+  read -r a0 n0 <<< "$(run_once "$i" 0)"
+  read -r a1 n1 <<< "$(run_once "$i" "$ITERS")"
+  printf '%14s %14s  %s\n' $(((a1 - a0) / ITERS)) $(((n1 - n0) / ITERS)) "${ROWS[$i]}"
+done

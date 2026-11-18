@@ -1,6 +1,4 @@
 1 Darklang.Cli.Packages.Deprecate.executeUndeprecate Darklang.Cli.Packages.Deprecate.sayShared
-1 Darklang.Cli.Run.execute Darklang.Cli.Run.executeOptions
-1 Darklang.Cli.Run.runScript Darklang.Cli.Run.runScriptMeasured
 1 Darklang.LanguageTools.AtRestTypeChecker.Generate.infer Darklang.LanguageTools.AtRestTypeChecker.Generate.inferInfix
 1 Darklang.LanguageTools.AtRestTypeChecker.Generate.inferPipe Darklang.LanguageTools.AtRestTypeChecker.Generate.inferPipePart
 1 Darklang.LanguageTools.AtRestTypeChecker.Generate.specialApplication Darklang.LanguageTools.AtRestTypeChecker.Generate.inferInfix

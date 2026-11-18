@@ -1,4 +1,7 @@
-// Allocation probe: run with the AOT CLI, as with the other perf probes.
+// Allocation probe for Bytes: creation, first comparison, cached comparison.
+//
+//   scripts/perf/probe scripts/perf/workloads/probes/bytes.dark
+//
 // Every row includes the fold and callback overhead. Compare rows to each other.
 // First comparisons construct one value each time, so warmup cannot cache its hash.
 
@@ -8,36 +11,53 @@ let smoke = false
 let _smokeNotice =
   if smoke then Stdlib.printLine("SMOKE CHECK: figures are not performance measurements") else ()
 
-let measure(label: String, f: Int64 -> Int64): Unit =
-  let run(n: Int64): Int64 =
-    Stdlib.List.fold(Stdlib.List.range(1, n), 0, fun(acc, i) ->
-      if (f(i)) == -987654321 then acc + 1 else acc)
-  let _warm = run((if smoke then 2 else 50))
-  let before = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
-  let result = run((if smoke then 3 else 2000))
-  let after = Darklang.LanguageTools.InterpreterStats.allocatedBytes()
-  Stdlib.debug(label, (after - before) / (if smoke then 3 else 2000))
-  if result == 0 then () else Stdlib.debug("unexpected result", result)
+let run(f: Int64 -> Int64, n: Int64): Int64 =
+  Stdlib.List.fold(Stdlib.List.range(1, n), 0, fun(acc, i) ->
+    if (f(i)) == -987654321 then acc + 1 else acc)
 
-let probe(label: String, text: String): Unit =
+let probe(label: String, text: String): List<(String * (Int64 -> Int64))> =
   let left = Stdlib.Utf8.encode(text)
   let right = Stdlib.Utf8.encode(text)
-  measure(label + " create + length", fun _ ->
-    Stdlib.Bytes.length(Stdlib.Utf8.encode(text)))
-  measure(label + " create + self equality", fun _ ->
-    let fresh = Stdlib.Utf8.encode(text)
-    if fresh == fresh then 1 else 0)
-  measure(label + " create + first equality", fun _ ->
-    let fresh = Stdlib.Utf8.encode(text)
-    if fresh == right then 1 else 0)
-  // Warmup forces both hashes; this row measures subsequent comparisons.
-  measure(label + " cached equality", fun _ -> if left == right then 1 else 0)
+  [ (label + " create + length", fun _ -> Stdlib.Bytes.length(Stdlib.Utf8.encode(text)))
+    (label + " create + self equality", fun _ ->
+      let fresh = Stdlib.Utf8.encode(text)
+      if fresh == fresh then 1 else 0)
+    (label + " create + first equality", fun _ ->
+      let fresh = Stdlib.Utf8.encode(text)
+      if fresh == right then 1 else 0)
+    // Warmup forces both hashes; this row measures subsequent comparisons.
+    (label + " cached equality", fun _ -> if left == right then 1 else 0) ]
 
+let rows =
+  Stdlib.List.flatten(
+    [ [ ("baseline", fun i -> i) ]
+      probe("16 bytes", "0123456789abcdef")
+      probe("64 KiB", Stdlib.String.repeat("x", 65536)) ])
+
+/// `rows` prints the row labels; `<row> <n>` runs one row n times after a warm-up, for
+/// `scripts/perf/probe`; with no arguments every row runs once more and is timed.
 let main(): Int64 =
-  measure("baseline", fun i -> i)
-  probe("16 bytes", "0123456789abcdef")
-  probe("64 KiB", Stdlib.String.repeat("x", 65536))
-  measure("baseline again", fun i -> i)
-  0
+  match args with
+  | [ "rows" ] ->
+    Stdlib.List.iter(rows, fun ((label, _)) -> Stdlib.printLine(label))
+    0
+  | [ row, n ] ->
+    match (Stdlib.Int64.parse(row), Stdlib.Int64.parse(n)) with
+    | (Ok(i), Ok(n)) ->
+      match Stdlib.List.getAt(rows, i) with
+      | Some((_, f)) ->
+        let _warm = run(f, (if smoke then 2 else 50))
+        let _r = run(f, n)
+        0
+      | None -> 1
+    | _ -> 1
+  | _ ->
+    Stdlib.List.iter(rows, fun ((label, f)) ->
+      let _warm = run(f, (if smoke then 2 else 50))
+      let t0 = Stdlib.DateTime.__monotonicMilliseconds()
+      let _r = run(f, (if smoke then 3 else 2000))
+      let ms = Stdlib.DateTime.__monotonicMilliseconds() - t0
+      Stdlib.debug(label, ms))
+    0
 
 main()
