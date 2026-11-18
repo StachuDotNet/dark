@@ -283,6 +283,9 @@ val streamRows: List<(List<String> * Int64 * Stream * Stream)> =
 
 
 test eachCommandKeepsItsStreams = Instance.withInstance(fun i ->
+  // The store is a copy of the dev store, traces included; the `traces` rows are about a store
+  // where nothing has run yet.
+  let (clearedCode, cleared) = Instance.ran(i, [ "traces", "delete", "--all", "--yes" ])
   let faults =
     streamRows
     |> Stdlib.List.map(fun row ->
@@ -303,7 +306,9 @@ test eachCommandKeepsItsStreams = Instance.withInstance(fun i ->
       |> Stdlib.List.map(fun f -> $"  dark {cmd} -> {f}"))
     |> Stdlib.List.flatten
 
-  Stdlib.Test.expect(
-    faults == [],
-    "commands that put a line on the wrong stream, or exited wrong:\n"
-    + Stdlib.String.join(faults, "\n")))
+  Stdlib.Test.all(
+    [ Instance.exitedWith(clearedCode, 0, $"clearing the copied traces: {cleared}")
+      Stdlib.Test.expect(
+        faults == [],
+        "commands that put a line on the wrong stream, or exited wrong:\n"
+        + Stdlib.String.join(faults, "\n")) ]))
