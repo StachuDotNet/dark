@@ -503,6 +503,8 @@ module Type =
           let error = p [ "Traits" ] "Error"
         module CLIs =
           let error = p [ "CLIs" ] "Error"
+        module TrustedCommands =
+          let action = p [ "TrustedCommands" ] "Action"
 
         let error = p [] "Error"
 
