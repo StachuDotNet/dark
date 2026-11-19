@@ -178,9 +178,7 @@ let checkUnset (key : string) : Result<unit, string> =
     Error "instance.id is made once for this install, and cannot be unset"
   elif key = "current_branch" || key = "current_branch_name" then
     Error $"{key} follows `dark switch`, and cannot be unset directly"
-  elif
-    List.contains key settings || isInternal key || key.StartsWith testPrefix
-  then
+  elif List.contains key settings || isInternal key || key.StartsWith testPrefix then
     Ok()
   else
     Error $"{key} is not a config key"
