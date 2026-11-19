@@ -228,3 +228,14 @@ test historyIsSentAppendOnly =
   match calls with
   | [first, second] -> Stdlib.List.take(second, Stdlib.List.length(first)) |> Stdlib.Test.equal(first)
   | _ -> Stdlib.Test.equal(Stdlib.List.length(calls), 2)
+
+
+test costCountsEveryKindOfToken =
+  Agent.Anthropic.cost(
+    "claude-opus-5-5",
+    Agent.Usage { input = 1000000, output = 1000000, cacheRead = 1000000, cacheWrite = 1000000 })
+  |> Stdlib.Test.equal(Option.Some(29.2))
+
+
+test costIsUnknownForAnUnlistedModel =
+  Agent.Anthropic.cost("some-model", Agent.noUsage()) |> Stdlib.Test.equal(Option.None)

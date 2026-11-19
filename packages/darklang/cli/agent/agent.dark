@@ -502,6 +502,20 @@ let run(state: AppState, args: List<String>): AppState =
   | Ok(o) -> runWith(state, o)
 
 
+/// The prompt's sections: `Me.Agent.Prompt.sections` when that value exists where `dark` was
+/// started (main, usually), so the prompt is changed by editing a package value; the built-in
+/// `Darklang.Agent.Prompt.sections` otherwise. A change the agent makes on its own branch takes
+/// effect once it is merged.
+let promptSections(state: AppState): List<Agent.Prompt.PromptSection> =
+  let (found, _printed) =
+    Workbench.captureOutputAnd(fun () ->
+      Eval.evaluateValue(state.accountID, state.currentBranchId, "Me.Agent.Prompt.sections", Eval.Harmful.Halt))
+
+  match found with
+  | Ok(sections) -> sections
+  | Error(_) -> Agent.Prompt.sections
+
+
 /// Everything a run needs, before the first prompt: the session (new, resumed or forked), its
 /// repl, the tools and the system prompt.
 let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
@@ -515,7 +529,7 @@ let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
     let branch = Repls.branchText(Repls.branchOf(repl))
     let system =
       Agent.Prompt.compose(
-        Agent.Prompt.sections,
+        promptSections(state),
         Agent.Prompt.Tier.Frontier,
         projectContext(cwd),
         cwd,
@@ -572,7 +586,15 @@ let draftLines(run: Run): List<String> =
 
 let usageLine(run: Run, ms: Int64): String =
   let u = run.loop.usage
-  $"session {run.session.id}: {Stdlib.display(run.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out, {Stdlib.display(ms)} ms; `dark @{run.session.id}` opens its repl"
+  let dollars =
+    match Agent.Anthropic.costNanos(run.session.model, u) with
+    | Some(n) ->
+      let cents = n / 10000000
+      let rest = Stdlib.String.padStart(Stdlib.display(cents % 100), '0', 2)
+      $", about ${Stdlib.display(cents / 100)}.{rest}"
+    | None -> ""
+
+  $"session {run.session.id}: {Stdlib.display(run.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out{dollars}, {Stdlib.display(ms)} ms; `dark @{run.session.id}` opens its repl"
 
 
 let runWith(state: AppState, o: Options): AppState =
@@ -615,6 +637,10 @@ let runWith(state: AppState, o: Options): AppState =
             ("num_turns", Stdlib.AltJson.Json.Integer(finished.loop.turns))
             ("duration_ms", Stdlib.AltJson.Json.Integer(ms))
             ("session_id", str(run.session.id))
+            ("total_cost_usd",
+             match Agent.Anthropic.cost(o.model, finished.loop.usage) with
+             | Some(c) -> Stdlib.AltJson.Json.Float(c)
+             | None -> Stdlib.AltJson.Json.Null)
             ("usage", usageJson(finished.loop.usage)) ])
       | PlainText ->
         if isError then printErr(text) else Stdlib.printLine(text)

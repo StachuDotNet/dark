@@ -18,6 +18,28 @@ type ToolSpec =
     schema: Stdlib.AltJson.Json }
 
 
+/// Nano-dollars per token (dollars per billion): input, output, cache read, cache write (1.25
+/// times input, the five-minute cache). Anthropic's list prices as of October 2026. Integers, so
+/// the sums cannot go wrong the way rounding a float can.
+val prices =
+  [ ("claude-opus-5-5", (4000, 20000, 200, 5000))
+    ("claude-sonnet-5-5", (2000, 10000, 200, 2500)) ]
+
+
+/// What <param usage> cost on <param model>, in nano-dollars; None for a model not in `prices`.
+let costNanos(model: String, usage: Agent.Usage): Option<Int64> =
+  prices
+  |> Stdlib.List.findFirst(fun((m, _p)) -> m == model)
+  |> Stdlib.Option.map(fun((_m, p)) ->
+    let (input, output, read, write) = p
+    usage.input * input + usage.output * output + usage.cacheRead * read + usage.cacheWrite * write)
+
+
+/// <fn costNanos> in dollars.
+let cost(model: String, usage: Agent.Usage): Option<Float64> =
+  costNanos(model, usage) |> Stdlib.Option.map(fun n -> Stdlib.Int64.toFloat64(n) / 1000000000.0)
+
+
 let str(s: String): Stdlib.AltJson.Json = Stdlib.AltJson.Json.String(s)
 
 let obj(fields: List<(String * Stdlib.AltJson.Json)>): Stdlib.AltJson.Json =
