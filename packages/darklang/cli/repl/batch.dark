@@ -301,8 +301,19 @@ let runCommand(
       match ok, lines with
       | true, [] -> [ "ok" ]
       | true, [first, ...rest] -> Stdlib.List.prepend(rest, "ok " + first)
-      | false, [] -> [ $"error: `{name}` failed" ]
+      | false, [] -> [ $"error: `{name}` exited {Stdlib.display(after.exitCode)}" ]
       | false, _ -> errorLines(lines)
+
+    // a run leaves a trace: say which, so the next question is one command away
+    let lines =
+      if name == "run" then
+        match Darklang.Tracing.Store.list(1) with
+        | [t] ->
+          let short = Text.shortIdText(t.id)
+          Stdlib.List.append(lines, $"trace {short}: dark traces inspect {short}")
+        | _ -> lines
+      else
+        lines
 
     let touched = moduleOfWrite(here, name, args)
     (
