@@ -625,14 +625,14 @@ A repl keeps a branch, a location and `let` bindings across calls, and takes man
 lines per call. One numbered reply per line; it stops at the first failure.
 
   dark repl new                 prints its id, r1
-  dark @r1 <<'EOF'
+  dark @r1 <<'END'
   let xs = [1, 2, 3]
   fn Me.Demo.double '(a: Int64): Int64 = a * 2'
   Stdlib.List.map(xs, fun x -> Me.Demo.double(x))
   module /Me.Demo.Text -
     let shout(s: String): String = s + "!"
   test run Me.Demo
-  EOF
+  END
 
 Each line is a CLI command, `let`, `watch <expr>`, or a Dark expression. An
 indented line continues the one above; a command ending in `-` reads its
