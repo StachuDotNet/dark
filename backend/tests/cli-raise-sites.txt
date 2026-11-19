@@ -1,3 +1,6 @@
+1 Darklang.Cli.Compile.approvedPolicy Darklang.Stdlib.Cli.Dir.createRecursive
+1 Darklang.Cli.Compile.approvedPolicy Darklang.Stdlib.Cli.File.writeText
+1 Darklang.Cli.Compile.approvedPolicy Darklang.Stdlib.Json.serialize
 1 Darklang.Cli.Compile.checkJsonLines Darklang.Stdlib.Json.serialize
 1 Darklang.Cli.Compile.executable Darklang.Stdlib.Cli.FileSystem.isDirectory
 1 Darklang.Cli.Compile.runCompiler Darklang.Stdlib.Cli.Dir.createRecursive
