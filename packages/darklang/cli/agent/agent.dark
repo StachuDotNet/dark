@@ -38,7 +38,8 @@ type Options =
     format: Format
     maxTurns: Int64
     replay: Option<String>
-    baseUrl: String }
+    baseUrl: String
+    effort: String }
 
 
 type Run =
@@ -303,6 +304,11 @@ let parseArgs(args: List<String>, o: Options): Result<Options, String> =
   | ["--output-format", f, ..._rest] -> Result.Error($"--output-format is text or stream-json, not {f}")
   | ["--replay", path, ...rest] -> parseArgs(rest, { o with replay = Option.Some(path) })
   | ["--base-url", url, ...rest] -> parseArgs(rest, { o with baseUrl = url })
+  | ["--effort", e, ...rest] ->
+    if Stdlib.List.contains([ "low", "medium", "high", "xhigh", "max" ], e) then
+      parseArgs(rest, { o with effort = e })
+    else
+      Result.Error($"--effort is low, medium, high, xhigh or max, not {e}")
   | ["--allow", names, ...rest] ->
     let wanted = Stdlib.String.split(names, ",") |> Stdlib.List.map(fun n -> Stdlib.String.trim(n))
     let expanded =
@@ -338,7 +344,8 @@ let defaultOptions(): Options =
       format = Format.PlainText
       maxTurns = 50
       replay = Option.None
-      baseUrl = "https://api.anthropic.com" }
+      baseUrl = "https://api.anthropic.com"
+      effort = "high" }
 
 
 /// The session to run in: a resumed one, a fork of one, or a new one on its own new branch.
@@ -421,7 +428,8 @@ let providerFor(o: Options): Result<Provider, String> =
     readKey()
     |> Stdlib.Result.map(fun key ->
       Provider.Live(
-        Agent.Anthropic.Config { baseUrl = o.baseUrl, apiKey = key, model = o.model, maxTokens = 16000 }))
+        Agent.Anthropic.Config
+          { baseUrl = o.baseUrl, apiKey = key, model = o.model, maxTokens = 64000, effort = o.effort }))
 
 
 let endingText(e: Agent.Ending): (String * Bool) =
@@ -584,7 +592,7 @@ let runWith(state: AppState, o: Options): AppState =
 
 let accepts(): Accepts.Accepts =
   Accepts.withValues(
-    [ "--model", "--resume", "--fork", "--branch", "--max-turns", "--output-format", "--replay", "--base-url", "--allow" ],
+    [ "--model", "--resume", "--fork", "--branch", "--max-turns", "--output-format", "--replay", "--base-url", "--allow", "--effort" ],
     Accepts.freeText(0, [ "-p", "--print", "--continue", "--list" ]))
 
 
@@ -599,6 +607,7 @@ let help(_state: AppState): String =
     "branch (agent-a1, ...) with its own repl: `dark @a1` shows what it built, `dark merge` takes it."
     ""
     "  --model <id>               default claude-opus-5-5"
+    "  --effort <level>           how hard it thinks: low, medium, high (default), xhigh, max"
     "  --allow <effects>          also allow these, comma-separated: file-write, process, http, all."
     "                             Without it the agent reads files and reads and writes packages on"
     "                             its branch. Any other tool call is put to you at a terminal,"

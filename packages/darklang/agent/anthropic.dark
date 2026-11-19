@@ -6,7 +6,9 @@ type Config =
   { baseUrl: String
     apiKey: String
     model: String
-    maxTokens: Int64 }
+    maxTokens: Int64
+    /// low, medium, high, xhigh or max
+    effort: String }
 
 
 /// What the model is told about one tool.
@@ -35,6 +37,9 @@ let blockToJson(b: Agent.Block): Stdlib.AltJson.Json =
         ("tool_use_id", str(id))
         ("content", str(content))
         ("is_error", Stdlib.AltJson.Json.Bool(isError)) ])
+  | Thinking(thinking, signature) ->
+    obj([ ("type", str("thinking")), ("thinking", str(thinking)), ("signature", str(signature)) ])
+  | RedactedThinking(data) -> obj([ ("type", str("redacted_thinking")), ("data", str(data)) ])
 
 
 let roleText(r: Agent.Role): String =
@@ -95,6 +100,10 @@ let request(
     [ ("model", str(config.model))
       ("max_tokens", Stdlib.AltJson.Json.Integer(config.maxTokens))
       ("stream", Stdlib.AltJson.Json.Bool(true))
+      // thinking is adaptive and always on for this model; effort is the dial (its default is medium)
+      ("output_config", obj([ ("effort", str(config.effort)) ]))
+      // a declined request is re-run on a fallback model chosen by the API
+      ("fallbacks", str("default"))
       ("system", Stdlib.AltJson.Json.Array([ withCache(obj([ ("type", str("text")), ("text", str(system)) ])) ]))
       ("tools", Stdlib.AltJson.Json.Array(tools |> Stdlib.List.indexedMap(fun(i, t) -> toolToJson(t, i == n - 1))))
       ("messages", messagesToJson(messages)) ])
@@ -115,6 +124,8 @@ let blockFromJson(j: Stdlib.AltJson.Json): Option<Agent.Block> =
     | "tool_result" ->
       let isError = Stdlib.AltJson.Helpers.getBool("is_error", fields) |> Stdlib.Option.withDefault(false)
       Option.Some(Agent.Block.ToolResult(get("tool_use_id"), get("content"), isError))
+    | "thinking" -> Option.Some(Agent.Block.Thinking(get("thinking"), get("signature")))
+    | "redacted_thinking" -> Option.Some(Agent.Block.RedactedThinking(get("data")))
     | _ -> Option.None
   | _ -> Option.None
 
@@ -144,6 +155,8 @@ let messagesFromJson(j: Stdlib.AltJson.Json): List<Agent.Message> =
 type Partial =
   | PText(String)
   | PTool(id: String, name: String, json: String)
+  | PThinking(thinking: String, signature: String)
+  | PRedacted(data: String)
   /// a block this client does not keep (thinking), held so the indexes still line up
   | PSkip
 
@@ -176,6 +189,7 @@ let stopFrom(s: String): Agent.StopReason =
   | "end_turn" -> Agent.StopReason.EndTurn
   | "tool_use" -> Agent.StopReason.ToolUseStop
   | "max_tokens" -> Agent.StopReason.MaxTokens
+  | "refusal" -> Agent.StopReason.Refusal
   | other -> Agent.StopReason.OtherStop(other)
 
 
@@ -211,6 +225,8 @@ let accumulate(acc: Acc, e: Stdlib.HttpClient.Sse.Event): Acc =
         match get("type") with
         | "text" -> Partial.PText(get("text"))
         | "tool_use" -> Partial.PTool(get("id"), get("name"), "")
+        | "thinking" -> Partial.PThinking(get("thinking"), get("signature"))
+        | "redacted_thinking" -> Partial.PRedacted(get("data"))
         | _ -> Partial.PSkip
 
       { acc with blocks = Stdlib.List.append(acc.blocks, partial) }
@@ -222,6 +238,8 @@ let accumulate(acc: Acc, e: Stdlib.HttpClient.Sse.Event): Acc =
           match p, get("type") with
           | PText(t), "text_delta" -> Partial.PText(t + get("text"))
           | PTool(id, name, json), "input_json_delta" -> Partial.PTool(id, name, json + get("partial_json"))
+          | PThinking(t, sig), "thinking_delta" -> Partial.PThinking(t + get("thinking"), sig)
+          | PThinking(t, sig), "signature_delta" -> Partial.PThinking(t, sig + get("signature"))
           | other, _ -> other)
 
       { acc with blocks = blocks }
@@ -252,6 +270,8 @@ let finishBlock(p: Partial): Option<Agent.Block> =
         Stdlib.AltJson.parse(json) |> Stdlib.Result.withDefault(obj([]))
 
     Option.Some(Agent.Block.ToolUse(id, name, input))
+  | PThinking(t, sig) -> Option.Some(Agent.Block.Thinking(t, sig))
+  | PRedacted(d) -> Option.Some(Agent.Block.RedactedThinking(d))
   | PSkip -> Option.None
 
 
@@ -297,7 +317,8 @@ let call(
   let headers =
     [ ("content-type", "application/json")
       ("x-api-key", config.apiKey)
-      ("anthropic-version", "2023-06-01") ]
+      ("anthropic-version", "2026-10-21")
+      ("anthropic-beta", "server-side-fallback-2026-07-01") ]
 
   match Stdlib.HttpClient.stream("POST", config.baseUrl + "/v1/messages", headers, body) with
   | Error(e) -> Result.Error($"could not reach the model: {Stdlib.HttpClient.toString(e)}")

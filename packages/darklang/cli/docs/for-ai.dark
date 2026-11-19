@@ -113,12 +113,13 @@ runner approval, without asking in chat first. Retry only if safe. Details:
 Logs: ~/.darklang/logs/cli.log
 
 ## More
-  docs for-ai packages      saving and changing declarations, the type checker, a command-line tool
+  docs for-ai packages      declarations, the type checker, a CLI tool
   docs for-ai tests         package tests in full
   docs for-ai permissions   rules, profiles and package approvals
-  docs for-ai traces        what a run did, without print statements
+  docs for-ai traces        what a run did
   docs for-ai scm           drafts, commits, branches, deprecation
-  docs for-ai syntax        the rest of the syntax notes, and name resolution
+  docs for-ai syntax        more syntax, and name resolution
+  docs for-ai repl          many commands per call, with a report
   docs for-ai tests http-server   several parts and topics in one call
   docs syntax | errors | stdlib | signatures <module>
   help <command>"""
