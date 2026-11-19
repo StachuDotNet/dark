@@ -37,6 +37,9 @@ call that needs an effect the session lacks is put to the person at a terminal, 
 refused, with the model told which flag would allow it. Bash runs in a network namespace of its
 own unless `http` is allowed.
 
+`ask` puts one question to the person at the terminal; in print mode the model is told to decide
+and say so.
+
 The Dark tools (`dark`, `view`, `search`, `define_fn`, `define_module`, `edit_fn`, `eval`,
 `typecheck`, `test`) run batches in the session's repl, in-process, so every write answers with
 the typecheck it caused (`docs/repl.md`). A batch may not change the instance (`permissions`,

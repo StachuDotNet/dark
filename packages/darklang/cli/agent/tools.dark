@@ -454,6 +454,19 @@ let editFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutpu
           | Ok(updated) -> batch(ctx, block($"fn {name}", Stdlib.String.trim(updated))))))
 
 
+/// Put a question to the person at the terminal. In print mode nobody is there, and the model is
+/// told to decide and say so, rather than stop.
+let askPerson(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "question", fun question ->
+    if ctx.ask then
+      let _ = Stdlib.printError($"\n? {question}\n  ")
+      match Stdlib.Cli.Stdin.checkedReadLine() with
+      | Ok(Some(answer)) when Stdlib.String.trim(answer) != "" -> (ctx, ok(Stdlib.String.trim(answer)))
+      | _ -> (ctx, ok("No answer: choose what seems most reasonable, and say which in your summary."))
+    else
+      (ctx, ok("No one is at the terminal: choose what seems most reasonable, say which in your summary, and go on.")))
+
+
 let all(): List<Tool> =
   let fileRead = [ LanguageTools.Permissions.Effect.FileRead ]
   [ Tool
@@ -579,7 +592,15 @@ let all(): List<Tool> =
     Tool
       { spec = spec("test", "Run the package tests under a module.", [ param("target", "string", "e.g. Me.Todo") ])
         effects = [ LanguageTools.Permissions.Effect.PackageRead ]
-        run = test } ]
+        run = test }
+    Tool
+      { spec =
+          spec(
+            "ask",
+            "Ask the person one short question, only when the request is ambiguous in a way that changes what you build. Offer the options you see.",
+            [ param("question", "string", "the question, with the options") ])
+        effects = []
+        run = askPerson } ]
 
 
 let named(tools: List<Tool>, name: String): Option<Tool> =
