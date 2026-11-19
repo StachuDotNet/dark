@@ -46,9 +46,14 @@ val writeCommands =
   [ "fn", "function", "val", "value", "type", "trait", "impl", "module", "edit", "delete", "rename", "deprecate", "test" ]
 
 
-val replyLineCap = 20
+/// How much of one reply is shown before it points to `dark repl show`.
+type Caps =
+  { lines: Int64
+    chars: Int64 }
 
-val replyCharCap = 2000
+
+/// What a person or an outside agent reading `dark @r1` gets: the contract's caps.
+let replyCaps(): Caps = Caps { lines = 20, chars = 2000 }
 
 val reportLineCap = 12
 
@@ -460,19 +465,19 @@ let count(outcome: Outcome, status: String): Int64 =
 
 
 /// A reply cut to the caps: (its lines, how many lines were dropped).
-let capped(reply: Repls.Reply): (List<String> * Int64) =
-  let lines = Stdlib.List.take(reply.lines, replyLineCap)
+let capped(caps: Caps, reply: Repls.Reply): (List<String> * Int64) =
+  let lines = Stdlib.List.take(reply.lines, caps.lines)
   let (kept, _chars) =
     lines
     |> Stdlib.List.fold(([], 0), fun(acc, l) ->
       let (kept, chars) = acc
       let size = Stdlib.String.length(l) + 1
-      if chars + size > replyCharCap && Stdlib.Bool.not(Stdlib.List.isEmpty(kept)) then
-        (kept, replyCharCap + 1)
-      else if chars > replyCharCap then
+      if chars + size > caps.chars && Stdlib.Bool.not(Stdlib.List.isEmpty(kept)) then
+        (kept, caps.chars + 1)
+      else if chars > caps.chars then
         (kept, chars)
       else
-        (Stdlib.List.append(kept, Stdlib.String.first(l, replyCharCap)), chars + size))
+        (Stdlib.List.append(kept, Stdlib.String.first(l, caps.chars)), chars + size))
 
   (kept, Stdlib.List.length(reply.lines) - Stdlib.List.length(kept))
 
@@ -516,11 +521,11 @@ let reportLines(id: String, outcome: Outcome): List<String> =
 
 
 /// The batch's text form: numbered replies, the summary, the report.
-let renderText(id: String, outcome: Outcome): List<String> =
+let renderText(id: String, caps: Caps, outcome: Outcome): List<String> =
   let replyText =
     outcome.replies
     |> Stdlib.List.map(fun reply ->
-      let (kept, more) = capped(reply)
+      let (kept, more) = capped(caps, reply)
       let shown =
         if more > 0 then
           Stdlib.List.append(kept, $"... {Stdlib.display(more)} more lines: dark repl show {id} {Stdlib.display(reply.n)}")
@@ -580,7 +585,7 @@ let toJson(r: Repls.Record, outcome: Outcome): JsonBatch =
       replies =
         outcome.replies
         |> Stdlib.List.map(fun reply ->
-          let (kept, more) = capped(reply)
+          let (kept, more) = capped(replyCaps(), reply)
           JsonReply
             { n = reply.n
               kind = reply.kind
@@ -637,7 +642,7 @@ let executeCli(state: AppState, target: String, args: List<String>): AppState =
             let _ = printJson(Stdlib.Json.checkedSerialize<JsonBatch>(toJson(r2, outcome)))
             ()
           else
-            renderText(id, outcome) |> Stdlib.List.iter(fun l -> Stdlib.printLine(l))
+            renderText(id, replyCaps(), outcome) |> Stdlib.List.iter(fun l -> Stdlib.printLine(l))
 
         match saved with
         | Error(message) ->

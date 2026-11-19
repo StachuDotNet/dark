@@ -366,11 +366,13 @@ let batch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
 
 let runBatch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
   let (app, record, outcome) = Repls.Batch.run(ctx.app, ctx.repl, text, Repls.Batch.OnFailure.Stop)
-  let lines = Repls.Batch.renderText(ctx.repl.id, outcome)
+  // the model cannot run `dark repl show`, so it gets whole replies; `truncate` bounds the total
+  let caps = Repls.Batch.Caps { lines = 2000, chars = outputCap }
+  let lines = Repls.Batch.renderText(ctx.repl.id, caps, outcome)
   let failed = Repls.Batch.count(outcome, "error") > 0
   (
     { ctx with app = app, repl = record },
-    Agent.ToolOutput { text = Stdlib.String.join(lines, "\n"), isError = failed })
+    Agent.ToolOutput { text = truncate(Stdlib.String.join(lines, "\n")), isError = failed })
 
 
 let darkBatch(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
