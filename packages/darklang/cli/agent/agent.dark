@@ -23,6 +23,13 @@ type Provider =
   | Replay(List<String>)
 
 
+/// When the model's text reaches the person: as it streams (a conversation at a terminal), or
+/// once, at the end.
+type TextShown =
+  | AtTheEnd
+  | AsItStreams
+
+
 type Format =
   | PlainText
   | StreamJson
@@ -51,7 +58,8 @@ type Run =
     system: String
     tools: List<Tools.Tool>
     format: Format
-    ending: Option<Agent.Ending> }
+    ending: Option<Agent.Ending>
+    text: TextShown }
 
 
 val defaultModel = "claude-opus-5-5"
@@ -192,6 +200,13 @@ let show(run: Run, m: Agent.Message): Unit =
 
     emitJson([ ("type", str(kind)), ("message", message), ("session_id", str(run.session.id)) ])
   | PlainText ->
+    // streamed text ends without a newline; the tool lines start on their own
+    let _ =
+      if run.text == TextShown.AsItStreams && Agent.textOf(m.content) != "" then
+        Stdlib.printLine("")
+      else
+        ()
+
     m.content
     |> Stdlib.List.iter(fun b ->
       match b with
@@ -209,7 +224,7 @@ let retryable(why: String): Bool =
 
 
 let callModel(run: Run, messages: List<Agent.Message>): (Run * Agent.Event) =
-  let onText(_t: String): Unit = ()
+  let onText(t: String): Unit = if run.text == TextShown.AsItStreams then Stdlib.print(t) else ()
   match run.provider with
   | Live(config) ->
     let specs = run.tools |> Stdlib.List.map(fun t -> t.spec)
@@ -477,9 +492,7 @@ let run(state: AppState, args: List<String>): AppState =
   | Error(why) ->
     printErr(why)
     { state with exitCode = 2 }
-  | Ok(o) when o.prompt == "" && Stdlib.Cli.Sys.isTerminal(0) ->
-    printErr("agent needs a prompt: dark agent -p \"build me ...\", or on stdin")
-    { state with exitCode = 2 }
+  | Ok(o) when o.prompt == "" && Stdlib.Cli.Sys.isTerminal(0) -> chat(state, o)
   | Ok(o) when o.prompt == "" ->
     match Stdlib.Cli.Stdin.readAll() with
     | Ok(text) when Stdlib.String.trim(text) != "" -> runWith(state, { o with prompt = Stdlib.String.trim(text) })
@@ -489,19 +502,16 @@ let run(state: AppState, args: List<String>): AppState =
   | Ok(o) -> runWith(state, o)
 
 
-let runWith(state: AppState, o: Options): AppState =
+/// Everything a run needs, before the first prompt: the session (new, resumed or forked), its
+/// repl, the tools and the system prompt.
+let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
   let cwd = Stdlib.Cli.Posix.getCwd() |> Stdlib.Result.withDefault(".")
   match openSession(state, o, cwd), providerFor(o) with
-  | Error(why), _ ->
-    printErr(why)
-    { state with exitCode = 1 }
-  | _, Error(why) ->
-    printErr(why)
-    { state with exitCode = 1 }
+  | Error(why), _ -> Result.Error(why)
+  | _, Error(why) -> Result.Error(why)
   | Ok(session), Ok(provider) ->
     let _ = register(session)
     let repl = replFor(session)
-    let app = Repls.enter(state, repl)
     let branch = Repls.branchText(Repls.branchOf(repl))
     let system =
       Agent.Prompt.compose(
@@ -512,10 +522,9 @@ let runWith(state: AppState, o: Options): AppState =
         branch,
         Stdlib.display(Stdlib.DateTime.now()))
 
-    let tools = Tools.all()
     let ctx =
       Tools.Context
-        { app = app
+        { app = Repls.enter(state, repl)
           repl = repl
           cwd = cwd
           seen = []
@@ -525,6 +534,53 @@ let runWith(state: AppState, o: Options): AppState =
             && Stdlib.Cli.Sys.isTerminal(0)
             && Stdlib.Cli.Sys.isTerminal(2) }
 
+    Result.Ok(
+      Run
+        { loop = Agent.start(messagesOf(session), o.maxTurns)
+          queue = []
+          ctx = ctx
+          session = session
+          provider = provider
+          system = system
+          tools = Tools.all()
+          format = o.format
+          ending = Option.None
+          text = text })
+
+
+/// One prompt, run until the model answers or the run stops.
+let turn(run: Run, prompt: String): Run =
+  let fresh = { run.loop with turns = 0 }
+  let (loop, commands) = Agent.step(fresh, Agent.Event.Prompt(prompt))
+  drain({ run with loop = loop, queue = commands, ending = Option.None })
+
+
+let branchOfRun(run: Run): String = Repls.branchText(run.ctx.app.currentBranchId)
+
+
+/// The session's draft in a line or two, for the person reading stderr.
+let draftLines(run: Run): List<String> =
+  let (_app, _record, status) =
+    Repls.Batch.run(run.ctx.app, run.ctx.repl, "status", Repls.Batch.OnFailure.Stop)
+
+  status.replies
+  |> Stdlib.List.map(fun r -> r.lines)
+  |> Stdlib.List.flatten
+  |> Stdlib.List.filter(fun l -> Stdlib.String.contains(l, "draft:") || Stdlib.String.contains(l, "clean:"))
+  |> Stdlib.List.map(fun l -> $"{branchOfRun(run)} {Stdlib.String.trim(l)}")
+
+
+let usageLine(run: Run, ms: Int64): String =
+  let u = run.loop.usage
+  $"session {run.session.id}: {Stdlib.display(run.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out, {Stdlib.display(ms)} ms; `dark @{run.session.id}` opens its repl"
+
+
+let runWith(state: AppState, o: Options): AppState =
+  match prepare(state, o, TextShown.AtTheEnd) with
+  | Error(why) ->
+    printErr(why)
+    { state with exitCode = 1 }
+  | Ok(run) ->
     let started = Stdlib.DateTime.now()
     let _ =
       match o.format with
@@ -532,27 +588,13 @@ let runWith(state: AppState, o: Options): AppState =
         emitJson(
           [ ("type", str("system"))
             ("subtype", str("init"))
-            ("session_id", str(session.id))
+            ("session_id", str(run.session.id))
             ("model", str(o.model))
-            ("cwd", str(cwd))
-            ("tools", Stdlib.AltJson.Json.Array(tools |> Stdlib.List.map(fun t -> str(t.spec.name)))) ])
-      | PlainText -> Stdlib.printErrorLine($"session {session.id} on branch {branch}")
+            ("cwd", str(run.ctx.cwd))
+            ("tools", Stdlib.AltJson.Json.Array(run.tools |> Stdlib.List.map(fun t -> str(t.spec.name)))) ])
+      | PlainText -> Stdlib.printErrorLine($"session {run.session.id} on branch {branchOfRun(run)}")
 
-    let loop = Agent.start(messagesOf(session), o.maxTurns)
-    let (loop, commands) = Agent.step(loop, Agent.Event.Prompt(o.prompt))
-    let run =
-      Run
-        { loop = loop
-          queue = commands
-          ctx = ctx
-          session = session
-          provider = provider
-          system = system
-          tools = tools
-          format = o.format
-          ending = Option.None }
-
-    let finished = drain(run)
+    let finished = turn(run, o.prompt)
     let ending = finished.ending |> Stdlib.Option.withDefault(Agent.Ending.Failed("the run stopped without an answer"))
     let (text, isError) = endingText(ending)
     let ms = Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), started)
@@ -572,25 +614,53 @@ let runWith(state: AppState, o: Options): AppState =
             ("result", str(text))
             ("num_turns", Stdlib.AltJson.Json.Integer(finished.loop.turns))
             ("duration_ms", Stdlib.AltJson.Json.Integer(ms))
-            ("session_id", str(session.id))
+            ("session_id", str(run.session.id))
             ("usage", usageJson(finished.loop.usage)) ])
       | PlainText ->
-        let u = finished.loop.usage
         if isError then printErr(text) else Stdlib.printLine(text)
-        let (_app, _record, status) =
-          Repls.Batch.run(finished.ctx.app, finished.ctx.repl, "status", Repls.Batch.OnFailure.Stop)
-        let draft =
-          status.replies
-          |> Stdlib.List.map(fun r -> r.lines)
-          |> Stdlib.List.flatten
-          |> Stdlib.List.filter(fun l -> Stdlib.String.contains(l, "draft:") || Stdlib.String.contains(l, "clean:"))
-          |> Stdlib.List.map(fun l -> Stdlib.String.trim(l))
-
-        draft |> Stdlib.List.iter(fun l -> Stdlib.printErrorLine($"{branch} {l}"))
-        Stdlib.printErrorLine(
-          $"session {session.id}: {Stdlib.display(finished.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out, {Stdlib.display(ms)} ms; `dark @{session.id}` opens its repl")
+        draftLines(finished) |> Stdlib.List.iter(fun l -> Stdlib.printErrorLine(l))
+        Stdlib.printErrorLine(usageLine(finished, ms))
 
     { state with exitCode = (if isError then 1 else 0) }
+
+
+/// `dark agent` at a terminal with no prompt: a conversation, one prompt per line, the answer
+/// streamed as it arrives. An empty line or the end of input stops it; the session stays, so
+/// `dark agent --continue` picks it up again.
+let chat(state: AppState, o: Options): AppState =
+  match prepare(state, o, TextShown.AsItStreams) with
+  | Error(why) ->
+    printErr(why)
+    { state with exitCode = 1 }
+  | Ok(run) ->
+    let _ =
+      Stdlib.printErrorLine($"session {run.session.id} on branch {branchOfRun(run)}; an empty line ends it")
+
+    let (last, _done) =
+      Stdlib.List.checkedRange(1, 100000)
+      |> Stdlib.Result.withDefault([])
+      |> Stdlib.List.fold((run, false), fun(acc, _i) ->
+        let (r, finished) = acc
+        if finished then
+          acc
+        else
+          let _ = Stdlib.printError("› ")
+          match Stdlib.Cli.Stdin.checkedReadLine() with
+          | Ok(Some(line)) when Stdlib.String.trim(line) != "" ->
+            let started = Stdlib.DateTime.now()
+            let r2 = turn(r, Stdlib.String.trim(line))
+            let _ =
+              match r2.ending with
+              | Some(Failed(why)) -> printErr(why)
+              | Some(TurnLimit(n)) -> printErr($"stopped after {Stdlib.display(n)} model calls")
+              | _ -> ()
+
+            let _ = Stdlib.printErrorLine(usageLine(r2, Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), started)))
+            (r2, false)
+          | _ -> (r, true))
+
+    draftLines(last) |> Stdlib.List.iter(fun l -> Stdlib.printErrorLine(l))
+    state
 
 
 let accepts(): Accepts.Accepts =
@@ -615,6 +685,7 @@ let help(_state: AppState): String =
     "                             Without it the agent reads files and reads and writes packages on"
     "                             its branch. Any other tool call is put to you at a terminal,"
     "                             and refused otherwise; the model is told why"
+    "  (no prompt, at a terminal)   a conversation: one prompt per line, answers streamed"
     "  --list                     the sessions so far"
     "  --continue                 continue the last session"
     "  --resume <id>              continue session <id>"
