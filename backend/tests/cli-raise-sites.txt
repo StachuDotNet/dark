@@ -71,6 +71,7 @@
 1 Darklang.Compiler.Darkc.stdlibPrepared Darklang.Stdlib.Cli.FileSystem.listDirectory
 1 Darklang.Compiler.PackageServer.browse Darklang.Stdlib.Json.serialize
 1 Darklang.Compiler.PackageServer.hashJson Darklang.Stdlib.Json.serialize
+1 Darklang.Compiler.Prepare.availableDisk Darklang.Stdlib.Cli.Process.run
 1 Darklang.Compiler.Prepare.availableMemory Darklang.Stdlib.Cli.File.readText
 1 Darklang.Compiler.Prepare.running Darklang.Stdlib.Cli.Process.run
 1 Darklang.Compiler.Prepare.startInBackground Darklang.Stdlib.Cli.Dir.createRecursive
