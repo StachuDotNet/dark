@@ -1,9 +1,6 @@
-1 Darklang.Cli.Compile.compilerDigest Darklang.Stdlib.Cli.File.readBytes
-1 Darklang.Cli.Compile.compilerPath Darklang.Stdlib.Cli.Env.home
+1 Darklang.Cli.Compile.executable Darklang.Stdlib.Cli.FileSystem.isDirectory
 1 Darklang.Cli.Compile.startServer Darklang.Stdlib.Exec.awaitWithin
 1 Darklang.Cli.Compile.startServer Darklang.Stdlib.HttpServer.serve
-1 Darklang.Cli.Compile.stdlibCacheDir Darklang.Stdlib.Cli.Env.home
-1 Darklang.Cli.Compile.stdlibPrepared Darklang.Stdlib.Cli.FileSystem.listDirectory
 1 Darklang.Cli.Compile.waitShowingProgress Darklang.Stdlib.Exec.await
 1 Darklang.Cli.Compile.waitShowingProgress Darklang.Stdlib.Exec.awaitWithin
 1 Darklang.Cli.Completion.addSlashToDirectories Darklang.Stdlib.Cli.FileSystem.isDirectoryAtPath
@@ -64,6 +61,8 @@
 1 Darklang.Cli.Workbench.execute Darklang.Stdlib.Cli.Sys.hostname
 1 Darklang.Cli.Workbench.loadBuiltinItems Darklang.Stdlib.List.sort
 1 Darklang.Cli.runInteractiveLoop Darklang.Stdlib.Host.await
+1 Darklang.Compiler.Darkc.directory Darklang.Stdlib.Cli.Env.home
+1 Darklang.Compiler.Darkc.stdlibPrepared Darklang.Stdlib.Cli.FileSystem.listDirectory
 1 Darklang.Compiler.PackageServer.browse Darklang.Stdlib.Json.serialize
 1 Darklang.Compiler.PackageServer.hashJson Darklang.Stdlib.Json.serialize
 1 Darklang.GitHub.__fetchString Darklang.Stdlib.HttpClient.get
