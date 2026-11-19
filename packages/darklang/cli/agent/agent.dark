@@ -376,7 +376,10 @@ let openSession(state: AppState, o: Options, cwd: String): Result<Session, Strin
     match loadSession(id) with
     | Some(s) ->
       let parentBranch = Stdlib.Uuid.parse(s.branchId) |> Stdlib.Result.withDefault(state.currentBranchId)
-      fresh(nextSessionId(), parentBranch, s.id, s.messages)
+      let forkId = nextSessionId()
+      // the fork's branch starts from the parent's commits, so the parent's draft is committed first
+      let _ = Repls.Batch.commitForFork(state, replFor(s), forkId)
+      fresh(forkId, parentBranch, s.id, s.messages)
     | None -> Result.Error($"no session {id}")
   | None, None -> fresh(nextSessionId(), state.currentBranchId, "", "[]")
 

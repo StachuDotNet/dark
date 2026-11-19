@@ -39,8 +39,9 @@ change here is a breaking change and goes in this file first.
     dark @ [--continue] [--json]      the same, in the current repl
 
 `--branch` takes an existing branch; without it the repl starts on the branch `dark` is on. A
-fork's branch starts from its parent branch's commits: what the parent repl wrote and has not
-committed is not on it.
+new branch starts from its parent's commits, so `fork` first commits the parent's draft on the
+parent's branch ("fork point for r2"). A repl on main is never committed for you: its fork starts
+from main's last commit, and `fork` says so.
 
 ## Lines
 

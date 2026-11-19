@@ -166,6 +166,13 @@ let executeFork(state: AppState, id: String): AppState =
   | None -> unknown(state, id)
   | Some(parent) ->
     let newId = nextId()
+    let _ =
+      if SCM.Branch.isMain(branchOf(parent)) then
+        printHint($"{id} is on main, so {newId} starts from main's last commit, without its draft.")
+      else
+        let _ = Batch.commitForFork(state, parent, newId)
+        ()
+
     match SCM.PackageOps.resolveBranch($"repl-{newId}", branchOf(parent)) with
     | Error(_) ->
       printErr($"could not start a branch for {newId}")

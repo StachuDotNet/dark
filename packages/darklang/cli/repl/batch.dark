@@ -432,6 +432,18 @@ let run(state: AppState, r: Repls.Record, text: String, onFailure: OnFailure): (
   (endState, endRecord, outcome)
 
 
+/// Before a fork: commit what <param r> has drafted on its own branch, because a new branch
+/// starts from its parent's commits and would not see the draft. Never on main, where a commit is
+/// the person's call; there the fork goes without the draft, and the caller says so.
+let commitForFork(state: AppState, r: Repls.Record, forkId: String): Bool =
+  let branch = Repls.branchOf(r)
+  if SCM.Branch.isMain(branch) then
+    false
+  else
+    let (_s, _r, outcome) = run(state, r, $"commit \"fork point for {forkId}\" -y", OnFailure.Stop)
+    count(outcome, "error") == 0
+
+
 let count(outcome: Outcome, status: String): Int64 =
   outcome.replies |> Stdlib.List.filter(fun r -> r.status == status) |> Stdlib.List.length
 
