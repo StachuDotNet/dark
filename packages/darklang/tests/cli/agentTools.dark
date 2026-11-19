@@ -60,3 +60,8 @@ test aReadIsNotAWrite =
 
 test stripAnsiLeavesPlainText =
   Cli.Repls.Batch.stripAnsi("\u001b[32mok\u001b[0m done") |> Stdlib.Test.equal("ok done")
+
+
+test errorLinesSkipTheBindings =
+  (Cli.Repls.Batch.shiftLine("error[PARSE] at 3:5: oops", 2), Cli.Repls.Batch.shiftLine("    3 | x y", 2))
+  |> Stdlib.Test.equal(("error[PARSE] at 1:5: oops", "    1 | x y"))

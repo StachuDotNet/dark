@@ -131,6 +131,45 @@ let finish(state: State, ending: Ending): (State * List<Command>) =
   ({ state with status = Status.Done(ending) }, [ Command.Save, Command.Finish(ending) ])
 
 
+/// Past this many characters of conversation, older tool results are cut down before a call.
+val contextBudget = 200000
+
+
+let size(m: Message): Int64 =
+  m.content
+  |> Stdlib.List.fold(0, fun(acc, b) ->
+    match b with
+    | Text(t) -> acc + Stdlib.String.length(t)
+    | ToolUse(_, _, input) -> acc + Stdlib.String.length(Stdlib.AltJson.format(input))
+    | ToolResult(_, content, _) -> acc + Stdlib.String.length(content))
+
+
+/// What the model is sent. Old tool output is the cheapest thing to drop: once the conversation
+/// is past the budget, every tool result before the last few messages keeps only its head. The
+/// cut moves in steps of ten messages, not one, so the cached prefix survives most calls.
+let forModel(messages: List<Message>): List<Message> =
+  let total = messages |> Stdlib.List.fold(0, fun(acc, m) -> acc + size(m))
+  let n = Stdlib.List.length(messages)
+  if total <= contextBudget || n <= 6 then
+    messages
+  else
+    let boundary = ((n - 6) / 10) * 10
+    messages
+    |> Stdlib.List.indexedMap(fun(i, m) ->
+      if i >= boundary then
+        m
+      else
+        let content =
+          m.content
+          |> Stdlib.List.map(fun b ->
+            match b with
+            | ToolResult(id, text, isError) when Stdlib.String.length(text) > 600 ->
+              Block.ToolResult(id, Stdlib.String.first(text, 300) + "\n[... older output trimmed; run it again if you need it]", isError)
+            | other -> other)
+
+        { m with content = content })
+
+
 /// Ask the model again, unless the run is out of turns.
 let callModel(state: State): (State * List<Command>) =
   if state.turns >= state.maxTurns then
@@ -138,7 +177,7 @@ let callModel(state: State): (State * List<Command>) =
   else
     (
       { state with status = Status.WaitingForModel, turns = state.turns + 1 },
-      [ Command.CallModel(state.messages) ])
+      [ Command.CallModel(forModel(state.messages)) ])
 
 
 let append(state: State, m: Message): State =

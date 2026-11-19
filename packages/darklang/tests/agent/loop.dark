@@ -187,3 +187,24 @@ test composedPromptStaysSmall =
   let p = Agent.Prompt.compose(Agent.Prompt.sections, Agent.Prompt.Tier.Frontier, "", "/w", "main", "today")
   // about 4 characters a token: the evidence says keep the system prompt under 1k tokens
   (Stdlib.String.length(p) < 4000) |> Stdlib.Test.equal(true)
+
+
+test smallConversationsGoToTheModelWhole =
+  let messages = [ text(Agent.Role.User, "hi") ]
+  Agent.forModel(messages) |> Stdlib.Test.equal(messages)
+
+
+test oldToolOutputIsTrimmedPastTheBudget =
+  let big = Stdlib.String.repeat("x", 30000)
+  let pair =
+    [ Agent.Message { role = Agent.Role.Assistant, content = [ toolUse("t", "read") ] }
+      Agent.Message { role = Agent.Role.User, content = [ Agent.Block.ToolResult("t", big, false) ] } ]
+
+  let messages =
+    Stdlib.List.range(1, 10) |> Stdlib.List.map(fun _ -> pair) |> Stdlib.List.flatten
+
+  let sent = Agent.forModel(messages)
+  let sizes = sent |> Stdlib.List.map(fun m -> Agent.size(m))
+  // 20 messages: the first 10 are cut to their head, the last 10 go whole
+  (Stdlib.List.getAt(sizes, 1), Stdlib.List.getAt(sizes, 19))
+  |> Stdlib.Test.equal((Option.Some(356), Option.Some(30000)))

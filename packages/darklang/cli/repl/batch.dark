@@ -147,6 +147,21 @@ let literal(branchId: Uuid, v: 'a): String =
     | Error(_) -> stripAnsi(Terminal.renderValue(branchId, 100, false, [], dv))
 
 
+/// An error's line numbers, less the <param k> lines of bindings put in front of what was typed.
+let shiftLine(line: String, k: Int64): String =
+  let fix(s: String, pattern: String, suffix: String): String =
+    Stdlib.Regex.replaceAllWith(s, pattern, fun m ->
+      match m.captures with
+      | [Some(lead), Some(num)] ->
+        match Stdlib.Int64.parse(num.text) with
+        | Ok(n) when n > k -> lead.text + Stdlib.display(n - k) + suffix
+        | _ -> m.text
+      | _ -> m.text)
+    |> Stdlib.Result.withDefault(s)
+
+  if k == 0 then line else fix(fix(line, "(at )(\\d+):", ":"), "^(\\s*)(\\d+) \\|", " |")
+
+
 /// Evaluate <param expr> with the bindings in scope: (the literal, or the error's lines; what it
 /// printed on the way).
 let evalLiteral(state: AppState, bindings: List<Repl.Binding>, expr: String): (Result<String, List<String>> * List<String>) =
@@ -156,8 +171,10 @@ let evalLiteral(state: AppState, bindings: List<Repl.Binding>, expr: String): (R
       match Eval.evaluateValue(state.accountID, state.currentBranchId, source, Eval.Harmful.Halt) with
       | Ok(v) -> Result.Ok(literal(state.currentBranchId, v))
       | Error(e) ->
+        let k = Stdlib.List.length(Stdlib.String.split(Repl.bindingChain(bindings), "\n")) - 1
         Result.Error(
-          outputLines(ExecutionError.formatForTerminal(state.accountID, state.currentBranchId, e))))
+          outputLines(ExecutionError.formatForTerminal(state.accountID, state.currentBranchId, e))
+          |> Stdlib.List.map(fun l -> shiftLine(l, k))))
 
   (result, outputLines(printed))
 

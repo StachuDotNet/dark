@@ -38,7 +38,9 @@ change here is a breaking change and goes in this file first.
     dark @<id> [--continue] [--json]  run the batch on stdin in <id>
     dark @ [--continue] [--json]      the same, in the current repl
 
-`--branch` takes an existing branch; without it the repl starts on the branch `dark` is on.
+`--branch` takes an existing branch; without it the repl starts on the branch `dark` is on. A
+fork's branch starts from its parent branch's commits: what the parent repl wrote and has not
+committed is not on it.
 
 ## Lines
 

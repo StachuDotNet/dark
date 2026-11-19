@@ -194,11 +194,32 @@ let show(run: Run, m: Agent.Message): Unit =
 
 // ---- the runner
 
+/// An answer worth asking again: overloaded, rate-limited, or the server's own failure.
+let retryable(why: String): Bool =
+  [ "answered 429", "answered 500", "answered 502", "answered 503", "answered 529", "Overloaded", "overloaded" ]
+  |> Stdlib.List.any(fun s -> Stdlib.String.contains(why, s))
+
+
 let callModel(run: Run, messages: List<Agent.Message>): (Run * Agent.Event) =
   let onText(_t: String): Unit = ()
   match run.provider with
   | Live(config) ->
-    match Agent.Anthropic.call(config, run.system, run.tools |> Stdlib.List.map(fun t -> t.spec), messages, onText) with
+    let specs = run.tools |> Stdlib.List.map(fun t -> t.spec)
+    // overloaded and rate-limited answers are worth waiting out: 2, 4, then 8 seconds
+    let result =
+      [ 2000, 4000, 8000, 0 ]
+      |> Stdlib.List.fold(Result.Error("not called"), fun(acc, wait) ->
+        match acc with
+        | Ok(reply) -> Result.Ok(reply)
+        | Error(why) when why != "not called" && Stdlib.Bool.not(retryable(why)) -> Result.Error(why)
+        | Error(_) ->
+          match Agent.Anthropic.call(config, run.system, specs, messages, onText) with
+          | Ok(reply) -> Result.Ok(reply)
+          | Error(why) ->
+            let _ = if retryable(why) && wait > 0 then Stdlib.Cli.Posix.sleep(Stdlib.Int64.toFloat64(wait)) else ()
+            Result.Error(why))
+
+    match result with
     | Ok(reply) -> (run, Agent.Event.ModelReplied(reply))
     | Error(why) -> (run, Agent.Event.ModelFailed(why))
   | Replay(recorded) ->
