@@ -117,6 +117,10 @@ let firstWord(text: String): String =
 
 
 let classify(state: AppState, text: String): Statement =
+  // a line written as it would be typed in a shell, `dark fn ...`, means the same as `fn ...`
+  let text =
+    if Stdlib.String.startsWith(text, "dark ") then Stdlib.String.dropFirst(text, 5) else text
+
   let word = firstWord(text)
   match Repl.parseLetBinding(text) with
   | Some((name, rhs)) -> Statement.Bind(name, rhs)

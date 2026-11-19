@@ -63,3 +63,13 @@ test anUnknownReplExitsTwo = Instance.withInstance(fun i ->
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 2, "no such repl")
       Instance.says(out, "no repl r9", "says which") ]))
+
+
+test aShellStyleDarkPrefixIsTheSameCommand = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "repl", "new" ])
+  let (code, out) =
+    Edit.runWithStdin(i, [ "@r1" ], "dark fn Me.P.one '(): Int64 = 1'\nMe.P.one()\n")
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "dark-prefixed command")
+      Instance.says(out, "\n2 1\n", "the function it made") ]))

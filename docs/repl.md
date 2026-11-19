@@ -61,6 +61,8 @@ continues the statement above it. A blank line ends the statement. Each statemen
   batch. A watch is evaluated with the bindings in scope.
 - Anything else is a Dark expression, evaluated with the bindings in scope on the repl's branch.
 
+A leading `dark ` is dropped, so a line copied from a shell (`dark fn ...`) means `fn ...`.
+
 Commands that need a terminal (a `y/N` confirm, a secret, `$EDITOR`, a full-screen view) are
 refused with a pointer to their `-y` form or to running them outside the repl. `repl` and
 `@<id>` are refused inside a batch.
