@@ -2,7 +2,7 @@
 module Darklang.Cli.Effects
 
 let reasons(hash: String): (Bool * List<(LanguageTools.Permissions.Effect * List<String>)>) =
-  Builtin.pmFnEffectReasons(hash)
+  LanguageTools.Permissions.effectReasons(hash)
 
 
 let execute(state: AppState, args: List<String>): AppState =

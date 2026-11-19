@@ -1,3 +1,4 @@
+1 Darklang.Cli.Compile.checkJsonLines Darklang.Stdlib.Json.serialize
 1 Darklang.Cli.Compile.executable Darklang.Stdlib.Cli.FileSystem.isDirectory
 1 Darklang.Cli.Compile.startServer Darklang.Stdlib.Exec.awaitWithin
 1 Darklang.Cli.Compile.startServer Darklang.Stdlib.HttpServer.serve
