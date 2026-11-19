@@ -1,0 +1,309 @@
+/// The Anthropic Messages API, streamed: the request, the SSE stream folded into a `Reply`, and the
+/// call. The fold is pure, so recorded streams test it with no network.
+module Darklang.Agent.Anthropic
+
+type Config =
+  { baseUrl: String
+    apiKey: String
+    model: String
+    maxTokens: Int64 }
+
+
+/// What the model is told about one tool.
+type ToolSpec =
+  { name: String
+    description: String
+    schema: Stdlib.AltJson.Json }
+
+
+let str(s: String): Stdlib.AltJson.Json = Stdlib.AltJson.Json.String(s)
+
+let obj(fields: List<(String * Stdlib.AltJson.Json)>): Stdlib.AltJson.Json =
+  Stdlib.AltJson.Json.Object(fields)
+
+let ephemeral(): Stdlib.AltJson.Json = obj([ ("type", str("ephemeral")) ])
+
+
+let blockToJson(b: Agent.Block): Stdlib.AltJson.Json =
+  match b with
+  | Text(t) -> obj([ ("type", str("text")), ("text", str(t)) ])
+  | ToolUse(id, name, input) ->
+    obj([ ("type", str("tool_use")), ("id", str(id)), ("name", str(name)), ("input", input) ])
+  | ToolResult(id, content, isError) ->
+    obj(
+      [ ("type", str("tool_result"))
+        ("tool_use_id", str(id))
+        ("content", str(content))
+        ("is_error", Stdlib.AltJson.Json.Bool(isError)) ])
+
+
+let roleText(r: Agent.Role): String =
+  match r with
+  | User -> "user"
+  | Assistant -> "assistant"
+
+
+let withCache(j: Stdlib.AltJson.Json): Stdlib.AltJson.Json =
+  match j with
+  | Object(fields) -> Stdlib.AltJson.Json.Object(Stdlib.List.append(fields, ("cache_control", ephemeral())))
+  | other -> other
+
+
+let messageToJson(m: Agent.Message, cacheLast: Bool): Stdlib.AltJson.Json =
+  let n = Stdlib.List.length(m.content)
+  let blocks =
+    m.content
+    |> Stdlib.List.indexedMap(fun(i, b) ->
+      let j = blockToJson(b)
+      if cacheLast && i == n - 1 then withCache(j) else j)
+
+  obj([ ("role", str(roleText(m.role))), ("content", Stdlib.AltJson.Json.Array(blocks)) ])
+
+
+/// The conversation, with a cache breakpoint on the last message so the next call reads the whole
+/// prefix from the cache.
+let messagesToJson(messages: List<Agent.Message>): Stdlib.AltJson.Json =
+  let n = Stdlib.List.length(messages)
+  messages
+  |> Stdlib.List.indexedMap(fun(i, m) -> messageToJson(m, i == n - 1))
+  |> Stdlib.AltJson.Json.Array
+
+
+let toolToJson(t: ToolSpec, cache: Bool): Stdlib.AltJson.Json =
+  let j =
+    obj([ ("name", str(t.name)), ("description", str(t.description)), ("input_schema", t.schema) ])
+
+  if cache then withCache(j) else j
+
+
+/// The request body. Cache breakpoints on the system prompt, the last tool and the last message.
+let request(
+  config: Config,
+  system: String,
+  tools: List<ToolSpec>,
+  messages: List<Agent.Message>)
+  : Stdlib.AltJson.Json =
+  let n = Stdlib.List.length(tools)
+  obj(
+    [ ("model", str(config.model))
+      ("max_tokens", Stdlib.AltJson.Json.Integer(config.maxTokens))
+      ("stream", Stdlib.AltJson.Json.Bool(true))
+      ("system", Stdlib.AltJson.Json.Array([ withCache(obj([ ("type", str("text")), ("text", str(system)) ])) ]))
+      ("tools", Stdlib.AltJson.Json.Array(tools |> Stdlib.List.indexedMap(fun(i, t) -> toolToJson(t, i == n - 1))))
+      ("messages", messagesToJson(messages)) ])
+
+
+let blockFromJson(j: Stdlib.AltJson.Json): Option<Agent.Block> =
+  match j with
+  | Object(fields) ->
+    let get(k: String): String = Stdlib.AltJson.Helpers.getString(k, fields) |> Stdlib.Option.withDefault("")
+    match get("type") with
+    | "text" -> Option.Some(Agent.Block.Text(get("text")))
+    | "tool_use" ->
+      let input =
+        Stdlib.AltJson.Helpers.getValue("input", fields)
+        |> Stdlib.Option.withDefault(obj([]))
+
+      Option.Some(Agent.Block.ToolUse(get("id"), get("name"), input))
+    | "tool_result" ->
+      let isError = Stdlib.AltJson.Helpers.getBool("is_error", fields) |> Stdlib.Option.withDefault(false)
+      Option.Some(Agent.Block.ToolResult(get("tool_use_id"), get("content"), isError))
+    | _ -> Option.None
+  | _ -> Option.None
+
+
+let messageFromJson(j: Stdlib.AltJson.Json): Option<Agent.Message> =
+  match j with
+  | Object(fields) ->
+    let role =
+      match Stdlib.AltJson.Helpers.getString("role", fields) with
+      | Some("assistant") -> Agent.Role.Assistant
+      | _ -> Agent.Role.User
+
+    let content =
+      Stdlib.AltJson.Helpers.getArray("content", fields) |> Stdlib.List.filterMap(blockFromJson)
+
+    Option.Some(Agent.Message { role = role, content = content })
+  | _ -> Option.None
+
+
+let messagesFromJson(j: Stdlib.AltJson.Json): List<Agent.Message> =
+  match j with
+  | Array(items) -> items |> Stdlib.List.filterMap(messageFromJson)
+  | _ -> []
+
+
+/// A block while its stream is still arriving. A tool's input arrives as JSON text in pieces.
+type Partial =
+  | PText(String)
+  | PTool(id: String, name: String, json: String)
+  /// a block this client does not keep (thinking), held so the indexes still line up
+  | PSkip
+
+
+type Acc =
+  { blocks: List<Partial>
+    stop: Agent.StopReason
+    usage: Agent.Usage
+    error: Option<String> }
+
+
+let emptyAcc(): Acc =
+  Acc { blocks = [], stop = Agent.StopReason.EndTurn, usage = Agent.noUsage(), error = Option.None }
+
+
+let usageFrom(fields: List<(String * Stdlib.AltJson.Json)>, base: Agent.Usage): Agent.Usage =
+  let u = Stdlib.AltJson.Helpers.getObject("usage", fields)
+  let int(k: String, d: Int64): Int64 =
+    Stdlib.AltJson.Helpers.getInt64Option(k, u) |> Stdlib.Option.withDefault(d)
+
+  Agent.Usage
+    { input = int("input_tokens", base.input)
+      output = int("output_tokens", base.output)
+      cacheRead = int("cache_read_input_tokens", base.cacheRead)
+      cacheWrite = int("cache_creation_input_tokens", base.cacheWrite) }
+
+
+let stopFrom(s: String): Agent.StopReason =
+  match s with
+  | "end_turn" -> Agent.StopReason.EndTurn
+  | "tool_use" -> Agent.StopReason.ToolUseStop
+  | "max_tokens" -> Agent.StopReason.MaxTokens
+  | other -> Agent.StopReason.OtherStop(other)
+
+
+let updateAt(blocks: List<Partial>, index: Int64, f: Partial -> Partial): List<Partial> =
+  blocks |> Stdlib.List.indexedMap(fun(i, b) -> if i == index then f(b) else b)
+
+
+/// The text a delta adds, for showing as it arrives; "" for anything else.
+let deltaText(e: Stdlib.HttpClient.Sse.Event): String =
+  if e.eventType != "content_block_delta" then
+    ""
+  else
+    match Stdlib.AltJson.parse(e.data) with
+    | Ok(Object(fields)) ->
+      let d = Stdlib.AltJson.Helpers.getObject("delta", fields)
+      Stdlib.AltJson.Helpers.getString("text", d) |> Stdlib.Option.withDefault("")
+    | _ -> ""
+
+
+/// Fold one SSE event into the reply so far.
+let accumulate(acc: Acc, e: Stdlib.HttpClient.Sse.Event): Acc =
+  match Stdlib.AltJson.parse(e.data) with
+  | Ok(Object(fields)) ->
+    let index = Stdlib.AltJson.Helpers.getInt64Option("index", fields) |> Stdlib.Option.withDefault(0)
+    match e.eventType with
+    | "message_start" ->
+      let message = Stdlib.AltJson.Helpers.getObject("message", fields)
+      { acc with usage = usageFrom(message, acc.usage) }
+    | "content_block_start" ->
+      let b = Stdlib.AltJson.Helpers.getObject("content_block", fields)
+      let get(k: String): String = Stdlib.AltJson.Helpers.getString(k, b) |> Stdlib.Option.withDefault("")
+      let partial =
+        match get("type") with
+        | "text" -> Partial.PText(get("text"))
+        | "tool_use" -> Partial.PTool(get("id"), get("name"), "")
+        | _ -> Partial.PSkip
+
+      { acc with blocks = Stdlib.List.append(acc.blocks, partial) }
+    | "content_block_delta" ->
+      let d = Stdlib.AltJson.Helpers.getObject("delta", fields)
+      let get(k: String): String = Stdlib.AltJson.Helpers.getString(k, d) |> Stdlib.Option.withDefault("")
+      let blocks =
+        updateAt(acc.blocks, index, fun p ->
+          match p, get("type") with
+          | PText(t), "text_delta" -> Partial.PText(t + get("text"))
+          | PTool(id, name, json), "input_json_delta" -> Partial.PTool(id, name, json + get("partial_json"))
+          | other, _ -> other)
+
+      { acc with blocks = blocks }
+    | "message_delta" ->
+      let d = Stdlib.AltJson.Helpers.getObject("delta", fields)
+      let stop =
+        match Stdlib.AltJson.Helpers.getString("stop_reason", d) with
+        | Some(s) -> stopFrom(s)
+        | None -> acc.stop
+
+      { acc with stop = stop, usage = usageFrom(fields, acc.usage) }
+    | "error" ->
+      let err = Stdlib.AltJson.Helpers.getObject("error", fields)
+      let message = Stdlib.AltJson.Helpers.getString("message", err) |> Stdlib.Option.withDefault(e.data)
+      { acc with error = Option.Some(message) }
+    | _ -> acc
+  | _ -> acc
+
+
+let finishBlock(p: Partial): Option<Agent.Block> =
+  match p with
+  | PText(t) -> if t == "" then Option.None else Option.Some(Agent.Block.Text(t))
+  | PTool(id, name, json) ->
+    let input =
+      if Stdlib.String.trim(json) == "" then
+        obj([])
+      else
+        Stdlib.AltJson.parse(json) |> Stdlib.Result.withDefault(obj([]))
+
+    Option.Some(Agent.Block.ToolUse(id, name, input))
+  | PSkip -> Option.None
+
+
+let toReply(acc: Acc): Result<Agent.Reply, String> =
+  match acc.error with
+  | Some(message) -> Result.Error(message)
+  | None ->
+    Result.Ok(
+      Agent.Reply
+        { content = acc.blocks |> Stdlib.List.filterMap(finishBlock)
+          stop = acc.stop
+          usage = acc.usage })
+
+
+/// A whole recorded stream, as the provider would read it.
+let fromEvents(events: List<Stdlib.HttpClient.Sse.Event>): Result<Agent.Reply, String> =
+  events |> Stdlib.List.fold(emptyAcc(), accumulate) |> toReply
+
+
+/// Parse SSE text (a recorded response) into a reply, showing each text delta through <param onText>.
+let fromSseText(text: String, onText: String -> Unit): Result<Agent.Reply, String> =
+  text
+  |> Stdlib.Utf8.encode
+  |> Stdlib.Bytes.toList
+  |> Stdlib.Stream.fromList
+  |> Stdlib.HttpClient.Sse.parse
+  |> Stdlib.Stream.map(fun e ->
+    let _ = onText(deltaText(e))
+    e)
+  |> Stdlib.Stream.toList
+  |> fromEvents
+
+
+/// Call the model, streaming: each text delta goes to <param onText> as it arrives.
+let call(
+  config: Config,
+  system: String,
+  tools: List<ToolSpec>,
+  messages: List<Agent.Message>,
+  onText: String -> Unit)
+  : Result<Agent.Reply, String> =
+  let body = Stdlib.Utf8.encode(Stdlib.AltJson.format(request(config, system, tools, messages)))
+  let headers =
+    [ ("content-type", "application/json")
+      ("x-api-key", config.apiKey)
+      ("anthropic-version", "2023-06-01") ]
+
+  match Stdlib.HttpClient.stream("POST", config.baseUrl + "/v1/messages", headers, body) with
+  | Error(e) -> Result.Error($"could not reach the model: {Stdlib.HttpClient.toString(e)}")
+  | Ok(r) ->
+    if r.statusCode != 200 then
+      let text =
+        Stdlib.Utf8.decode(Stdlib.Stream.toBytes(r.body)) |> Stdlib.Result.withDefault("")
+
+      Result.Error($"the model answered {Stdlib.display(r.statusCode)}: {text}")
+    else
+      Stdlib.HttpClient.Sse.parse(r.body)
+      |> Stdlib.Stream.map(fun e ->
+        let _ = onText(deltaText(e))
+        e)
+      |> Stdlib.Stream.toList
+      |> fromEvents

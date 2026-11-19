@@ -1,0 +1,189 @@
+// The agent's loop, fed lists of events: no network, no tools, no store.
+module Darklang.Agent.Tests
+
+let text(role: Agent.Role, t: String): Agent.Message =
+  Agent.Message { role = role, content = [ Agent.Block.Text(t) ] }
+
+
+let reply(blocks: List<Agent.Block>): Agent.Event =
+  Agent.Event.ModelReplied(
+    Agent.Reply
+      { content = blocks
+        stop = Agent.StopReason.EndTurn
+        usage = Agent.Usage { input = 10, output = 5, cacheRead = 0, cacheWrite = 0 } })
+
+
+let toolUse(id: String, name: String): Agent.Block =
+  Agent.Block.ToolUse(id, name, Stdlib.AltJson.Json.Object([]))
+
+
+let output(t: String): Agent.ToolOutput = Agent.ToolOutput { text = t, isError = false }
+
+
+let kinds(commands: List<Agent.Command>): List<String> =
+  commands
+  |> Stdlib.List.map(fun c ->
+    match c with
+    | CallModel(_) -> "call"
+    | RunTool(id, name, _) -> $"run {name} {id}"
+    | Show(_) -> "show"
+    | Save -> "save"
+    | Finish(_) -> "finish")
+
+
+test promptCallsTheModel =
+  let (s, commands) = Agent.step(Agent.start([], 10), Agent.Event.Prompt("hi"))
+  (kinds(commands), Stdlib.List.length(s.messages), s.turns)
+  |> Stdlib.Test.equal(([ "save", "call" ], 1, 1))
+
+
+test aTextReplyFinishes =
+  let (s, commands) =
+    Agent.replay(Agent.start([], 10), [ Agent.Event.Prompt("hi"), reply([ Agent.Block.Text("hello") ]) ])
+
+  (kinds(commands), s.status)
+  |> Stdlib.Test.equal(
+    ([ "save", "call", "show", "save", "save", "finish" ], Agent.Status.Done(Agent.Ending.Answered("hello"))))
+
+
+test toolCallsRunThenAllResultsGoBackTogether =
+  let (s, commands) =
+    Agent.replay(
+      Agent.start([], 10),
+      [ Agent.Event.Prompt("list and read")
+        reply([ Agent.Block.Text("looking"), toolUse("t1", "ls"), toolUse("t2", "read") ])
+        Agent.Event.ToolFinished("t1", output("a.txt"))
+        Agent.Event.ToolFinished("t2", output("hello")) ])
+
+  let last = Stdlib.List.last(s.messages)
+  (kinds(commands), last)
+  |> Stdlib.Test.equal(
+    (
+      [ "save", "call", "show", "save", "run ls t1", "run read t2", "show", "save", "call" ],
+      Option.Some(
+        Agent.Message
+          { role = Agent.Role.User
+            content =
+              [ Agent.Block.ToolResult("t1", "a.txt", false)
+                Agent.Block.ToolResult("t2", "hello", false) ] })))
+
+
+test resultsKeepTheOrderTheModelAskedIn =
+  let (s, _) =
+    Agent.replay(
+      Agent.start([], 10),
+      [ Agent.Event.Prompt("two")
+        reply([ toolUse("t1", "ls"), toolUse("t2", "ls") ])
+        Agent.Event.ToolFinished("t2", output("second"))
+        Agent.Event.ToolFinished("t1", output("first")) ])
+
+  Stdlib.List.last(s.messages)
+  |> Stdlib.Option.map(fun m -> m.content)
+  |> Stdlib.Test.equal(
+    Option.Some(
+      [ Agent.Block.ToolResult("t2", "second", false)
+        Agent.Block.ToolResult("t1", "first", false) ]))
+
+
+test aStrayToolResultChangesNothing =
+  let start = Agent.start([], 10)
+  Agent.step(start, Agent.Event.ToolFinished("nope", output("x")))
+  |> Stdlib.Test.equal((start, []))
+
+
+test theTurnLimitStopsTheRun =
+  let (s, commands) =
+    Agent.replay(
+      Agent.start([], 1),
+      [ Agent.Event.Prompt("go")
+        reply([ toolUse("t1", "ls") ])
+        Agent.Event.ToolFinished("t1", output("x")) ])
+
+  (Stdlib.List.last(kinds(commands)), s.status)
+  |> Stdlib.Test.equal((Option.Some("finish"), Agent.Status.Done(Agent.Ending.TurnLimit(1))))
+
+
+test aModelFailureEndsTheRun =
+  let (s, _) =
+    Agent.replay(Agent.start([], 10), [ Agent.Event.Prompt("go"), Agent.Event.ModelFailed("overloaded") ])
+
+  s.status |> Stdlib.Test.equal(Agent.Status.Done(Agent.Ending.Failed("overloaded")))
+
+
+test usageAddsUp =
+  let (s, _) =
+    Agent.replay(
+      Agent.start([], 10),
+      [ Agent.Event.Prompt("go")
+        reply([ toolUse("t1", "ls") ])
+        Agent.Event.ToolFinished("t1", output("x"))
+        reply([ Agent.Block.Text("done") ]) ])
+
+  (s.usage.input, s.usage.output) |> Stdlib.Test.equal((20, 10))
+
+
+test aNewPromptAfterAnAnswerContinues =
+  let (s, _) =
+    Agent.replay(
+      Agent.start([], 10),
+      [ Agent.Event.Prompt("one"), reply([ Agent.Block.Text("a") ]), Agent.Event.Prompt("two") ])
+
+  (Stdlib.List.length(s.messages), s.status)
+  |> Stdlib.Test.equal((3, Agent.Status.WaitingForModel))
+
+
+// A recorded Messages stream: text, then a tool call whose input arrives in pieces.
+val recorded =
+  "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":120,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":0,\"output_tokens\":1}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me \"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"look.\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"ls\",\"input\":{}}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"pa\"}}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"th\\\": \\\".\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":42}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+
+
+test aRecordedStreamFoldsIntoAReply =
+  Agent.Anthropic.fromSseText(recorded, fun _ -> ())
+  |> Stdlib.Test.equal(
+    Result.Ok(
+      Agent.Reply
+        { content =
+            [ Agent.Block.Text("Let me look.")
+              Agent.Block.ToolUse(
+                "toolu_1",
+                "ls",
+                Stdlib.AltJson.Json.Object([ ("path", Stdlib.AltJson.Json.String(".")) ])) ]
+          stop = Agent.StopReason.ToolUseStop
+          usage = Agent.Usage { input = 120, output = 42, cacheRead = 100, cacheWrite = 0 } }))
+
+
+test anErrorEventFailsTheCall =
+  Agent.Anthropic.fromSseText(
+    "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+    fun _ -> ())
+  |> Stdlib.Test.equal(Result.Error("Overloaded"))
+
+
+test messagesRoundTripThroughTheWireFormat =
+  let messages =
+    [ text(Agent.Role.User, "hi")
+      Agent.Message { role = Agent.Role.Assistant, content = [ toolUse("t1", "ls") ] }
+      Agent.Message { role = Agent.Role.User, content = [ Agent.Block.ToolResult("t1", "a", true) ] } ]
+
+  Agent.Anthropic.messagesFromJson(Agent.Anthropic.messagesToJson(messages))
+  |> Stdlib.Test.equal(messages)
+
+
+test theRequestCachesSystemToolsAndTheLastMessage =
+  let config =
+    Agent.Anthropic.Config { baseUrl = "", apiKey = "", model = "claude-opus-5-5", maxTokens = 100 }
+
+  let tool =
+    Agent.Anthropic.ToolSpec { name = "ls", description = "list", schema = Stdlib.AltJson.Json.Object([]) }
+
+  let body =
+    Stdlib.AltJson.format(Agent.Anthropic.request(config, "sys", [ tool ], [ text(Agent.Role.User, "hi") ]))
+
+  Stdlib.List.length(Stdlib.String.split(body, "\"cache_control\"")) - 1
+  |> Stdlib.Test.equal(3)
+
+
+test composedPromptStaysSmall =
+  let p = Agent.Prompt.compose(Agent.Prompt.sections, Agent.Prompt.Tier.Frontier, "", "/w", "main", "today")
+  // about 4 characters a token: the evidence says keep the system prompt under 1k tokens
+  (Stdlib.String.length(p) < 4000) |> Stdlib.Test.equal(true)

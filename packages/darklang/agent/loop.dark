@@ -1,0 +1,193 @@
+/// The Dark coding agent's loop, as a pure fold: `step : State -> Event -> State * List<Command>`.
+///
+/// Nothing here touches the world. Commands (call the model, run a tool, show something, save the
+/// session) are carried out by a runner (`Darklang.Cli.Agent`), and what they produce comes back as
+/// events. So a whole conversation replays from a list of events, and the tests feed `step` lists of
+/// them with no network.
+module Darklang.Agent
+
+type Role =
+  | User
+  | Assistant
+
+
+/// One piece of a message, in the shape the Anthropic Messages API uses.
+type Block =
+  | Text(String)
+  | ToolUse(id: String, name: String, input: Stdlib.AltJson.Json)
+  | ToolResult(id: String, content: String, isError: Bool)
+
+
+type Message =
+  { role: Role
+    content: List<Block> }
+
+
+type Usage =
+  { input: Int64
+    output: Int64
+    cacheRead: Int64
+    cacheWrite: Int64 }
+
+
+type StopReason =
+  | EndTurn
+  | ToolUseStop
+  | MaxTokens
+  | OtherStop(String)
+
+
+/// What the model answered with, once its stream has ended.
+type Reply =
+  { content: List<Block>
+    stop: StopReason
+    usage: Usage }
+
+
+/// A tool's answer: text for the model, and whether it failed.
+type ToolOutput =
+  { text: String
+    isError: Bool }
+
+
+type Event =
+  | Prompt(String)
+  | ModelReplied(Reply)
+  | ModelFailed(String)
+  | ToolFinished(id: String, output: ToolOutput)
+
+
+/// How the session ended, for the runner's last word and its exit code.
+type Ending =
+  | Answered(String)
+  | TurnLimit(Int64)
+  | Failed(String)
+
+
+type Command =
+  | CallModel(List<Message>)
+  | RunTool(id: String, name: String, input: Stdlib.AltJson.Json)
+  /// a message to show the person watching (or the stream-json reader)
+  | Show(Message)
+  | Save
+  | Finish(Ending)
+
+
+type Status =
+  | Idle
+  | WaitingForModel
+  /// tool calls still running, and the results that have come back, in call order
+  | WaitingForTools(pending: List<String>, results: List<Block>)
+  | Done(Ending)
+
+
+type State =
+  { messages: List<Message>
+    status: Status
+    /// model calls made in this run
+    turns: Int64
+    maxTurns: Int64
+    usage: Usage }
+
+
+let noUsage(): Usage = Usage { input = 0, output = 0, cacheRead = 0, cacheWrite = 0 }
+
+
+let start(messages: List<Message>, maxTurns: Int64): State =
+  State
+    { messages = messages
+      status = Status.Idle
+      turns = 0
+      maxTurns = maxTurns
+      usage = noUsage() }
+
+
+let addUsage(a: Usage, b: Usage): Usage =
+  Usage
+    { input = a.input + b.input
+      output = a.output + b.output
+      cacheRead = a.cacheRead + b.cacheRead
+      cacheWrite = a.cacheWrite + b.cacheWrite }
+
+
+let textOf(blocks: List<Block>): String =
+  blocks
+  |> Stdlib.List.filterMap(fun b ->
+    match b with
+    | Text(t) -> Option.Some(t)
+    | _ -> Option.None)
+  |> Stdlib.String.join("")
+
+
+let toolUses(blocks: List<Block>): List<(String * String * Stdlib.AltJson.Json)> =
+  blocks
+  |> Stdlib.List.filterMap(fun b ->
+    match b with
+    | ToolUse(id, name, input) -> Option.Some((id, name, input))
+    | _ -> Option.None)
+
+
+let finish(state: State, ending: Ending): (State * List<Command>) =
+  ({ state with status = Status.Done(ending) }, [ Command.Save, Command.Finish(ending) ])
+
+
+/// Ask the model again, unless the run is out of turns.
+let callModel(state: State): (State * List<Command>) =
+  if state.turns >= state.maxTurns then
+    finish(state, Ending.TurnLimit(state.turns))
+  else
+    (
+      { state with status = Status.WaitingForModel, turns = state.turns + 1 },
+      [ Command.CallModel(state.messages) ])
+
+
+let append(state: State, m: Message): State =
+  { state with messages = Stdlib.List.append(state.messages, m) }
+
+
+/// The loop. An event that does not fit the state (a tool result nobody asked for, a reply while
+/// idle) leaves it as it was: replaying a log must not crash on one stray entry.
+let step(state: State, event: Event): (State * List<Command>) =
+  match state.status, event with
+  | Idle, Prompt(text) ->
+    let m = Message { role = Role.User, content = [ Block.Text(text) ] }
+    let (s, commands) = callModel(append(state, m))
+    (s, Stdlib.List.prepend(commands, Command.Save))
+  | Done(_), Prompt(text) -> step({ state with status = Status.Idle }, Event.Prompt(text))
+  | WaitingForModel, ModelReplied(reply) ->
+    let m = Message { role = Role.Assistant, content = reply.content }
+    let appended = append(state, m)
+    let state = { appended with usage = addUsage(state.usage, reply.usage) }
+    let shown = [ Command.Show(m), Command.Save ]
+    match toolUses(reply.content) with
+    | [] ->
+      let (s, commands) = finish(state, Ending.Answered(textOf(reply.content)))
+      (s, Stdlib.List.concat(shown, commands))
+    | uses ->
+      let ids = uses |> Stdlib.List.map(fun((id, _name, _input)) -> id)
+      let runs = uses |> Stdlib.List.map(fun((id, name, input)) -> Command.RunTool(id, name, input))
+      ({ state with status = Status.WaitingForTools(ids, []) }, Stdlib.List.concat(shown, runs))
+  | WaitingForModel, ModelFailed(why) -> finish(state, Ending.Failed(why))
+  | WaitingForTools(pending, results), ToolFinished(id, output) when Stdlib.List.contains(pending, id) ->
+    let results =
+      Stdlib.List.append(results, Block.ToolResult(id, output.text, output.isError))
+
+    let pending = pending |> Stdlib.List.filter(fun p -> p != id)
+    if Stdlib.List.isEmpty(pending) then
+      // every result goes back in one message, in the order the model asked
+      let m = Message { role = Role.User, content = results }
+      let (s, commands) = callModel(append(state, m))
+      (s, Stdlib.List.concat([ Command.Show(m), Command.Save ], commands))
+    else
+      ({ state with status = Status.WaitingForTools(pending, results) }, [])
+  | _ -> (state, [])
+
+
+/// Fold <param events> through `step` from <param state>: the state at the end and every command,
+/// in order. What the tests use, and what a replay is.
+let replay(state: State, events: List<Event>): (State * List<Command>) =
+  events
+  |> Stdlib.List.fold((state, []), fun(acc, e) ->
+    let (s, commands) = acc
+    let (s2, more) = step(s, e)
+    (s2, Stdlib.List.concat(commands, more)))

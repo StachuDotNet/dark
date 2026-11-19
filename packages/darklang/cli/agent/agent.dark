@@ -1,0 +1,525 @@
+/// `dark agent -p "build me X"`: the print-mode runner around the pure loop in `Darklang.Agent`.
+///
+/// A session is a record in the store's config (`agent.session.<id>`) and has its own branch and
+/// its own repl (same id), so `dark @a1` shows what the agent built, and `--resume`/`--fork` pick a
+/// session up again.
+module Darklang.Cli.Agent
+
+type Session =
+  { id: String
+    branchId: String
+    /// the session this one was forked from, or ""
+    parent: String
+    cwd: String
+    model: String
+    /// the conversation, in the Messages API's JSON
+    messages: String
+    usage: Agent.Usage }
+
+
+type Provider =
+  | Live(Agent.Anthropic.Config)
+  /// recorded SSE responses, answered in order
+  | Replay(List<String>)
+
+
+type Format =
+  | PlainText
+  | StreamJson
+
+
+type Options =
+  { prompt: String
+    model: String
+    allowed: List<LanguageTools.Permissions.Effect>
+    resume: Option<String>
+    fork: Option<String>
+    branch: Option<String>
+    format: Format
+    maxTurns: Int64
+    replay: Option<String>
+    baseUrl: String }
+
+
+type Run =
+  { loop: Agent.State
+    queue: List<Agent.Command>
+    ctx: Tools.Context
+    session: Session
+    provider: Provider
+    system: String
+    tools: List<Tools.Tool>
+    format: Format
+    ending: Option<Agent.Ending> }
+
+
+val defaultModel = "claude-opus-5-5"
+
+
+/// What a session may do without being asked: read files, read and write packages on its own
+/// branch (the branch is the sandbox; nothing reaches main until it is merged).
+val defaultAllowed =
+  [ LanguageTools.Permissions.Effect.FileRead
+    LanguageTools.Permissions.Effect.PackageRead
+    LanguageTools.Permissions.Effect.PackageWrite ]
+
+
+let sessionKey(id: String): String = "agent.session." + id
+
+
+let loadSession(id: String): Option<Session> =
+  match LanguageTools.LocalStore.configGet(sessionKey(id)) with
+  | Some(text) ->
+    match Stdlib.Json.parse<Session>(text) with
+    | Ok(s) -> Option.Some(s)
+    | Error(_) -> Option.None
+  | None -> Option.None
+
+
+let saveSession(s: Session): Result<Unit, String> =
+  LanguageTools.LocalStore.configSet(sessionKey(s.id), Stdlib.Json.serialize<Session>(s))
+
+
+let sessionIds(): List<String> =
+  match LanguageTools.LocalStore.configGet("agent.sessions") with
+  | Some(text) -> Stdlib.Json.parse<List<String>>(text) |> Stdlib.Result.withDefault([])
+  | None -> []
+
+
+let nextSessionId(): String =
+  let highest =
+    Stdlib.List.concat(sessionIds(), Repls.ids())
+    |> Stdlib.List.fold(0, fun(acc, id) ->
+      match Stdlib.Int64.parse(Stdlib.String.dropFirst(id, 1)) with
+      | Ok(n) when n > acc -> n
+      | _ -> acc)
+
+  "a" + Stdlib.display(highest + 1)
+
+
+let messagesOf(s: Session): List<Agent.Message> =
+  match Stdlib.AltJson.parse(s.messages) with
+  | Ok(j) -> Agent.Anthropic.messagesFromJson(j)
+  | Error(_) -> []
+
+
+let withMessages(s: Session, messages: List<Agent.Message>): Session =
+  { s with messages = Stdlib.AltJson.format(Agent.Anthropic.messagesToJson(messages)) }
+
+
+/// AGENTS.md or CLAUDE.md from the working directory up, nearest last, at most 8,000 characters.
+let projectContext(cwd: String): String =
+  let dirs =
+    Stdlib.List.range(0, 20)
+    |> Stdlib.List.fold([ cwd ], fun(acc, _i) ->
+      match Stdlib.List.last(acc) with
+      | Some(d) when d != "/" && d != "" ->
+        let up = Stdlib.Cli.Path.parent(d)
+        if up == d then acc else Stdlib.List.append(acc, up)
+      | _ -> acc)
+
+  let found =
+    dirs
+    |> Stdlib.List.reverse
+    |> Stdlib.List.filterMap(fun d ->
+      [ "AGENTS.md", "CLAUDE.md" ]
+      |> Stdlib.List.filterMap(fun f ->
+        match Stdlib.Cli.File.readText(d + "/" + f) with
+        | Ok(text) -> Option.Some($"({d}/{f})\n{text}")
+        | Error(_) -> Option.None)
+      |> Stdlib.List.head)
+
+  Stdlib.String.first(Stdlib.String.join(found, "\n\n"), 8000)
+
+
+let keyPath(): String =
+  Stdlib.Cli.Path.parent(LanguageTools.LocalStore.path()) + "/secrets/anthropic.key"
+
+
+let readKey(): Result<String, String> =
+  match Stdlib.Cli.File.readText(keyPath()) with
+  | Ok(text) when Stdlib.String.trim(text) != "" -> Result.Ok(Stdlib.String.trim(text))
+  | _ -> Result.Error($"no Anthropic API key: put one in {keyPath()}")
+
+
+// ---- output
+
+let usageJson(u: Agent.Usage): Stdlib.AltJson.Json =
+  Stdlib.AltJson.Json.Object(
+    [ ("input_tokens", Stdlib.AltJson.Json.Integer(u.input))
+      ("output_tokens", Stdlib.AltJson.Json.Integer(u.output))
+      ("cache_read_input_tokens", Stdlib.AltJson.Json.Integer(u.cacheRead))
+      ("cache_creation_input_tokens", Stdlib.AltJson.Json.Integer(u.cacheWrite)) ])
+
+
+let emitJson(fields: List<(String * Stdlib.AltJson.Json)>): Unit =
+  Stdlib.printLine(Stdlib.AltJson.format(Stdlib.AltJson.Json.Object(fields)))
+
+
+let str(s: String): Stdlib.AltJson.Json = Stdlib.AltJson.Json.String(s)
+
+
+/// One line on stderr per tool call, so a person sees progress while stdout stays the answer.
+let describeCall(name: String, input: Stdlib.AltJson.Json): String =
+  let first =
+    match Tools.fields(input) |> Stdlib.List.head with
+    | Some((_k, String(v))) -> v
+    | _ -> ""
+
+  let line = Stdlib.String.splitOnNewline(first) |> Stdlib.List.head |> Stdlib.Option.withDefault("")
+  let line = if Stdlib.String.length(line) > 100 then Stdlib.String.first(line, 100) + "..." else line
+  $"· {name} {line}"
+
+
+let show(run: Run, m: Agent.Message): Unit =
+  match run.format with
+  | StreamJson ->
+    let kind =
+      match m.role with
+      | Assistant -> "assistant"
+      | User -> "user"
+
+    emitJson(
+      [ ("type", str(kind))
+        ("message", Agent.Anthropic.messageToJson(m, false))
+        ("session_id", str(run.session.id)) ])
+  | PlainText ->
+    m.content
+    |> Stdlib.List.iter(fun b ->
+      match b with
+      | ToolUse(_id, name, input) -> Stdlib.printErrorLine(describeCall(name, input))
+      | ToolResult(_id, _content, true) -> Stdlib.printErrorLine("  (failed)")
+      | _ -> ())
+
+
+// ---- the runner
+
+let callModel(run: Run, messages: List<Agent.Message>): (Run * Agent.Event) =
+  let onText(_t: String): Unit = ()
+  match run.provider with
+  | Live(config) ->
+    match Agent.Anthropic.call(config, run.system, run.tools |> Stdlib.List.map(fun t -> t.spec), messages, onText) with
+    | Ok(reply) -> (run, Agent.Event.ModelReplied(reply))
+    | Error(why) -> (run, Agent.Event.ModelFailed(why))
+  | Replay(recorded) ->
+    match recorded with
+    | [] -> (run, Agent.Event.ModelFailed("the recording has no more responses"))
+    | [next, ...rest] ->
+      let run = { run with provider = Provider.Replay(rest) }
+      match Agent.Anthropic.fromSseText(next, onText) with
+      | Ok(reply) -> (run, Agent.Event.ModelReplied(reply))
+      | Error(why) -> (run, Agent.Event.ModelFailed(why))
+
+
+let save(run: Run): Run =
+  let withMsgs = withMessages(run.session, run.loop.messages)
+  let session =
+    { withMsgs with usage = run.loop.usage, branchId = Stdlib.display(run.ctx.app.currentBranchId) }
+  let _ = saveSession(session)
+  let _ = Repls.save(run.ctx.repl)
+  { run with session = session }
+
+
+/// Carry out one command; what it produced goes back through `step`.
+let perform(run: Run, command: Agent.Command): Run =
+  let feed(r: Run, e: Agent.Event): Run =
+    let (loop, more) = Agent.step(r.loop, e)
+    { r with loop = loop, queue = Stdlib.List.concat(r.queue, more) }
+
+  match command with
+  | CallModel(messages) ->
+    let (r, e) = callModel(run, messages)
+    feed(r, e)
+  | RunTool(id, name, input) ->
+    let (ctx, output) = Tools.runTool(run.ctx, run.tools, name, input)
+    feed({ run with ctx = ctx }, Agent.Event.ToolFinished(id, output))
+  | Show(m) ->
+    let _ = show(run, m)
+    run
+  | Save -> save(run)
+  | Finish(ending) -> { run with ending = Option.Some(ending) }
+
+
+/// Drain the queue. A fold over a bounded range rather than recursion: there are no tail calls,
+/// and a runaway loop stops here instead of blowing the stack.
+let drain(run: Run): Run =
+  Stdlib.List.range(1, 20000)
+  |> Stdlib.List.fold(run, fun(r, _i) ->
+    match r.queue with
+    | [] -> r
+    | [next, ...rest] -> perform({ r with queue = rest }, next))
+
+
+// ---- arguments
+
+let parseArgs(args: List<String>, o: Options): Result<Options, String> =
+  match args with
+  | [] -> Result.Ok(o)
+  | ["-p", ...rest] -> parseArgs(rest, o)
+  | ["--print", ...rest] -> parseArgs(rest, o)
+  | ["--model", m, ...rest] -> parseArgs(rest, { o with model = m })
+  | ["--resume", id, ...rest] -> parseArgs(rest, { o with resume = Option.Some(id) })
+  | ["--continue", ...rest] ->
+    match LanguageTools.LocalStore.configGet("agent.last") with
+    | Some(id) -> parseArgs(rest, { o with resume = Option.Some(id) })
+    | None -> Result.Error("no earlier session to continue")
+  | ["--fork", id, ...rest] -> parseArgs(rest, { o with fork = Option.Some(id) })
+  | ["--branch", b, ...rest] -> parseArgs(rest, { o with branch = Option.Some(b) })
+  | ["--max-turns", n, ...rest] ->
+    match Stdlib.Int64.parse(n) with
+    | Ok(v) when v > 0 -> parseArgs(rest, { o with maxTurns = v })
+    | _ -> Result.Error($"--max-turns takes a positive number, not {n}")
+  | ["--output-format", "text", ...rest] -> parseArgs(rest, { o with format = Format.PlainText })
+  | ["--output-format", "stream-json", ...rest] -> parseArgs(rest, { o with format = Format.StreamJson })
+  | ["--output-format", f, ..._rest] -> Result.Error($"--output-format is text or stream-json, not {f}")
+  | ["--replay", path, ...rest] -> parseArgs(rest, { o with replay = Option.Some(path) })
+  | ["--base-url", url, ...rest] -> parseArgs(rest, { o with baseUrl = url })
+  | ["--allow", names, ...rest] ->
+    let wanted = Stdlib.String.split(names, ",") |> Stdlib.List.map(fun n -> Stdlib.String.trim(n))
+    let expanded =
+      wanted
+      |> Stdlib.List.map(fun n ->
+        if n == "all" then
+          LanguageTools.Permissions.effectCases |> Stdlib.List.map(fun((e, _c, _n)) -> Option.Some(e))
+        else
+          [ LanguageTools.Permissions.effectOfName(n) ])
+      |> Stdlib.List.flatten
+
+    if Stdlib.List.any(expanded, fun e -> e == Option.None) then
+      Result.Error($"--allow takes effect names (file-write, process, http, ...) or all, not {names}")
+    else
+      let effects = expanded |> Stdlib.List.filterMap(fun e -> e)
+      parseArgs(rest, { o with allowed = Stdlib.List.concat(o.allowed, effects) })
+  | [word, ...rest] ->
+    if Stdlib.String.startsWith(word, "--") then
+      Result.Error($"agent does not take {word}; `dark agent --help` lists what it does")
+    else
+      let prompt = if o.prompt == "" then word else o.prompt + " " + word
+      parseArgs(rest, { o with prompt = prompt })
+
+
+let defaultOptions(): Options =
+  Options
+    { prompt = ""
+      model = defaultModel
+      allowed = defaultAllowed
+      resume = Option.None
+      fork = Option.None
+      branch = Option.None
+      format = Format.PlainText
+      maxTurns = 50
+      replay = Option.None
+      baseUrl = "https://api.anthropic.com" }
+
+
+/// The session to run in: a resumed one, a fork of one, or a new one on its own new branch.
+let openSession(state: AppState, o: Options, cwd: String): Result<Session, String> =
+  let fresh(id: String, parentBranch: Uuid, parent: String, messages: String): Result<Session, String> =
+    match o.branch with
+    | Some(name) ->
+      match SCM.PackageOps.resolveBranchRef(name) with
+      | Found(b) ->
+        Result.Ok(
+          Session
+            { id = id, branchId = Stdlib.display(b), parent = parent, cwd = cwd, model = o.model, messages = messages, usage = Agent.noUsage() })
+      | _ -> Result.Error($"no branch {name}")
+    | None ->
+      match SCM.PackageOps.resolveBranch($"agent-{id}", parentBranch) with
+      | Ok((b, _created)) ->
+        Result.Ok(
+          Session
+            { id = id, branchId = Stdlib.display(b), parent = parent, cwd = cwd, model = o.model, messages = messages, usage = Agent.noUsage() })
+      | Error(_) -> Result.Error($"could not start a branch for session {id}")
+
+  match o.resume, o.fork with
+  | Some(id), _ ->
+    match loadSession(id) with
+    | Some(s) -> Result.Ok(s)
+    | None -> Result.Error($"no session {id}")
+  | None, Some(id) ->
+    match loadSession(id) with
+    | Some(s) ->
+      let parentBranch = Stdlib.Uuid.parse(s.branchId) |> Stdlib.Result.withDefault(state.currentBranchId)
+      fresh(nextSessionId(), parentBranch, s.id, s.messages)
+    | None -> Result.Error($"no session {id}")
+  | None, None -> fresh(nextSessionId(), state.currentBranchId, "", "[]")
+
+
+/// The session's repl: the same id, on the session's branch, in the module it was in.
+let replFor(s: Session): Repls.Record =
+  match Repls.load(s.id) with
+  | Some(r) -> { r with branchId = s.branchId }
+  | None ->
+    Repls.Record
+      { id = s.id
+        branchId = s.branchId
+        location = []
+        bindings = []
+        watches = []
+        lastReplies = [] }
+
+
+let register(s: Session): Unit =
+  let ids = sessionIds()
+  let _ =
+    if Stdlib.List.contains(ids, s.id) then
+      Result.Ok(())
+    else
+      LanguageTools.LocalStore.configSet("agent.sessions", Stdlib.Json.serialize<List<String>>(Stdlib.List.append(ids, s.id)))
+
+  let replIds = Repls.ids()
+  let _ =
+    if Stdlib.List.contains(replIds, s.id) then Result.Ok(()) else Repls.setIds(Stdlib.List.append(replIds, s.id))
+
+  let _ = LanguageTools.LocalStore.configSet("agent.last", s.id)
+  ()
+
+
+let providerFor(o: Options): Result<Provider, String> =
+  match o.replay with
+  | Some(path) ->
+    match Stdlib.Cli.File.readText(path) with
+    | Ok(text) ->
+      let responses =
+        Stdlib.String.split(text, "\n=====\n")
+        |> Stdlib.List.filter(fun r -> Stdlib.String.trim(r) != "")
+
+      Result.Ok(Provider.Replay(responses))
+    | Error(e) -> Result.Error($"could not read {path}: {Stdlib.display(e)}")
+  | None ->
+    readKey()
+    |> Stdlib.Result.map(fun key ->
+      Provider.Live(
+        Agent.Anthropic.Config { baseUrl = o.baseUrl, apiKey = key, model = o.model, maxTokens = 16000 }))
+
+
+let endingText(e: Agent.Ending): (String * Bool) =
+  match e with
+  | Answered(text) -> (text, false)
+  | TurnLimit(n) -> ($"stopped after {Stdlib.display(n)} model calls (--max-turns)", true)
+  | Failed(why) -> (why, true)
+
+
+let execute(state: AppState, args: List<String>): AppState =
+  match parseArgs(args, defaultOptions()) with
+  | Error(why) ->
+    printErr(why)
+    { state with exitCode = 2 }
+  | Ok(o) when o.prompt == "" ->
+    printErr("agent needs a prompt: dark agent -p \"build me ...\"")
+    { state with exitCode = 2 }
+  | Ok(o) ->
+    let cwd = Stdlib.Cli.FileSystem.currentDirectory()
+    match openSession(state, o, cwd), providerFor(o) with
+    | Error(why), _ ->
+      printErr(why)
+      { state with exitCode = 1 }
+    | _, Error(why) ->
+      printErr(why)
+      { state with exitCode = 1 }
+    | Ok(session), Ok(provider) ->
+      let _ = register(session)
+      let repl = replFor(session)
+      let app = Repls.enter(state, repl)
+      let branch = Repls.branchText(Repls.branchOf(repl))
+      let system =
+        Agent.Prompt.compose(
+          Agent.Prompt.sections,
+          Agent.Prompt.Tier.Frontier,
+          projectContext(cwd),
+          cwd,
+          branch,
+          Stdlib.display(Stdlib.DateTime.now()))
+
+      let tools = Tools.all()
+      let ctx =
+        Tools.Context { app = app, repl = repl, cwd = cwd, seen = [], allowed = o.allowed }
+
+      let started = Stdlib.DateTime.now()
+      let _ =
+        match o.format with
+        | StreamJson ->
+          emitJson(
+            [ ("type", str("system"))
+              ("subtype", str("init"))
+              ("session_id", str(session.id))
+              ("model", str(o.model))
+              ("cwd", str(cwd))
+              ("tools", Stdlib.AltJson.Json.Array(tools |> Stdlib.List.map(fun t -> str(t.spec.name)))) ])
+        | PlainText -> Stdlib.printErrorLine($"session {session.id} on branch {branch}")
+
+      let loop = Agent.start(messagesOf(session), o.maxTurns)
+      let (loop, commands) = Agent.step(loop, Agent.Event.Prompt(o.prompt))
+      let run =
+        Run
+          { loop = loop
+            queue = commands
+            ctx = ctx
+            session = session
+            provider = provider
+            system = system
+            tools = tools
+            format = o.format
+            ending = Option.None }
+
+      let finished = drain(run)
+      let ending = finished.ending |> Stdlib.Option.withDefault(Agent.Ending.Failed("the run stopped without an answer"))
+      let (text, isError) = endingText(ending)
+      let ms = Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), started)
+      let _ =
+        match o.format with
+        | StreamJson ->
+          let subtype =
+            match ending with
+            | Answered(_) -> "success"
+            | TurnLimit(_) -> "error_max_turns"
+            | Failed(_) -> "error_during_execution"
+
+          emitJson(
+            [ ("type", str("result"))
+              ("subtype", str(subtype))
+              ("is_error", Stdlib.AltJson.Json.Bool(isError))
+              ("result", str(text))
+              ("num_turns", Stdlib.AltJson.Json.Integer(finished.loop.turns))
+              ("duration_ms", Stdlib.AltJson.Json.Integer(ms))
+              ("session_id", str(session.id))
+              ("usage", usageJson(finished.loop.usage)) ])
+        | PlainText ->
+          let u = finished.loop.usage
+          if isError then printErr(text) else Stdlib.printLine(text)
+          Stdlib.printErrorLine(
+            $"session {session.id}: {Stdlib.display(finished.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out, {Stdlib.display(ms)} ms; `dark @{session.id}` opens its repl")
+
+      { state with exitCode = (if isError then 1 else 0) }
+
+
+let accepts(): Accepts.Accepts =
+  Accepts.withValues(
+    [ "--model", "--resume", "--fork", "--branch", "--max-turns", "--output-format", "--replay", "--base-url", "--allow" ],
+    Accepts.freeText(0, [ "-p", "--print", "--continue" ]))
+
+
+let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
+  []
+
+
+let help(_state: AppState): String =
+  [ "Usage: agent -p <prompt> [options]"
+    ""
+    "Build what the prompt asks for, in Dark, and print the answer. Each session works on its own"
+    "branch (agent-a1, ...) with its own repl: `dark @a1` shows what it built, `dark merge` takes it."
+    ""
+    "  --model <id>               default claude-opus-5-5"
+    "  --allow <effects>          also allow these, comma-separated: file-write, process, http, all."
+    "                             Without it the agent reads files and reads and writes packages on"
+    "                             its branch; any other tool call is refused and it is told why"
+    "  --continue                 continue the last session"
+    "  --resume <id>              continue session <id>"
+    "  --fork <id>                a new session from <id>'s conversation, on a branch off its branch"
+    "  --branch <name>            work on this existing branch instead of a new one"
+    "  --max-turns <n>            stop after n model calls (default 50)"
+    "  --output-format <f>        text (default) or stream-json, one JSON event per line"
+    "  --replay <file>            answer from recorded SSE responses (separated by =====), not the API"
+    ""
+    "The API key is read from secrets/anthropic.key beside the store." ]
+  |> Stdlib.String.join("\n")

@@ -48,7 +48,7 @@ val reportLineCap = 12
 
 
 let stripAnsi(text: String): String =
-  Stdlib.Regex.replace(text, "\u001b\\[[0-9;?]*[A-Za-z]", "") |> Stdlib.Result.withDefault(text)
+  Stdlib.Regex.replaceAll(text, "\u001b\\[[0-9;?]*[A-Za-z]", "") |> Stdlib.Result.withDefault(text)
 
 
 let outputLines(text: String): List<String> =

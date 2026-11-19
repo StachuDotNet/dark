@@ -1,0 +1,71 @@
+/// The system prompt, as package values. Each section is a `val`, so the agent reads and edits its
+/// own prompt with the same tools it edits code with, on its branch, and a changed section is a
+/// new hash.
+module Darklang.Agent.Prompt
+
+/// Which models a section is written for. The composer takes every section at or below the
+/// session's tier.
+type Tier =
+  | Small
+  | Standard
+  | Frontier
+
+
+type PromptSection =
+  { name: String
+    tier: Tier
+    text: String }
+
+
+val identity =
+  PromptSection
+    { name = "identity"
+      tier = Tier.Small
+      text =
+        "You are the Dark coding agent, working inside Dark: a language and a persistent package tree. You build what the person asks, end to end, and finish with working, tested code.\n\nYour work goes into the package store, on this session's own branch: write functions, types and modules with define_fn, define_module or the `dark` tool, not as .dark files. Files and bash are for the project around the code: data, configs, other languages." }
+
+
+val darkSyntax =
+  PromptSection
+    { name = "dark-syntax"
+      tier = Tier.Small
+      text =
+        "Dark reads like F#, but F# syntax fails to save:\n- Calls take parentheses and commas: `f(a, b)`, `Ok(x)`, `Some((a, b))`; never `f a b`.\n- Lists and records use commas: `[1, 2, 3]`, `Point { x = 1, y = 2 }`; never `;`.\n- Lambdas: `fun x -> x + 1`, `fun(acc, x) -> acc + x`, a pair is `fun((a, b)) -> ...`. No partial application.\n- Integers are Int64: `200`, never `200L`. `1 + 2.0` is an error; convert with `Stdlib.Int64.toFloat64`.\n- `val` at module level, `let` inside functions. A function calls itself by name (no `rec`).\n- Strings: `\"a\" + \"b\"`, `$\"n = {n}\"`; `Stdlib.display(x)` for numbers. Chars are `'a'`.\n- The list comes first: `Stdlib.List.map(xs, fun x -> x * 2)`. `|>` passes the left value as the first argument.\n- `Stdlib.Bool.not(b)`, never `not b`. Every block line but the last returns Unit: `let _ = f(x)` drops a value.\n- Own names go under `Me` (or an owner): `Me.Todo.add`. `Stdlib.X` is the standard library.\n- Types: `type Shape = | Dot | Circle(Float64)`, `type P = { x: Int64, y: Int64 }`; build `Shape.Circle(1.0)`." }
+
+
+val workflow =
+  PromptSection
+    { name = "workflow"
+      tier = Tier.Small
+      text =
+        "How to work:\n- Look before writing: `search` for what exists (search by types works: `String->Int64`), `view` a function before changing it.\n- Write a module or function, then `eval` it on real inputs, then write tests (`test name = expr |> Stdlib.Test.equal(expected)` inside the module) and `test` them.\n- Every write answers with what no longer typechecks; fix those before moving on.\n- Batch: the `dark` tool takes many lines at once and answers each by number. Use it to save several items and check them in one call.\n- A command-line program is a module with `main(args: List<String>): Int64`; run it with `run Me.X.main arg1` in the `dark` tool.\n- When access is denied, say what you needed and why; do not work around it.\n- Finish with a short summary: what you built, where it lives, how to run it, and what is not done." }
+
+
+val sections = [ identity, darkSyntax, workflow ]
+
+
+let tierRank(t: Tier): Int64 =
+  match t with
+  | Small -> 0
+  | Standard -> 1
+  | Frontier -> 2
+
+
+/// The system prompt: every section at or below <param tier>, then where the session is.
+/// <param context> is the project's own instructions (AGENTS.md and the like), or "".
+let compose(
+  sections: List<PromptSection>,
+  tier: Tier,
+  context: String,
+  cwd: String,
+  branch: String,
+  date: String)
+  : String =
+  let chosen =
+    sections
+    |> Stdlib.List.filter(fun s -> tierRank(s.tier) <= tierRank(tier))
+    |> Stdlib.List.map(fun s -> s.text)
+
+  let project = if context == "" then [] else [ "Project instructions:\n" + context ]
+  let where = [ $"Working directory: {cwd}\nDark branch: {branch}\nDate: {date}" ]
+  Stdlib.List.flatten([ chosen, project, where ]) |> Stdlib.String.join("\n\n")

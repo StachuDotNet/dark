@@ -454,6 +454,7 @@ module Registry =
       ("merge", "Merge a branch into its parent", [], acceptsMerge, Cli.Branch.executeMergeCmd, Cli.Branch.mergeHelp, Cli.Branch.complete)
       ("branches", "List your branches", [], acceptsBranches, Cli.Branch.executeBranchesCmd, Cli.Branch.help, Cli.Branch.complete)
       ("switch", "Move onto a branch (`switch main` returns)", [ "checkout" ], acceptsSwitch, Cli.Branch.executeSwitchCmd, Cli.Branch.help, Cli.Branch.complete)
+      ("agent", "Build what a prompt asks for, in Dark, on a branch of its own", [], Cli.Agent.accepts, Cli.Agent.execute, Cli.Agent.help, Cli.Agent.complete)
       ("repl", "Repls that keep a branch, a location and bindings across batches (`dark @r1`)", [], Cli.Repls.accepts, Cli.Repls.execute, Cli.Repls.help, Cli.Repls.complete)
       ("diff", "What a branch changes vs its parent", [], acceptsDiff, Cli.Branch.executeDiffCmd, Cli.Branch.help, Cli.Branch.complete)
       ("log", "History: commits on main, a branch's ops on a branch", [], acceptsLog, Cli.Branch.executeLogCmd, Cli.Branch.help, Cli.Branch.complete)
@@ -657,7 +658,7 @@ module Registry =
           "ops" ])
 
       ("Branches", [ "branch", "branches", "switch", "merge", "rebase", "diff", "log", "resolve" ])
-      ("Execution", [ "run-script", "eval", "repl", "ps", "traces", "serve", "format" ])
+      ("Execution", [ "run-script", "eval", "repl", "agent", "ps", "traces", "serve", "format" ])
       ("Installation", [ "install", "update", "uninstall", "version", "install-status" ])
       ("Security", [ "effects", "permissions" ])
       (

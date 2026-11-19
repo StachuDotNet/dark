@@ -1,0 +1,510 @@
+/// The agent's tools. Each declares the effects it has, and runs only when the session's policy
+/// allows every one of them; a refusal goes back to the model as a failed tool call.
+///
+/// The Dark tools run batches in the session's repl, in this process, and answer with the repl's
+/// numbered replies and report: what typechecks and which callers broke come back with the edit.
+module Darklang.Cli.Agent.Tools
+
+type Context =
+  { app: AppState
+    repl: Repls.Record
+    cwd: String
+    /// Files read this session: `edit` and `write` refuse to change a file the model has not seen.
+    seen: List<String>
+    allowed: List<LanguageTools.Permissions.Effect> }
+
+
+type Tool =
+  { spec: Agent.Anthropic.ToolSpec
+    effects: List<LanguageTools.Permissions.Effect>
+    run: (Context, Stdlib.AltJson.Json) -> (Context * Agent.ToolOutput) }
+
+
+val outputCap = 30000
+
+val lineCap = 2000
+
+
+let ok(text: String): Agent.ToolOutput = Agent.ToolOutput { text = text, isError = false }
+
+let fail(text: String): Agent.ToolOutput = Agent.ToolOutput { text = text, isError = true }
+
+
+/// Keep the head and the tail of a long output: the end of a build log is where the error is.
+let truncate(text: String): String =
+  let n = Stdlib.String.length(text)
+  if n <= outputCap then
+    text
+  else
+    let half = outputCap / 2
+    Stdlib.String.first(text, half)
+    + $"\n... [{Stdlib.display(n - outputCap)} characters cut] ...\n"
+    + Stdlib.String.last(text, half)
+
+
+type Param =
+  { name: String
+    kind: String
+    description: String
+    required: Bool }
+
+
+let param(name: String, kind: String, description: String): Param =
+  Param { name = name, kind = kind, description = description, required = true }
+
+
+let optional(name: String, kind: String, description: String): Param =
+  Param { name = name, kind = kind, description = description, required = false }
+
+
+let schema(params: List<Param>): Stdlib.AltJson.Json =
+  let props =
+    params
+    |> Stdlib.List.map(fun p ->
+      (
+        p.name,
+        Stdlib.AltJson.Json.Object(
+          [ ("type", Stdlib.AltJson.Json.String(p.kind))
+            ("description", Stdlib.AltJson.Json.String(p.description)) ])))
+
+  let required =
+    params
+    |> Stdlib.List.filter(fun p -> p.required)
+    |> Stdlib.List.map(fun p -> Stdlib.AltJson.Json.String(p.name))
+
+  Stdlib.AltJson.Json.Object(
+    [ ("type", Stdlib.AltJson.Json.String("object"))
+      ("properties", Stdlib.AltJson.Json.Object(props))
+      ("required", Stdlib.AltJson.Json.Array(required)) ])
+
+
+let spec(name: String, description: String, params: List<Param>): Agent.Anthropic.ToolSpec =
+  Agent.Anthropic.ToolSpec { name = name, description = description, schema = schema(params) }
+
+
+let fields(input: Stdlib.AltJson.Json): List<(String * Stdlib.AltJson.Json)> =
+  match input with
+  | Object(fs) -> fs
+  | _ -> []
+
+
+let getText(input: Stdlib.AltJson.Json, key: String): Option<String> =
+  Stdlib.AltJson.Helpers.getString(key, fields(input))
+
+
+let getInt(input: Stdlib.AltJson.Json, key: String): Option<Int64> =
+  Stdlib.AltJson.Helpers.getInt64Option(key, fields(input))
+
+
+let getBool(input: Stdlib.AltJson.Json, key: String): Bool =
+  Stdlib.AltJson.Helpers.getBool(key, fields(input)) |> Stdlib.Option.withDefault(false)
+
+
+let absolute(ctx: Context, path: String): String =
+  if Stdlib.String.startsWith(path, "/") then path else ctx.cwd + "/" + path
+
+
+/// Run <param f> with the text argument <param key>, or say it is missing.
+let needing(
+  ctx: Context,
+  input: Stdlib.AltJson.Json,
+  key: String,
+  f: String -> (Context * Agent.ToolOutput))
+  : (Context * Agent.ToolOutput) =
+  match getText(input, key) with
+  | Some(v) -> f(v)
+  | None -> (ctx, fail($"missing `{key}`"))
+
+
+let numbered(lines: List<String>, from: Int64): String =
+  lines
+  |> Stdlib.List.indexedMap(fun(i, l) ->
+    Stdlib.String.padStart(Stdlib.display(from + i), ' ', 6) + "\t" + l)
+  |> Stdlib.String.join("\n")
+
+
+let readFile(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "path", fun path ->
+    let full = absolute(ctx, path)
+    if Stdlib.Cli.FileSystem.isDirectory(full) then
+      (ctx, fail($"{path} is a directory; use ls"))
+    else
+      match Stdlib.Cli.File.readText(full) with
+      | Error(e) -> (ctx, fail($"could not read {path}: {Stdlib.display(e)}"))
+      | Ok(text) ->
+        let lines = Stdlib.String.splitOnNewline(text)
+        let offset = getInt(input, "offset") |> Stdlib.Option.withDefault(1)
+        let offset = if offset < 1 then 1 else offset
+        let limit = getInt(input, "limit") |> Stdlib.Option.withDefault(lineCap)
+        let shown = lines |> Stdlib.List.drop(offset - 1) |> Stdlib.List.take(limit)
+        let total = Stdlib.List.length(lines)
+        let last = offset - 1 + Stdlib.List.length(shown)
+        let more =
+          if last < total then
+            $"\n... {Stdlib.display(total - last)} more lines; read with offset {Stdlib.display(last + 1)}"
+          else
+            ""
+
+        let seen = if Stdlib.List.contains(ctx.seen, full) then ctx.seen else Stdlib.List.append(ctx.seen, full)
+        ({ ctx with seen = seen }, ok(truncate(numbered(shown, offset) + more))))
+
+
+let writeFile(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "path", fun path ->
+    needing(ctx, input, "content", fun content ->
+      let full = absolute(ctx, path)
+      if Stdlib.Cli.File.exists(full) && Stdlib.Bool.not(Stdlib.List.contains(ctx.seen, full)) then
+        (ctx, fail($"{path} exists and has not been read this session; read it first"))
+      else
+        match Stdlib.Cli.File.writeText(full, content) with
+        | Error(e) -> (ctx, fail($"could not write {path}: {Stdlib.display(e)}"))
+        | Ok(_) ->
+          let seen = if Stdlib.List.contains(ctx.seen, full) then ctx.seen else Stdlib.List.append(ctx.seen, full)
+          let n = Stdlib.List.length(Stdlib.String.splitOnNewline(content))
+          ({ ctx with seen = seen }, ok($"wrote {path} ({Stdlib.display(n)} lines)"))))
+
+
+/// Replace the one place whose lines match <param old> ignoring leading and trailing whitespace.
+/// None when there is no such place, or more than one.
+let fuzzyReplace(content: String, old: String, replacement: String): Option<String> =
+  let fileLines = Stdlib.String.split(content, "\n")
+  let oldLines = Stdlib.String.split(Stdlib.String.trim(old), "\n") |> Stdlib.List.map(fun l -> Stdlib.String.trim(l))
+  let k = Stdlib.List.length(oldLines)
+  let n = Stdlib.List.length(fileLines)
+  if k == 0 || k > n then
+    Option.None
+  else
+    let matches =
+      Stdlib.List.range(0, n - k)
+      |> Stdlib.List.filter(fun i ->
+        (fileLines |> Stdlib.List.drop(i) |> Stdlib.List.take(k) |> Stdlib.List.map(fun l -> Stdlib.String.trim(l)))
+        == oldLines)
+
+    match matches with
+    | [i] ->
+      let replaced =
+        Stdlib.List.flatten(
+          [ Stdlib.List.take(fileLines, i)
+            Stdlib.String.split(replacement, "\n")
+            Stdlib.List.drop(fileLines, i + k) ])
+
+      Option.Some(Stdlib.String.join(replaced, "\n"))
+    | _ -> Option.None
+
+
+/// Exact first; then the same lines with whitespace ignored. An exact match that occurs more than
+/// once needs `replace_all`.
+let editText(content: String, old: String, replacement: String, all: Bool): Result<String, String> =
+  let count = Stdlib.List.length(Stdlib.String.split(content, old)) - 1
+  if old == "" then
+    Result.Error("old_string is empty")
+  else if count == 1 || (count > 1 && all) then
+    Result.Ok(Stdlib.String.replaceAll(content, old, replacement))
+  else if count > 1 then
+    Result.Error($"old_string occurs {Stdlib.display(count)} times; add context to make it unique, or set replace_all")
+  else
+    match fuzzyReplace(content, old, replacement) with
+    | Some(text) -> Result.Ok(text)
+    | None -> Result.Error("old_string is not in the file (even ignoring indentation); read the file again")
+
+
+let editFile(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "path", fun path ->
+    needing(ctx, input, "old_string", fun old ->
+      needing(ctx, input, "new_string", fun replacement ->
+        let full = absolute(ctx, path)
+        if Stdlib.Bool.not(Stdlib.List.contains(ctx.seen, full)) then
+          (ctx, fail($"read {path} before editing it"))
+        else
+          match Stdlib.Cli.File.readText(full) with
+          | Error(e) -> (ctx, fail($"could not read {path}: {Stdlib.display(e)}"))
+          | Ok(content) ->
+            match editText(content, old, replacement, getBool(input, "replace_all")) with
+            | Error(why) -> (ctx, fail(why))
+            | Ok(updated) ->
+              match Stdlib.Cli.File.writeText(full, updated) with
+              | Error(e) -> (ctx, fail($"could not write {path}: {Stdlib.display(e)}"))
+              | Ok(_) -> (ctx, ok($"edited {path}")))))
+
+
+let shell(ctx: Context, command: String, timeoutMs: Int64): Result<Stdlib.Cli.Process.Output, String> =
+  let script = $"cd {Stdlib.Cli.Process.shellQuote(ctx.cwd)} && {command}"
+  Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/bin/bash", [ "-c", script ])
+
+
+let bash(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "command", fun command ->
+    let timeoutMs = getInt(input, "timeout_ms") |> Stdlib.Option.withDefault(120000)
+    match shell(ctx, command, timeoutMs) with
+    | Error(why) -> (ctx, fail(why))
+    | Ok(out) ->
+      let both =
+        [ out.stdout, out.stderr ]
+        |> Stdlib.List.filter(fun s -> Stdlib.String.trim(s) != "")
+        |> Stdlib.String.join("\n")
+
+      let text = truncate(both) + $"\n[exit {Stdlib.display(out.exitCode)}]"
+      (ctx, Agent.ToolOutput { text = text, isError = out.exitCode != 0 }))
+
+
+let grep(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "pattern", fun pattern ->
+    let path = getText(input, "path") |> Stdlib.Option.withDefault(".")
+    let command = $"grep -rnI --exclude-dir=.git -E {Stdlib.Cli.Process.shellQuote(pattern)} {Stdlib.Cli.Process.shellQuote(path)} | head -200"
+    match shell(ctx, command, 30000) with
+    | Error(why) -> (ctx, fail(why))
+    | Ok(out) -> (ctx, ok(if Stdlib.String.trim(out.stdout) == "" then "no matches" else truncate(out.stdout))))
+
+
+let find(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "pattern", fun pattern ->
+    let path = getText(input, "path") |> Stdlib.Option.withDefault(".")
+    let command = $"find {Stdlib.Cli.Process.shellQuote(path)} -name .git -prune -o -name {Stdlib.Cli.Process.shellQuote(pattern)} -print | head -200"
+    match shell(ctx, command, 30000) with
+    | Error(why) -> (ctx, fail(why))
+    | Ok(out) -> (ctx, ok(if Stdlib.String.trim(out.stdout) == "" then "nothing found" else truncate(out.stdout))))
+
+
+let ls(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  let path = getText(input, "path") |> Stdlib.Option.withDefault(".")
+  let full = absolute(ctx, path)
+  match Stdlib.Cli.FileSystem.listDirectory(full) with
+  | Error(e) -> (ctx, fail($"could not list {path}: {Stdlib.display(e)}"))
+  | Ok(names) ->
+    let shown =
+      names
+      |> Stdlib.List.sort
+      |> Stdlib.List.map(fun n ->
+        if Stdlib.Cli.FileSystem.isDirectory(full + "/" + n) then n + "/" else n)
+
+    (ctx, ok(if Stdlib.List.isEmpty(shown) then "(empty)" else truncate(Stdlib.String.join(shown, "\n"))))
+
+
+/// Run a repl batch in the session's repl: its numbered replies and report, as `dark @r1` prints them.
+let batch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
+  let (app, record, outcome) = Repls.Batch.run(ctx.app, ctx.repl, text, false)
+  let lines = Repls.Batch.renderText(ctx.repl.id, outcome)
+  let failed = Repls.Batch.count(outcome, "error") > 0
+  (
+    { ctx with app = app, repl = record },
+    Agent.ToolOutput { text = Stdlib.String.join(lines, "\n"), isError = failed })
+
+
+let darkBatch(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "batch", fun text -> batch(ctx, text))
+
+
+/// One block statement: `<command> -` with <param body> indented under it.
+let block(command: String, body: String): String =
+  let indented =
+    Stdlib.String.split(body, "\n") |> Stdlib.List.map(fun l -> "  " + l) |> Stdlib.String.join("\n")
+
+  command + " -\n" + indented
+
+
+let view(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "name", fun name -> batch(ctx, $"view {name} --raw"))
+
+
+let search(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "query", fun query -> batch(ctx, $"search {query}"))
+
+
+let typecheck(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "module", fun m -> batch(ctx, $"typecheck {m}"))
+
+
+let eval(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "expression", fun expr ->
+    let indented =
+      Stdlib.String.split(Stdlib.String.trim(expr), "\n")
+      |> Stdlib.List.indexedMap(fun(i, l) -> if i == 0 then l else "  " + l)
+      |> Stdlib.String.join("\n")
+
+    batch(ctx, indented))
+
+
+let test(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "target", fun target -> batch(ctx, $"test run {target}"))
+
+
+let defineFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "name", fun name ->
+    needing(ctx, input, "source", fun source -> batch(ctx, block($"fn {name}", source))))
+
+
+let defineModule(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "module", fun m ->
+    needing(ctx, input, "source", fun source -> batch(ctx, block($"module /{m}", source))))
+
+
+/// The item's source as `view --raw` shows it, or why not.
+let rawSource(ctx: Context, name: String): Result<String, String> =
+  let (after, text) =
+    Workbench.captureOutputAnd(fun () ->
+      Registry.executeCommand("view", { ctx.app with exitCode = 0 }, [ name, "--raw" ]))
+
+  let out = Repls.Batch.stripAnsi(text)
+  if after.exitCode == 0 then Result.Ok(out) else Result.Error(Stdlib.String.trim(out))
+
+
+let editFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  needing(ctx, input, "name", fun name ->
+    needing(ctx, input, "old_string", fun old ->
+      needing(ctx, input, "new_string", fun replacement ->
+        let app = Repls.enter(ctx.app, ctx.repl)
+        match rawSource({ ctx with app = app }, name) with
+        | Error(why) -> (ctx, fail(why))
+        | Ok(source) ->
+          match editText(source, old, replacement, false) with
+          | Error(why) -> (ctx, fail(why + $"; `view {name}` shows the source"))
+          | Ok(updated) -> batch(ctx, block($"fn {name}", Stdlib.String.trim(updated))))))
+
+
+let all(): List<Tool> =
+  let fileRead = [ LanguageTools.Permissions.Effect.FileRead ]
+  [ Tool
+      { spec =
+          spec(
+            "read",
+            "Read a text file, with line numbers. Long files come in pieces: pass offset (1-based) and limit.",
+            [ param("path", "string", "the file, absolute or relative to the working directory")
+              optional("offset", "integer", "first line to show, 1-based")
+              optional("limit", "integer", "how many lines") ])
+        effects = fileRead
+        run = readFile }
+    Tool
+      { spec =
+          spec(
+            "write",
+            "Create or overwrite a file. An existing file must be read first.",
+            [ param("path", "string", "the file"), param("content", "string", "the whole new content") ])
+        effects = [ LanguageTools.Permissions.Effect.FileWrite ]
+        run = writeFile }
+    Tool
+      { spec =
+          spec(
+            "edit",
+            "Replace old_string with new_string in a file you have read. old_string must occur once (or set replace_all); a match ignoring indentation is tried when the exact text is not there.",
+            [ param("path", "string", "the file")
+              param("old_string", "string", "the text to replace")
+              param("new_string", "string", "what replaces it")
+              optional("replace_all", "boolean", "replace every occurrence") ])
+        effects = [ LanguageTools.Permissions.Effect.FileWrite ]
+        run = editFile }
+    Tool
+      { spec =
+          spec(
+            "bash",
+            "Run a bash command in the working directory. Output is cut to the head and tail past 30,000 characters.",
+            [ param("command", "string", "the command")
+              optional("timeout_ms", "integer", "stop it after this long; default 120000") ])
+        effects = [ LanguageTools.Permissions.Effect.Process ]
+        run = bash }
+    Tool
+      { spec =
+          spec(
+            "grep",
+            "Search file contents with an extended regex; up to 200 matching lines with file and line number.",
+            [ param("pattern", "string", "the regex"), optional("path", "string", "where to look; default .") ])
+        effects = fileRead
+        run = grep }
+    Tool
+      { spec =
+          spec(
+            "find",
+            "Find files whose name matches a glob, e.g. *.dark; up to 200 paths.",
+            [ param("pattern", "string", "the glob"), optional("path", "string", "where to look; default .") ])
+        effects = fileRead
+        run = find }
+    Tool
+      { spec = spec("ls", "List a directory; subdirectories end in /.", [ optional("path", "string", "default .") ])
+        effects = fileRead
+        run = ls }
+    Tool
+      { spec =
+          spec(
+            "dark",
+            "Run a batch of lines in this session's Dark repl, on the session's branch. One statement per line: a CLI command (fn, module, view, search, typecheck, test run, status, nav, ...), `let x = <expr>`, `watch <expr>`, or a Dark expression. Indented lines continue the line above; a command ending in `-` takes its indented lines as stdin. Answers one numbered reply per statement, stops at the first failure, then reports the typecheck of every module written and watched values.",
+            [ param("batch", "string", "the lines") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead, LanguageTools.Permissions.Effect.PackageWrite ]
+        run = darkBatch }
+    Tool
+      { spec =
+          spec(
+            "view",
+            "Show a package item's source (fn, type, value, module).",
+            [ param("name", "string", "e.g. Stdlib.List.map or Me.Todo") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = view }
+    Tool
+      { spec =
+          spec(
+            "search",
+            "Search the package tree by name, or by types: `bytes to string`, `String->Int64`. Flags work: --fn, --type, --with-docs.",
+            [ param("query", "string", "what to look for") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = search }
+    Tool
+      { spec =
+          spec(
+            "define_fn",
+            "Create or replace a Dark function: the source is `(a: Int64): Int64 = a * 2` or a whole `let name(...) = ...`. The reply names any caller that stopped typechecking.",
+            [ param("name", "string", "e.g. Me.Todo.add"), param("source", "string", "the definition") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageWrite ]
+        run = defineFn }
+    Tool
+      { spec =
+          spec(
+            "define_module",
+            "Save a whole Dark module: its types, vals, functions and tests, as one source.",
+            [ param("module", "string", "e.g. Me.Todo"), param("source", "string", "the module body") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageWrite ]
+        run = defineModule }
+    Tool
+      { spec =
+          spec(
+            "edit_fn",
+            "Change part of a Dark function: old_string in its source becomes new_string, then it is saved.",
+            [ param("name", "string", "the function")
+              param("old_string", "string", "text in its current source")
+              param("new_string", "string", "the replacement") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageWrite ]
+        run = editFn }
+    Tool
+      { spec =
+          spec(
+            "eval",
+            "Evaluate a Dark expression on the session's branch; the value comes back as a Dark literal.",
+            [ param("expression", "string", "e.g. Me.Todo.add(1, 2)") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = eval }
+    Tool
+      { spec = spec("typecheck", "Typecheck a module and everything in it.", [ param("module", "string", "e.g. Me.Todo") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = typecheck }
+    Tool
+      { spec = spec("test", "Run the package tests under a module.", [ param("target", "string", "e.g. Me.Todo") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = test } ]
+
+
+let named(tools: List<Tool>, name: String): Option<Tool> =
+  tools |> Stdlib.List.findFirst(fun t -> t.spec.name == name)
+
+
+/// The effects <param tool> has that the policy does not allow.
+let denied(ctx: Context, tool: Tool): List<LanguageTools.Permissions.Effect> =
+  tool.effects |> Stdlib.List.filter(fun e -> Stdlib.Bool.not(Stdlib.List.contains(ctx.allowed, e)))
+
+
+let runTool(ctx: Context, tools: List<Tool>, name: String, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
+  match named(tools, name) with
+  | None -> (ctx, fail($"no tool named {name}"))
+  | Some(tool) ->
+    match denied(ctx, tool) with
+    | [] -> tool.run(ctx, input)
+    | missing ->
+      let names = missing |> Stdlib.List.map(LanguageTools.Permissions.effectName)
+      let flags = names |> Stdlib.List.map(fun n -> "--allow " + n) |> Stdlib.String.join(" ")
+      (ctx, fail($"denied: {name} needs {Stdlib.String.join(names, ", ")}, which this session does not allow (the person can rerun with {flags})"))
