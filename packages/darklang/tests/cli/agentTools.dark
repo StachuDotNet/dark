@@ -95,3 +95,8 @@ test aBatchMayPassOnWhatTheSessionHas =
     ctxAllowing([ LanguageTools.Permissions.Effect.FileRead ]),
     "run Me.A.main --allow 'file read /data' x")
   |> Stdlib.Test.equal(Option.None)
+
+
+test testRunIsNotAWrite =
+  Cli.Repls.Batch.moduleOfWrite([ "Me", "Demo" ], "test", [ "run", "Me.Demo" ])
+  |> Stdlib.Test.equal(Option.None)

@@ -26,7 +26,7 @@ type ModuleCheck =
 
 
 type WatchResult =
-  { expr: String
+  { expression: String
     status: String
     value: String
     changed: Bool }
@@ -251,7 +251,12 @@ let runExpression(state: AppState, r: Repls.Record, n: Int64, expr: String): Rep
 
 /// The module a write command's name lands in, relative names resolved against <param here>.
 let moduleOfWrite(here: List<String>, name: String, args: List<String>): Option<String> =
-  if Stdlib.Bool.not(Stdlib.List.contains(writeCommands, name)) then
+  // of the `test` verbs only `test add` writes
+  let isTestAdd = Stdlib.List.head(args) == Option.Some("add")
+  let args = if name == "test" then Stdlib.List.drop(args, 1) else args
+  let writes = Stdlib.List.contains(writeCommands, name) && (name != "test" || isTestAdd)
+
+  if Stdlib.Bool.not(writes) then
     Option.None
   else
     let positional =
@@ -382,15 +387,15 @@ let runWatches(state: AppState, r: Repls.Record): (Repls.Record * List<WatchResu
     |> Stdlib.List.map(fun w ->
       match evalLiteral(state, r.bindings, w.expr) with
       | (Ok(value), _) ->
-        WatchResult { expr = w.expr, status = "ok", value = value, changed = value != w.last }
+        WatchResult { expression = w.expr, status = "ok", value = value, changed = value != w.last }
       | (Error(lines), _) ->
         let message =
           errorLines(lines) |> Stdlib.List.head |> Stdlib.Option.withDefault("error")
 
-        WatchResult { expr = w.expr, status = "error", value = message, changed = true })
+        WatchResult { expression = w.expr, status = "error", value = message, changed = true })
 
   let watches =
-    results |> Stdlib.List.map(fun w -> Repls.Watch { expr = w.expr, last = w.value })
+    results |> Stdlib.List.map(fun w -> Repls.Watch { expr = w.expression, last = w.value })
 
   ({ r with watches = watches }, results)
 
@@ -503,9 +508,9 @@ let reportLines(id: String, outcome: Outcome): List<String> =
   let watchLines =
     outcome.watches
     |> Stdlib.List.map(fun w ->
-      if w.status != "ok" then $"watch {w.expr} {w.value}"
-      else if w.changed then $"watch {w.expr} = {w.value}"
-      else $"watch {w.expr} unchanged")
+      if w.status != "ok" then $"watch {w.expression} {w.value}"
+      else if w.changed then $"watch {w.expression} = {w.value}"
+      else $"watch {w.expression} unchanged")
 
   let movedLines =
     match outcome.moved with
