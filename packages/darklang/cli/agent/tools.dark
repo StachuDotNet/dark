@@ -11,7 +11,9 @@ type Context =
     cwd: String
     /// Files read this session: `edit` and `write` refuse to change a file the model has not seen.
     seen: List<String>
-    allowed: List<LanguageTools.Permissions.Effect> }
+    allowed: List<LanguageTools.Permissions.Effect>
+    /// A person is at the terminal to approve what the policy does not allow.
+    ask: Bool }
 
 
 type Tool =
@@ -175,7 +177,8 @@ let fuzzyReplace(content: String, old: String, replacement: String): Option<Stri
     Option.None
   else
     let matches =
-      Stdlib.List.range(0, n - k)
+      Stdlib.List.checkedRange(0, n - k)
+      |> Stdlib.Result.withDefault([])
       |> Stdlib.List.filter(fun i ->
         (fileLines |> Stdlib.List.drop(i) |> Stdlib.List.take(k) |> Stdlib.List.map(fun l -> Stdlib.String.trim(l)))
         == oldLines)
@@ -194,11 +197,16 @@ let fuzzyReplace(content: String, old: String, replacement: String): Option<Stri
 
 /// Exact first; then the same lines with whitespace ignored. An exact match that occurs more than
 /// once needs `replace_all`.
-let editText(content: String, old: String, replacement: String, all: Bool): Result<String, String> =
+type Occurrences =
+  | One
+  | Every
+
+
+let editText(content: String, old: String, replacement: String, occurrences: Occurrences): Result<String, String> =
   let count = Stdlib.List.length(Stdlib.String.split(content, old)) - 1
   if old == "" then
     Result.Error("old_string is empty")
-  else if count == 1 || (count > 1 && all) then
+  else if count == 1 || (count > 1 && occurrences == Occurrences.Every) then
     Result.Ok(Stdlib.String.replaceAll(content, old, replacement))
   else if count > 1 then
     Result.Error($"old_string occurs {Stdlib.display(count)} times; add context to make it unique, or set replace_all")
@@ -219,7 +227,8 @@ let editFile(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOut
           match Stdlib.Cli.File.readText(full) with
           | Error(e) -> (ctx, fail($"could not read {path}: {Stdlib.display(e)}"))
           | Ok(content) ->
-            match editText(content, old, replacement, getBool(input, "replace_all")) with
+            let occurrences = if getBool(input, "replace_all") then Occurrences.Every else Occurrences.One
+            match editText(content, old, replacement, occurrences) with
             | Error(why) -> (ctx, fail(why))
             | Ok(updated) ->
               match Stdlib.Cli.File.writeText(full, updated) with
@@ -280,9 +289,78 @@ let ls(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
     (ctx, ok(if Stdlib.List.isEmpty(shown) then "(empty)" else truncate(Stdlib.String.join(shown, "\n"))))
 
 
+/// Commands a session never runs: they change this instance (its policy, its config, what is
+/// installed) or move work off the session's branch. The person runs those.
+val personOnly =
+  [ "permissions", "config", "install", "uninstall", "update", "backups", "merge", "switch", "checkout", "rebase", "serve" ]
+
+
+/// The effect a `--allow` rule grants, by its first words.
+let ruleEffect(rule: String): Option<LanguageTools.Permissions.Effect> =
+  let words = Stdlib.String.split(Stdlib.String.trim(rule), " ") |> Stdlib.List.filter(fun w -> w != "")
+  match words with
+  | ["file", "read", ..._] -> Option.Some(LanguageTools.Permissions.Effect.FileRead)
+  | ["file", "write", ..._] -> Option.Some(LanguageTools.Permissions.Effect.FileWrite)
+  | ["file", ..._] -> Option.Some(LanguageTools.Permissions.Effect.FileWrite)
+  | ["http-server", ..._] -> Option.Some(LanguageTools.Permissions.Effect.HttpServer)
+  | ["http", ..._] -> Option.Some(LanguageTools.Permissions.Effect.Http)
+  | ["process", ..._] -> Option.Some(LanguageTools.Permissions.Effect.Process)
+  | ["process-exact", ..._] -> Option.Some(LanguageTools.Permissions.Effect.Process)
+  | ["env", ..._] -> Option.Some(LanguageTools.Permissions.Effect.EnvRead)
+  | _ -> Option.None
+
+
+/// Why a batch may not run in this session, or None. A grant in the batch (`run --allow ...`)
+/// must be one the session itself has: code the agent writes gets no more than the agent.
+let batchRefusal(ctx: Context, text: String): Option<String> =
+  let statements = Repl.splitStatements(text)
+  let words =
+    statements
+    |> Stdlib.List.map(fun st ->
+      LanguageTools.Permissions.tokens(Stdlib.String.split(st, "\n") |> Stdlib.List.head |> Stdlib.Option.withDefault(""))
+      |> Stdlib.Option.withDefault([]))
+
+  let forbidden =
+    words
+    |> Stdlib.List.filterMap(fun ws ->
+      match ws with
+      | [first, ..._] when Stdlib.List.contains(personOnly, first) -> Option.Some(first)
+      | _ -> Option.None)
+
+  let grants =
+    words
+    |> Stdlib.List.map(fun ws ->
+      ws
+      |> Stdlib.List.indexedMap(fun(i, w) -> (i, w))
+      |> Stdlib.List.filterMap(fun((i, w)) ->
+        if w == "--allow" then Stdlib.List.getAt(ws, i + 1) else Option.None))
+    |> Stdlib.List.flatten
+    |> Stdlib.List.map(fun g -> Stdlib.String.split(g, ";"))
+    |> Stdlib.List.flatten
+
+  let ungranted =
+    grants
+    |> Stdlib.List.filter(fun g ->
+      match ruleEffect(g) with
+      | Some(e) -> Stdlib.Bool.not(Stdlib.List.contains(ctx.allowed, e))
+      | None -> true)
+
+  match forbidden, ungranted with
+  | [first, ..._], _ -> Option.Some($"`{first}` changes more than this session's branch; the person runs it")
+  | [], [first, ..._] ->
+    Option.Some($"denied: `--allow {first}` grants what this session does not have (the person can rerun the agent with --allow)")
+  | [], [] -> Option.None
+
+
 /// Run a repl batch in the session's repl: its numbered replies and report, as `dark @r1` prints them.
 let batch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
-  let (app, record, outcome) = Repls.Batch.run(ctx.app, ctx.repl, text, false)
+  match batchRefusal(ctx, text) with
+  | Some(why) -> (ctx, fail(why))
+  | None -> runBatch(ctx, text)
+
+
+let runBatch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
+  let (app, record, outcome) = Repls.Batch.run(ctx.app, ctx.repl, text, Repls.Batch.OnFailure.Stop)
   let lines = Repls.Batch.renderText(ctx.repl.id, outcome)
   let failed = Repls.Batch.count(outcome, "error") > 0
   (
@@ -340,9 +418,14 @@ let defineModule(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.Too
 
 /// The item's source as `view --raw` shows it, or why not.
 let rawSource(ctx: Context, name: String): Result<String, String> =
+  // names resolve on the process's branch, so stand on the session's for the look
+  let stored = SCM.PackageOps.currentBranch()
+  let _ = SCM.PackageOps.selectBranch(ctx.app.currentBranchId)
   let (after, text) =
     Workbench.captureOutputAnd(fun () ->
       Registry.executeCommand("view", { ctx.app with exitCode = 0 }, [ name, "--raw" ]))
+
+  let _ = SCM.PackageOps.selectBranch(stored)
 
   let out = Repls.Batch.stripAnsi(text)
   if after.exitCode == 0 then Result.Ok(out) else Result.Error(Stdlib.String.trim(out))
@@ -356,7 +439,7 @@ let editFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutpu
         match rawSource({ ctx with app = app }, name) with
         | Error(why) -> (ctx, fail(why))
         | Ok(source) ->
-          match editText(source, old, replacement, false) with
+          match editText(source, old, replacement, Occurrences.One) with
           | Error(why) -> (ctx, fail(why + $"; `view {name}` shows the source"))
           | Ok(updated) -> batch(ctx, block($"fn {name}", Stdlib.String.trim(updated))))))
 
@@ -498,6 +581,31 @@ let denied(ctx: Context, tool: Tool): List<LanguageTools.Permissions.Effect> =
   tool.effects |> Stdlib.List.filter(fun e -> Stdlib.Bool.not(Stdlib.List.contains(ctx.allowed, e)))
 
 
+type Approval =
+  | Once
+  | Always
+  | Refuse
+
+
+/// Ask the person at the terminal about one call the policy does not allow.
+let approve(name: String, effects: List<String>, input: Stdlib.AltJson.Json): Approval =
+  let detail =
+    match fields(input) |> Stdlib.List.head with
+    | Some((_k, String(v))) -> Stdlib.String.first(v, 200)
+    | _ -> ""
+
+  let _ =
+    Stdlib.printError($"allow {name} ({Stdlib.String.join(effects, ", ")}): {detail}\n  y once, a for the rest of this session, anything else refuses: ")
+
+  match Stdlib.Cli.Stdin.checkedReadLine() with
+  | Ok(Some(answer)) ->
+    match Stdlib.String.toLowercase(Stdlib.String.trim(answer)) with
+    | "y" -> Approval.Once
+    | "a" -> Approval.Always
+    | _ -> Approval.Refuse
+  | _ -> Approval.Refuse
+
+
 let runTool(ctx: Context, tools: List<Tool>, name: String, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
   match named(tools, name) with
   | None -> (ctx, fail($"no tool named {name}"))
@@ -506,5 +614,13 @@ let runTool(ctx: Context, tools: List<Tool>, name: String, input: Stdlib.AltJson
     | [] -> tool.run(ctx, input)
     | missing ->
       let names = missing |> Stdlib.List.map(LanguageTools.Permissions.effectName)
-      let flags = names |> Stdlib.List.map(fun n -> "--allow " + n) |> Stdlib.String.join(" ")
-      (ctx, fail($"denied: {name} needs {Stdlib.String.join(names, ", ")}, which this session does not allow (the person can rerun with {flags})"))
+      let refused =
+        (ctx, fail($"denied: {name} needs {Stdlib.String.join(names, ", ")}, which this session does not allow (the person can rerun with --allow {Stdlib.String.join(names, ",")})"))
+
+      if ctx.ask then
+        match approve(name, names, input) with
+        | Once -> tool.run(ctx, input)
+        | Always -> tool.run({ ctx with allowed = Stdlib.List.concat(ctx.allowed, missing) }, input)
+        | Refuse -> refused
+      else
+        refused

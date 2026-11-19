@@ -49,13 +49,19 @@ let withCache(j: Stdlib.AltJson.Json): Stdlib.AltJson.Json =
   | other -> other
 
 
-let messageToJson(m: Agent.Message, cacheLast: Bool): Stdlib.AltJson.Json =
+/// Whether a message carries a cache breakpoint on its last block.
+type Breakpoint =
+  | CacheLast
+  | NoBreakpoint
+
+
+let messageToJson(m: Agent.Message, breakpoint: Breakpoint): Stdlib.AltJson.Json =
   let n = Stdlib.List.length(m.content)
   let blocks =
     m.content
     |> Stdlib.List.indexedMap(fun(i, b) ->
       let j = blockToJson(b)
-      if cacheLast && i == n - 1 then withCache(j) else j)
+      if breakpoint == Breakpoint.CacheLast && i == n - 1 then withCache(j) else j)
 
   obj([ ("role", str(roleText(m.role))), ("content", Stdlib.AltJson.Json.Array(blocks)) ])
 
@@ -65,7 +71,8 @@ let messageToJson(m: Agent.Message, cacheLast: Bool): Stdlib.AltJson.Json =
 let messagesToJson(messages: List<Agent.Message>): Stdlib.AltJson.Json =
   let n = Stdlib.List.length(messages)
   messages
-  |> Stdlib.List.indexedMap(fun(i, m) -> messageToJson(m, i == n - 1))
+  |> Stdlib.List.indexedMap(fun(i, m) ->
+    messageToJson(m, if i == n - 1 then Breakpoint.CacheLast else Breakpoint.NoBreakpoint))
   |> Stdlib.AltJson.Json.Array
 
 

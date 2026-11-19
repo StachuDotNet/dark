@@ -77,7 +77,9 @@ let loadSession(id: String): Option<Session> =
 
 
 let saveSession(s: Session): Result<Unit, String> =
-  LanguageTools.LocalStore.configSet(sessionKey(s.id), Stdlib.Json.serialize<Session>(s))
+  match Stdlib.Json.checkedSerialize<Session>(s) with
+  | Ok(text) -> LanguageTools.LocalStore.configSet(sessionKey(s.id), text)
+  | Error(_) -> Result.Error($"could not save session {s.id}")
 
 
 let sessionIds(): List<String> =
@@ -110,7 +112,8 @@ let withMessages(s: Session, messages: List<Agent.Message>): Session =
 /// AGENTS.md or CLAUDE.md from the working directory up, nearest last, at most 8,000 characters.
 let projectContext(cwd: String): String =
   let dirs =
-    Stdlib.List.range(0, 20)
+    Stdlib.List.checkedRange(0, 20)
+    |> Stdlib.Result.withDefault([])
     |> Stdlib.List.fold([ cwd ], fun(acc, _i) ->
       match Stdlib.List.last(acc) with
       | Some(d) when d != "/" && d != "" ->
@@ -179,10 +182,14 @@ let show(run: Run, m: Agent.Message): Unit =
       | Assistant -> "assistant"
       | User -> "user"
 
-    emitJson(
-      [ ("type", str(kind))
-        ("message", Agent.Anthropic.messageToJson(m, false))
-        ("session_id", str(run.session.id)) ])
+    // an id per message, which is how a stream-json reader counts model calls
+    let id = $"msg_{run.session.id}_{Stdlib.display(Stdlib.List.length(run.loop.messages))}"
+    let message =
+      match Agent.Anthropic.messageToJson(m, Agent.Anthropic.Breakpoint.NoBreakpoint) with
+      | Object(fields) -> Stdlib.AltJson.Json.Object(Stdlib.List.prepend(fields, ("id", str(id))))
+      | other -> other
+
+    emitJson([ ("type", str(kind)), ("message", message), ("session_id", str(run.session.id)) ])
   | PlainText ->
     m.content
     |> Stdlib.List.iter(fun b ->
@@ -264,7 +271,8 @@ let perform(run: Run, command: Agent.Command): Run =
 /// Drain the queue. A fold over a bounded range rather than recursion: there are no tail calls,
 /// and a runaway loop stops here instead of blowing the stack.
 let drain(run: Run): Run =
-  Stdlib.List.range(1, 20000)
+  Stdlib.List.checkedRange(1, 20000)
+  |> Stdlib.Result.withDefault([])
   |> Stdlib.List.fold(run, fun(r, _i) ->
     match r.queue with
     | [] -> r
@@ -386,7 +394,9 @@ let register(s: Session): Unit =
     if Stdlib.List.contains(ids, s.id) then
       Result.Ok(())
     else
-      LanguageTools.LocalStore.configSet("agent.sessions", Stdlib.Json.serialize<List<String>>(Stdlib.List.append(ids, s.id)))
+      match Stdlib.Json.checkedSerialize<List<String>>(Stdlib.List.append(ids, s.id)) with
+      | Ok(text) -> LanguageTools.LocalStore.configSet("agent.sessions", text)
+      | Error(_) -> Result.Error("could not save the session list")
 
   let replIds = Repls.ids()
   let _ =
@@ -421,103 +431,161 @@ let endingText(e: Agent.Ending): (String * Bool) =
   | Failed(why) -> (why, true)
 
 
+let listSessions(state: AppState): AppState =
+  let sessions = sessionIds() |> Stdlib.List.filterMap(fun id -> loadSession(id))
+  if Stdlib.List.isEmpty(sessions) then
+    printHint("no sessions yet; `dark agent -p \"...\"` starts one.")
+  else
+    sessions
+    |> Stdlib.List.iter(fun s ->
+      let messages = messagesOf(s)
+      let first =
+        messages
+        |> Stdlib.List.head
+        |> Stdlib.Option.map(fun m -> Agent.textOf(m.content))
+        |> Stdlib.Option.withDefault("")
+
+      let first = Stdlib.String.first(Stdlib.String.replaceAll(first, "\n", " "), 60)
+      let branch =
+        Stdlib.Uuid.parse(s.branchId)
+        |> Stdlib.Result.map(fun b -> Repls.branchText(b))
+        |> Stdlib.Result.withDefault(s.branchId)
+
+      let from = if s.parent == "" then "" else $"  from {s.parent}"
+      Stdlib.printLine($"{s.id}  {branch}  {Stdlib.display(Stdlib.List.length(messages))} messages{from}  {first}"))
+
+  state
+
+
 let execute(state: AppState, args: List<String>): AppState =
+  if args == [ "--list" ] then listSessions(state) else run(state, args)
+
+
+let run(state: AppState, args: List<String>): AppState =
   match parseArgs(args, defaultOptions()) with
   | Error(why) ->
     printErr(why)
     { state with exitCode = 2 }
-  | Ok(o) when o.prompt == "" ->
-    printErr("agent needs a prompt: dark agent -p \"build me ...\"")
+  | Ok(o) when o.prompt == "" && Stdlib.Cli.Sys.isTerminal(0) ->
+    printErr("agent needs a prompt: dark agent -p \"build me ...\", or on stdin")
     { state with exitCode = 2 }
-  | Ok(o) ->
-    let cwd = Stdlib.Cli.FileSystem.currentDirectory()
-    match openSession(state, o, cwd), providerFor(o) with
-    | Error(why), _ ->
-      printErr(why)
-      { state with exitCode = 1 }
-    | _, Error(why) ->
-      printErr(why)
-      { state with exitCode = 1 }
-    | Ok(session), Ok(provider) ->
-      let _ = register(session)
-      let repl = replFor(session)
-      let app = Repls.enter(state, repl)
-      let branch = Repls.branchText(Repls.branchOf(repl))
-      let system =
-        Agent.Prompt.compose(
-          Agent.Prompt.sections,
-          Agent.Prompt.Tier.Frontier,
-          projectContext(cwd),
-          cwd,
-          branch,
-          Stdlib.display(Stdlib.DateTime.now()))
+  | Ok(o) when o.prompt == "" ->
+    match Stdlib.Cli.Stdin.readAll() with
+    | Ok(text) when Stdlib.String.trim(text) != "" -> runWith(state, { o with prompt = Stdlib.String.trim(text) })
+    | _ ->
+      printErr("agent needs a prompt: dark agent -p \"build me ...\", or on stdin")
+      { state with exitCode = 2 }
+  | Ok(o) -> runWith(state, o)
 
-      let tools = Tools.all()
-      let ctx =
-        Tools.Context { app = app, repl = repl, cwd = cwd, seen = [], allowed = o.allowed }
 
-      let started = Stdlib.DateTime.now()
-      let _ =
-        match o.format with
-        | StreamJson ->
-          emitJson(
-            [ ("type", str("system"))
-              ("subtype", str("init"))
-              ("session_id", str(session.id))
-              ("model", str(o.model))
-              ("cwd", str(cwd))
-              ("tools", Stdlib.AltJson.Json.Array(tools |> Stdlib.List.map(fun t -> str(t.spec.name)))) ])
-        | PlainText -> Stdlib.printErrorLine($"session {session.id} on branch {branch}")
+let runWith(state: AppState, o: Options): AppState =
+  let cwd = Stdlib.Cli.Posix.getCwd() |> Stdlib.Result.withDefault(".")
+  match openSession(state, o, cwd), providerFor(o) with
+  | Error(why), _ ->
+    printErr(why)
+    { state with exitCode = 1 }
+  | _, Error(why) ->
+    printErr(why)
+    { state with exitCode = 1 }
+  | Ok(session), Ok(provider) ->
+    let _ = register(session)
+    let repl = replFor(session)
+    let app = Repls.enter(state, repl)
+    let branch = Repls.branchText(Repls.branchOf(repl))
+    let system =
+      Agent.Prompt.compose(
+        Agent.Prompt.sections,
+        Agent.Prompt.Tier.Frontier,
+        projectContext(cwd),
+        cwd,
+        branch,
+        Stdlib.display(Stdlib.DateTime.now()))
 
-      let loop = Agent.start(messagesOf(session), o.maxTurns)
-      let (loop, commands) = Agent.step(loop, Agent.Event.Prompt(o.prompt))
-      let run =
-        Run
-          { loop = loop
-            queue = commands
-            ctx = ctx
-            session = session
-            provider = provider
-            system = system
-            tools = tools
-            format = o.format
-            ending = Option.None }
+    let tools = Tools.all()
+    let ctx =
+      Tools.Context
+        { app = app
+          repl = repl
+          cwd = cwd
+          seen = []
+          allowed = o.allowed
+          ask =
+            o.format == Format.PlainText
+            && Stdlib.Cli.Sys.isTerminal(0)
+            && Stdlib.Cli.Sys.isTerminal(2) }
 
-      let finished = drain(run)
-      let ending = finished.ending |> Stdlib.Option.withDefault(Agent.Ending.Failed("the run stopped without an answer"))
-      let (text, isError) = endingText(ending)
-      let ms = Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), started)
-      let _ =
-        match o.format with
-        | StreamJson ->
-          let subtype =
-            match ending with
-            | Answered(_) -> "success"
-            | TurnLimit(_) -> "error_max_turns"
-            | Failed(_) -> "error_during_execution"
+    let started = Stdlib.DateTime.now()
+    let _ =
+      match o.format with
+      | StreamJson ->
+        emitJson(
+          [ ("type", str("system"))
+            ("subtype", str("init"))
+            ("session_id", str(session.id))
+            ("model", str(o.model))
+            ("cwd", str(cwd))
+            ("tools", Stdlib.AltJson.Json.Array(tools |> Stdlib.List.map(fun t -> str(t.spec.name)))) ])
+      | PlainText -> Stdlib.printErrorLine($"session {session.id} on branch {branch}")
 
-          emitJson(
-            [ ("type", str("result"))
-              ("subtype", str(subtype))
-              ("is_error", Stdlib.AltJson.Json.Bool(isError))
-              ("result", str(text))
-              ("num_turns", Stdlib.AltJson.Json.Integer(finished.loop.turns))
-              ("duration_ms", Stdlib.AltJson.Json.Integer(ms))
-              ("session_id", str(session.id))
-              ("usage", usageJson(finished.loop.usage)) ])
-        | PlainText ->
-          let u = finished.loop.usage
-          if isError then printErr(text) else Stdlib.printLine(text)
-          Stdlib.printErrorLine(
-            $"session {session.id}: {Stdlib.display(finished.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out, {Stdlib.display(ms)} ms; `dark @{session.id}` opens its repl")
+    let loop = Agent.start(messagesOf(session), o.maxTurns)
+    let (loop, commands) = Agent.step(loop, Agent.Event.Prompt(o.prompt))
+    let run =
+      Run
+        { loop = loop
+          queue = commands
+          ctx = ctx
+          session = session
+          provider = provider
+          system = system
+          tools = tools
+          format = o.format
+          ending = Option.None }
 
-      { state with exitCode = (if isError then 1 else 0) }
+    let finished = drain(run)
+    let ending = finished.ending |> Stdlib.Option.withDefault(Agent.Ending.Failed("the run stopped without an answer"))
+    let (text, isError) = endingText(ending)
+    let ms = Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), started)
+    let _ =
+      match o.format with
+      | StreamJson ->
+        let subtype =
+          match ending with
+          | Answered(_) -> "success"
+          | TurnLimit(_) -> "error_max_turns"
+          | Failed(_) -> "error_during_execution"
+
+        emitJson(
+          [ ("type", str("result"))
+            ("subtype", str(subtype))
+            ("is_error", Stdlib.AltJson.Json.Bool(isError))
+            ("result", str(text))
+            ("num_turns", Stdlib.AltJson.Json.Integer(finished.loop.turns))
+            ("duration_ms", Stdlib.AltJson.Json.Integer(ms))
+            ("session_id", str(session.id))
+            ("usage", usageJson(finished.loop.usage)) ])
+      | PlainText ->
+        let u = finished.loop.usage
+        if isError then printErr(text) else Stdlib.printLine(text)
+        let (_app, _record, status) =
+          Repls.Batch.run(finished.ctx.app, finished.ctx.repl, "status", Repls.Batch.OnFailure.Stop)
+        let draft =
+          status.replies
+          |> Stdlib.List.map(fun r -> r.lines)
+          |> Stdlib.List.flatten
+          |> Stdlib.List.filter(fun l -> Stdlib.String.contains(l, "draft:") || Stdlib.String.contains(l, "clean:"))
+          |> Stdlib.List.map(fun l -> Stdlib.String.trim(l))
+
+        draft |> Stdlib.List.iter(fun l -> Stdlib.printErrorLine($"{branch} {l}"))
+        Stdlib.printErrorLine(
+          $"session {session.id}: {Stdlib.display(finished.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out, {Stdlib.display(ms)} ms; `dark @{session.id}` opens its repl")
+
+    { state with exitCode = (if isError then 1 else 0) }
 
 
 let accepts(): Accepts.Accepts =
   Accepts.withValues(
     [ "--model", "--resume", "--fork", "--branch", "--max-turns", "--output-format", "--replay", "--base-url", "--allow" ],
-    Accepts.freeText(0, [ "-p", "--print", "--continue" ]))
+    Accepts.freeText(0, [ "-p", "--print", "--continue", "--list" ]))
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
@@ -525,7 +593,7 @@ let complete(_state: AppState, _args: List<String>): List<Completion.CompletionI
 
 
 let help(_state: AppState): String =
-  [ "Usage: agent -p <prompt> [options]"
+  [ "Usage: agent -p <prompt> [options]     (-p and --print are the same; the prompt may come on stdin)"
     ""
     "Build what the prompt asks for, in Dark, and print the answer. Each session works on its own"
     "branch (agent-a1, ...) with its own repl: `dark @a1` shows what it built, `dark merge` takes it."
@@ -533,7 +601,9 @@ let help(_state: AppState): String =
     "  --model <id>               default claude-opus-5-5"
     "  --allow <effects>          also allow these, comma-separated: file-write, process, http, all."
     "                             Without it the agent reads files and reads and writes packages on"
-    "                             its branch; any other tool call is refused and it is told why"
+    "                             its branch. Any other tool call is put to you at a terminal,"
+    "                             and refused otherwise; the model is told why"
+    "  --list                     the sessions so far"
     "  --continue                 continue the last session"
     "  --resume <id>              continue session <id>"
     "  --fork <id>                a new session from <id>'s conversation, on a branch off its branch"
@@ -541,6 +611,7 @@ let help(_state: AppState): String =
     "  --max-turns <n>            stop after n model calls (default 50)"
     "  --output-format <f>        text (default) or stream-json, one JSON event per line"
     "  --replay <file>            answer from recorded SSE responses (separated by =====), not the API"
+    "  --base-url <url>           the Messages API's address (default https://api.anthropic.com)"
     ""
     "The API key is read from secrets/anthropic.key beside the store." ]
   |> Stdlib.String.join("\n")

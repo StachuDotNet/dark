@@ -2,27 +2,27 @@
 module Darklang.Cli.Agent.Tools.Tests
 
 test editReplacesTheOneExactMatch =
-  Cli.Agent.Tools.editText("a = 1\nb = 2\n", "b = 2", "b = 3", false)
+  Cli.Agent.Tools.editText("a = 1\nb = 2\n", "b = 2", "b = 3", Cli.Agent.Tools.Occurrences.One)
   |> Stdlib.Test.equal(Result.Ok("a = 1\nb = 3\n"))
 
 
 test editRefusesAnAmbiguousMatch =
-  Cli.Agent.Tools.editText("x\nx\n", "x", "y", false)
+  Cli.Agent.Tools.editText("x\nx\n", "x", "y", Cli.Agent.Tools.Occurrences.One)
   |> Stdlib.Test.equal(
     Result.Error("old_string occurs 2 times; add context to make it unique, or set replace_all"))
 
 
 test editReplacesEveryMatchWhenAsked =
-  Cli.Agent.Tools.editText("x\nx\n", "x", "y", true) |> Stdlib.Test.equal(Result.Ok("y\ny\n"))
+  Cli.Agent.Tools.editText("x\nx\n", "x", "y", Cli.Agent.Tools.Occurrences.Every) |> Stdlib.Test.equal(Result.Ok("y\ny\n"))
 
 
 test editFallsBackToIgnoringIndentation =
-  Cli.Agent.Tools.editText("let f =\n    1 + 1\n", "let f =\n  1 + 1", "let f =\n    2", false)
+  Cli.Agent.Tools.editText("let f =\n    1 + 1\n", "let f =\n  1 + 1", "let f =\n    2", Cli.Agent.Tools.Occurrences.One)
   |> Stdlib.Test.equal(Result.Ok("let f =\n    2\n"))
 
 
 test editSaysWhenNothingMatches =
-  Cli.Agent.Tools.editText("abc", "zzz", "y", false)
+  Cli.Agent.Tools.editText("abc", "zzz", "y", Cli.Agent.Tools.Occurrences.One)
   |> Stdlib.Test.equal(
     Result.Error("old_string is not in the file (even ignoring indentation); read the file again"))
 
@@ -65,3 +65,33 @@ test stripAnsiLeavesPlainText =
 test errorLinesSkipTheBindings =
   (Cli.Repls.Batch.shiftLine("error[PARSE] at 3:5: oops", 2), Cli.Repls.Batch.shiftLine("    3 | x y", 2))
   |> Stdlib.Test.equal(("error[PARSE] at 1:5: oops", "    1 | x y"))
+
+
+let ctxAllowing(effects: List<LanguageTools.Permissions.Effect>): Cli.Agent.Tools.Context =
+  Cli.Agent.Tools.Context
+    { app = Cli.initState()
+      repl =
+        Cli.Repls.Record
+          { id = "t", branchId = "", location = [], bindings = [], watches = [], lastReplies = [] }
+      cwd = "/"
+      seen = []
+      allowed = effects
+      ask = false }
+
+
+test aBatchCannotChangeThePolicy =
+  Cli.Agent.Tools.batchRefusal(ctxAllowing([]), "fn Me.A.b '(): Int64 = 1'\npermissions allow file read /")
+  |> Stdlib.Test.equal(Option.Some("`permissions` changes more than this session's branch; the person runs it"))
+
+
+test aBatchCannotGrantWhatTheSessionLacks =
+  Cli.Agent.Tools.batchRefusal(ctxAllowing([]), "run Me.A.main --allow 'file write /tmp' x")
+  |> Stdlib.Test.equal(
+    Option.Some("denied: `--allow file write /tmp` grants what this session does not have (the person can rerun the agent with --allow)"))
+
+
+test aBatchMayPassOnWhatTheSessionHas =
+  Cli.Agent.Tools.batchRefusal(
+    ctxAllowing([ LanguageTools.Permissions.Effect.FileRead ]),
+    "run Me.A.main --allow 'file read /data' x")
+  |> Stdlib.Test.equal(Option.None)

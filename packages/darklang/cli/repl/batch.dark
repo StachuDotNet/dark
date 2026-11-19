@@ -12,6 +12,12 @@ type Statement =
   | Refused(String)
 
 
+/// What a failed statement does to the rest of the batch.
+type OnFailure =
+  | Stop
+  | KeepGoing
+
+
 type ModuleCheck =
   { name: String
     checked: Int64
@@ -144,7 +150,7 @@ let literal(branchId: Uuid, v: 'a): String =
     match LanguageTools.RuntimeTypesToProgramTypes.dvalToExpr(branchId, dv) with
     | Ok(e) ->
       PrettyPrinter.ProgramTypes.expr(PrettyPrinter.ProgramTypes.Context.forBranch(branchId), e)
-    | Error(_) -> stripAnsi(Terminal.renderValue(branchId, 100, false, [], dv))
+    | Error(_) -> Stdlib.inspect(v)
 
 
 /// An error's line numbers, less the <param k> lines of bindings put in front of what was typed.
@@ -373,7 +379,7 @@ let runWatches(state: AppState, r: Repls.Record): (Repls.Record * List<WatchResu
 
 /// Run <param text> in <param r>, starting from <param state>. Stops at the first failure unless
 /// <param keepGoing>. Returns the state and record afterwards; the caller saves the record.
-let run(state: AppState, r: Repls.Record, text: String, keepGoing: Bool): (AppState * Repls.Record * Outcome) =
+let run(state: AppState, r: Repls.Record, text: String, onFailure: OnFailure): (AppState * Repls.Record * Outcome) =
   let started = Stdlib.DateTime.now()
   let stored = SCM.PackageOps.currentBranch()
   let startBranch = Repls.branchOf(r)
@@ -387,7 +393,7 @@ let run(state: AppState, r: Repls.Record, text: String, keepGoing: Bool): (AppSt
     |> Stdlib.List.fold((state, r, [], false, []), fun(acc, numbered) ->
       let (st, rc, replies, failed, touched) = acc
       let (n, text) = numbered
-      if failed && Stdlib.Bool.not(keepGoing) then
+      if failed && onFailure == OnFailure.Stop then
         (st, rc, Stdlib.List.append(replies, reply(n, "skipped", "skipped", [ "skipped" ])), failed, touched)
       else
         let (st2, rec2, rep, wrote) = runStatement(st, rc, n, classify(st, text))
@@ -598,12 +604,15 @@ let executeCli(state: AppState, target: String, args: List<String>): AppState =
         printErr(message)
         { state with exitCode = 2 }
       | Ok(text) ->
-        let keepGoing = Stdlib.List.contains(args, "--continue")
-        let (_after, r2, outcome) = run(state, r, text, keepGoing)
+        let onFailure =
+          if Stdlib.List.contains(args, "--continue") then OnFailure.KeepGoing else OnFailure.Stop
+
+        let (_after, r2, outcome) = run(state, r, text, onFailure)
         let saved = Repls.save(r2)
         let _ =
           if Stdlib.List.contains(args, "--json") then
-            Stdlib.printLine(Stdlib.Json.serialize<JsonBatch>(toJson(r2, outcome)))
+            let _ = printJson(Stdlib.Json.checkedSerialize<JsonBatch>(toJson(r2, outcome)))
+            ()
           else
             renderText(id, outcome) |> Stdlib.List.iter(fun l -> Stdlib.printLine(l))
 

@@ -1208,6 +1208,9 @@ let private knownGood (seed : Seeded) : Map<string, List<string>> =
     [ "help", [ "status" ]
       // `config list` reads; `config set` writes keys the F# boot reads at startup.
       "config", [ "list" ]
+      "repl", [ "list" ]
+      // Without a prompt it lists the sessions; with one it would call the model.
+      "agent", [ "--list" ]
       // Bare asks GitHub for the latest release, which is a network call on a timeout.
       "version", [ "--local" ]
       "nav", [ "Darklang.Stdlib.List" ]
