@@ -185,7 +185,8 @@ test theRequestCachesSystemToolsAndTheLastMessage =
 
 
 test composedPromptStaysSmall =
-  let p = Agent.Prompt.compose(Agent.Prompt.sections, Agent.Prompt.Tier.Frontier, "", "/w", "main", "today")
+  let p =
+    Agent.Prompt.compose(Agent.Prompt.sections, Agent.Prompt.Tier.Frontier, "", "/w", "main", "today", "/bin/dark")
   // about 4 characters a token: the evidence says keep the system prompt under 1k tokens
   (Stdlib.String.length(p) < 4000) |> Stdlib.Test.equal(true)
 

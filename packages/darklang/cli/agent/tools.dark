@@ -243,7 +243,9 @@ let shell(ctx: Context, command: String, timeoutMs: Int64): Result<Stdlib.Cli.Pr
   if Stdlib.List.contains(ctx.allowed, LanguageTools.Permissions.Effect.Http) then
     Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/bin/bash", [ "-c", script ])
   else
-    Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/usr/bin/unshare", [ "-rn", "/bin/bash", "-c", script ])
+    // loopback stays usable, so a server started in the call can be tried from the same call
+    let local = "command -v ip >/dev/null && ip link set lo up 2>/dev/null; " + script
+    Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/usr/bin/unshare", [ "-rn", "/bin/bash", "-c", local ])
 
 
 let bash(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =

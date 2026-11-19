@@ -570,7 +570,9 @@ let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
         |> Stdlib.String.join("\n\n"),
         cwd,
         branch,
-        Stdlib.display(Stdlib.DateTime.now()))
+        // the day, not the time: the prompt stays the same, and cached, for a day
+        Stdlib.String.first(Stdlib.display(Stdlib.DateTime.now()), 10),
+        Stdlib.Cli.Sys.currentExecutablePath())
 
     let ctx =
       Tools.Context

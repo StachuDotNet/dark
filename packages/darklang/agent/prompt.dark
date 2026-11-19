@@ -59,7 +59,8 @@ let compose(
   context: String,
   cwd: String,
   branch: String,
-  date: String)
+  date: String,
+  executable: String)
   : String =
   let chosen =
     sections
@@ -67,5 +68,6 @@ let compose(
     |> Stdlib.List.map(fun s -> s.text)
 
   let project = if context == "" then [] else [ "Project instructions:\n" + context ]
-  let where = [ $"Working directory: {cwd}\nDark branch: {branch}\nDate: {date}" ]
+  let where =
+    [ $"Working directory: {cwd}\nDark branch: {branch}\nDate: {date}\nThe dark binary, for what must outlive a call (a server, from bash, in the background): {executable} --branch {branch} run ..." ]
   Stdlib.List.flatten([ chosen, project, where ]) |> Stdlib.String.join("\n\n")
