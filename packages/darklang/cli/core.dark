@@ -82,7 +82,9 @@ type AppState =
     /// command, a failed `eval`, and the `--json` failure paths do, so scripts and agents can
     /// branch on the exit rather than parse prose. (Most commands still report failure in prose
     /// only; they set this as they are touched.)
-    exitCode: Int64 }
+    exitCode: Int64
+    /// What a command that reads stdin gets instead, when set: a repl statement's indented block.
+    stdinText: Option<String> }
 
 
 /// What the prompt shows to your left: where you are in the package tree, and WHICH BRANCH, when you're on
@@ -259,7 +261,15 @@ let initState(): AppState =
       allCommandsCache = commands
       commandOptionsCache = commandOptions(commands)
       telemetryEnabled = Stdlib.Env.get("DARK_TELEMETRY") == Option.Some("1")
-      exitCode = 0 }
+      exitCode = 0
+      stdinText = Option.None }
+
+
+/// All of stdin, or the text a repl statement handed the command in its place.
+let readStdin(state: AppState): Result<String, String> =
+  match state.stdinText with
+  | Some(text) -> Result.Ok(text)
+  | None -> Stdlib.Cli.Stdin.readAll()
 
 
 type Msg =

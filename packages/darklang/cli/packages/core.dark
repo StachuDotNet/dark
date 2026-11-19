@@ -67,14 +67,14 @@ let formatLocation(location: PackageLocation): String =
 /// argument has to go first. A lone argument naming a file that exists reads the
 /// file, the way `module` does; a definition is never one token, so the two cannot
 /// be confused.
-let definitionFromArgs(args: List<String>): Result<String, String> =
+let definitionFromArgs(state: AppState, args: List<String>): Result<String, String> =
   let withoutSeparator =
     match args with
     | ["=", ...rest] -> rest
     | parts -> parts
 
   match withoutSeparator with
-  | ["-"] -> Stdlib.Cli.Stdin.readAll()
+  | ["-"] -> readStdin(state)
   // A file, when the one argument could be one: a declaration has spaces, a path here does
   // not, and asking the host about a declaration-shaped "path" that is longer than a file
   // name may fail closed (the link check treats what it cannot inspect as a link).

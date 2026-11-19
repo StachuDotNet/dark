@@ -7,7 +7,7 @@ let execute(state: AppState, args: List<String>): AppState =
     state
   // type SomeModule.myType = definition
   | [location, ...definitionParts] ->
-    match definitionFromArgs(definitionParts) with
+    match definitionFromArgs(state, definitionParts) with
     | Error(message) ->
       printErr(message)
       failed(state)

@@ -185,7 +185,7 @@ let applyPatch(
         declarationLocation.name)
       |> Stdlib.String.join(".")
 
-    match Stdlib.Cli.Stdin.readAll()
+    match readStdin(state)
           |> Stdlib.Result.andThen(fun patch -> patchSource(currentSource, patch)) with
     | Error(message) -> reportPatchFailure(state, name, currentSource, message)
     | Ok(updatedSource) ->

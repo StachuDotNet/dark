@@ -414,7 +414,7 @@ let execute(state: AppState, args: List<String>): AppState =
   match args with
   | ["add"] -> addFailed(state, "test add needs a location and a body")
   | ["add", location, ...definitionParts] ->
-    match definitionFromArgs(definitionParts) with
+    match definitionFromArgs(state, definitionParts) with
     | Error(message) -> addFailed(state, message)
     | Ok(definition) ->
       if Stdlib.String.isEmpty(Stdlib.String.trim(definition)) then
