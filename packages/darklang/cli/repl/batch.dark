@@ -286,7 +286,9 @@ let runCommand(
   args: List<String>,
   stdin: Option<String>)
   : (AppState * Repls.Reply * Option<String>) =
-  if Registry.needsTerminal(state.allCommandsCache, name, args) then
+  // `edit` opens $EDITOR only when given nothing to apply: a patch, a file or `-` needs no terminal
+  let editsWithoutEditor = name == "edit" && Stdlib.List.length(args) >= 2
+  if Registry.needsTerminal(state.allCommandsCache, name, args) && Stdlib.Bool.not(editsWithoutEditor) then
     (
       state,
       reply(n, "command", "error", [ $"error: `{name}` asks a question here; add -y, or run it outside the repl" ]),
