@@ -288,8 +288,9 @@ let ls(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
     let shown =
       names
       |> Stdlib.List.sort
-      |> Stdlib.List.map(fun n ->
-        if Stdlib.Cli.FileSystem.isDirectory(full + "/" + n) then n + "/" else n)
+      |> Stdlib.List.map(fun entry ->
+        let n = Stdlib.Cli.Path.basename(entry)
+        if Stdlib.Cli.FileSystem.isDirectory(entry) then n + "/" else n)
 
     (ctx, ok(if Stdlib.List.isEmpty(shown) then "(empty)" else truncate(Stdlib.String.join(shown, "\n"))))
 

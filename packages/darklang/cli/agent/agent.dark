@@ -144,6 +144,40 @@ let projectContext(cwd: String): String =
   Stdlib.String.first(Stdlib.String.join(found, "\n\n"), 8000)
 
 
+/// The skills in the project (`SKILL.md` under `.claude/skills/<name>/` or `.agents/skills/<name>/`,
+/// the format Claude Code and Pi read): one line each, name, description and path. The model reads
+/// a skill's file when one applies, so only the index costs context.
+let skillsIndex(cwd: String): String =
+  let field(lines: List<String>, key: String): String =
+    lines
+    |> Stdlib.List.findFirst(fun l -> Stdlib.String.startsWith(l, key + ":"))
+    |> Stdlib.Option.map(fun l -> Stdlib.String.trim(Stdlib.String.dropFirst(l, Stdlib.String.length(key) + 1)))
+    |> Stdlib.Option.withDefault("")
+
+  let entries =
+    [ cwd + "/.claude/skills", cwd + "/.agents/skills" ]
+    |> Stdlib.List.filter(fun dir -> Stdlib.Cli.FileSystem.isDirectory(dir))
+    |> Stdlib.List.map(fun dir ->
+      Stdlib.Cli.FileSystem.listDirectory(dir)
+      |> Stdlib.Result.withDefault([])
+      |> Stdlib.List.filterMap(fun entry ->
+        let name = Stdlib.Cli.Path.basename(entry)
+        let path = $"{entry}/SKILL.md"
+        match Stdlib.Cli.File.readText(path) with
+        | Ok(text) ->
+          let lines = Stdlib.String.splitOnNewline(text) |> Stdlib.List.take(20)
+          let title = field(lines, "name")
+          let title = if title == "" then name else title
+          Option.Some($"- {title}: {field(lines, "description")} ({path})")
+        | Error(_) -> Option.None))
+    |> Stdlib.List.flatten
+
+  if Stdlib.List.isEmpty(entries) then
+    ""
+  else
+    "Skills (read a skill's file when it applies):\n" + Stdlib.String.join(entries, "\n")
+
+
 let keyPath(): String =
   Stdlib.Cli.Path.parent(LanguageTools.LocalStore.path()) + "/secrets/anthropic.key"
 
@@ -531,7 +565,9 @@ let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
       Agent.Prompt.compose(
         promptSections(state),
         Agent.Prompt.Tier.Frontier,
-        projectContext(cwd),
+        [ projectContext(cwd), skillsIndex(cwd) ]
+        |> Stdlib.List.filter(fun t -> t != "")
+        |> Stdlib.String.join("\n\n"),
         cwd,
         branch,
         Stdlib.display(Stdlib.DateTime.now()))
