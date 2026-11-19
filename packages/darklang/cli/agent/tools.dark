@@ -236,9 +236,14 @@ let editFile(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOut
               | Ok(_) -> (ctx, ok($"edited {path}")))))
 
 
+/// Run <param command> in bash. Without the `http` effect it runs in a network namespace of its
+/// own (`unshare -rn`), so a command cannot reach the network the session was not given.
 let shell(ctx: Context, command: String, timeoutMs: Int64): Result<Stdlib.Cli.Process.Output, String> =
   let script = $"cd {Stdlib.Cli.Process.shellQuote(ctx.cwd)} && {command}"
-  Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/bin/bash", [ "-c", script ])
+  if Stdlib.List.contains(ctx.allowed, LanguageTools.Permissions.Effect.Http) then
+    Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/bin/bash", [ "-c", script ])
+  else
+    Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/usr/bin/unshare", [ "-rn", "/bin/bash", "-c", script ])
 
 
 let bash(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
@@ -479,7 +484,7 @@ let all(): List<Tool> =
       { spec =
           spec(
             "bash",
-            "Run a bash command in the working directory. Output is cut to the head and tail past 30,000 characters.",
+            "Run a bash command in the working directory. Output is cut to the head and tail past 30,000 characters. It has no network unless the session allows http.",
             [ param("command", "string", "the command")
               optional("timeout_ms", "integer", "stop it after this long; default 120000") ])
         effects = [ LanguageTools.Permissions.Effect.Process ]
