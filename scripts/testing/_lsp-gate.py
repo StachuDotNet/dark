@@ -247,6 +247,23 @@ def run(cli):
         check(not [x for x in d if x["severity"] == 2 and "not found" in x["message"]], f"List.map's own source has unresolved names: {d}")
         checked.append("definition opens the item as darkfs:, which serves its source and resolves its names")
 
+        # Outline: the declarations of a document, modules nesting their members.
+        uri = "file:///tmp/lsp-gate/outline.dark"
+        s.open(uri, "type Point = { x: Int64 }\n\nmodule Geo =\n  let origin(): Point = Point { x = 0 }\n\nval limit = 3\n")
+        s.diagnostics(uri)
+        outline = s.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})["result"]
+        names = [x["name"] for x in outline]
+        check(names == ["Point", "Geo", "limit"], f"outline: {names}")
+        geo = outline[1]
+        check([c["name"] for c in geo["children"]] == ["origin"], f"module children: {geo['children']}")
+        checked.append("the outline lists a document's declarations, modules nesting theirs")
+
+        # Workspace symbols: package items by name, each opening as its store document.
+        found = s.request("workspace/symbol", {"query": "padStart"})["result"]
+        uris = [x["location"]["uri"] for x in found]
+        check("darkfs:/Darklang/Stdlib/String/padStart.fn.dark" in uris, f"workspace/symbol padStart: {uris[:10]}")
+        checked.append("workspace symbols find package items by name")
+
         reply = s.request("shutdown")
         check("result" in reply and reply["result"] is None, f"shutdown: {reply}")
         s.notify("exit")

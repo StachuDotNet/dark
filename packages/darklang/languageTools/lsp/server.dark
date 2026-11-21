@@ -173,6 +173,19 @@ let request(state: State, method: String, id: Json, params: Json): State =
     | "textDocument/definition" ->
       Rpc.respond(id, atPosition(state, params, Hover.definition))
       state
+    | "textDocument/documentSymbol" ->
+      let outline =
+        stringAt(params, [ "textDocument", "uri" ])
+        |> Stdlib.Option.andThen(fun uri -> Stdlib.Dict.get(state.documents, uri))
+        |> Stdlib.Option.andThen(fun doc -> Parser.Parse.toWrittenTypes(doc.text))
+        |> Stdlib.Option.map(fun parsed -> Symbols.outline(parsed))
+
+      Rpc.respond(id, Stdlib.Option.withDefault(outline, Json.Array([])))
+      state
+    | "workspace/symbol" ->
+      let query = stringAt(params, [ "query" ]) |> Stdlib.Option.withDefault("")
+      Rpc.respond(id, Symbols.workspace(state.branchId, query))
+      state
     | "dark/fs/read" ->
       let text =
         stringAt(params, [ "uri" ]) |> Stdlib.Option.andThen(fun uri -> Names.source(state.branchId, uri))
@@ -251,5 +264,7 @@ let initializeResult(): Json =
                 ("change", Json.Integer(1))
                 ("save", Json.Object([ ("includeText", Json.Bool(true)) ])) ]))
            ("hoverProvider", Json.Bool(true))
-           ("definitionProvider", Json.Bool(true)) ]))
+           ("definitionProvider", Json.Bool(true))
+           ("documentSymbolProvider", Json.Bool(true))
+           ("workspaceSymbolProvider", Json.Bool(true)) ]))
       ("serverInfo", Json.Object([ ("name", Json.String("dark")) ])) ])
