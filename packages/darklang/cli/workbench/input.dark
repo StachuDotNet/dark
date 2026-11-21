@@ -111,9 +111,10 @@ let performInputAction(state: State, inp: InputState): Step =
                 LanguageTools.ProgramTypes.PackageLocation
                   { owner = newLoc.owner, modules = [], name = item.name }
 
-            match SCM.PackageOps.add(
-                    state.branchId,
-                    Packages.Rename.ops(state.branchId, oldLoc, newLoc, reference)) with
+            match
+              Packages.Rename.ops(state.branchId, oldLoc, newLoc, reference)
+              |> Stdlib.Result.andThen(fun changes -> SCM.PackageOps.add(state.branchId, changes))
+            with
             | Ok(_) ->
               Step.Continue(
                 { state with

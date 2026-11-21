@@ -9,6 +9,7 @@ let everyPath(): List<String> =
 
 let selectedPaths(filters: List<String>): List<String> =
   Cli.Packages.Test.selectedTests(SCM.Branch.mainBranchId, filters)
+  |> Stdlib.Result.withDefault([])
   |> Stdlib.List.map(Cli.Packages.Test.groupedPath)
 
 

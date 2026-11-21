@@ -348,7 +348,10 @@ let selectedFunctionTestRows(state: State): List<String> =
         Packages.modulePathOf(state.location),
         item.name)
 
-    functionTestRows(state.branchId, results, itemDependents(item.kind, results))
+    functionTestRows(
+      state.branchId,
+      results,
+      itemDependents(item.kind, results) |> Stdlib.Result.withDefault([]))
   | _ -> []
 
 
@@ -760,7 +763,7 @@ let inspectPageLines(state: State): List<String> =
 
       let tests =
         if item.kind == "fn" then
-          functionTestRows(state.branchId, results, dependents)
+          functionTestRows(state.branchId, results, dependents |> Stdlib.Result.withDefault([]))
         else
           []
 

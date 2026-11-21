@@ -84,9 +84,9 @@ let prepareRename(
   oldLocation: LanguageTools.ProgramTypes.PackageLocation,
   newLocation: LanguageTools.ProgramTypes.PackageLocation,
   target: LanguageTools.ProgramTypes.Reference)
-  : List<LanguageTools.ProgramTypes.PackageOp> =
+  : Result<List<LanguageTools.ProgramTypes.PackageOp>, String> =
   let kind = LanguageTools.ProgramTypes.Reference.kind(target)
-  let callers = Deps.dependentsFor(branch, [ (oldLocation, kind) ])
+  let callers = (Deps.dependents(branch, [ (oldLocation, kind) ]))?
   let sources =
     Stdlib.List.prepend(
       callers
@@ -117,12 +117,13 @@ let prepareRename(
           names = names
           restating = Option.Some(stamp) })
 
-  [ LanguageTools.ProgramTypes.PackageOp.Rename(
-      oldLocation,
-      newLocation,
-      target,
-      snapshots,
-      stamp) ]
+  Result.Ok(
+    [ LanguageTools.ProgramTypes.PackageOp.Rename(
+        oldLocation,
+        newLocation,
+        target,
+        snapshots,
+        stamp) ])
 
 
 /// Restore a whole revision in one operation, so partial commits cannot split it.

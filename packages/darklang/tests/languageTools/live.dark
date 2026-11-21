@@ -88,7 +88,8 @@ test dependents =
               { location =
                   LanguageTools.ProgramTypes.PackageLocation
                     { owner = "Nobody", modules = [ "Nothing" ], name = "here" }
-                kind = LanguageTools.ProgramTypes.ItemKind.Fn } ]))
+                kind = LanguageTools.ProgramTypes.ItemKind.Fn } ])
+        |> Stdlib.Result.withDefault([]))
       |> Stdlib.Test.equal(1)
 
       // At real scale, where the dependency graph actually has diamonds in it. The
@@ -103,7 +104,8 @@ test dependents =
                     { owner = "Darklang"
                       modules = [ "Stdlib", "List" ]
                       name = "map" }
-                kind = LanguageTools.ProgramTypes.ItemKind.Fn } ]))
+                kind = LanguageTools.ProgramTypes.ItemKind.Fn } ])
+        |> Stdlib.Result.withDefault([]))
       > 1
       |> Stdlib.Test.equal(true)
 
@@ -119,6 +121,7 @@ test dependents =
                        modules = [ "Stdlib", "List" ]
                        name = "map" }
                  kind = LanguageTools.ProgramTypes.ItemKind.Fn } ])
+         |> Stdlib.Result.withDefault([])
        Stdlib.List.length(reached)
        == Stdlib.List.length(Stdlib.List.unique(reached)))
       |> Stdlib.Test.equal(true) ])

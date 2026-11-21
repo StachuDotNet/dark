@@ -24,9 +24,10 @@ test dependentReadsKeepBranchAliasesSeparate =
   let (_, mainCaller) = source(main, m, "caller")
   let (_, branchCaller) = source(branch, m, "caller")
   let callers(scope: Uuid, name: String): List<String> =
-    SCM.Deps.dependentsFor(
+    SCM.Deps.dependents(
       scope,
       [ (Authoring.loc(m, name), LanguageTools.ProgramTypes.ItemKind.Fn) ])
+    |> Builtin.unwrap
     |> Stdlib.List.map(fun((_, location, _)) -> location.name)
     |> Stdlib.List.sort
 
@@ -73,6 +74,7 @@ test dependencyReadsExcludeAParentsDraft =
       Authoring.loc(m, "leaf"),
       Authoring.loc(m, "moved"),
       target)
+    |> Builtin.unwrap
 
   let _ = SCM.PackageOps.add(parent, ops) |> Builtin.unwrap
 

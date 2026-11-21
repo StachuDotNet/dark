@@ -219,11 +219,9 @@ let testRows(
   cmdPrefix: String,
   heading: String)
   : List<String> =
-  testRowsFrom(
-    branchId,
-    SCM.Deps.dependentsFor(SCM.PackageOps.currentBranch(), [ (location, kind) ]),
-    cmdPrefix,
-    heading)
+  match SCM.Deps.dependents(SCM.PackageOps.currentBranch(), [ (location, kind) ]) with
+  | Ok(dependents) -> testRowsFrom(branchId, dependents, cmdPrefix, heading)
+  | Error(e) -> [ "", heading, Stdlib.Cli.UI.Colors.error($"  Couldn't read the tests: {e}") ]
 
 
 /// <fn testRows>, from the item's dependents the caller already read.

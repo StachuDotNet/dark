@@ -67,7 +67,6 @@
 1 Darklang.PrettyPrinter.ProgramTypes.packageTestNamed Darklang.Stdlib.Pretty.render
 1 Darklang.PrettyPrinter.ProgramTypes.packageValueNamed Darklang.Stdlib.Pretty.render
 1 Darklang.PrettyPrinter.RuntimeTypes.dvalWith Darklang.Stdlib.Pretty.render
-1 Darklang.SCM.Deps.dependentsFor Builtin.unwrap
 1 Darklang.SCM.PartialCommit.stringGt Darklang.Stdlib.List.sort
 2 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.Dir.deleteRecursive
 2 Darklang.Cli.Packages.Signatures.namedLike Darklang.Stdlib.List.sort

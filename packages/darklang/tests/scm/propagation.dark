@@ -463,9 +463,10 @@ test aCallerOfEitherNameOfOneBodyIsFoundByThatName =
 
   let callersOf(m: String): Int64 =
     Stdlib.List.length(
-      SCM.Deps.dependentsFor(
+      SCM.Deps.dependents(
         SCM.PackageOps.currentBranch(),
-        [ (Authoring.loc(m, "twin"), fn) ]))
+        [ (Authoring.loc(m, "twin"), fn) ])
+      |> Builtin.unwrap)
 
   Stdlib.Test.all(
     [ Authoring.ok(setup)

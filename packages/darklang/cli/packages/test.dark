@@ -461,9 +461,14 @@ let runTests(state: AppState, args: List<String>): AppState =
       Stdlib.printErrorLine(usage)
       { state with exitCode = 1 }
   | Ok(options) ->
-    let seed = Stdlib.Option.withDefault(options.seed, freshSeed())
-    LanguageTools.PackageManager.Test.withStoreSnapshot(state.currentBranchId, seed, fun run ->
-      runTestsInRun(run, state, options, selectedTests(state.currentBranchId, options.filters)))
+    match selectedTests(state.currentBranchId, options.filters) with
+    | Error(e) ->
+      printErr($"Couldn't find the tests: {e}")
+      { state with exitCode = 1 }
+    | Ok(tests) ->
+      let seed = Stdlib.Option.withDefault(options.seed, freshSeed())
+      LanguageTools.PackageManager.Test.withStoreSnapshot(state.currentBranchId, seed, fun run ->
+        runTestsInRun(run, state, options, tests))
 
 
 /// Whether <param arg> names a script rather than a test: test names never end in `.dark`.
@@ -842,49 +847,59 @@ let liveTests(
 let selectedTests(
   branchId: Uuid,
   filters: List<String>)
-  : List<
-  LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>> =
+  : Result<
+    List<
+      LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>>,
+    String> =
   let narrowable =
     Stdlib.Bool.not(Stdlib.List.isEmpty(filters))
     && Stdlib.List.all(filters, fun f -> Stdlib.List.length(filterSegments(testPart(f))) > 1)
 
   let found =
     if narrowable then
-      filters
-      |> Stdlib.List.map(fun f ->
-        liveTests(branchId, [], Stdlib.String.join(filterSegments(testPart(f)), ".")))
-      |> Stdlib.List.prepend(groupedTests(branchId))
-      |> Stdlib.List.flatten
-      |> Stdlib.List.uniqueBy(fullPath)
+      groupedTests(branchId)
+      |> Stdlib.Result.map(fun grouped ->
+        filters
+        |> Stdlib.List.map(fun f ->
+          liveTests(branchId, [], Stdlib.String.join(filterSegments(testPart(f)), ".")))
+        |> Stdlib.List.prepend(grouped)
+        |> Stdlib.List.flatten
+        |> Stdlib.List.uniqueBy(fullPath))
     else
-      liveTests(branchId, [], "")
+      Stdlib.Result.Result.Ok(liveTests(branchId, [], ""))
 
   found
-  |> Stdlib.List.filter(fun item ->
-    Stdlib.List.isEmpty(filters)
-    || Stdlib.List.any(filters, fun f -> selects(f, groupedPath(item))))
-  |> Stdlib.List.sortBy(groupedPath)
+  |> Stdlib.Result.map(fun found ->
+    found
+    |> Stdlib.List.filter(fun item ->
+      Stdlib.List.isEmpty(filters)
+      || Stdlib.List.any(filters, fun f -> selects(f, groupedPath(item))))
+    |> Stdlib.List.sortBy(groupedPath))
 
 
 /// The tests in the modules of every test that calls `Stdlib.Test.group`: the search
 /// knows names, not groups, so a filter that names a group finds its tests here.
 let groupedTests(
   branchId: Uuid)
-  : List<
-  LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>> =
+  : Result<
+    List<
+      LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>>,
+    String> =
   let group =
     LanguageTools.ProgramTypes.PackageLocation
       { owner = "Darklang", modules = [ "Stdlib", "Test" ], name = "group" }
 
-  SCM.Deps.dependentsFor(branchId, [ (group, LanguageTools.ProgramTypes.ItemKind.Fn) ])
-  |> Stdlib.List.filterMap(fun((_, loc, kind)) ->
-    if kind == LanguageTools.ProgramTypes.ItemKind.Test then
-      Option.Some(Stdlib.List.prepend(loc.modules, loc.owner))
-    else
-      Option.None)
-  |> Stdlib.List.unique
-  |> Stdlib.List.map(fun modules -> liveTests(branchId, modules, ""))
-  |> Stdlib.List.flatten
+  SCM.Deps.dependents(branchId, [ (group, LanguageTools.ProgramTypes.ItemKind.Fn) ])
+  |> Stdlib.Result.map(fun dependents ->
+    dependents
+    |> Stdlib.List.filterMap(fun((_, loc, kind)) ->
+      if kind == LanguageTools.ProgramTypes.ItemKind.Test then
+        Option.Some(Stdlib.List.prepend(loc.modules, loc.owner))
+      else
+        Option.None)
+    |> Stdlib.List.unique
+    |> Stdlib.List.map(fun modules -> liveTests(branchId, modules, ""))
+    |> Stdlib.List.flatten)
 
 
 /// The full names, as segments, of the tests under the module path <param prefix>.

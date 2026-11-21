@@ -86,17 +86,6 @@ let dependents(
   Builtin.pmDependents(branch, targets) |> Stdlib.Result.mapError(readErrorToString)
 
 
-/// <fn dependents>, for callers with no way to report a failed read yet.
-let dependentsFor(
-  branch: Uuid,
-  targets: List<(LanguageTools.ProgramTypes.PackageLocation * LanguageTools.ProgramTypes.ItemKind)>)
-  : List<
-  (LanguageTools.ProgramTypes.Hash *
-   LanguageTools.ProgramTypes.PackageLocation *
-   LanguageTools.ProgramTypes.ItemKind)> =
-  dependents(branch, targets) |> Builtin.unwrap
-
-
 /// The name MAIN gives this hash, if any.
 let mainLocationOf(h: String): Option<LanguageTools.ProgramTypes.PackageLocation> =
   Bindings.query(Bindings.BindingFilter.LocationOf(Branch.mainBranchId, h))

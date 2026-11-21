@@ -688,14 +688,16 @@ let pickedItem(
 let itemDependents(
   kind: String,
   results: LanguageTools.ProgramTypes.Search.SearchResults)
-  : List<
-  (LanguageTools.ProgramTypes.Hash *
-   LanguageTools.ProgramTypes.PackageLocation *
-   LanguageTools.ProgramTypes.ItemKind)> =
+  : Result<
+    List<
+      (LanguageTools.ProgramTypes.Hash *
+       LanguageTools.ProgramTypes.PackageLocation *
+       LanguageTools.ProgramTypes.ItemKind)>,
+    String> =
   match pickedItem(kind, results) with
   | Some((_hash, loc, itemKind)) ->
-    SCM.Deps.dependentsFor(SCM.PackageOps.currentBranch(), [ (loc, itemKind) ])
-  | None -> []
+    SCM.Deps.dependents(SCM.PackageOps.currentBranch(), [ (loc, itemKind) ])
+  | None -> Stdlib.Result.Result.Ok([])
 
 
 /// <fn referencesText>, from a lookup and a dependents read the caller already made.
@@ -706,10 +708,12 @@ let referencesFrom(
   kind: String,
   results: LanguageTools.ProgramTypes.Search.SearchResults,
   dependents:
-    List<
-      (LanguageTools.ProgramTypes.Hash *
-       LanguageTools.ProgramTypes.PackageLocation *
-       LanguageTools.ProgramTypes.ItemKind)>)
+    Result<
+      List<
+        (LanguageTools.ProgramTypes.Hash *
+         LanguageTools.ProgramTypes.PackageLocation *
+         LanguageTools.ProgramTypes.ItemKind)>,
+      String>)
   : String =
   match pickedItem(kind, results) with
   | None -> "(not found)"
@@ -741,13 +745,16 @@ let referencesFrom(
     // listing every test twice. The `dark deps` command remains comprehensive.
     let dependents =
       dependents
-      |> Stdlib.List.filter(fun((_hash, _location, dependentKind)) ->
-        dependentKind != LanguageTools.ProgramTypes.ItemKind.Test)
+      |> Stdlib.Result.map(fun dependents ->
+        dependents
+        |> Stdlib.List.filter(fun((_hash, _location, dependentKind)) ->
+          dependentKind != LanguageTools.ProgramTypes.ItemKind.Test))
 
     let dependentLines =
-      if Stdlib.List.isEmpty(dependents) then
-        [ Stdlib.Cli.UI.Colors.dimText("  (none)") ]
-      else
+      match dependents with
+      | Error(e) -> [ Stdlib.Cli.UI.Colors.error($"  Couldn't read them: {e}") ]
+      | Ok([]) -> [ Stdlib.Cli.UI.Colors.dimText("  (none)") ]
+      | Ok(dependents) ->
         // Spelled from where the reader is standing, like everything else on this page.
         let here = Packages.modulePathOf(state.location)
         // Only the rows `capped` keeps: `List.map` has hundreds, and each costs a render.
@@ -755,6 +762,9 @@ let referencesFrom(
         |> Stdlib.List.map(fun t ->
           let (_h, sLoc, _rt) = t
           "  " + PrettyPrinter.ProgramTypes.PackageLocation.packageLocationIn(here, sLoc))
+
+    let dependentCount =
+      dependents |> Stdlib.Result.map(Stdlib.List.length) |> Stdlib.Result.withDefault(0)
 
     // Capped: `List.map` has hundreds of dependents, and a page is for reading, not scrolling to
     // the end of. The command prints them all.
@@ -777,8 +787,8 @@ let referencesFrom(
       Stdlib.List.flatten(
         [ [ heading("uses", Stdlib.List.length(deps)) ]
           capped(Stdlib.List.length(deps), depLines)
-          [ "", heading("used by", Stdlib.List.length(dependents)) ]
-          capped(Stdlib.List.length(dependents), dependentLines) ]),
+          [ "", heading("used by", dependentCount) ]
+          capped(dependentCount, dependentLines) ]),
       "\n")
 
 

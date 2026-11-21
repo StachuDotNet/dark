@@ -47,13 +47,14 @@ let countLiveDependents(
   targetLoc: LanguageTools.ProgramTypes.PackageLocation,
   targetKind: LanguageTools.ProgramTypes.ItemKind,
   depSets: Query.DeprecationSets)
-  : Int64 =
-  let deps = SCM.Deps.dependentsFor(SCM.PackageOps.currentBranch(), [ (targetLoc, targetKind) ])
-  deps
-  |> Stdlib.List.filter(fun entry ->
-    let (depHash, _depLoc, _depKind) = entry
-    Stdlib.Bool.not(Query.isDeprecated(depSets, depHash)))
-  |> Stdlib.List.length
+  : Result<Int64, String> =
+  SCM.Deps.dependents(SCM.PackageOps.currentBranch(), [ (targetLoc, targetKind) ])
+  |> Stdlib.Result.map(fun deps ->
+    deps
+    |> Stdlib.List.filter(fun entry ->
+      let (depHash, _depLoc, _depKind) = entry
+      Stdlib.Bool.not(Query.isDeprecated(depSets, depHash)))
+    |> Stdlib.List.length)
 
 
 /// Forward the shared options to `deprecate`.
@@ -129,17 +130,21 @@ let deleteItem(
         printErr($"{name} is already deprecated.")
         failed(state)
       else
-        let depCount = countLiveDependents(targetLoc, itemKind, sets)
-        if depCount > 0 && Stdlib.Bool.not(parsed.ignoreDependents) then
-          printErr(
-            $"""{Text.plural(depCount, "live dependent")} still {if depCount == 1 then "references" else "reference"} this item.""")
-
-          Stdlib.printErrorLine(
-            "Use `deprecate` to give them time to migrate, or pass `--ignore-dependents` / `--force`.")
-
+        match countLiveDependents(targetLoc, itemKind, sets) with
+        | Error(e) ->
+          printErr($"Couldn't read the dependents of {target}: {e}")
           failed(state)
-        else
-          Deprecate.executeWithVerb(state, toDeprecateArgs(parsed, itemTypeStr, target), "delete")
+        | Ok(depCount) ->
+          if depCount > 0 && Stdlib.Bool.not(parsed.ignoreDependents) then
+            printErr(
+              $"""{Text.plural(depCount, "live dependent")} still {if depCount == 1 then "references" else "reference"} this item.""")
+
+            Stdlib.printErrorLine(
+              "Use `deprecate` to give them time to migrate, or pass `--ignore-dependents` / `--force`.")
+
+            failed(state)
+          else
+            Deprecate.executeWithVerb(state, toDeprecateArgs(parsed, itemTypeStr, target), "delete")
 
 
 /// Collect the bound declarations in a module and its descendants.
@@ -242,97 +247,104 @@ let deleteModuleItems(
   : AppState =
   let branchId = state.currentBranchId
   let depth = Stdlib.List.length(path)
-  let outside =
-    SCM.Deps.dependentsFor(
+  match
+    SCM.Deps.dependents(
       SCM.PackageOps.currentBranch(),
       items |> Stdlib.List.map(fun((location, reference)) ->
         (location, LanguageTools.ProgramTypes.Reference.kind(reference))))
-    |> Stdlib.List.filter(fun((hash, location, _)) ->
-      let home = Stdlib.List.prepend(location.modules, location.owner)
-      Stdlib.List.take(home, depth) != path && Stdlib.Bool.not(Query.isDeprecated(sets, hash)))
-    |> Stdlib.List.map(fun((_, location, _)) ->
-      PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location))
-    |> Stdlib.List.unique
-
-  let total = Stdlib.List.length(items)
-  let count = Text.plural(total, "item")
-  if Stdlib.Bool.not(Stdlib.List.isEmpty(outside)) && Stdlib.Bool.not(parsed.ignoreDependents) then
-    printErr($"Used from outside {shown}: " + Stdlib.String.join(outside, ", "))
-    Stdlib.printErrorLine("Pass `--ignore-dependents` / `--force` to delete it anyway.")
+  with
+  | Error(e) ->
+    printErr($"Couldn't read the dependents of {shown}: {e}")
     failed(state)
-  else
-    let names =
-      items
-      |> Stdlib.List.map(fun((location, _)) ->
+  | Ok(dependents) ->
+    let outside =
+      dependents
+      |> Stdlib.List.filter(fun((hash, location, _)) ->
+        let home = Stdlib.List.prepend(location.modules, location.owner)
+        Stdlib.List.take(home, depth) != path && Stdlib.Bool.not(Query.isDeprecated(sets, hash)))
+      |> Stdlib.List.map(fun((_, location, _)) ->
         PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location))
-      |> Stdlib.List.sortBy(fun name -> name)
+      |> Stdlib.List.unique
 
-    let dryRun = parsed.dryRun || parsed.json && Stdlib.Bool.not(parsed.autoConfirm)
-    let reportJson(): AppState =
-      Deprecate.printReport(
-        state,
-        Deprecate.DeprecateJson
-          { deprecated = shown
-            itemType = "module"
-            kind = "deprecated"
-            replacement = ""
-            message = parsed.reason
-            names = names
-            dryRun = dryRun })
-
-    let printItems(printLine: String -> Unit, action: String): Unit =
-      printLine($"{action} {count} in {shown}:")
-      names |> Stdlib.List.iter(fun name -> printLine($"  {name}"))
-      printLine("Deprecated items can still be used by name.")
-
-    if Stdlib.Bool.not(parsed.json) then
-      if dryRun then
-        printItems(Stdlib.printLine, "Would deprecate")
-      else if Stdlib.Bool.not(parsed.autoConfirm) then
-        printItems(Stdlib.printErrorLine, "Will deprecate")
-
-    if dryRun then
-      if parsed.json then
-        reportJson()
-      else
-        Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint("(dry-run, no op emitted)"))
-        state
-    else if
-      Prompt.confirmExplicit(
-        Confirm.assumeIf(parsed.autoConfirm),
-        Stdlib.Cli.UI.Colors.warning("Proceed? (y/n): "))
-    then
-      let ops =
-        items
-        |> Stdlib.List.map(fun((location, reference)) ->
-          LanguageTools.ProgramTypes.PackageOp.Deprecate(
-            location,
-            reference,
-            LanguageTools.ProgramTypes.DeprecationKind.Deprecated,
-            parsed.reason,
-            Option.None))
-
-      match SCM.PackageOps.add(branchId, ops) with
-      | Ok(_) when parsed.json -> reportJson()
-      | Ok(_) ->
-        match parsed.autoConfirm, names, items with
-        | true, [name], [(_, reference)] ->
-          let kind = LanguageTools.ProgramTypes.Reference.kind(reference)
-          printOk(Deprecate.deletedItemMessage(name, kind))
-        | true, _, _ -> printItems(Stdlib.printLine, "Deprecated")
-        | false, _, _ -> printOk($"Deprecated {count} in {shown}")
-
-        state
-      | Error(e) ->
-        printErr($"Delete failed: {e}")
-        failed(state)
-    else
-      if Stdlib.Cli.UI.Prompt.canAsk() then
-        Stderr.line("Delete cancelled.")
-      else
-        printErr(Prompt.refuseWithoutTerminal("Delete", $"dark delete {shown}"))
-
+    let total = Stdlib.List.length(items)
+    let count = Text.plural(total, "item")
+    if Stdlib.Bool.not(Stdlib.List.isEmpty(outside)) && Stdlib.Bool.not(parsed.ignoreDependents) then
+      printErr($"Used from outside {shown}: " + Stdlib.String.join(outside, ", "))
+      Stdlib.printErrorLine("Pass `--ignore-dependents` / `--force` to delete it anyway.")
       failed(state)
+    else
+      let names =
+        items
+        |> Stdlib.List.map(fun((location, _)) ->
+          PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location))
+        |> Stdlib.List.sortBy(fun name -> name)
+
+      let dryRun = parsed.dryRun || parsed.json && Stdlib.Bool.not(parsed.autoConfirm)
+      let reportJson(): AppState =
+        Deprecate.printReport(
+          state,
+          Deprecate.DeprecateJson
+            { deprecated = shown
+              itemType = "module"
+              kind = "deprecated"
+              replacement = ""
+              message = parsed.reason
+              names = names
+              dryRun = dryRun })
+
+      let printItems(printLine: String -> Unit, action: String): Unit =
+        printLine($"{action} {count} in {shown}:")
+        names |> Stdlib.List.iter(fun name -> printLine($"  {name}"))
+        printLine("Deprecated items can still be used by name.")
+
+      if Stdlib.Bool.not(parsed.json) then
+        if dryRun then
+          printItems(Stdlib.printLine, "Would deprecate")
+        else if Stdlib.Bool.not(parsed.autoConfirm) then
+          printItems(Stdlib.printErrorLine, "Will deprecate")
+
+      if dryRun then
+        if parsed.json then
+          reportJson()
+        else
+          Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint("(dry-run, no op emitted)"))
+          state
+      else if
+        Prompt.confirmExplicit(
+          Confirm.assumeIf(parsed.autoConfirm),
+          Stdlib.Cli.UI.Colors.warning("Proceed? (y/n): "))
+      then
+        let ops =
+          items
+          |> Stdlib.List.map(fun((location, reference)) ->
+            LanguageTools.ProgramTypes.PackageOp.Deprecate(
+              location,
+              reference,
+              LanguageTools.ProgramTypes.DeprecationKind.Deprecated,
+              parsed.reason,
+              Option.None))
+
+        match SCM.PackageOps.add(branchId, ops) with
+        | Ok(_) when parsed.json -> reportJson()
+        | Ok(_) ->
+          match parsed.autoConfirm, names, items with
+          | true, [name], [(_, reference)] ->
+            let kind = LanguageTools.ProgramTypes.Reference.kind(reference)
+            printOk(Deprecate.deletedItemMessage(name, kind))
+          | true, _, _ -> printItems(Stdlib.printLine, "Deprecated")
+          | false, _, _ -> printOk($"Deprecated {count} in {shown}")
+
+          state
+        | Error(e) ->
+          printErr($"Delete failed: {e}")
+          failed(state)
+      else
+        if Stdlib.Cli.UI.Prompt.canAsk() then
+          Stderr.line("Delete cancelled.")
+        else
+          printErr(Prompt.refuseWithoutTerminal("Delete", $"dark delete {shown}"))
+
+        failed(state)
 
 
 let help(_state: AppState): String =

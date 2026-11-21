@@ -9,7 +9,7 @@ let ops(
   oldLocation: LanguageTools.ProgramTypes.PackageLocation,
   newLocation: LanguageTools.ProgramTypes.PackageLocation,
   reference: LanguageTools.ProgramTypes.Reference)
-  : List<LanguageTools.ProgramTypes.PackageOp> =
+  : Result<List<LanguageTools.ProgramTypes.PackageOp>, String> =
   SCM.PackageOps.prepareRename(branchId, oldLocation, newLocation, reference)
 
 
@@ -76,8 +76,11 @@ let execute(state: AppState, args: List<String>): AppState =
             printHint("  pick another name, or retire that one first (`dark delete`).")
             { state with exitCode = 1 }
           | None ->
-            let changes = ops(state.currentBranchId, oldLoc, newLoc, reference)
-            match SCM.PackageOps.add(state.currentBranchId, changes) with
+            match
+              ops(state.currentBranchId, oldLoc, newLoc, reference)
+              |> Stdlib.Result.andThen(fun changes ->
+                SCM.PackageOps.add(state.currentBranchId, changes))
+            with
             | Ok(_) ->
               printOk($"renamed {dotted(oldLoc)} -> {dotted(newLoc)}.")
               printHint(
