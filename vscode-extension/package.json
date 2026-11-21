@@ -1,0 +1,55 @@
+{
+  "name": "darklang",
+  "displayName": "Darklang",
+  "description": "Darklang: diagnostics, hover and go-to-definition from `dark lsp`, and the package store as documents",
+  "publisher": "darklang",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "repository": { "type": "git", "url": "https://github.com/darklang/dark" },
+  "icon": "static/logo-dark.png",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Programming Languages"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onFileSystem:darkfs"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "darklang",
+        "aliases": ["Darklang", "dark"],
+        "extensions": [".dark"],
+        "configuration": "./language-configuration.json",
+        "icon": { "light": "./static/logo-light-transparent.svg", "dark": "./static/logo-dark-transparent.svg" }
+      }
+    ],
+    "grammars": [
+      { "language": "darklang", "scopeName": "source.darklang", "path": "./syntaxes/darklang.tmLanguage.json" }
+    ],
+    "configuration": {
+      "title": "Darklang",
+      "properties": {
+        "darklang.path": {
+          "type": "string",
+          "default": "dark",
+          "description": "The `dark` executable the extension starts as `dark lsp`."
+        }
+      }
+    },
+    "commands": [
+      { "command": "darklang.restartServer", "title": "Darklang: Restart Language Server" }
+    ]
+  },
+  "scripts": {
+    "build": "tsc --noEmit && esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
+    "package": "npm run build -- --minify && vsce package --no-dependencies --skip-license"
+  },
+  "dependencies": {
+    "vscode-languageclient": "9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "2.31.1",
+    "esbuild": "0.23.0",
+    "typescript": "5.5.3"
+  }
+}

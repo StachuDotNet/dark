@@ -28,3 +28,22 @@ gate_lsp() {
   python3 scripts/testing/_lsp-gate.py "$PWD/$CLI"
   rm -rf "$WORK"
 }
+
+# --- vscode-extension: the VS Code extension type-checks, bundles and packs ---------------------
+# Gate, not a test: it is a node build. It installs the locked dependencies, so a lockfile that
+# drifted from package.json fails here rather than on someone's machine.
+gate_vscode_extension() {
+  set -euo pipefail
+
+  command -v npm >/dev/null || { echo "vscode-extension: no npm" >&2; exit 2; }
+  cd vscode-extension
+  rm -f ./*.vsix
+  log=$(mktemp)
+  if ! { npm ci --no-audit --no-fund --loglevel=error && npm run --silent package; } >"$log" 2>&1; then
+    cat "$log" >&2
+    exit 1
+  fi
+  vsix=$(ls ./*.vsix)
+  echo "vscode-extension: built and packed $vsix ($(du -k "$vsix" | cut -f1) KB)."
+  rm -rf node_modules out ./*.vsix
+}
