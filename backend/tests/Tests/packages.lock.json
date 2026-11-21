@@ -18,22 +18,6 @@
         "resolved": "11.0.101",
         "contentHash": "XL1wfb0gujXAtnJfO7rYfxKgwufCiT8aOKqGoqKB83oxRAZ9+yiNWXinHO4x9StYuunTl/AH8eERc0hv7UXJVQ=="
       },
-      "Fumble": {
-        "type": "Direct",
-        "requested": "[2.0.1, )",
-        "resolved": "2.0.1",
-        "contentHash": "5NQfh+3z4IBS6i5CaC6SKKecPhGBsGmBH9SS9YosbUJzJgHlu+mfX8AuwgePNd0QsFvMbLwupqmDTMZyynVbuw==",
-        "dependencies": {
-          "FSharp.Core": "9.0.202",
-          "Microsoft.Data.Sqlite": "9.0.4"
-        }
-      },
-      "SimpleBase": {
-        "type": "Direct",
-        "requested": "[5.6.4, )",
-        "resolved": "5.6.4",
-        "contentHash": "4z4S1zdoiE74e8gmdAesX9g6RUDPY+dE3VTFE1H8ueUHBgLHk/WVlFdt6iop3ZYKkbZrsr1ZH3/qxg+NF4CveQ=="
-      },
       "builtins.cli": {
         "type": "Project",
         "dependencies": {
@@ -176,6 +160,44 @@
           "Wcwidth": "[4.0.1, )"
         }
       },
+      "tests.runtime": {
+        "type": "Project",
+        "dependencies": {
+          "Builtins.CliHost": "[1.0.0, )",
+          "Builtins.Http.Client": "[1.0.0, )",
+          "Builtins.Http.Server": "[1.0.0, )",
+          "Builtins.Matter": "[1.0.0, )",
+          "Builtins.Pure": "[1.0.0, )",
+          "Expecto": "[11.1.1, )",
+          "FSharp.Core": "[11.0.101, )",
+          "LibDB": "[1.0.0, )",
+          "LibExecution": "[1.0.0, )",
+          "LibParser": "[1.0.0, )",
+          "LibSerialization": "[1.0.0, )",
+          "Prelude": "[1.0.0, )",
+          "SimpleBase": "[5.6.4, )",
+          "TestUtils": "[1.0.0, )"
+        }
+      },
+      "tests.store": {
+        "type": "Project",
+        "dependencies": {
+          "Builtins.CliHost": "[1.0.0, )",
+          "Builtins.Http.Client": "[1.0.0, )",
+          "Builtins.Http.Server": "[1.0.0, )",
+          "Builtins.Matter": "[1.0.0, )",
+          "Builtins.Pure": "[1.0.0, )",
+          "Expecto": "[11.1.1, )",
+          "FSharp.Core": "[11.0.101, )",
+          "Fumble": "[2.0.1, )",
+          "LibDB": "[1.0.0, )",
+          "LibExecution": "[1.0.0, )",
+          "LibParser": "[1.0.0, )",
+          "LibSerialization": "[1.0.0, )",
+          "Prelude": "[1.0.0, )",
+          "TestUtils": "[1.0.0, )"
+        }
+      },
       "testutils": {
         "type": "Project",
         "dependencies": {
@@ -192,6 +214,16 @@
           "LibExecution": "[1.0.0, )",
           "LibParser": "[1.0.0, )",
           "NReco.Logging.File": "[1.4.0, )"
+        }
+      },
+      "Fumble": {
+        "type": "CentralTransitive",
+        "requested": "[2.0.1, )",
+        "resolved": "2.0.1",
+        "contentHash": "5NQfh+3z4IBS6i5CaC6SKKecPhGBsGmBH9SS9YosbUJzJgHlu+mfX8AuwgePNd0QsFvMbLwupqmDTMZyynVbuw==",
+        "dependencies": {
+          "FSharp.Core": "9.0.202",
+          "Microsoft.Data.Sqlite": "9.0.4"
         }
       },
       "Microsoft.Data.Sqlite": {
@@ -287,6 +319,12 @@
           "Microsoft.Extensions.Logging.Configuration": "10.0.10",
           "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.10"
         }
+      },
+      "SimpleBase": {
+        "type": "CentralTransitive",
+        "requested": "[5.6.4, )",
+        "resolved": "5.6.4",
+        "contentHash": "4z4S1zdoiE74e8gmdAesX9g6RUDPY+dE3VTFE1H8ueUHBgLHk/WVlFdt6iop3ZYKkbZrsr1ZH3/qxg+NF4CveQ=="
       },
       "SQLite": {
         "type": "CentralTransitive",

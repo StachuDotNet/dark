@@ -69,6 +69,9 @@ scripts/run-fsharp-tests --filter tests/Interpreter
 
 The F# suite includes runtime, integration and raw HTTP tests. Its entry
 point is [Tests.fs](../backend/tests/Tests/Tests.fs); add new F# test groups there.
+The tests themselves are in two libraries, so an edit recompiles only half of them:
+`backend/tests/Tests.Runtime` (interpreter, parser, serialization, builtins, HTTP) and
+`backend/tests/Tests.Store` (the store, SCM, permissions and the CLI suites).
 See the [testfiles README](../backend/testfiles/README.md) for the HTTP test files.
 
 Output goes to `rundir/logs/fsharp-tests.log`, with JUnit results in

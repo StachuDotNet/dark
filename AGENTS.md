@@ -271,7 +271,7 @@ more `Builtin.x` references anywhere in `packages/` fails, and so does one with 
 caller anywhere in the repo. So give each builtin exactly one Dark wrapper -- a stdlib
 or CLI fn that names it, types it and documents it -- and route callers through the
 wrapper. The wrapper is where the raw builtin's `List<'a>` becomes `List<TraceSummary>`.
-The allowlists in `backend/tests/Tests/Builtin.Tests.fs` are for cases that genuinely
+The allowlists in `backend/tests/Tests.Runtime/Builtin.Tests.fs` are for cases that genuinely
 can't work that way. `multiUseAllowlist` is empty and `unusedAllowlist` has one entry;
 before adding to either, check whether a wrapper already exists that the new caller has
 simply not been pointed at, which is what a second `Builtin.x` reference usually means.

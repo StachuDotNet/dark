@@ -1,7 +1,7 @@
 module Darklang.LanguageTools.Parser.RoundTrip.Tests
 
 // Parse-then-print round trips: moduleDeclarations. Moved from
-// backend/tests/Tests/LibParser.RoundTrip.Tests.fs; helpers are in roundTrip.dark.
+// backend/tests/Tests.Runtime/LibParser.RoundTrip.Tests.fs; helpers are in roundTrip.dark.
 
 test moduleDeclarations =
   Stdlib.Test.all(

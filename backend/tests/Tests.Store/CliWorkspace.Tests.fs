@@ -1098,7 +1098,7 @@ let private withLiveServer
       | RT.DApplicable a -> a
       | other -> failtest $"expected the step to be a fn, got {other}"
     let cts = new CancellationTokenSource()
-    let! port, listener = Tests.HttpServer.bindFreshListener ()
+    let! port, listener = TestUtils.TestUtils.bindFreshListener ()
     let mutable bodyPassed = false
     let listenerTask =
       task {

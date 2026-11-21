@@ -25,7 +25,7 @@ source
 ```
 
 The two lowerings are kept in agreement by a differential test
-(`Tests/WrittenTypesLoweringParity.Tests.fs`) that compares their ProgramTypes
+(`Tests.Runtime/WrittenTypesLoweringParity.Tests.fs`) that compares their ProgramTypes
 output over the real package corpus; they must be identical (node ids aside).
 
 ## Files
@@ -51,8 +51,8 @@ declarations and local/script bindings.
 
 ## Testing
 
-- `Tests/LibParser.Tests.fs` — structure, offside, types, literals,
+- `Tests.Runtime/LibParser.Tests.fs` — structure, offside, types, literals,
   recovery, golden diagnostics, fuzzer, range invariants, and the corpus gate
   (every real package file must parse cleanly)
-- `Tests/WrittenTypesLoweringParity.Tests.fs` — F# vs Dark lowering agreement
-- `Tests/LibParser.RoundTrip.Tests.fs` — source → PT → pretty-print round-trips
+- `Tests.Runtime/WrittenTypesLoweringParity.Tests.fs` — F# vs Dark lowering agreement
+- `Tests.Runtime/LibParser.RoundTrip.Tests.fs` — source → PT → pretty-print round-trips

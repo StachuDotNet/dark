@@ -4,7 +4,7 @@ module Darklang.SCM.Tests.Lww
 //
 // There is one rule, `LibExecution.Lww`, and the fold, conflict detection and
 // `SCM.Conflicts.beats` all ask it. These rows are the SAME rows as
-// `backend/tests/Tests/Lww.Tests.fs`, case for case: they prove the Dark name reaches the
+// `backend/tests/Tests.Store/Lww.Tests.fs`, case for case: they prove the Dark name reaches the
 // rule with its arguments the right way round, and they are the ones to read to see what
 // the rule IS.
 

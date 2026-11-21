@@ -1261,7 +1261,7 @@ let private servedRequestsKeepNoCredentials =
           | Ok(RT.DApplicable a) -> a
           | other -> failtest $"the router did not evaluate: {other}"
         let cts = new System.Threading.CancellationTokenSource()
-        let! port, listener = Tests.HttpServer.bindFreshListener ()
+        let! port, listener = TestUtils.TestUtils.bindFreshListener ()
         let serving =
           Builtins.Http.Server.Libs.HttpServer.runListener
             exeState

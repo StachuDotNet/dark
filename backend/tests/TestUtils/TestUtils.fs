@@ -1500,3 +1500,55 @@ let evalDarkExpr (code : string) : Task<RT.ExecutionResult> =
     let (state : RT.ExecutionState) = executionStateFor pmPT false
     return! Exe.executeExpr state (PT2RT.Expr.toRT Map.empty 0 None ptExpr)
   }
+
+
+// Bind test listeners through the production host boundary; test setup is trusted.
+let private tryBindListener
+  (port : int)
+  : Task<Result<System.Net.HttpListener, LibExecution.Host.Outcome>> =
+  task {
+    let access =
+      LibExecution.Permissions.Access.start LibExecution.Permissions.Policy.allowAll
+    let! outcome =
+      LibExecution.Host.perform
+        access
+        (LibExecution.Host.Operation.HttpServerBind("0.0.0.0", port))
+    match outcome with
+    | LibExecution.Host.Outcome.Success response ->
+      return
+        response
+        |> LibExecution.Host.expectHttpServerHandle
+        |> LibExecution.Host.takeHttpServerListener
+        |> Ok
+    | other -> return Error other
+  }
+
+
+/// Ask the kernel for a free loopback port, then release it.
+let allocateFreePort () : int =
+  let listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
+  listener.Start()
+  let port = (listener.LocalEndpoint :?> System.Net.IPEndPoint).Port
+  listener.Stop()
+  port
+
+
+/// `HttpListener` cannot bind port 0, so the port is probed and released first, and in a
+/// full suite another socket can take it in between: that is the "could not bind test
+/// listener" flake. A failed bind tries a fresh port instead of failing the test.
+let bindListenerWith (allocate : unit -> int) : Task<int * System.Net.HttpListener> =
+  let rec attempt (triesLeft : int) =
+    task {
+      let port = allocate ()
+      match! tryBindListener port with
+      | Ok listener -> return (port, listener)
+      | Error _ when triesLeft > 1 -> return! attempt (triesLeft - 1)
+      | Error outcome ->
+        return
+          Exception.raiseInternal
+            "could not bind test listener"
+            [ "port", port; "outcome", outcome ]
+    }
+  attempt 5
+
+let bindFreshListener () = bindListenerWith allocateFreePort

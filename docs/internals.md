@@ -70,7 +70,7 @@ the rule: the fold decides which binding survives, and conflict detection decide
 winner (`LibDB/ScmDetect.fs`). If those disagree, a recorded conflict names a winner the fold did not pick
 and two instances converge on different content with nothing to say so. Both call the one copy, and so
 does Dark (`SCM.Conflicts.beats`, through `scmLwwBeats`) rather than keeping one of its own.
-`Tests/Lww.Tests.fs` pins the rule, the Dark name and the detector to the same table rows;
+`Tests.Store/Lww.Tests.fs` pins the rule, the Dark name and the detector to the same table rows;
 `packages/darklang/tests/scm/lww.dark` states the rows again from the Dark side.
 
 **An action stopped partway leaves nothing half-done.** Each runs in one transaction; where that is not

@@ -2,7 +2,7 @@ module Darklang.LanguageTools.Parser.Tests.Diagnostics
 
 // The parser's diagnostics as Dark sees them: (range, message) pairs from
 // `Builtin.parse`. Tests that check a diagnostic's code, hint, related span or
-// severity stay in backend/tests/Tests/LibParser.Tests.fs, because only the
+// severity stay in backend/tests/Tests.Runtime/LibParser.Tests.fs, because only the
 // message crosses into Dark.
 
 let messagesIn(

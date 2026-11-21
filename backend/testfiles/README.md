@@ -5,8 +5,8 @@ The old execution testfiles and their runner have been removed.
 
 This directory keeps the raw HTTP tests and shared test data:
 
-- `httpclient`: HTTP client cases, run by `backend/tests/Tests/HttpClient.Tests.fs`.
-- `http-server`: byte-exact HTTP server cases, run by `backend/tests/Tests/HttpServer.Tests.fs`.
+- `httpclient`: HTTP client cases, run by `backend/tests/Tests.Runtime/HttpClient.Tests.fs`.
+- `http-server`: byte-exact HTTP server cases, run by `backend/tests/Tests.Runtime/HttpServer.Tests.fs`.
 - `data`: shared test assets.
 
 The HTTP harnesses are separate from the removed execution-test runner. Both run

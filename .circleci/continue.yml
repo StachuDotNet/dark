@@ -325,17 +325,26 @@ jobs:
       # and which the tests don't need. One after the other, the compile was about 45s more.
       # It is collected after the CLI build, in case it runs into it.
       #
-      # Like the CLI build below, this compiles only its own project (BuildProjectReferences=
+      # Like the CLI build below, each project here compiles only itself (BuildProjectReferences=
       # false) and reads the libraries the step above built. Without it, the CLI's restore,
       # which rewrites those libraries' obj/, makes them look stale and this compiles them all
-      # again. Its own restore writes only tests/Tests' obj/, and is done long before the CLI's.
+      # again. Their own restores write only tests/' obj/, and are done long before the CLI's.
+      #
+      # The two test libraries compile side by side, then the runner that references both.
       - run:
           name: Build the tests (Release, beside the next steps)
           background: true
           command: |
-            .circleci/beside start tests-build -- ./scripts/build/_dotnet-wrapper publish -c Release \
-              tests/Tests/Tests.fsproj /p:BuildProjectReferences=false \
-              /p:DebugType=None /p:DebugSymbols=false
+            .circleci/beside start tests-build -- bash -c '
+              build() {
+                ./scripts/build/_dotnet-wrapper "$1" -c Release "$2" /p:BuildProjectReferences=false \
+                  /p:DebugType=None /p:DebugSymbols=false
+              }
+              build build tests/Tests.Runtime/Tests.Runtime.fsproj & runtime=$!
+              build build tests/Tests.Store/Tests.Store.fsproj & store=$!
+              wait $runtime; r=$?
+              wait $store; s=$?
+              [[ $r == 0 && $s == 0 ]] && build publish tests/Tests/Tests.fsproj'
       - sqlite-archive
 
       - run:

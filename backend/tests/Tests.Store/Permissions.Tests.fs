@@ -797,7 +797,7 @@ let private serveFollowsApprovalsAndPolicy (flags : List<string>) =
           CliInstance.runWithExit i [ "commit"; "Tests.Follow"; "-y" ]
         Expect.equal code 0L $"committed:\n{committed}"
 
-        let port = Tests.HttpServer.allocateFreePort ()
+        let port = TestUtils.TestUtils.allocateFreePort ()
         let! granted, grantCode =
           CliInstance.runWithExit
             i
@@ -866,7 +866,7 @@ let private runAllowCoversItsServer =
         System.IO.Directory.CreateDirectory data |> ignore<System.IO.DirectoryInfo>
         let note = System.IO.Path.Combine(data, "note.txt")
         System.IO.File.WriteAllText(note, "from the file")
-        let port = Tests.HttpServer.allocateFreePort ()
+        let port = TestUtils.TestUtils.allocateFreePort ()
         let author (name : string) (body : string) =
           task {
             let! (out, code) = CliInstance.runWithExit i [ "fn"; name; body ]
@@ -904,7 +904,7 @@ let private serveChecksAScriptFnInItsMiddleware =
     "serve refuses middleware that reaches a denied effect through a script fn"
     (fun i ->
       task {
-        let port = Tests.HttpServer.allocateFreePort ()
+        let port = TestUtils.TestUtils.allocateFreePort ()
         let script = System.IO.Path.Combine(i.dir, "middleware.dark")
         System.IO.File.WriteAllText(
           script,
@@ -952,7 +952,7 @@ let private serveBindsTheGivenPort =
         let! (committed, code) =
           CliInstance.runWithExit i [ "commit"; "Tests.ServePort"; "-y" ]
         Expect.equal code 0L committed
-        let port = Tests.HttpServer.allocateFreePort ()
+        let port = TestUtils.TestUtils.allocateFreePort ()
         let server =
           CliInstance.start
             i

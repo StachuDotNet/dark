@@ -246,7 +246,7 @@ test recursiveFnKeepsCheckingItsCallback =
 
 // A fn that hands its typed callback straight to `List.map` checks it there. A
 // long or costly map may spread across cores; the check is the same either way
-// (`backend/tests/Tests/Spread.Tests.fs` runs both).
+// (`backend/tests/Tests.Runtime/Spread.Tests.fs` runs both).
 let mapInts(xs: List<Int64>, f: Int64 -> Int64): List<Int64> = Stdlib.List.map(xs, f)
 
 // The same for a dict.

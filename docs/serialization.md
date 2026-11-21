@@ -14,6 +14,6 @@ Our goals with serializers are:
 
 ## Testing
 
-`backend/tests/Tests/Serialization.Binary.Tests.fs` round-trips each binary serializer over the
+`backend/tests/Tests.Runtime/Serialization.Binary.Tests.fs` round-trips each binary serializer over the
 values in `Serialization.TestValues.fs`, and `Serialization.DarkTypes.Tests.fs` does the same for
 the ProgramTypes and RuntimeTypes mappings to Dark types.

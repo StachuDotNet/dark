@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <IsPublishable>false</IsPublishable>
+    <IsTrimmable>false</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- core -->
+    <ProjectReference Include="../../src/Prelude/Prelude.fsproj" />
+    <ProjectReference Include="../../src/LibParser/LibParser.fsproj" />
+    <ProjectReference Include="../../src/LibExecution/LibExecution.fsproj" />
+    <ProjectReference Include="../../src/Builtins/Builtins.Pure/Builtins.Pure.fsproj" />
+    <ProjectReference Include="../../src/Builtins/Builtins.Http.Client/Builtins.Http.Client.fsproj" />
+    <ProjectReference Include="../../src/LibDB/LibDB.fsproj" />
+
+    <!-- cloud -->
+    <ProjectReference Include="../../src/LibSerialization/LibSerialization.fsproj" />
+    <ProjectReference Include="../../src/Builtins/Builtins.Http.Server/Builtins.Http.Server.fsproj" />
+    <ProjectReference Include="../../src/Builtins/Builtins.Matter/Builtins.Matter.fsproj" />
+    <ProjectReference Include="../../src/Builtins/Builtins.CliHost/Builtins.CliHost.fsproj" />
+
+    <!-- cross-cutting -->
+    <ProjectReference Include="../TestUtils/TestUtils.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="TestConfig.fs" />
+    <Compile Include="TestValues.fs" />
+    <Compile Include="Prelude.Tests.fs" />
+    <Compile Include="Normalization.Tests.fs" />
+    <Compile Include="PT2RT.Tests.fs" />
+    <Compile Include="PermissionsGate.Tests.fs" />
+    <Compile Include="Interpreter.Tests.fs" />
+    <Compile Include="Scheduler.Tests.fs" />
+    <Compile Include="Spread.Tests.fs" />
+    <Compile Include="Lists.Tests.fs" />
+    <Compile Include="Strings.Tests.fs" />
+    <Compile Include="Scalars.Tests.fs" />
+    <Compile Include="Builtin.Tests.fs" />
+    <Compile Include="HostBoundary.Tests.fs" />
+    <Compile Include="AnalysisTypes.Tests.fs" />
+    <Compile Include="LibParser.RoundTrip.Tests.fs" />
+    <Compile Include="LibParser.Tests.fs" />
+    <Compile Include="HttpClient.Tests.fs" />
+    <Compile Include="Terminal.Tests.fs" />
+    <Compile Include="Hashing.Tests.fs" />
+    <Compile Include="TraitCallCache.Tests.fs" />
+    <Compile Include="Config.Tests.fs" />
+    <Compile Include="HttpServer.Tests.fs" />
+    <Compile Include="Serialization.TestValues.fs" />
+    <Compile Include="WrittenTypesLoweringParity.Tests.fs" />
+    <Compile Include="Serialization.Binary.Tests.fs" />
+    <Compile Include="Serialization.DarkTypes.Tests.fs" />
+    <Compile Include="Bytes.Tests.fs" />
+    <Compile Include="PTConformance.Tests.fs" />
+    <Compile Include="Stream.Tests.fs" />
+    <Compile Include="Host.Tests.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" />
+    <PackageReference Include="Expecto" />
+    <PackageReference Include="SimpleBase" />
+  </ItemGroup>
+</Project>
