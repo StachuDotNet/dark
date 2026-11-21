@@ -1,0 +1,219 @@
+/// Dark's language server: `dark lsp`, started by an editor and spoken to over stdio.
+///
+/// One loop reads messages and writes every reply. It waits on stdin, a store change and a
+/// quiet-period timer at once (`Host.await`):
+/// - a keystroke (`didChange`) only stores the text. The analysis runs once the typing stops,
+///   so ten keystrokes cost one analysis, not ten.
+/// - a store change (an edit in a terminal, an agent's commit) makes every open document's
+///   analysis stale, so its diagnostics follow code it did not change itself.
+/// - stdin closing ends the server. An editor holds stdin open for the whole session, so EOF
+///   means it is gone, and reading on would spin forever.
+module Darklang.LanguageTools.Lsp.Server
+
+type Json = Stdlib.AltJson.Json
+
+
+type Document =
+  { uri: String
+    text: String
+    /// The analysis of exactly `text`, or None until the quiet period ends. A change makes a
+    /// new Document with this empty, so an analysis is never read against other text.
+    analysis: Option<Analysis.Analysis> }
+
+
+type State =
+  { reader: Rpc.Reader
+    watch: LanguageTools.Live.Watch
+    branchId: Uuid
+    /// The open documents, by URI.
+    documents: Dict<String, Document>
+    /// `shutdown` was asked for; only `exit` is answered now.
+    shuttingDown: Bool
+    /// `exit` arrived, or stdin ended: the exit code to stop with.
+    stopped: Option<Int64> }
+
+
+/// How long the typing must pause before the open documents are analysed.
+val quietMs = 250
+
+
+let initialState(): State =
+  State
+    { reader = Rpc.Reader.Header(Option.None)
+      watch = Stdlib.Host.begin()
+      branchId = SCM.PackageOps.currentBranch()
+      documents = Stdlib.Dict.empty
+      shuttingDown = false
+      stopped = Option.None }
+
+
+/// Serve the editor on stdin and stdout until it goes. The exit code is 0 after `shutdown` then
+/// `exit`, and 1 when the editor left without `shutdown`, as the protocol says.
+let run(): Int64 =
+  Rpc.log("dark language server started")
+  loop(initialState())
+
+
+let loop(state: State): Int64 =
+  match state.stopped with
+  | Some(code) -> code
+  | None -> loop(wake(state))
+
+
+/// Wait for the next thing that happens and deal with it.
+let wake(state: State): State =
+  let pending = state.documents |> Stdlib.Dict.values |> Stdlib.List.any(fun d -> Stdlib.Option.isNone(d.analysis))
+  let specs =
+    Stdlib.List.flatten(
+      [ [ Rpc.wants(state.reader), Stdlib.Host.EventSpec.StoreChanged ]
+        (if pending then [ Stdlib.Host.EventSpec.Timer(quietMs) ] else []) ])
+
+  let awaited = Stdlib.Host.await(state.watch, specs)
+  let state = { state with watch = awaited.watch }
+  match awaited.event with
+  | Stdin(text) ->
+    let (reader, body) = Rpc.step(state.reader, text)
+    let state = { state with reader = reader }
+    match body with
+    | Some(body) -> received(state, body)
+    | None -> state
+  | StdinClosed ->
+    Rpc.log("stdin closed; stopping")
+    { state with stopped = Option.Some(if state.shuttingDown then 0 else 1) }
+  | Timer -> analysePending(state)
+  | StoreChanged(_) -> storeChanged(state)
+  | _ -> state
+
+
+// --- documents ---
+
+let setDocument(state: State, uri: String, text: String): State =
+  let doc = Document { uri = uri, text = text, analysis = Option.None }
+  { state with documents = Stdlib.Dict.set(state.documents, uri, doc) }
+
+
+let publish(uri: String, diagnostics: List<Json>): Unit =
+  Rpc.notify(
+    "textDocument/publishDiagnostics",
+    Json.Object([ ("uri", Json.String(uri)), ("diagnostics", Json.Array(diagnostics)) ]))
+
+
+/// Analyse every open document that has none, and publish what each one found.
+let analysePending(state: State): State =
+  let documents =
+    state.documents
+    |> Stdlib.Dict.mapValues(fun doc ->
+      match doc.analysis with
+      | Some(_) -> doc
+      | None ->
+        let analysis = Analysis.analyse(state.branchId, doc.text)
+        Rpc.log($"analysed {doc.uri}")
+        publish(doc.uri, analysis.diagnostics)
+        { doc with analysis = Option.Some(analysis) })
+
+  { state with documents = documents }
+
+
+/// The store moved under the open documents: names they use may resolve differently now, or a
+/// checker finding may have gone. Analyse them all again once things are quiet.
+let storeChanged(state: State): State =
+  let branchId = SCM.PackageOps.currentBranch()
+  let documents = Stdlib.Dict.mapValues(state.documents, fun doc -> { doc with analysis = Option.None })
+  { state with branchId = branchId, documents = documents }
+
+
+// --- messages ---
+
+let received(state: State, body: String): State =
+  match Rpc.parse(body) with
+  | None ->
+    Rpc.log($"not a JSON-RPC message: {body}")
+    Rpc.respondError(Json.Null, Rpc.Code.parseError, "Parse error")
+    state
+  | Some(message) ->
+    match message.method, message.id with
+    | Some(method), Some(id) -> request(state, method, id, message.params)
+    | Some(method), None -> notification(state, method, message.params)
+    // A reply to something the server asked. Nothing the server asks needs the answer.
+    | None, _ -> state
+
+
+let field(params: Json, key: String): Option<Json> =
+  match params with
+  | Object(fields) -> Stdlib.AltJson.Helpers.getValue(key, fields)
+  | _ -> Option.None
+
+
+let stringAt(params: Json, path: List<String>): Option<String> =
+  match path with
+  | [] ->
+    match params with
+    | String(s) -> Option.Some(s)
+    | _ -> Option.None
+  | [ key, ...rest ] -> field(params, key) |> Stdlib.Option.andThen(fun j -> stringAt(j, rest))
+
+
+let request(state: State, method: String, id: Json, params: Json): State =
+  if state.shuttingDown then
+    Rpc.respondError(id, Rpc.Code.invalidRequest, "The server is shutting down")
+    state
+  else
+    match method with
+    | "initialize" ->
+      Rpc.respond(id, initializeResult())
+      state
+    | "shutdown" ->
+      Rpc.respond(id, Json.Null)
+      { state with shuttingDown = true }
+    | _ ->
+      Rpc.respondError(id, Rpc.Code.methodNotFound, $"{method} is not supported")
+      state
+
+
+let notification(state: State, method: String, params: Json): State =
+  match method with
+  | "exit" -> { state with stopped = Option.Some(if state.shuttingDown then 0 else 1) }
+  | "textDocument/didOpen" ->
+    match stringAt(params, [ "textDocument", "uri" ]), stringAt(params, [ "textDocument", "text" ]) with
+    | Some(uri), Some(text) ->
+      // Analysed at once: the editor wants the squiggles as the file opens.
+      analysePending(setDocument(state, uri, text))
+    | _ -> state
+  | "textDocument/didChange" ->
+    let text =
+      match field(params, "contentChanges") with
+      | Some(Array(changes)) ->
+        changes |> Stdlib.List.last |> Stdlib.Option.andThen(fun c -> stringAt(c, [ "text" ]))
+      | _ -> Option.None
+
+    match stringAt(params, [ "textDocument", "uri" ]), text with
+    | Some(uri), Some(text) ->
+      if Stdlib.Dict.containsKey(state.documents, uri) then setDocument(state, uri, text) else state
+    | _ -> state
+  | "textDocument/didSave" ->
+    match stringAt(params, [ "textDocument", "uri" ]), stringAt(params, [ "text" ]) with
+    | Some(uri), Some(text) -> analysePending(setDocument(state, uri, text))
+    | _ -> state
+  | "textDocument/didClose" ->
+    match stringAt(params, [ "textDocument", "uri" ]) with
+    | Some(uri) ->
+      // An empty list clears the closed document's squiggles.
+      publish(uri, [])
+      { state with documents = Stdlib.Dict.remove(state.documents, uri) }
+    | None -> state
+  // `initialized`, `$/setTrace`, `$/cancelRequest` and the rest need nothing from this server.
+  | _ -> state
+
+
+let initializeResult(): Json =
+  Json.Object(
+    [ ("capabilities",
+       Json.Object(
+         [ ("positionEncoding", Json.String("utf-16"))
+           ("textDocumentSync",
+            Json.Object(
+              [ ("openClose", Json.Bool(true))
+                // 1: every change sends the whole text
+                ("change", Json.Integer(1))
+                ("save", Json.Object([ ("includeText", Json.Bool(true)) ])) ])) ]))
+      ("serverInfo", Json.Object([ ("name", Json.String("dark")) ])) ])

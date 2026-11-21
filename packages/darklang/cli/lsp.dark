@@ -1,0 +1,17 @@
+/// `dark lsp`: the language server, for an editor to start.
+module Darklang.Cli.Lsp
+
+let execute(state: AppState, _args: List<String>): AppState =
+  { state with exitCode = LanguageTools.Lsp.Server.run() }
+
+
+let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
+  []
+
+
+let help(_state: AppState): String =
+  [ "Usage: lsp [--stdio]"
+    "Run the language server on stdin and stdout, for an editor to start."
+    "It stops when the editor closes stdin. Its log goes to stderr."
+    "--stdio is accepted and changes nothing: stdio is the only transport." ]
+  |> Stdlib.String.join("\n")

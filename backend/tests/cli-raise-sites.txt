@@ -59,6 +59,7 @@
 1 Darklang.GitHub.__fetchString Darklang.Stdlib.HttpClient.get
 1 Darklang.LanguageTools.AtRestTypeChecker.Run.checkQuery Darklang.Stdlib.List.parallelMap
 1 Darklang.LanguageTools.Formatter.indentLines Darklang.Stdlib.String.repeat
+1 Darklang.LanguageTools.Lsp.Server.wake Darklang.Stdlib.Host.await
 1 Darklang.LanguageTools.PackageManager.Test.Worker.main Darklang.Stdlib.Cli.FileSystem.overwriteFile
 1 Darklang.LanguageTools.PackageManager.Test.withStoreSnapshot Builtin.pmTestWithStoreSnapshot
 1 Darklang.PrettyPrinter.ProgramTypes.expr Darklang.Stdlib.Pretty.render
