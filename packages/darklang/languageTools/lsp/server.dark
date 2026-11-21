@@ -106,7 +106,7 @@ let analysePending(state: State): State =
       match doc.analysis with
       | Some(_) -> doc
       | None ->
-        let analysis = Analysis.analyse(state.branchId, doc.text)
+        let analysis = Analysis.analyse(Names.context(state.branchId, doc.uri), doc.text)
         Rpc.log($"analysed {doc.uri}")
         publish(doc.uri, analysis.diagnostics)
         { doc with analysis = Option.Some(analysis) })
@@ -115,8 +115,10 @@ let analysePending(state: State): State =
 
 
 /// The store moved under the open documents: names they use may resolve differently now, or a
-/// checker finding may have gone. Analyse them all again once things are quiet.
+/// checker finding may have gone. Analyse them all again once things are quiet, and tell the
+/// editor, which reloads the store items it shows.
 let storeChanged(state: State): State =
+  Rpc.notify("dark/storeChanged", Json.Object([]))
   let branchId = SCM.PackageOps.currentBranch()
   let documents = Stdlib.Dict.mapValues(state.documents, fun doc -> { doc with analysis = Option.None })
   { state with branchId = branchId, documents = documents }
@@ -165,9 +167,41 @@ let request(state: State, method: String, id: Json, params: Json): State =
     | "shutdown" ->
       Rpc.respond(id, Json.Null)
       { state with shuttingDown = true }
+    | "textDocument/hover" ->
+      Rpc.respond(id, atPosition(state, params, Hover.hover))
+      state
+    | "textDocument/definition" ->
+      Rpc.respond(id, atPosition(state, params, Hover.definition))
+      state
+    | "dark/fs/read" ->
+      let text =
+        stringAt(params, [ "uri" ]) |> Stdlib.Option.andThen(fun uri -> Names.source(state.branchId, uri))
+
+      match text with
+      | Some(text) -> Rpc.respond(id, Json.String(text))
+      | None -> Rpc.respond(id, Json.Null)
+
+      state
     | _ ->
       Rpc.respondError(id, Rpc.Code.methodNotFound, $"{method} is not supported")
       state
+
+
+/// Answer a request about one position in an open document, or `null` when the document is
+/// not open.
+let atPosition(
+  state: State,
+  params: Json,
+  answer: (NameResolver.NRContext, String, Int64, Int64) -> Json)
+  : Json =
+  let line = field(params, "position") |> Stdlib.Option.andThen(fun p -> field(p, "line"))
+  let character = field(params, "position") |> Stdlib.Option.andThen(fun p -> field(p, "character"))
+  match stringAt(params, [ "textDocument", "uri" ]), line, character with
+  | Some(uri), Some(Integer(line)), Some(Integer(character)) ->
+    match Stdlib.Dict.get(state.documents, uri) with
+    | Some(doc) -> answer(Names.context(state.branchId, uri), doc.text, line, character)
+    | None -> Json.Null
+  | _ -> Json.Null
 
 
 let notification(state: State, method: String, params: Json): State =
@@ -215,5 +249,7 @@ let initializeResult(): Json =
               [ ("openClose", Json.Bool(true))
                 // 1: every change sends the whole text
                 ("change", Json.Integer(1))
-                ("save", Json.Object([ ("includeText", Json.Bool(true)) ])) ])) ]))
+                ("save", Json.Object([ ("includeText", Json.Bool(true)) ])) ]))
+           ("hoverProvider", Json.Bool(true))
+           ("definitionProvider", Json.Bool(true)) ]))
       ("serverInfo", Json.Object([ ("name", Json.String("dark")) ])) ])

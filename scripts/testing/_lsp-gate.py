@@ -179,6 +179,7 @@ def run(cli):
             not any("LspGate.T.later" in m for m in messages_of(d)),
             f"the warning stayed after the name was defined elsewhere: {d}",
         )
+        s.wait(lambda m: m.get("method") == "dark/storeChanged", 30, "dark/storeChanged")
         checked.append("a name defined in another process clears its warning (store change)")
 
         # A type error comes from the at-rest checker.
@@ -213,6 +214,38 @@ def run(cli):
         # Closing clears the squiggles.
         s.notify("textDocument/didClose", {"textDocument": {"uri": uri}})
         check(s.diagnostics(uri) == [], "closing a document did not clear its diagnostics")
+
+        # Hover: a package function's signature, its doc comment, and what it does to the world.
+        uri = "file:///tmp/lsp-gate/hover.dark"
+        s.open(uri, "let f(xs: List<Int64>): List<Int64> =\n  Stdlib.List.map(xs, fun x -> x + 1)\n\nlet g(): String = Stdlib.Cli.File.readText(\"a\") |> Stdlib.Result.withDefault(\"\")\nlet h(s: String): Int64 = Stdlib.String.length(s)\n")
+        s.diagnostics(uri)
+        pos = lambda line, ch: {"textDocument": {"uri": uri}, "position": {"line": line, "character": ch}}
+        hover = s.request("textDocument/hover", pos(1, 16))["result"]
+        check(hover is not None, "no hover on Stdlib.List.map")
+        text = hover["contents"]["value"]
+        check("Stdlib.List.map(" in text, f"the hover does not show the signature: {text}")
+        check("`fn`" in text, f"the doc comment's markup was not turned into code: {text}")
+        text = s.request("textDocument/hover", pos(4, 40))["result"]["contents"]["value"]
+        check("effect-free" in text, f"the hover does not say String.length is effect-free: {text}")
+        check(hover["range"]["start"] == {"line": 1, "character": 2}, f"hover range: {hover['range']}")
+        text = s.request("textDocument/hover", pos(3, 40))["result"]["contents"]["value"]
+        check("effects:" in text, f"the hover does not name readText's effects: {text}")
+        check(s.request("textDocument/hover", pos(2, 0))["result"] is None, "a blank line has a hover")
+        # On the module part of a name, the module is all there is to describe: nothing.
+        checked.append("hover shows the signature, the docs, and the effects")
+
+        # Definition: the item opens as a store document, and the server serves its source.
+        loc = s.request("textDocument/definition", pos(1, 16))["result"]
+        check(loc is not None and loc["uri"] == "darkfs:/Darklang/Stdlib/List/map.fn.dark", f"definition: {loc}")
+        source = s.request("dark/fs/read", {"uri": loc["uri"]})["result"]
+        check(source is not None and "let map(" in source, f"dark/fs/read: {source!r}"[:300])
+        check(s.request("dark/fs/read", {"uri": "darkfs:/Nobody/Nothing/none.fn.dark"})["result"] is None, "a missing item read as something")
+
+        # A store document is analysed in its own module, so its relative names resolve.
+        s.open(loc["uri"], source)
+        d = s.diagnostics(loc["uri"])
+        check(not [x for x in d if x["severity"] == 2 and "not found" in x["message"]], f"List.map's own source has unresolved names: {d}")
+        checked.append("definition opens the item as darkfs:, which serves its source and resolves its names")
 
         reply = s.request("shutdown")
         check("result" in reply and reply["result"] is None, f"shutdown: {reply}")

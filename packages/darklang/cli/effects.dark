@@ -1,10 +1,6 @@
 /// Inspect what code might do without running it.
 module Darklang.Cli.Effects
 
-let reasons(hash: String): (Bool * List<(LanguageTools.Permissions.Effect * List<String>)>) =
-  Builtin.pmFnEffectReasons(hash)
-
-
 let execute(state: AppState, args: List<String>): AppState =
   match args with
   | [name] ->
@@ -14,7 +10,7 @@ let execute(state: AppState, args: List<String>): AppState =
       printErr($"Unknown function: {name}")
       failed(state)
     | Some(hash) ->
-      let (complete, reasons) = Effects.reasons(hash)
+      let (complete, reasons) = LanguageTools.Permissions.effectReasons(hash)
       if Stdlib.List.isEmpty(reasons) then
         Stdlib.printLine(if complete then "effect-free" else "no known effects")
       else

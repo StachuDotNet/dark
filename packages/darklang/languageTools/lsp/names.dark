@@ -1,0 +1,165 @@
+/// The package item a name in a document refers to: what hover describes and definition opens.
+module Darklang.LanguageTools.Lsp.Names
+
+/// A dotted name in the text, cut at the segment the cursor is in: on `List` in
+/// `Stdlib.List.map` it is `Stdlib.List`.
+type NameAt =
+  { parts: List<String>
+    line: Int64
+    start: Int64
+    end: Int64 }
+
+
+val namePattern = "[A-Za-z_][A-Za-z0-9_']*(\\.[A-Za-z_][A-Za-z0-9_']*)*"
+
+
+/// The name under <param character> on <param line> of <param text>.
+let at(text: String, line: Int64, character: Int64): Option<NameAt> =
+  let lineText = text |> Stdlib.String.splitOnNewline |> Stdlib.List.getAt(line) |> Stdlib.Option.withDefault("")
+  let matches = Stdlib.Regex.findAllMatches(lineText, Stdlib.Regex.ofPattern(namePattern)) |> Stdlib.Result.withDefault([])
+  match Stdlib.List.findFirst(matches, fun m -> m.range.start <= character && character <= m.range.end) with
+  | None -> Option.None
+  | Some(m) ->
+    // Keep the segments that start at or before the cursor.
+    let segments = Stdlib.String.split(m.text, ".")
+    let starts =
+      segments
+      |> Stdlib.List.fold(([], m.range.start), fun((acc, pos), seg) ->
+        (Stdlib.List.append(acc, (seg, pos)), pos + Stdlib.String.length(seg) + 1))
+      |> Stdlib.Tuple2.first
+    let kept = Stdlib.List.filter(starts, fun((_, pos)) -> pos <= character)
+    let parts = Stdlib.List.map(kept, fun((seg, _)) -> seg)
+    let end =
+      match Stdlib.List.last(kept) with
+      | Some((seg, pos)) -> pos + Stdlib.String.length(seg)
+      | None -> m.range.end
+
+    Option.Some(NameAt { parts = parts, line = line, start = m.range.start, end = end })
+
+
+/// What a name can be bound to.
+type Item =
+  | Fn(ProgramTypes.LocatedItem<ProgramTypes.PackageFn.PackageFn>)
+  | Type(ProgramTypes.LocatedItem<ProgramTypes.PackageType.PackageType>)
+  | Value(ProgramTypes.LocatedItem<ProgramTypes.PackageValue.PackageValue>)
+
+
+/// A store item as the editor names it: `darkfs:/Owner/Module/name.fn.dark`.
+type StoreUri =
+  { location: ProgramTypes.PackageLocation
+    kind: ProgramTypes.ItemKind }
+
+
+let kindExtension(kind: ProgramTypes.ItemKind): String =
+  match kind with
+  | Fn -> "fn"
+  | Type -> "type"
+  | Value -> "val"
+  | _ -> "item"
+
+
+let uriOf(location: ProgramTypes.PackageLocation, kind: ProgramTypes.ItemKind): String =
+  let path = Stdlib.List.flatten([ [ location.owner ], location.modules, [ location.name ] ])
+  "darkfs:/" + Stdlib.String.join(path, "/") + "." + kindExtension(kind) + ".dark"
+
+
+let parseUri(uri: String): Option<StoreUri> =
+  match Stdlib.String.stripPrefix(uri, "darkfs:/") |> Stdlib.Option.andThen(fun p -> Stdlib.String.stripSuffix(p, ".dark")) with
+  | None -> Option.None
+  | Some(path) ->
+    match Stdlib.String.splitLast(path, ".") with
+    | None -> Option.None
+    | Some((path, ext)) ->
+      let kind =
+        match ext with
+        | "fn" -> Option.Some(ProgramTypes.ItemKind.Fn)
+        | "type" -> Option.Some(ProgramTypes.ItemKind.Type)
+        | "val" -> Option.Some(ProgramTypes.ItemKind.Value)
+        | _ -> Option.None
+
+      match kind, Stdlib.String.split(path, "/") with
+      | Some(kind), [owner, ...rest] ->
+        match Stdlib.List.splitLast(rest) with
+        | Some((modules, name)) ->
+          Option.Some(
+            StoreUri
+              { location = ProgramTypes.PackageLocation { owner = owner, modules = modules, name = name }
+                kind = kind })
+        | None -> Option.None
+      | _ -> Option.None
+
+
+/// Names in a store item resolve from its own module; names in a file, from the top.
+let context(branchId: Uuid, uri: String): NameResolver.NRContext =
+  let (owner, modules) =
+    match parseUri(uri) with
+    | Some(item) -> (item.location.owner, item.location.modules)
+    | None -> ("Script", [])
+
+  NameResolver.NRContext
+    { onMissing = NameResolver.OnMissing.Allow
+      pm = PackageManager.pm()
+      branchId = branchId
+      owner = owner
+      currentModule = modules }
+
+
+/// The package item <param parts> names, trying a function, then a type, then a value, as the
+/// parser does where a name could be any of them.
+let resolve(ctx: NameResolver.NRContext, parts: List<String>): Option<Item> =
+  let nowhere = Parser.Point { row = 0, column = 0 }
+  let name = WrittenTypes.Name.Unresolved(Parser.Range { start = nowhere, end_ = nowhere }, parts)
+  let located(location: Option<ProgramTypes.PackageLocation>, entity: Option<'a>): Option<ProgramTypes.LocatedItem<'a>> =
+    match location, entity with
+    | Some(location), Some(entity) -> Option.Some(ProgramTypes.LocatedItem { entity = entity, location = location })
+    | _ -> Option.None
+
+  let fn =
+    match (NameResolver.FnName.resolve(ctx, name)).resolved with
+    | Ok(r) ->
+      match r.name with
+      | Package(hash) -> located(r.location, PackageManager.Function.get(hash)) |> Stdlib.Option.map(fun i -> Item.Fn(i))
+      | _ -> Option.None
+    | Error(_) -> Option.None
+
+  match fn with
+  | Some(_) -> fn
+  | None ->
+    match (NameResolver.TypeName.resolve(ctx, name)).resolved with
+    | Ok(r) ->
+      match r.name with
+      | Package(hash) -> located(r.location, PackageManager.Type.get(hash)) |> Stdlib.Option.map(fun i -> Item.Type(i))
+    | Error(_) ->
+      match (NameResolver.ValueName.resolve(ctx, name)).resolved with
+      | Ok(r) ->
+        match r.name with
+        | Package(hash) -> located(r.location, PackageManager.Value.get(hash)) |> Stdlib.Option.map(fun i -> Item.Value(i))
+        | _ -> Option.None
+      | Error(_) -> Option.None
+
+
+/// The source of the store item at <param uri>, printed as `dark view --raw` prints it.
+let source(branchId: Uuid, uri: String): Option<String> =
+  match parseUri(uri) with
+  | None -> Option.None
+  | Some(item) ->
+    let loc = item.location
+    let ctx =
+      { PrettyPrinter.ProgramTypes.Context.forModule(branchId, Stdlib.List.prepend(loc.modules, loc.owner)) with
+          width = PrettyPrinter.ProgramTypes.sourceWidth
+          preferredLocation = Option.Some(loc) }
+
+    match item.kind with
+    | Fn ->
+      PackageManager.Function.find(branchId, loc)
+      |> Stdlib.Option.andThen(fun h -> PackageManager.Function.get(h))
+      |> Stdlib.Option.map(fun fn -> PrettyPrinter.ProgramTypes.packageFn(ctx, fn))
+    | Type ->
+      PackageManager.Type.find(branchId, loc)
+      |> Stdlib.Option.andThen(fun h -> PackageManager.Type.get(h))
+      |> Stdlib.Option.map(fun t -> PrettyPrinter.ProgramTypes.packageType(ctx, t))
+    | Value ->
+      PackageManager.Value.find(branchId, loc)
+      |> Stdlib.Option.andThen(fun h -> PackageManager.Value.get(h))
+      |> Stdlib.Option.map(fun v -> PrettyPrinter.ProgramTypes.packageValue(ctx, v))
+    | _ -> Option.None

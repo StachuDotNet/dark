@@ -196,12 +196,12 @@ let checkerDiagnostics(
 
 // --- the whole analysis ---
 
-/// Parse, resolve and check <param text> against <param branchId>.
+/// Parse, resolve and check <param text>, with names resolved as <param ctx> says.
 ///
 /// Syntax errors come from the parser; names that resolve to nothing are warnings at the name;
 /// type errors come from the at-rest checker, and only for a syntax-clean document, since the
 /// parser's recovery holes would read as errors of their own.
-let analyse(branchId: Uuid, text: String): Analysis =
+let analyse(ctx: NameResolver.NRContext, text: String): Analysis =
   let (parsed, syntax) = Parser.Parse.parse(Parser.FileKind.Script, text)
   let syntaxDiagnostics =
     Stdlib.List.map(syntax, fun((r, message)) -> diagnostic(1, r, Option.None, message))
@@ -209,19 +209,11 @@ let analyse(branchId: Uuid, text: String): Analysis =
   match parsed with
   | None -> Analysis { parsed = Option.None, diagnostics = syntaxDiagnostics }
   | Some(SourceFile(sf)) ->
-    let ctx =
-      NameResolver.NRContext
-        { onMissing = NameResolver.OnMissing.Allow
-          pm = PackageManager.pm()
-          branchId = branchId
-          owner = "Script"
-          currentModule = [] }
-
     let file = WrittenTypes.ParsedFile.SourceFile(sf)
     let (unresolved, checked) =
       match Parser.CliScript.parseFromWT(ctx, "", syntax, file) with
       | Ok((program, unresolved)) ->
-        match Parser.CliScript.parseDecls("Script", "", syntax, file) with
+        match Parser.CliScript.parseDecls(ctx.owner, "", syntax, file) with
         | Ok(written) -> (unresolved, checkerDiagnostics(sf.range, written, program))
         | Error(_) -> (unresolved, [])
       | Error(_) -> ([], [])
