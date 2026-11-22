@@ -356,3 +356,50 @@ test aPartialRenameLeavesALaterAliasEditInTheDraft =
         $"{p}.caller()",
         "582783",
         "the committed caller follows the rename") ])
+
+
+/// A partial commit takes the new name its caller uses, even when the code behind that name is
+/// already committed under another name, and leaves an unrelated name that holds the same code.
+let aPartialCommitTakesTheNameItsCallerUses(
+  branch: String)
+  : Stdlib.Test.Result =
+  scenario(fun dark ->
+    [ saveNumber(dark, "Tests.App.committed", "19327")
+      commit(dark, "dependency content already committed")
+      switch(dark, branch)
+      saveNumber(dark, "Tests.App.dep", "19327")
+      saveNumber(dark, "Tests.App.unrelated", "19327")
+      save(dark, "Tests.App.caller", "(): Int64 = Tests.App.dep() + 1")
+      commitOnly(dark, "caller and its dependency name", "Tests.App.caller")
+      evals(dark, "Tests.App.caller()", "19328", "the caller runs")
+      same(
+        draft(dark),
+        [ "new Tests.App.unrelated" ],
+        "the dependency's name came along, and only the unrelated name is left") ])
+
+
+test aPartialCommitTakesTheNameItsCallerUsesOnMain =
+  aPartialCommitTakesTheNameItsCallerUses("main")
+
+
+test aPartialCommitTakesTheNameItsCallerUsesOnABranch =
+  aPartialCommitTakesTheNameItsCallerUses("feat")
+
+
+/// A partial commit picks names, not code: a name that only shares the selected item's code does
+/// not ride along.
+test aPartialCommitLeavesANameThatOnlySharesTheCode =
+  scenario(fun dark ->
+    [ saveNumber(dark, "Tests.App.picked", "987")
+      saveNumber(dark, "Tests.App.other", "987")
+      doesNotSay(
+        dark,
+        [ "commit", "picked only", "--include=Tests.App.picked", "-y" ],
+        "also committed",
+        "nothing rides along on the same code")
+
+      same(commits(dark), [ "picked only" ], "the commit went through")
+      same(
+        draft(dark),
+        [ "new Tests.App.other" ],
+        "and the other name is the one left in the draft") ])

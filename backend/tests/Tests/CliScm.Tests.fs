@@ -486,7 +486,6 @@ let private deprecationIsReversible =
     })
 
 
-
 // The docs' worked example, executed: `docs scm` ends with one whose comments claim specific
 // output. The doc is the source, not a copy, so the two cannot drift.
 
@@ -1412,32 +1411,6 @@ let revertingOnMainTakesEffect =
     })
 
 
-/// `--include=<caller>` on a branch committed the caller and left its dependency's NAME in the
-/// draft, so a reader downstream could run the caller but could not find what it called.
-let aPartialCommitTakesItsDependencysName =
-  instanceTest
-    "a partial commit on a branch carries the names it depends on"
-    (fun state ->
-      task {
-        do! start state
-        // The dependency's content already exists, but its branch-local name
-        // below still has to come along. Do not depend on seed/test run order.
-        do! fn state "Tests.Partial2.committed" "() : Int64 = 5"
-        do! commit state "dependency content already committed"
-        do! switch state "partialbr"
-        do! fn state "Tests.Partial2.dep" "() : Int64 = 5"
-        do! fn state "Tests.Partial2.caller" "(): Int64 = Tests.Partial2.dep() + 1"
-
-        do! commitOnly state "caller" "Tests.Partial2.caller"
-        do! evals state "Tests.Partial2.caller()" "6" "the caller runs here"
-        do!
-          clean
-            state
-            "and nothing of it is left uncommitted: the dependency came along"
-        do! onMain state
-      })
-
-
 /// `conflicts override <name>` answers the PENDING row for that name, the one the listing shows. With
 /// one name conflicted twice, it must not act on the settled conflict and leave the open one open.
 let overrideByNameAnswersThePendingConflict =
@@ -1738,7 +1711,6 @@ let tests : List<Test> =
     mergeCommitsWhatASiblingStillTags
     revertingToAnEarlierVersionTakesEffect
     revertingOnMainTakesEffect
-    aPartialCommitTakesItsDependencysName
     overrideByNameAnswersThePendingConflict
     aFailedJsonCommitExitsNonzero
     aConflictCloseThatFailsIsReported

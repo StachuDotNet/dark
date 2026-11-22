@@ -160,81 +160,6 @@ let private branchDiscardKeepsCommittedWork =
         do! archiveBranches state [ "discardkeep" ]
       })
 
-/// `--include=` selects namings by name, not content hash, so an unrelated name that holds an
-/// identical body does not ride along or get reported as needed by what you named.
-let private partialCommitTakesNamesNotBodies =
-  instanceTest "--include= leaves an unrelated name that shares a body" (fun state ->
-    task {
-      do! start state
-      do! fn state "Tests.Part.public" "() : Int64 = 987"
-      do! fn state "Tests.Part.private" "() : Int64 = 987"
-
-      // The preview lists the whole draft, which is right; what must not appear is the
-      // "also committed" line, which is where the unrelated name would be reported as needed.
-      do!
-        lacks
-          state
-          [ "commit"; "public only"; "--include=Tests.Part.public"; "-y" ]
-          "also committed"
-          "nothing rides along on an identical body"
-
-      // And the proof it was not committed silently: it is still a draft, and it is the one left.
-      do! dirty state "the unrelated name is still uncommitted"
-      do!
-        shows state [ "status" ] "1 item changed" "exactly one name is left behind"
-      do!
-        shows
-          state
-          [ "diff" ]
-          "Tests.Part.private"
-          "and it is that name specifically"
-      do! start state
-    })
-
-/// A dependency's hash can be committed while the name used by its caller is
-/// still new. Select that naming without dragging unrelated aliases along.
-let private partialCommitTakesNewNameForCommittedContent =
-  instanceTest
-    "--include= takes a needed new name for committed content, leaving its alias"
-    (fun state ->
-      task {
-        do! start state
-        do! fn state "Tests.SharedCommit.committed" "() : Int64 = 19327"
-        do! commit state "existing dependency content"
-        do! fn state "Tests.SharedCommit.dep" "() : Int64 = 19327"
-        do! fn state "Tests.SharedCommit.unrelated" "() : Int64 = 19327"
-        do!
-          fn
-            state
-            "Tests.SharedCommit.caller"
-            "(): Int64 = Tests.SharedCommit.dep() + 1"
-
-        do!
-          commitOnly
-            state
-            "caller and its dependency name"
-            "Tests.SharedCommit.caller"
-        do! evals state "Tests.SharedCommit.caller()" "19328" "the caller runs"
-        do!
-          shows
-            state
-            [ "status" ]
-            "1 item changed"
-            "only the unrelated name is left"
-        let! remaining = runCliPlain state [ "diff" ]
-        Expect.stringContains
-          remaining
-          "Tests.SharedCommit.unrelated"
-          "the unrelated alias stays in the draft"
-        Expect.isFalse
-          (remaining.Contains "Tests.SharedCommit.dep")
-          "the required name was committed"
-        Expect.isFalse
-          (remaining.Contains "Tests.SharedCommit.caller")
-          "the selected caller was committed"
-        do! start state
-      })
-
 /// `undo` writes a `Decision`, so `discard <name>` has to recognise that as well as `SetName`, or it
 /// reports the change dropped and changes nothing.
 let private discardSeesWhatUndoWrote =
@@ -337,8 +262,6 @@ let tests : List<Test> =
     archiveRefusesToOrphanAChild
     deprecateIsVisibleOnItsBranch
     branchDiscardKeepsCommittedWork
-    partialCommitTakesNamesNotBodies
-    partialCommitTakesNewNameForCommittedContent
     discardSeesWhatUndoWrote
     discardCountsOpsNotNames
     mergeIsGatedLikeCommit ]
