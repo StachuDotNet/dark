@@ -81,7 +81,7 @@ let auditLineIsJsonWithTheLoggedFields =
         false
       )
     let access = Permission.Access.start Permission.Policy.denyAll
-    let! outcome = LibExecution.Host.perform access op
+    let! outcome = LibExecution.Host.perform TestUtils.TestUtils.testHost access op
     let now = System.DateTime(2026, 1, 2, 3, 4, 5, System.DateTimeKind.Utc)
     let line = HT.auditLine now op outcome
     Expect.isFalse (line.Contains "\n") "one line per entry"
@@ -120,7 +120,7 @@ let httpAuthorityCannotBeOverridden =
     for name in [ "Host"; "host"; "hOsT" ] do
       match
         HostHttp.prepare
-          HT.HttpProfile.Guest
+          TestUtils.TestUtils.testHost.guestHttp
           "GET"
           "https://example.com/"
           [ name, "other.example.com" ]
@@ -136,7 +136,10 @@ let environmentListRespectsVariableDenies =
         [ Permission.Rule.Env(Permission.AccessKind.Read, Permission.Scope.All) ]
         [ Permission.Rule.Env(Permission.AccessKind.Read, only "PRIVATE_TOKEN") ]
     let! outcome =
-      LibExecution.Host.perform (Permission.Access.start policy) HT.Operation.EnvList
+      LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
+        (Permission.Access.start policy)
+        HT.Operation.EnvList
     match outcome with
     | HT.Outcome.Denied _ -> ()
     | other -> failtestf "expected denial before enumerating variables, got %A" other
@@ -146,7 +149,10 @@ let httpServerBindUsesTheSuppliedAccess =
   testTask "HTTP server bind is denied before touching the socket" {
     let access = Permission.Access.start Permission.Policy.denyAll
     let! outcome =
-      LibExecution.Host.perform access (HT.Operation.HttpServerBind("127.0.0.1", 0))
+      LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
+        access
+        (HT.Operation.HttpServerBind("127.0.0.1", 0))
     match outcome with
     | HT.Outcome.Denied(Permission.Layer.Instance, _, _, _, _) -> ()
     | other -> failtest $"expected an instance denial, got {other}"
@@ -168,6 +174,7 @@ let httpServerBindsOnlyTheCheckedAddress =
         []
     let! outcome =
       LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
         (Permission.Access.start policy)
         (HT.Operation.HttpServerBind("127.0.0.1", port))
     if System.OperatingSystem.IsWindows() then
@@ -207,7 +214,7 @@ let httpServerBindsOnlyTheCheckedAddress =
 let workingDirectoryDiscoveryDoesNotGrantFileAccess =
   testTask "working directory discovery needs no file grant" {
     let access = Permission.Access.start Permission.Policy.denyAll
-    let perform op = LibExecution.Host.perform access op
+    let perform op = LibExecution.Host.perform TestUtils.TestUtils.testHost access op
     let cwd = System.IO.Directory.GetCurrentDirectory()
     let! current = perform HT.Operation.DirectoryCurrent
     match current with
@@ -245,6 +252,7 @@ let rawDescriptorsRequireNativeAtHostBoundary =
     for operation in operations do
       let! outcome =
         LibExecution.Host.perform
+          TestUtils.TestUtils.testHost
           (Permission.Access.start Permission.Policy.denyAll)
           (HT.Operation.Posix operation)
       match outcome with
@@ -252,6 +260,7 @@ let rawDescriptorsRequireNativeAtHostBoundary =
       | other -> failtest $"expected denial before EBADF, got {other}"
     let! allowed =
       LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
         (Permission.Access.start Permission.Policy.allowAll)
         (HT.Operation.Posix(HT.PosixOp.FdRead(HT.FileDescriptor.Raw -1, 1)))
     match allowed with
@@ -278,7 +287,11 @@ let scopedDescriptorsRecheckAccessAndOwnership =
     let denied = Permission.Access.start Permission.Policy.denyAll
     let all = Permission.Access.start Permission.Policy.allowAll
     let perform session access op =
-      LibExecution.Host.performInSession session access (HT.Operation.Posix op)
+      LibExecution.Host.performInSession
+        TestUtils.TestUtils.testHost
+        session
+        access
+        (HT.Operation.Posix op)
     let ebadf outcome =
       match outcome with
       | HT.Outcome.Failed failure ->
@@ -355,7 +368,11 @@ let scopedDescriptorsRespectInvocation =
       instance
       |> Permission.Access.restrict Permission.Layer.Run Permission.Policy.denyAll
     let perform access op =
-      LibExecution.Host.performInSession owner access (HT.Operation.Posix op)
+      LibExecution.Host.performInSession
+        TestUtils.TestUtils.testHost
+        owner
+        access
+        (HT.Operation.Posix op)
     let denied why outcome =
       match outcome with
       | HT.Outcome.Denied _ -> ()
@@ -446,6 +463,7 @@ let unresolvedProgramFailsWithEnoent =
       for policy in [ Permission.Policy.allowAll; Permission.Policy.denyAll ] do
         let! outcome =
           LibExecution.Host.performInSession
+            TestUtils.TestUtils.testHost
             owner
             (Permission.Access.start policy)
             (HT.Operation.ChildStart("dark-no-such-program-xyz", [], false))
@@ -473,7 +491,11 @@ let ownedChildrenRetainScopedProcessAuthority =
         |> Permission.Access.start
       let denied = Permission.Access.start Permission.Policy.denyAll
       let perform session access op =
-        LibExecution.Host.performInSession session access op
+        LibExecution.Host.performInSession
+          TestUtils.TestUtils.testHost
+          session
+          access
+          op
       let ebadf outcome =
         match outcome with
         | HT.Outcome.Failed error ->
@@ -574,7 +596,12 @@ let ownedChildWaitAllowsCleanup =
       let owner = LibExecution.Host.createDescriptorSession ()
       let all = Permission.Access.start Permission.Policy.allowAll
       let denied = Permission.Access.start Permission.Policy.denyAll
-      let perform access op = LibExecution.Host.performInSession owner access op
+      let perform access op =
+        LibExecution.Host.performInSession
+          TestUtils.TestUtils.testHost
+          owner
+          access
+          op
       try
         let! started =
           perform
@@ -641,7 +668,11 @@ let watchQueuesRetainScopedPathAuthority =
         |> Permission.Access.start
       let denied = Permission.Access.start Permission.Policy.denyAll
       let perform session access op =
-        LibExecution.Host.performInSession session access (HT.Operation.Posix op)
+        LibExecution.Host.performInSession
+          TestUtils.TestUtils.testHost
+          session
+          access
+          (HT.Operation.Posix op)
       try
         let! opened = perform owner denied (HT.PosixOp.InotifyInit1 526336)
         let fd =
@@ -699,12 +730,17 @@ let systemFactsDoNotGrantSensitiveQueries =
     let access = Permission.Access.start Permission.Policy.denyAll
     for op in
       [ HT.PosixOp.SysctlBytes([ 1; 14 ], 256); HT.PosixOp.SchedGetaffinity(1, 128) ] do
-      let! outcome = LibExecution.Host.perform access (HT.Operation.Posix op)
+      let! outcome =
+        LibExecution.Host.perform
+          TestUtils.TestUtils.testHost
+          access
+          (HT.Operation.Posix op)
       match outcome with
       | HT.Outcome.Denied _ -> ()
       | other -> failtest $"expected Native denial before kernel query, got {other}"
     let! local =
       LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
         access
         (HT.Operation.Posix(HT.PosixOp.SchedGetaffinity(0, 128)))
     match local with
@@ -724,6 +760,7 @@ let tempPrefixDoesNotAuthorizeARandomSibling =
         []
     let! outcome =
       LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
         (Permission.Access.start policy)
         (HT.Operation.Posix(HT.PosixOp.Mkstemp prefix))
     match outcome with
@@ -755,6 +792,7 @@ let readlinkMayInspectTheFinalSymlink =
           []
       let! outcome =
         LibExecution.Host.perform
+          TestUtils.TestUtils.testHost
           (Permission.Access.start policy)
           (HT.Operation.Posix(HT.PosixOp.ReadlinkBytes(link, 4096)))
       match outcome with
@@ -803,7 +841,11 @@ let symlinkReadsUseTheTargetsPermissions =
       let owner = LibExecution.Host.createDescriptorSession ()
       try
         let perform policy op =
-          LibExecution.Host.performInSession owner policy (HT.Operation.Posix op)
+          LibExecution.Host.performInSession
+            TestUtils.TestUtils.testHost
+            owner
+            policy
+            (HT.Operation.Posix op)
         let openRead policy path =
           task {
             let! outcome = perform policy (HT.PosixOp.Open(path, 0, 0))
@@ -922,6 +964,7 @@ let symlinkReadsPreserveParentTraversal =
       let owner = LibExecution.Host.createDescriptorSession ()
       let perform policy path =
         LibExecution.Host.performInSession
+          TestUtils.TestUtils.testHost
           owner
           policy
           (HT.Operation.Posix(HT.PosixOp.Open(path, 0, 0)))
@@ -956,6 +999,7 @@ let symlinkReadsPreserveParentTraversal =
           | HT.Outcome.Success(HT.Response.Descriptor token) ->
             let! read =
               LibExecution.Host.performInSession
+                TestUtils.TestUtils.testHost
                 owner
                 (access remote)
                 (HT.Operation.Posix(
@@ -1059,6 +1103,7 @@ let nonFollowingSymlinkOpensReturnErrors =
       let denied = Permission.Access.start Permission.Policy.denyAll
       let perform policy path flags =
         LibExecution.Host.perform
+          TestUtils.TestUtils.testHost
           policy
           (HT.Operation.Posix(HT.PosixOp.Open(path, flags, 0)))
       try
@@ -1238,7 +1283,7 @@ let packageStoreAncestorsAreProtected =
           [ Permission.Rule.File(Permission.AccessKind.Write, only root) ]
           []
       )
-    let perform op = LibExecution.Host.perform access op
+    let perform op = LibExecution.Host.perform TestUtils.TestUtils.testHost access op
     let expectRefused (label : string) (outcome : HT.Outcome) =
       match outcome with
       | HT.Outcome.Rejected message ->
@@ -1312,7 +1357,8 @@ let rootDirectoryIsReadable =
   testTask "listing and stat work on the filesystem root" {
     if LibExecution.HostPosix.isPosix then
       let access = Permission.Access.start Permission.Policy.allowAll
-      let perform op = LibExecution.Host.perform access op
+      let perform op =
+        LibExecution.Host.perform TestUtils.TestUtils.testHost access op
       let! listed = perform (HT.Operation.DirectoryList "/")
       match listed with
       | HT.Outcome.Success _ -> ()
@@ -1425,6 +1471,7 @@ let rawClocksRequireClockPermission =
         HT.PosixOp.Nanosleep(0L, 0L) ] do
       let! outcome =
         LibExecution.Host.perform
+          TestUtils.TestUtils.testHost
           (Permission.Access.start Permission.Policy.denyAll)
           (HT.Operation.Posix operation)
       match outcome with

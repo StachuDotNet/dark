@@ -2,7 +2,7 @@
 /// and the streaming-response table.
 ///
 /// The checked boundary owns the network. Guest requests run under one
-/// SSRF-guarded configuration, which a host may replace with `setGuestConfig`.
+/// SSRF-guarded configuration, which a host may replace (`Host.Config.guestHttp`).
 /// An `Operation.HttpRequest` names it with `HostTypes.HttpProfile`, so
 /// timeouts and allow-lists stay in host-owned state.
 module LibExecution.HostHttp
@@ -415,23 +415,14 @@ let profileWithProxy
   : Profile =
   { config = config; client = BaseClient.create config proxy }
 
-let private profileOf (config : Configuration) : Profile =
+let profileOf (config : Configuration) : Profile =
   // Browser hosts use WasmHandler; DefaultProxy is unsupported there.
   let proxy =
     if SocketsHttpHandler.IsSupported then HttpClient.DefaultProxy else null
   profileWithProxy config proxy
 
-let mutable private guest : Profile = profileOf defaultConfig
-
-/// Replace the guest configuration; the client is rebuilt and shared for the
-/// configuration's lifetime. A host that needs loopback reachable (a test
-/// harness with an in-process server) sets it here before guest execution.
-let setGuestConfig (config : Configuration) : unit = guest <- profileOf config
-
-/// The guest configuration with another connection cap per host (`http.maxConnectionsPerHost`):
-/// higher for a big fan-out, lower to be polite to one host.
-let setMaxConnectionsPerHost (n : int) : unit =
-  setGuestConfig { guest.config with maxConnectionsPerHost = n }
+/// The guest profile a host gets unless it builds another.
+let defaultGuest : Profile = profileOf defaultConfig
 
 /// The pair of predicates a widening moves together: an IP, and the host literal that names it.
 /// Widening the IP alone leaves what a person types refused by `allowedHost`.
@@ -472,11 +463,6 @@ let guestConfigWidenedBy (widenings : List<Widening>) : Configuration =
 /// and package initialisation, which is what these guards exist to contain. A guard a broad grant
 /// switches off is not a guard.
 let devLoopbackConfig : Configuration = guestConfigWidenedBy [ loopbackWidening ]
-
-let profileFor (profile : HttpProfile) : Profile =
-  match profile with
-  | HttpProfile.Guest -> guest
-
 
 // ── request prep ──────────────────────────────────────────────────────────────
 
@@ -541,17 +527,15 @@ let private validateHeaders (headers : Headers) : Result<unit, HttpBadHeader> =
   |> Option.defaultValue (Ok())
 
 /// Validate method, headers, URL, and the profile's allow-lists; return the
-/// canonical URI the permission layer checks and the send uses, with the
-/// resolved profile so the send need not look it up again. Headers are checked
+/// canonical URI the permission layer checks and the send uses. Headers are checked
 /// before the metadata guard reads them, so one can't hide inside another's
 /// value. `Error` is a guest-visible typed error.
 let prepare
-  (profile : HttpProfile)
+  (profile : Profile)
   (method : string)
   (url : string)
   (headers : Headers)
-  : Result<string * Profile, HttpRequestError> =
-  let profile = profileFor profile
+  : Result<string, HttpRequestError> =
   let method =
     try
       Some(HttpMethod method)
@@ -563,7 +547,6 @@ let prepare
     validateHeaders headers
     |> Result.mapError HttpRequestError.BadHeader
     |> Result.bind (fun () -> validateAndBuildUri profile.config url headers)
-    |> Result.map (fun uri -> (uri, profile))
 
 
 /// Build the request message for `sendForHeaders`, which both the buffered and

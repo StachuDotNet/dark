@@ -35,6 +35,20 @@ let createDescriptorSession () : HostDescriptors.Session =
 let createLazyDescriptorSession () : Lazy<HostDescriptors.Session> =
   lazy (createDescriptorSession ())
 
+/// What the host decides once at startup, carried on the execution state (`ExecutionState.host`).
+type Config =
+  {
+    /// The client guest HTTP goes through, with its guards.
+    guestHttp : HostHttp.Profile
+    /// The executable a worker runs, when it is not this one (the test runner's CLI).
+    processLauncher : Option<string>
+    /// The rundir whose process table (`HostRegistry`) `ps` reads. `None` lists nothing.
+    registry : Option<string>
+  }
+
+  static member defaults() : Config =
+    { guestHttp = HostHttp.defaultGuest; processLauncher = None; registry = None }
+
 // ── response extractors ───────────────────────────────────────────────────────
 // A builtin knows which shape its operation produces; anything else is an
 // interpreter bug, not a guest-visible error.
@@ -553,7 +567,7 @@ let private resolveProcess
 /// guest-visible typed error that completes immediately, a valid one checks
 /// the exact method + canonical URI before any network IO.
 let private resolveHttp
-  (profile : HostTypes.HttpProfile)
+  (profile : HostHttp.Profile)
   (method : string)
   (url : string)
   (headers : List<string * string>)
@@ -562,7 +576,7 @@ let private resolveHttp
   : Result<Resolved, string> =
   match HostHttp.prepare profile method url headers with
   | Error typedError -> unchecked (produce (fun () -> error typedError))
-  | Ok(canonicalUri, profile) ->
+  | Ok canonicalUri ->
     withChecks
       [ (Permission.Request.http method canonicalUri,
          $"{method.ToUpperInvariant()} {canonicalUri}") ]
@@ -854,7 +868,11 @@ let private resolvePosix
     resolveFile read home (fun home ->
       produce (fun () -> Response.OptionalText(Some home)))
 
-let private resolve (op : Operation) : Result<Resolved, string> =
+let private httpProfile (config : Config) (profile : HostTypes.HttpProfile) =
+  match profile with
+  | HostTypes.HttpProfile.Guest -> config.guestHttp
+
+let private resolve (config : Config) (op : Operation) : Result<Resolved, string> =
   let read = Permission.AccessKind.Read
   match op with
   | Operation.FileRead path ->
@@ -917,7 +935,11 @@ let private resolve (op : Operation) : Result<Resolved, string> =
     withChecks
       [ (Permission.Request.native "process launcher", "finding the process launcher") ]
       (attempt (fun () ->
-        Ok(Response.Path(HostProcess.processLauncherPath overrideVariable))))
+        Ok(
+          Response.Path(
+            HostProcess.processLauncherPath config.processLauncher overrideVariable
+          )
+        )))
   | Operation.RuntimeHash ->
     // Public runtime identity, like the build hash or CPU count. Callers cannot
     // choose a path or read file contents through this operation.
@@ -947,7 +969,7 @@ let private resolve (op : Operation) : Result<Resolved, string> =
         |> Response.EnvEntries))
   | Operation.HttpRequest(profile, method, url, headers, body, timeoutMs, decompress) ->
     resolveHttp
-      profile
+      (httpProfile config profile)
       method
       url
       headers
@@ -967,7 +989,7 @@ let private resolve (op : Operation) : Result<Resolved, string> =
                              timeoutMs,
                              decompress) ->
     resolveHttp
-      profile
+      (httpProfile config profile)
       method
       url
       headers
@@ -1023,7 +1045,7 @@ let private resolve (op : Operation) : Result<Resolved, string> =
           task {
             let! outcome =
               HostProcess.runInWorkspace
-                (HostProcess.processLauncherPath None)
+                (HostProcess.processLauncherPath config.processLauncher None)
                 prefix
                 prepare
                 timeoutMs
@@ -1361,6 +1383,7 @@ let private resolveSessionPosix
 /// the requests from the operation itself, checks them against the access,
 /// and executes.
 let private performWithSession
+  (config : Config)
   (session : Option<HostDescriptors.Session>)
   (access : Permission.Access)
   (op : Operation)
@@ -1527,7 +1550,7 @@ let private performWithSession
               | Some denied -> Task.FromResult denied
               | None -> execute resolved.execute
         | _ ->
-          match resolve op with
+          match resolve config op with
           | Error message -> Task.FromResult(Outcome.Rejected message)
           | Ok resolved ->
             match firstDenial access resolved.checks with
@@ -1540,9 +1563,10 @@ let private performWithSession
     return outcome
   }
 
-let perform access op = performWithSession None access op
+let perform config access op = performWithSession config None access op
 
-let performInSession session access op = performWithSession (Some session) access op
+let performInSession config session access op =
+  performWithSession config (Some session) access op
 
 // ── stream-handle continuations ───────────────────────────────────────────────
 // Used by the HTTP client's DStream closures. The open operation already made
@@ -1585,17 +1609,18 @@ let syncPolicyDirectory (directory : string) : unit =
 /// same checks, and stands still while any other operation is out, until its answer is back on
 /// the loop.
 let performOnClock
+  (config : Config)
   (clock : HostClock.Clock)
   (session : HostDescriptors.Session)
   (access : Permission.Access)
   (op : Operation)
   : Task<Outcome> =
   match clock, op with
-  | HostClock.Real, _ -> performInSession session access op
+  | HostClock.Real, _ -> performInSession config session access op
   | HostClock.Virtual v, Operation.Posix posix when HostClock.answers posix ->
     task {
       let! outcome =
-        match resolve op with
+        match resolve config op with
         | Error message -> Task.FromResult(Outcome.Rejected message)
         | Ok resolved ->
           match firstDenial access resolved.checks with
@@ -1607,4 +1632,5 @@ let performOnClock
         ()
       return outcome
     }
-  | HostClock.Virtual v, _ -> v.Hold(fun () -> performInSession session access op)
+  | HostClock.Virtual v, _ ->
+    v.Hold(fun () -> performInSession config session access op)

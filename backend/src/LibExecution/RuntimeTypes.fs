@@ -6539,6 +6539,9 @@ and ExecutionState =
     /// Host handles belong to this execution, never a process-global guest table.
     descriptorSession : Lazy<HostDescriptors.Session>
 
+    /// What the host decided at startup: the guest HTTP client, the worker executable, the rundir.
+    host : Host.Config
+
     /// The clock this execution reads and sleeps on. Real, except in tests.
     clock : HostClock.Clock
 

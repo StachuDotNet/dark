@@ -54,6 +54,7 @@ let private tryBindListener
       LibExecution.Permissions.Access.start LibExecution.Permissions.Policy.allowAll
     let! outcome =
       LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
         access
         (LibExecution.Host.Operation.HttpServerBind("0.0.0.0", port))
     match outcome with
@@ -949,6 +950,7 @@ let private loopbackAnswersBothNames =
       LibExecution.Permissions.Access.start LibExecution.Permissions.Policy.allowAll
     let! outcome =
       LibExecution.Host.perform
+        TestUtils.TestUtils.testHost
         access
         (LibExecution.Host.Operation.HttpServerBind("127.0.0.1", port))
     let listener =

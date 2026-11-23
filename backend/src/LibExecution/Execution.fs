@@ -78,6 +78,7 @@ let createState
     packageFnCallCache = System.Collections.Concurrent.ConcurrentDictionary()
 
     descriptorSession = Host.createLazyDescriptorSession ()
+    host = Host.Config.defaults ()
     clock = HostClock.Real
     random = HostRandom.Real
 

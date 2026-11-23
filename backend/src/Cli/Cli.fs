@@ -108,6 +108,23 @@ let private startupSettings () : Map<string, string> =
   with _ ->
     Map.empty
 
+/// The guest HTTP client with the store's `http.maxConnectionsPerHost`, if it has one: higher for
+/// a big fan-out, lower to be polite to one host.
+let private hostFrom
+  (settings : Map<string, string>)
+  (host : LibExecution.Host.Config)
+  : LibExecution.Host.Config =
+  match Map.tryFind "http.maxConnectionsPerHost" settings with
+  | Some v ->
+    match System.Int32.TryParse v with
+    | true, n when n >= 1 ->
+      { host with
+          guestHttp =
+            LibExecution.HostHttp.profileOf
+              { host.guestHttp.config with maxConnectionsPerHost = n } }
+    | _ -> host
+  | None -> host
+
 /// The scheduler's settings for this run, from the store's `exec.*`. Workers never go below
 /// one, the caps never below 0 (none), and a store poll under 10 ms is ignored, because a busy
 /// loop on a timer is not a setting anyone means (`config set` refuses one too).
@@ -179,6 +196,7 @@ let private spreadFrom
 
 let execute
   (packageManager : RT.PackageManager)
+  (host : LibExecution.Host.Config)
   /// `--trace` / `--no-trace`, if this run was given one.
   (traceFlag : Option<LibDB.Tracing.TraceDetail.T>)
   /// `--no-spread`.
@@ -192,7 +210,8 @@ let execute
     let state =
       Telemetry.time "cli.buildState" [] (fun () ->
         { state packageManager with
-            branchId = LibDB.PackageManager.currentBranchId () })
+            branchId = LibDB.PackageManager.currentBranchId ()
+            host = host })
     // Bundled Darklang functions, for package-approval checks.
     let bundled = LibDB.ProgramTypes.Fn.ownedBy "Darklang"
     let state =
@@ -272,16 +291,11 @@ let execute
             + $"{counted RT.SpreadCount.PredictionFailures} analyses failed; "
             + $"{counted RT.SpreadCount.NoChunks} ran serially for want of a worker"
           ))
-      match Map.tryFind "http.maxConnectionsPerHost" settings with
-      | Some v ->
-        match System.Int32.TryParse v with
-        | true, n when n >= 1 -> LibExecution.HostHttp.setMaxConnectionsPerHost n
-        | _ -> ()
-      | None -> ()
       let state =
         { tracedUnder settings with
             spread = spreadFrom settings noSpread state.spread
-            exec = execFrom settings state.exec }
+            exec = execFrom settings state.exec
+            host = hostFrom settings state.host }
       return
         LibExecution.Scheduler.executeFunction
           (policyFrom settings state)
@@ -541,10 +555,13 @@ let private runCli (args : string[]) : int =
         if requested "http.private" "DARK_CONFIG_HTTP_PRIVATE" then
           LibExecution.HostHttp.privateNetworkWidening ]
 
-    if not (List.isEmpty widenings) then
-      LibExecution.HostHttp.setGuestConfig (
-        LibExecution.HostHttp.guestConfigWidenedBy widenings
-      )
+    let guestHttp =
+      if List.isEmpty widenings then
+        LibExecution.HostHttp.defaultGuest
+      else
+        LibExecution.HostHttp.profileOf (
+          LibExecution.HostHttp.guestConfigWidenedBy widenings
+        )
 
 
     // Now safe to access LibConfig paths. Gated on DARK_TELEMETRY, the same switch the Dark side
@@ -815,8 +832,8 @@ let private runCli (args : string[]) : int =
 
     // Listed for `dark ps` from any shell, once the branch is known; the file goes when this
     // process does. The branch is its name where one was given, else the stored id, else main.
-    LibExecution.HostRegistry.setDirectory LibConfig.Config.runDir
     LibExecution.HostRegistry.register
+      LibConfig.Config.runDir
       title
       commandLine
       (match flagName, envName, branchId with
@@ -828,7 +845,14 @@ let private runCli (args : string[]) : int =
     let result =
       Telemetry.time "cli.execute" [] (fun () ->
         LibExecution.HostEvents.runHere (fun () ->
-          execute cliPackageManager traceFlag noSpread (Array.toList args)))
+          execute
+            cliPackageManager
+            { LibExecution.Host.Config.defaults () with
+                guestHttp = guestHttp
+                registry = Some LibConfig.Config.runDir }
+            traceFlag
+            noSpread
+            (Array.toList args)))
 
     Telemetry.time "cli.consoleWait" [] NonBlockingConsole.wait
 

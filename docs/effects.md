@@ -154,7 +154,7 @@ directory, environment, process, and HTTP client builtins route through it;
 the host-owned process table (`LibExecution.HostProcess`) and the HTTP
 machinery with its streaming-response table (`LibExecution.HostHttp`) live
 behind it. An HTTP operation names a profile, of which there is one: `Guest`
-(the host's configured guest client, `HostHttp.setGuestConfig`: timeouts and
+(the host's guest client, `Host.Config.guestHttp`: timeouts and
 SSRF guards), so configuration and client objects stay in host-owned state.
 The DU stays a DU so that a second configuration does not have to widen every
 call site again; there WAS a second, reachable only from an all-bundled call

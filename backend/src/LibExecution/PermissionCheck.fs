@@ -183,7 +183,12 @@ let performHostWithAccess
     task {
       let current = state.permissionAccess access
       let! outcome =
-        Host.performOnClock state.clock state.descriptorSession.Value current op
+        Host.performOnClock
+          state.host
+          state.clock
+          state.descriptorSession.Value
+          current
+          op
       match outcome with
       | Host.Outcome.Success response -> return Ok response
       | Host.Outcome.Failed failure -> return Error failure

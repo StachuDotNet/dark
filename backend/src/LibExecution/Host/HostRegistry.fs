@@ -24,9 +24,6 @@ type Entry =
     started : DateTime
   }
 
-// Set once by the CLI at startup (`setDirectory`); empty means this process is not listed.
-let mutable private directory : string = ""
-
 let private alive (pid : int) : bool =
   if OperatingSystem.IsLinux() then
     Directory.Exists $"/proc/{pid}"
@@ -70,50 +67,56 @@ let private parse (json : string) : Option<Entry> =
   with _ ->
     None
 
-/// Where the files live: `<rundir>/run/ps`, beside the daemons' pidfiles. Set once by the CLI.
-let setDirectory (rundir : string) : unit =
-  directory <- Path.Combine(rundir, "run", "ps")
+/// Where the files live: `<rundir>/run/ps`, beside the daemons' pidfiles.
+let private directoryIn (rundir : string) : string =
+  Path.Combine(rundir, "run", "ps")
 
-/// Record this process. Once, at startup, after the title is known. Never raises: a rundir that
-/// cannot be written means this process is simply not listed.
-let register (title : string) (command : string) (branch : string) : unit =
-  if directory <> "" then
-    try
-      Directory.CreateDirectory directory |> ignore<DirectoryInfo>
-      let pid = Environment.ProcessId
-      let path = Path.Combine(directory, $"{pid}.json")
-      File.WriteAllText(
-        path,
-        serialize
-          { pid = pid
-            title = title
-            command = command
-            branch = branch
-            started = DateTime.UtcNow }
+/// Record this process under <param rundir>. Once, at startup, after the title is known. Never
+/// raises: a rundir that cannot be written means this process is simply not listed.
+let register
+  (rundir : string)
+  (title : string)
+  (command : string)
+  (branch : string)
+  : unit =
+  let directory = directoryIn rundir
+  try
+    Directory.CreateDirectory directory |> ignore<DirectoryInfo>
+    let pid = Environment.ProcessId
+    let path = Path.Combine(directory, $"{pid}.json")
+    File.WriteAllText(
+      path,
+      serialize
+        { pid = pid
+          title = title
+          command = command
+          branch = branch
+          started = DateTime.UtcNow }
+    )
+    let remove () =
+      try
+        File.Delete path
+      with _ ->
+        ()
+    AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> remove ())
+    // A TERM does not always reach ProcessExit through a blocking wait; remove the file
+    // first, then let the default termination proceed.
+    if not (OperatingSystem.IsWindows()) then
+      Runtime.InteropServices.PosixSignalRegistration.Create(
+        Runtime.InteropServices.PosixSignal.SIGTERM,
+        (fun ctx ->
+          remove ()
+          ctx.Cancel <- false)
       )
-      let remove () =
-        try
-          File.Delete path
-        with _ ->
-          ()
-      AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> remove ())
-      // A TERM does not always reach ProcessExit through a blocking wait; remove the file
-      // first, then let the default termination proceed.
-      if not (OperatingSystem.IsWindows()) then
-        Runtime.InteropServices.PosixSignalRegistration.Create(
-          Runtime.InteropServices.PosixSignal.SIGTERM,
-          (fun ctx ->
-            remove ()
-            ctx.Cancel <- false)
-        )
-        |> ignore<Runtime.InteropServices.PosixSignalRegistration>
-    with _ ->
-      ()
+      |> ignore<Runtime.InteropServices.PosixSignalRegistration>
+  with _ ->
+    ()
 
-/// Every Dark process on the machine that is still alive, oldest first. Stale files are removed
-/// on the way.
-let list () : Entry list =
-  if directory = "" || not (Directory.Exists directory) then
+/// Every Dark process listed under <param rundir> that is still alive, oldest first. Stale files
+/// are removed on the way.
+let list (rundir : string) : Entry list =
+  let directory = directoryIn rundir
+  if not (Directory.Exists directory) then
     []
   else
     Directory.GetFiles(directory, "*.json")

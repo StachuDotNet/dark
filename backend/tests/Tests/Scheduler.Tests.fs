@@ -1298,7 +1298,6 @@ let private readsHostCallIsNotTheProcesssWait =
     // A read's host call is handed back as a promise and the process runs on, so `ps` names
     // what the process is actually parked on, not the GET. The test config lets a guest reach
     // loopback by IP, and `*.localhost` is the name that resolves there.
-    installTestHttpConfig ()
     let listener =
       new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
     listener.Start()
@@ -1348,7 +1347,6 @@ let private writesParkOnTheirHostCall =
         testTask label {
           // The same server as above, which answers only when told. A read would hand the
           // call back in flight and run on; this has to wait at it, in program order.
-          installTestHttpConfig ()
           let listener =
             new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
           listener.Start()
@@ -2006,7 +2004,6 @@ let private serveOnceAllArrive
 
 let private parallelGetsThrough (stack : string) (count : int) =
   task {
-    installTestHttpConfig ()
     let listener =
       new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
     listener.Start()
@@ -2110,7 +2107,6 @@ let private countConcurrentConnections (listener : System.Net.Sockets.TcpListene
 
 let private getsPerHostAreCapped =
   testTask "GETs to one host share 50 connections, and the rest wait their turn" {
-    installTestHttpConfig ()
     let listener =
       new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
     listener.Start()
@@ -2209,7 +2205,6 @@ let private httpAnswer (status : string) (headers : List<string>) (body : string
 /// another port (another origin), answers the same way; `answer` is told its port.
 let private againstServer (answer : int -> Seen -> string) (code : string) =
   task {
-    installTestHttpConfig ()
     let listen () =
       let listener =
         new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
@@ -2398,7 +2393,6 @@ let private dripThenDone (listener : System.Net.Sockets.TcpListener) =
 
 let private droppedStreamsAreClosed =
   testTask "a stream left behind by a redirect is closed" {
-    installTestHttpConfig ()
     let listener =
       new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
     listener.Start()
@@ -2440,7 +2434,6 @@ say(send(Stdlib.HttpClient.Request.make("POST", base + "/p", [], Stdlib.Bytes.em
 
 let private middlewareTimeoutReachesTheHost =
   testTask "Middleware.timeout is enforced by the host" {
-    installTestHttpConfig ()
     let listener =
       new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
     listener.Start()
@@ -3036,7 +3029,6 @@ let private registryListsAndForgets =
         $"dark-ps-test-{System.Guid.NewGuid()}"
       )
     System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
-    HostRegistry.setDirectory dir
     try
       // A stale entry: a pid no process has.
       let psDir = System.IO.Path.Combine(dir, "run", "ps")
@@ -3046,8 +3038,8 @@ let private registryListsAndForgets =
         "{\"pid\":999999,\"title\":\"dark gone\",\"command\":\"dark gone\",\"branch\":\"\",\"started\":\"2026-01-01T00:00:00.0000000Z\"}"
       )
       // A quote in the command line is what a hand-rolled reader trips on.
-      HostRegistry.register "dark tests" "dark eval \"1\"" "main"
-      let entries = HostRegistry.list ()
+      HostRegistry.register dir "dark tests" "dark eval \"1\"" "main"
+      let entries = HostRegistry.list dir
       let me = System.Environment.ProcessId
       Expect.isTrue
         (entries
@@ -3063,7 +3055,6 @@ let private registryListsAndForgets =
         ))
         "and its file was removed"
     finally
-      HostRegistry.setDirectory ""
       System.IO.Directory.Delete(dir, true)
   }
 
@@ -3341,7 +3332,6 @@ let fast = Stdlib.Exec.spawn(fun () -> (let _ = post("/fast") in Builtin.testTra
 (Stdlib.Exec.await(slow), Stdlib.Exec.await(fast))"""
     let runOn (clock : RT.ExecutionState -> RT.ExecutionState) =
       task {
-        installTestHttpConfig ()
         Trace.take () |> ignore<List<string>>
         let listener =
           new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)
@@ -3381,7 +3371,6 @@ let private virtualHostAnswerBackAtOnceWaitsItsTurn =
       """let slow = Stdlib.Exec.spawn(fun () -> (let _ = Stdlib.HttpClient.request("POST", "http://test.dlio.localhost:PORT/slow", [], Stdlib.Bytes.empty) in Builtin.testTrace("slow")))
 let fast = Stdlib.Exec.spawn(fun () -> (let cwd = Stdlib.Cli.Dir.current() in Builtin.testTrace(if Stdlib.Result.isOk(cwd) then "fast" else "no cwd")))
 (Stdlib.Exec.await(slow), Stdlib.Exec.await(fast))"""
-    installTestHttpConfig ()
     Trace.take () |> ignore<List<string>>
     let listener =
       new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0)

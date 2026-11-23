@@ -127,7 +127,7 @@ let testPackageFn
 
 
 /// Shared guest HTTP config: production SSRF guards with loopback enabled for
-/// the in-process mock server. The guest profile is process-wide.
+/// the in-process mock server.
 let testHttpConfig : LibExecution.HostHttp.Configuration =
   { LibExecution.HostHttp.defaultConfig with
       allowedIP =
@@ -135,8 +135,16 @@ let testHttpConfig : LibExecution.HostHttp.Configuration =
           System.Net.IPAddress.IsLoopback ip
           || LibExecution.HostHttp.defaultConfig.allowedIP ip }
 
-let installTestHttpConfig () : unit =
-  LibExecution.HostHttp.setGuestConfig testHttpConfig
+/// The host every test state runs under: `testHttpConfig`, and the CLI that
+/// run-fsharp-tests selected as the worker executable, since Tests has no worker entry point.
+let testHost : LibExecution.Host.Config =
+  { LibExecution.Host.Config.defaults () with
+      guestHttp = LibExecution.HostHttp.profileOf testHttpConfig
+      processLauncher =
+        match System.Environment.GetEnvironmentVariable "DARK_TEST_CLI" with
+        | null
+        | "" -> None
+        | path -> Some(System.IO.Path.GetFullPath path) }
 
 /// FNV-1a over a test's name. .NET's own string hash is randomised per process, so it
 /// cannot be used to decide anything two processes have to agree on: which shard owns a
@@ -162,7 +170,6 @@ let private builtinsByPm =
   System.Runtime.CompilerServices.ConditionalWeakTable<PT.PackageManager, RT.Builtins>()
 
 let builtins (pm : PT.PackageManager) : RT.Builtins =
-  installTestHttpConfig ()
   builtinsByPm.GetValue(
     pm,
     fun pm ->
@@ -186,7 +193,7 @@ let localBuiltIns (pm : PT.PackageManager) = builtins pm
 
 let executionStateFor
   (pmPT : PT.PackageManager)
-  // The bool is retained for existing call sites; HTTP config is process-wide.
+  // The bool is retained for existing call sites; every test state gets `testHost`.
   (_allowLocalHttpAccess : bool)
   : RT.ExecutionState =
   let domains = []
@@ -248,6 +255,7 @@ let executionStateFor
         notifier
       // Ordinary tests use allow-all; security tests install narrower access.
       |> Exe.setInstancePolicy LibExecution.Permissions.Policy.allowAll
+      |> fun state -> { state with host = testHost }
     let stored = LibDB.PackageManager.rt.getValue
     let notStored (RT.Hash h as hash) =
       match stored hash with

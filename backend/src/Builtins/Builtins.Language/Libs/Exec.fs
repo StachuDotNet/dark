@@ -257,8 +257,12 @@ let fns () : List<BuiltInFn> =
         + "writes under the rundir at startup."
       fn =
         (function
-        | _, _, _, [| DUnit |] ->
-          let rows = LibExecution.HostRegistry.list () |> List.map machineProcessToDT
+        | state, _, _, [| DUnit |] ->
+          let rows =
+            state.host.registry
+            |> Option.map LibExecution.HostRegistry.list
+            |> Option.defaultValue []
+            |> List.map machineProcessToDT
           DList(ValueType.Known(machineProcessType ()), Items(rows))
         | _ -> incorrectArgs ())
       previewable = Impure

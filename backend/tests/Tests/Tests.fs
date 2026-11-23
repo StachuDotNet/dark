@@ -140,12 +140,6 @@ let main (args : string array) : int =
         System.IO.Directory.Delete(policyDir, true)
       with _ ->
         ())
-    // Tests has no CLI worker entry point. Use the CLI selected by run-fsharp-tests.
-    match System.Environment.GetEnvironmentVariable "DARK_TEST_CLI" with
-    | null
-    | "" -> ()
-    | path -> LibExecution.HostProcess.setProcessLauncher path
-
     // Most tests don't need trace data on disk; tests that DO check
     // trace contents (CliTraces) flip this to Detailed at their entry.
     LibDB.Tracing.TraceDetail.set LibDB.Tracing.TraceDetail.Off

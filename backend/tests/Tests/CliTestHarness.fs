@@ -89,6 +89,7 @@ let private buildState () : Task<RT.ExecutionState> =
       { Exe.setInstancePolicy
           LibExecution.Permissions.Policy.allowAll
           (Exe.createState builtins pmRT Exe.noTracing sendException notify) with
+          host = TestUtils.TestUtils.testHost
           canManagePolicies = true
           isBundledPackageFn = fun (RT.Hash h) -> bundled h }
   }

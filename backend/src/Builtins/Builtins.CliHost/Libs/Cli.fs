@@ -2249,7 +2249,7 @@ let fns () : List<BuiltInFn> =
 ///
 /// Guest HTTP runs under `HostHttp`'s default guest configuration: SSRF
 /// guards on (loopback / RFC1918 / metadata blocked). A host that must reach
-/// private targets replaces it with `LibExecution.HostHttp.setGuestConfig`.
+/// private targets replaces it through `LibExecution.Host.Config.guestHttp`.
 let builtinsToUse () : RT.Builtins =
   let ptPM = LibDB.PackageManager.pt
   LibExecution.Builtin.combine

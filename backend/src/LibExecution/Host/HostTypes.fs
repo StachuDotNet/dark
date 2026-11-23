@@ -137,7 +137,7 @@ type PosixOp =
 
 /// Which host HTTP configuration an operation runs under. `Guest` is the
 /// SSRF-guarded configuration every guest request uses (the host may replace
-/// it with `HostHttp.setGuestConfig`). It is the only one; the DU stays so a
+/// it through `Host.Config.guestHttp`). It is the only one; the DU stays so a
 /// second configuration does not have to widen every call site.
 [<RequireQualifiedAccess>]
 type HttpProfile = | Guest

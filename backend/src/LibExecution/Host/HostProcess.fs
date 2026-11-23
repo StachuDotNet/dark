@@ -198,15 +198,11 @@ let sourcesHash (root : string) (files : Set<string>) : string =
       hash.AppendData(System.Text.Encoding.UTF8.GetBytes "missing\n")
   System.Convert.ToHexStringLower(hash.GetHashAndReset())
 
-// Set once at startup, by a host whose worker entry point is another executable.
-let mutable private processLauncher : Option<string> = None
-
-/// Configure at host startup when another executable provides the worker entry point.
-let setProcessLauncher (path : string) : unit =
-  processLauncher <- Some(Path.GetFullPath path)
-
-/// CLI hosts launch themselves unless startup configured a different executable.
-let processLauncherPath (overrideVariable : Option<string>) : string =
+/// CLI hosts launch themselves unless the host names another executable (<param launcher>).
+let processLauncherPath
+  (launcher : Option<string>)
+  (overrideVariable : Option<string>)
+  : string =
   // Resolving the executable is part of the Native process operation, as PATH
   // resolution is for ProcessRun. It does not add an EnvRead requirement.
   let overridePath =
@@ -216,7 +212,7 @@ let processLauncherPath (overrideVariable : Option<string>) : string =
       | null
       | "" -> None
       | path -> Some(Path.GetFullPath path))
-  match overridePath |> Option.orElse processLauncher with
+  match overridePath |> Option.orElse launcher with
   | None -> currentExecutablePath ()
   | Some path -> path
 

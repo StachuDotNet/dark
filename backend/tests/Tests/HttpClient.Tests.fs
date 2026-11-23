@@ -576,10 +576,8 @@ let testsFromFiles version =
 module MockHelpers =
   module HostHttp = LibExecution.HostHttp
 
-  /// The guest profile used by `Host.perform`; loopback is enabled for mocks.
-  let profile () : HostHttp.Profile =
-    installTestHttpConfig ()
-    HostHttp.profileFor LibExecution.HostTypes.HttpProfile.Guest
+  /// The guest profile test states run under; loopback is enabled for mocks.
+  let profile () : HostHttp.Profile = testHost.guestHttp
 
   /// Register a test case in the mock server and return the URL to hit.
   let registerTestCase
@@ -1077,8 +1075,7 @@ module HeaderValidationTests =
   module HT = LibExecution.HostTypes
 
   let private prepare (headers : List<string * string>) =
-    HostHttp.prepare HT.HttpProfile.Guest "GET" "http://192.0.2.1/" headers
-    |> Result.map fst
+    HostHttp.prepare testHost.guestHttp "GET" "http://192.0.2.1/" headers
 
   let private refused name (expected : HT.HttpBadHeader) headers =
     test name {

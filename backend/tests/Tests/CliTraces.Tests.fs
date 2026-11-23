@@ -156,10 +156,12 @@ let private testPsShowTakesAPid =
           $"dark-ps-show-{System.Guid.NewGuid()}"
         )
       System.IO.Directory.CreateDirectory dir |> ignore<System.IO.DirectoryInfo>
-      LibExecution.HostRegistry.setDirectory dir
+      let state =
+        let exe = executionState state
+        InProcess { exe with host = { exe.host with registry = Some dir } }
       try
         let command = "dark serve Demo.router --port 9095 --live"
-        LibExecution.HostRegistry.register "dark serve :9095" command "main"
+        LibExecution.HostRegistry.register dir "dark serve :9095" command "main"
         let pid = string System.Environment.ProcessId
         let! (out, status) = runCliWithStatus state [ "ps"; "show"; pid ]
         Expect.equal status 0 $"a registered pid is shown: {out}"
@@ -167,7 +169,6 @@ let private testPsShowTakesAPid =
         let! (_out, missing) = runCliWithStatus state [ "ps"; "show"; "999999" ]
         Expect.equal missing 1 "a pid nothing has is still a refusal"
       finally
-        LibExecution.HostRegistry.setDirectory ""
         System.IO.Directory.Delete(dir, true)
     })
 
