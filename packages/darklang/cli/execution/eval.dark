@@ -104,6 +104,26 @@ let evaluateUnder(
     Result.Error(ExecutionError.formatForTerminal(state.accountID, state.currentBranchId, err))
 
 
+/// `eval --json`: the value as JSON, or why it has no JSON form, such as a fn or a stream.
+let evaluateJson(
+  state: AppState,
+  expr: String,
+  harmful: Harmful,
+  grants: LanguageTools.Permissions.Policy)
+  : Result<Option<String>, String> =
+  match evaluateValueUnder(state.accountID, state.currentBranchId, expr, harmful, grants) with
+  | Ok(value) ->
+    Stdlib.Json.checkedSerialize(value)
+    |> Stdlib.Result.map(fun json -> Option.Some(json))
+    |> Stdlib.Result.mapError(fun e -> Stdlib.display(e))
+  | Error(error) ->
+    match error with
+    | Runtime(_, _, _) -> ExecutionError.printCallStack(state.currentBranchId, error)
+    | _ -> ()
+
+    Result.Error(ExecutionError.formatForTerminal(state.accountID, state.currentBranchId, error))
+
+
 let execute(state: AppState, args: List<String>): AppState =
   let harmful =
     if Stdlib.List.contains(args, "--allow-harmful") then
@@ -113,7 +133,10 @@ let execute(state: AppState, args: List<String>): AppState =
 
   // What the expression cost, net of the measuring harness itself: see Perf.floor.
   let wantStats = Stdlib.List.contains(args, "--stats")
-  let args = args |> Stdlib.List.filter(fun a -> a != "--allow-harmful" && a != "--stats")
+  let json = Stdlib.List.contains(args, "--json")
+  let args =
+    args
+    |> Stdlib.List.filter(fun a -> a != "--allow-harmful" && a != "--stats" && a != "--json")
   let (rules, args) = allowRules([], args)
   match Permissions.Command.replacePolicy([ Stdlib.String.join(rules, ";") ]) with
   | Error(message) ->
@@ -122,7 +145,7 @@ let execute(state: AppState, args: List<String>): AppState =
   | Ok(grants) when Stdlib.Bool.not(Stdlib.List.isEmpty(grants.deny)) ->
     printErr("--allow takes allow rules only")
     failed(state)
-  | Ok(grants) -> executeUnder(state, args, harmful, wantStats, grants)
+  | Ok(grants) -> executeUnder(state, args, harmful, wantStats, json, grants)
 
 
 /// Every `--allow <rules>` in <param args>, before or after the expression, and the rest in order.
@@ -141,6 +164,7 @@ let executeUnder(
   args: List<String>,
   harmful: Harmful,
   wantStats: Bool,
+  json: Bool,
   grants: LanguageTools.Permissions.Policy)
   : AppState =
   match args with
@@ -160,15 +184,21 @@ let executeUnder(
       printErr(message)
       failed(state)
     | Ok(expr) ->
+      let evaluateIt =
+        if json then
+          fun () -> evaluateJson(state, expr, harmful, grants)
+        else
+          fun () -> evaluateUnder(state, expr, harmful, grants)
+
       let (stats, outcome) =
         if wantStats then
           let harness = LanguageTools.Perf.floor()
           let (raw, result) =
-            LanguageTools.Perf.measure(fun () -> evaluateUnder(state, expr, harmful, grants))
+            LanguageTools.Perf.measure(evaluateIt)
 
           (Option.Some(LanguageTools.Perf.minus(raw, harness)), result)
         else
-          (Option.None, evaluateUnder(state, expr, harmful, grants))
+          (Option.None, evaluateIt())
 
       let newState =
         match outcome with
@@ -203,11 +233,13 @@ let complete(_state: AppState, _args: List<String>): List<Completion.CompletionI
 
 
 let help(_state: AppState): String =
-  [ "Usage: eval [--allow <rules>] <expression>"
+  [ "Usage: eval [--allow <rules>] [--json] <expression>"
     "       eval -    (read expression from stdin, for multi-line input)"
     "Evaluate a Dark expression and display the result."
     ""
     "  --allow   allow resources for this evaluation only, as `run --allow` does"
+    "  --json    print the value as JSON: a String is quoted, Unit is null. A value"
+    "            with no JSON form, such as a fn or a stream, is an error."
     "  --stats   also report what it cost: allocation, time, instructions, calls and"
     "            frame pushes, net of the measuring harness, tagged with the build they"
     "            came from. Inside a script, call Perf.measure instead: it measures the"
@@ -218,6 +250,7 @@ let help(_state: AppState): String =
     "  eval \"hello\" + \"world\"         - String concatenation"
     "  eval [1, 2, 3] |> Stdlib.List.length  - List operations"
     "  eval Stdlib.String.length(\"test\") - Function calls"
+    "  eval --json [1, 2, 3]          - [1,2,3]"
     ""
     "  # Multi-line expression via stdin (run from shell, not the REPL):"
     "  dark eval - <<'EOF'"

@@ -853,3 +853,34 @@ test searchJsonRanksAndLimitsLikeText = Instance.withInstance(fun i ->
              |> Stdlib.Test.equal(Option.Some("Darklang.Stdlib.List.map"))
 
              Stdlib.List.length(fns) |> Stdlib.Test.equal(2) ])) ]))
+
+
+/// `eval --json` prints the value itself as JSON. A value with no JSON form is refused.
+test evalAnswersInJson = Instance.withInstance(fun i ->
+  Stdlib.Test.all(
+    [ check(
+        i,
+        [ "eval", "--json", "[1, 2, 3]" ],
+        [ (fun j ->
+             j
+             |> Stdlib.Test.equal(
+               Stdlib.AltJson.Json.Array(
+                 [ Stdlib.AltJson.Json.Integer(1)
+                   Stdlib.AltJson.Json.Integer(2)
+                   Stdlib.AltJson.Json.Integer(3) ]))) ])
+
+      check(
+        i,
+        [ "eval", "--json", "\"hi\"" ],
+        [ (fun j -> j |> Stdlib.Test.equal(Stdlib.AltJson.Json.String("hi"))) ])
+
+      check(
+        i,
+        [ "eval", "--json", "()" ],
+        [ (fun j -> j |> Stdlib.Test.equal(Stdlib.AltJson.Json.Null)) ])
+
+      refuses(i, [ "eval", "--json", "fun x -> x + 1" ], "Cannot serialize a function")
+      refuses(
+        i,
+        [ "eval", "--json", "Stdlib.Stream.fromList([1])" ],
+        "Cannot serialize a stream") ]))
