@@ -1,6 +1,13 @@
 module Darklang.Cli.Packages.Fn
 
 let execute(state: AppState, args: List<String>): AppState =
+  let (rest, after) = ModuleCommand.afterSaveFlags(args)
+  match rest with
+  | [location, ...] -> Edit.afterItemSave(create(state, rest), location, after)
+  | _ -> create(state, rest)
+
+
+let create(state: AppState, args: List<String>): AppState =
   match args with
   | [] ->
     Stdlib.printLine(help(state))
@@ -195,6 +202,10 @@ let help(_state: AppState): String =
     "    if n < 2 then n"
     "    else fib(n - 1) + fib(n - 2)"
     "  EOF"
+    ""
+    "After a save that succeeded, --test runs the tests in the function's module,"
+    "and --try '<args>' runs that module's `main` with those arguments:"
+    "  dark fn Me.Demo.main '(args: List<String>): Int64 = Stdlib.List.length(args)' --try 'a b'"
     ""
     "--description <text> documents the function. A `///` above a parameter"
     "documents that parameter, and one above a full `let` documents the function:"

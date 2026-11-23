@@ -1,0 +1,91 @@
+/// `--test` and `--try` on the save commands: save, then run the module's tests or its `main`.
+module Darklang.Cli.Tests.SaveTestTry
+
+let write(i: Instance.T, name: String, source: String): String =
+  let path = Instance.home(i) + "/" + name
+  let _ = Stdlib.Cli.File.writeAtomic(path, source) |> Builtin.unwrap
+  path
+
+
+val doubled: String =
+  "let double(n: Int64): Int64 = n * 2\ntest doubles = double(4) |> Stdlib.Test.equal(8)\n"
+
+
+test moduleRunsItsTests = Instance.withInstance(fun i ->
+  let path = write(i, "t.dark", doubled)
+  let (code, out) = Instance.ran(i, [ "module", "/Me.T", path, "--test" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, out)
+      Instance.says(out, "PASS Me.T.doubles", "the module's test ran") ]))
+
+
+test editExitsWithTheTests = Instance.withInstance(fun i ->
+  let path = write(i, "t.dark", doubled)
+  let _ = Instance.ran(i, [ "module", "/Me.T", path ])
+  let broken = write(i, "double.dark", "let double(n: Int64): Int64 = n * 3\n")
+  let (code, out) = Instance.ran(i, [ "edit", "Me.T.double", broken, "--test" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 1, out)
+      Instance.says(out, "Updated Me.T.double", "the edit was saved")
+      Instance.says(
+        out,
+        "FAIL Me.T.doubles",
+        "the test ran against the edit") ]))
+
+
+test noTestsIsNotAFailure = Instance.withInstance(fun i ->
+  let path = write(i, "t.dark", "let double(n: Int64): Int64 = n * 2\n")
+  let (code, out) = Instance.ran(i, [ "module", "/Me.T", path, "--test" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, out)
+      Instance.says(
+        out,
+        "No tests in Me.T",
+        "says there was nothing to run") ]))
+
+
+test tryRunsMain = Instance.withInstance(fun i ->
+  let path =
+    write(
+      i,
+      "t.dark",
+      "let main(args: List<String>): Int64 =\n  Stdlib.printLine(Stdlib.String.join(args, \"|\"))\n  3\n")
+
+  let (code, out) =
+    Instance.ran(i, [ "module", "/Me.T", path, "--try", "a 'b c'" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 3, out)
+      Instance.says(out, "a|b c", "main got the words")
+      Instance.says(out, "Exit code: 3", "the exit code is shown") ]))
+
+
+test fnTriesMain = Instance.withInstance(fun i ->
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "fn"
+        "Me.T.main"
+        "(args: List<String>): Int64 = Stdlib.List.length(args)"
+        "--try"
+        "x y" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 2, out)
+      Instance.says(out, "Exit code: 2", "main ran after the save") ]))
+
+
+test aFailedSaveRunsNothing = Instance.withInstance(fun i ->
+  let path =
+    write(
+      i,
+      "t.dark",
+      "let main(args: List<String>): Int64 = \"x\"\ntest t = 1 |> Stdlib.Test.equal(1)\n")
+
+  let (code, out) =
+    Instance.ran(i, [ "module", "/Me.T", path, "--test", "--try", "a" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 1, out)
+      Instance.doesNotSay(out, "Running", "nothing ran after a type error")
+      Instance.doesNotSay(out, "Exit code", "main did not run") ]))

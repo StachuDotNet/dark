@@ -213,6 +213,25 @@ let applyPatch(
 
 
 let execute(state: AppState, args: List<String>): AppState =
+  let (rest, after) = ModuleCommand.afterSaveFlags(args)
+  let edited = editItem(state, rest)
+  match rest
+        |> Stdlib.List.filter(fun arg -> arg != "--patch")
+        |> Stdlib.List.head with
+  | Some(name) -> afterItemSave(edited, name, after)
+  | None -> edited
+
+
+/// <fn ModuleCommand.afterSave> for the module that holds the item <param name>.
+let afterItemSave(saved: AppState, name: String, after: ModuleCommand.AfterSave): AppState =
+  match Traversal.traverse(saved.currentBranchId, saved.packageData.currentLocation, name)
+        |> Stdlib.Result.toOption
+        |> Stdlib.Option.andThen(itemLocation) with
+  | Some(loc) -> ModuleCommand.afterSave(saved, moduleArgFor(loc), after)
+  | None -> saved
+
+
+let editItem(state: AppState, args: List<String>): AppState =
   let branchId = state.currentBranchId
   let usePatch = Stdlib.List.contains(args, "--patch")
   let positionalArgs = Stdlib.List.filter(args, fun argument -> argument != "--patch")
@@ -359,6 +378,10 @@ let help(_state: AppState): String =
     "  dark edit <name>           open $EDITOR on the declaration, apply on save"
     "  dark edit <name> <file|-> apply a file or full declaration from stdin"
     "  dark edit <name> --patch - apply a context patch from stdin"
+    ""
+    "  After a save that succeeded, --test runs the tests in the item's module,"
+    "  and --try '<args>' runs that module's `main` with those arguments."
+    "  The command exits with the tests' result, then the program's."
     ""
     "  The file holds one declaration, the same form `dark module` takes."
     "  `dark view <name> --raw` prints exactly that form, so reading an item,"

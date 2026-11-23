@@ -451,11 +451,117 @@ let readAndSaveEdit(state: AppState, modulePath: String, sourcePath: String): Ap
   readAndSave(state, modulePath, sourcePath, SaveMode.Edit)
 
 
+/// What a save runs once it has succeeded: `--test` and `--try <args>`.
+type AfterSave =
+  { test: Bool
+    tryArgs: Option<String> }
+
+
+/// <param args> without `--test` and `--try <args>`, and what those asked for.
+let afterSaveFlags(args: List<String>): (List<String> * AfterSave) =
+  afterSaveFlagsFrom(args, [], AfterSave { test = false, tryArgs = Option.None })
+
+
+let afterSaveFlagsFrom(
+  remaining: List<String>,
+  kept: List<String>,
+  after: AfterSave)
+  : (List<String> * AfterSave) =
+  match remaining with
+  | [] -> (Stdlib.List.reverse(kept), after)
+  | ["--test", ...rest] -> afterSaveFlagsFrom(rest, kept, { after with test = true })
+  | ["--try", value, ...rest] ->
+    afterSaveFlagsFrom(rest, kept, { after with tryArgs = Option.Some(value) })
+  | [arg, ...rest] when Stdlib.String.startsWith(arg, "--try=") ->
+    afterSaveFlagsFrom(
+      rest,
+      kept,
+      { after with tryArgs = Option.Some(Stdlib.String.dropFirst(arg, 6)) })
+  | [arg, ...rest] -> afterSaveFlagsFrom(rest, [ arg, ...kept ], after)
+
+
+/// The words of <param s> as a shell splits them: on spaces, with quotes keeping theirs.
+let shellWords(s: String): List<String> =
+  shellWordsFrom(Stdlib.String.toList(s), Option.None, "", false, [])
+
+
+let shellWordsFrom(
+  chars: List<Char>,
+  quote: Option<Char>,
+  word: String,
+  started: Bool,
+  words: List<String>)
+  : List<String> =
+  match chars with
+  | [] -> Stdlib.List.reverse(if started then [ word, ...words ] else words)
+  | [c, ...rest] ->
+    match quote with
+    | Some(q) when c == q -> shellWordsFrom(rest, Option.None, word, true, words)
+    | Some(_) -> shellWordsFrom(rest, quote, word + Stdlib.String.fromChar(c), true, words)
+    | None when c == '"' || c == '\'' -> shellWordsFrom(rest, Option.Some(c), word, true, words)
+    | None when c == ' ' ->
+      shellWordsFrom(rest, Option.None, "", false, if started then [ word, ...words ] else words)
+    | None -> shellWordsFrom(rest, Option.None, word + Stdlib.String.fromChar(c), true, words)
+
+
+/// Once a save has succeeded, run what <param after> asks for in the module at <param modulePath>:
+/// its tests as `dark test run` does, then its `main` as `dark run` does. The exit code is the
+/// tests' if they failed, else the program's.
+let afterSave(saved: AppState, modulePath: String, after: AfterSave): AppState =
+  if saved.exitCode != 0 || Stdlib.Bool.not(after.test) && after.tryArgs == Option.None then
+    saved
+  else
+    match Location.parseRelativeTo(
+            saved.packageData.currentLocation,
+            modulePath + ".__module__") with
+    | Error(message) ->
+      printErr($"Invalid module location: {message}")
+      failed(saved)
+    | Ok(location) ->
+      let moduleName =
+        Stdlib.String.join(Stdlib.List.prepend(location.modules, location.owner), ".")
+
+      let tested = if after.test then testModule(saved, moduleName) else saved
+      match after.tryArgs with
+      | None -> tested
+      | Some(args) ->
+        let mainName = moduleName + ".main"
+        Stdlib.printLine("")
+        Stdlib.printLine(Stdlib.String.trim($"Running {mainName} {args}"))
+        let tried =
+          Run.executePackageFn(
+            tested,
+            mainName,
+            shellWords(args),
+            Run.Options
+              { allowHarmful = false
+                sandbox = false
+                grants = LanguageTools.Permissions.Policy { allow = [], deny = [] } },
+            false)
+
+        Stdlib.printLine($"Exit code: {tried.exitCode}")
+        if tested.exitCode != 0 then
+          { tried with exitCode = tested.exitCode }
+        else
+          tried
+
+
+/// The tests in <param moduleName>. None is not a failure: the save itself succeeded.
+let testModule(state: AppState, moduleName: String): AppState =
+  if Stdlib.List.isEmpty(Test.selectedTests(state.currentBranchId, [ moduleName ])) then
+    Stdlib.printLine($"No tests in {moduleName}")
+    state
+  else
+    Test.runTests(state, [ moduleName ])
+
+
 let execute(state: AppState, args: List<String>): AppState =
-  match args with
-  | [modulePath, sourcePath] -> readAndSave(state, modulePath, sourcePath, SaveMode.Module)
+  let (positional, after) = afterSaveFlags(args)
+  match positional with
+  | [modulePath, sourcePath] ->
+    afterSave(readAndSave(state, modulePath, sourcePath, SaveMode.Module), modulePath, after)
   | _ ->
-    printErr("Usage: module <module> <source-file|->")
+    printErr("Usage: module <module> <source-file|-> [--test] [--try <args>]")
     failed(state)
 
 
@@ -473,7 +579,7 @@ let defineBundled(modulePath: String, source: String): Int64 =
 let help(_state: AppState): String =
   [ "Define a module from multiple package declarations"
     ""
-    "Usage: module <module> <source-file|->"
+    "Usage: module <module> <source-file|-> [--test] [--try <args>]"
     ""
     "The source may contain functions, types, values, tests, and nested modules."
     "Valid declarations are saved as WIP in one batch; the at-rest"
@@ -484,6 +590,10 @@ let help(_state: AppState): String =
     "as drafts. Other incomplete checks warn and exit 0."
     "Saving again replaces what the source has; names it no longer has stay and"
     "are listed, for `delete`."
+    ""
+    "After a save that succeeded, --test runs the module's tests, and"
+    "--try '<args>' runs its `main` with those arguments and prints its exit"
+    "code. The command exits with the tests' result, then the program's."
     ""
     "Example:"
     "  dark module /Me.Example - <<'EOF'"
