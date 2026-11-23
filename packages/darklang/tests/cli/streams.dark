@@ -308,3 +308,13 @@ test eachCommandKeepsItsStreams = Instance.withInstance(fun i ->
     faults == [],
     "commands that put a line on the wrong stream, or exited wrong:\n"
     + Stdlib.String.join(faults, "\n")))
+
+
+test aSearchForADocsTopicPointsThereOnStderr = Instance.withInstance(fun i ->
+  let (code, out, err) = plainStreams(i, [ "search", "async" ])
+  let (_, _, plainErr) = plainStreams(i, [ "search", "Csv" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the search ran")
+      Instance.says(err, "  hint: `dark docs processes` covers async.", "async is a docs topic")
+      Instance.doesNotSay(out, "dark docs", "the results stay as they were")
+      Instance.doesNotSay(plainErr, "dark docs", "Csv is not a docs topic") ]))

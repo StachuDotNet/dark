@@ -51,6 +51,13 @@ let operatorHint(branchId: Uuid, query: String): Unit =
   | None -> ()
 
 
+let docsHint(query: String): Unit =
+  let word = Stdlib.String.trim(query)
+  match Docs.Command.Topics.findTopic(word) with
+  | Some(topic) -> printHint($"`dark docs {topic.name}` covers {word}.")
+  | None -> ()
+
+
 // Ranks a name by how directly it answers the query (lower = better).
 // Beyond exact and prefix matches, we reward a name the query *elaborates* —
 // `parse` for the query `parseInt`, `get` for `getEnvVar` — since that name is
@@ -1522,6 +1529,7 @@ let executeQuery(state: AppState, args: List<String>): AppState =
           Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText($"No results found for: {queryText}"))
           printHiddenModulesHint()
           operatorHint(state.currentBranchId, rawQueryText)
+          docsHint(rawQueryText)
           hiddenTestsHint(hiddenTests)
           hiddenHelpersHint(hiddenHelpers)
           nothingFoundLines(found)
@@ -1539,6 +1547,7 @@ let executeQuery(state: AppState, args: List<String>): AppState =
           | None -> ()
 
           operatorHint(state.currentBranchId, rawQueryText)
+          docsHint(rawQueryText)
           match alsoSearched with
           | [] -> ()
           | qs ->
