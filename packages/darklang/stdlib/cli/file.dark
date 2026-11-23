@@ -93,16 +93,16 @@ let __dropThroughFirstNewline(bytes: Bytes): Bytes =
 /// reason.)
 let readFully(fd: Posix.Fd, count: Int64, acc: List<Bytes>): Result<Bytes, Posix.Error> =
   if count <= 0 then
-    Result.Ok(Bytes.concatAll(acc))
+    Result.Ok(Bytes.concatAll(List.reverse(acc)))
   else
     Posix.fdRead(fd, count)
     |> Result.andThen(fun chunk ->
       let received = Bytes.length(chunk)
       if received == 0 then
         // EOF: the file is shorter than the caller believed (it was truncated under us, say).
-        Result.Ok(Bytes.concatAll(acc))
+        Result.Ok(Bytes.concatAll(List.reverse(acc)))
       else
-        readFully(fd, count - received, List.append(acc, chunk)))
+        readFully(fd, count - received, List.prepend(acc, chunk)))
 
 
 let __readTailChunks(

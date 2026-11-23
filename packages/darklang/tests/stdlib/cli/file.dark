@@ -301,3 +301,22 @@ test watchEdges =
       |> Stdlib.Test.equal(
         Stdlib.Result.Result.Ok(
           (Stdlib.Result.Result.Ok(), Stdlib.Result.Result.Ok()))) ])
+
+
+// A file of many 4 KiB chunks reads back whole and in order
+test readsMultiMegabyteFile =
+  let content =
+    Stdlib.List.range(0, 400000)
+    |> Stdlib.List.map(fun i -> Stdlib.display(i))
+    |> Stdlib.String.join("\n")
+
+  Stdlib.Cli.Dir.withTemp(fun dir ->
+    let path = $"{dir}/big.txt"
+    let _ = Stdlib.Cli.File.writeText(path, content)
+
+    [ Stdlib.Cli.File.readText(path) == Stdlib.Result.Result.Ok(content)
+      Stdlib.Cli.File.readBytes(path)
+      == Stdlib.Result.Result.Ok(Stdlib.Utf8.encode(content))
+      Stdlib.Cli.File.readLastLines(path, 2)
+      == Stdlib.Result.Result.Ok([ "399999", "400000" ]) ])
+  |> Stdlib.Test.equal(Stdlib.Result.Result.Ok([ true, true, true ]))

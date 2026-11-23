@@ -307,14 +307,14 @@ let fdClose(fd: Fd): Result<Unit, Error> =
 
 
 /// Read all bytes from a file descriptor until EOF.
-/// Accumulates chunks (as Bytes) and concats once at EOF.
+/// Collects chunks newest first and concats once at EOF.
 let fdReadAll(fd: Fd, acc: List<Bytes>): Result<Bytes, Error> =
   fdRead(fd, 4096)
   |> Result.andThen(fun chunk ->
     if Bytes.length(chunk) == 0 then
-      Result.Ok(Bytes.concatAll(acc))
+      Result.Ok(Bytes.concatAll(List.reverse(acc)))
     else
-      fdReadAll(fd, List.append(acc, chunk)))
+      fdReadAll(fd, List.prepend(acc, chunk)))
 
 
 /// Seek to a byte offset from the start of an open file.
