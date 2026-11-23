@@ -371,7 +371,7 @@ module Registry =
 
   let acceptsPermissions(): Accepts.Accepts =
     Accepts.subcommands(
-      [ ("list", Accepts.nothing())
+      [ ("list", Accepts.flagsOnly([ "--json" ]))
         ("profile", Accepts.upTo(2, [ "-y", "--yes" ]))
         ("allow", Accepts.text(1))
         ("deny", Accepts.text(1))
@@ -386,7 +386,7 @@ module Registry =
         ("revoke-package", Accepts.between(1, 1, []))
         ("approved", Accepts.nothing())
         ("approvals", Accepts.nothing()) ],
-      Accepts.nothing())
+      Accepts.flagsOnly([ "--json" ]))
 
 
   let acceptsOps(): Accepts.Accepts =

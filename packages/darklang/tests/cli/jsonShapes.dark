@@ -853,3 +853,31 @@ test searchJsonRanksAndLimitsLikeText = Instance.withInstance(fun i ->
              |> Stdlib.Test.equal(Option.Some("Darklang.Stdlib.List.map"))
 
              Stdlib.List.length(fns) |> Stdlib.Test.equal(2) ])) ]))
+
+
+/// `permissions list --json` gives each rule as `permissions allow` takes it, and both lists
+/// are still arrays when the policy is deny-all.
+test permissionsListAnswersInJson = Instance.withInstance(fun i ->
+  Stdlib.Test.all(
+    [ step(i, [ "permissions", "clear" ])
+      check(
+        i,
+        [ "permissions", "list", "--json" ],
+        [ (fun j -> hasKeys(j, [ "allow", "deny" ]))
+          (fun j -> field(j, "allow") |> Stdlib.Test.equal(Stdlib.AltJson.Json.Array([])))
+          (fun j -> field(j, "deny") |> Stdlib.Test.equal(Stdlib.AltJson.Json.Array([]))) ])
+
+      step(i, [ "permissions", "allow", "clock; http GET https://api.example.com" ])
+      step(i, [ "permissions", "deny", "random" ])
+      check(
+        i,
+        [ "permissions", "--json" ],
+        [ (fun j ->
+             rows(field(j, "allow"))
+             |> Stdlib.Test.equal(
+               [ Stdlib.AltJson.Json.String("clock")
+                 Stdlib.AltJson.Json.String("http GET 'https://api.example.com:443'") ]))
+          (fun j ->
+             field(j, "deny")
+             |> Stdlib.Test.equal(
+               Stdlib.AltJson.Json.Array([ Stdlib.AltJson.Json.String("random") ]))) ]) ]))

@@ -346,6 +346,20 @@ let instancePolicyLines(): List<String> =
       [ "Unlisted access needs a remembered approval or --allow. Explicit denies win." ] ])
 
 
+/// What `permissions list --json` prints: each rule as `permissions allow` takes it.
+type PolicyJson =
+  { allow: List<String>
+    deny: List<String> }
+
+
+let printPolicyJson(): Bool =
+  let policy = currentPolicy()
+  let render = fun rules -> Stdlib.List.map(rules, LanguageTools.Permissions.renderRule)
+  printJson(
+    Stdlib.Json.checkedSerialize<PolicyJson>(
+      PolicyJson { allow = render(policy.allow), deny = render(policy.deny) }))
+
+
 let indentedPolicyLines(policy: LanguageTools.Permissions.Policy): List<String> =
   policyLines(policy) |> Stdlib.List.map(fun line -> "    " + line)
 
@@ -1126,6 +1140,7 @@ let execute(state: AppState, args: List<String>): AppState =
   | [] | ["list"] ->
     Stdlib.printLines(instancePolicyLines())
     state
+  | ["--json"] | ["list", "--json"] -> exitWith(state, printPolicyJson())
   | ["help"] ->
     Stdlib.printLine(help(state))
     state
@@ -1245,8 +1260,8 @@ let complete(_state: AppState, args: List<String>): List<Completion.CompletionIt
 
 
 let help(_state: AppState): String =
-  [ "Usage: permissions [list] | allow <rule>;… | deny <rule>;… | remove <rule>;…"
-    "                   | set <rule>;… | clear"
+  [ "Usage: permissions [list [--json]] | allow <rule>;… | deny <rule>;…"
+    "                   | remove <rule>;… | set <rule>;… | clear"
     "                   | profile [name [ABSOLUTE-ROOT] [--yes]]"
     "                   | approve --for <fn> <rules> | update <fn> [rules]"
     "                   | remove --for <name> <rules> | remove --for <name> --all"
@@ -1262,6 +1277,7 @@ let help(_state: AppState): String =
     ""
     "Inspect permissions:"
     "  list           instance defaults: allowed rules and explicit denies"
+    "  list --json    the same as one object: {\"allow\": [rules], \"deny\": [rules]}"
     "  show <fn>      the function's effects and remembered approvals"
     "  approved       remembered approvals, each tied to a name and code version"
     "  approvals      the same as approved"
