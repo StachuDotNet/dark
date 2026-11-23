@@ -5,8 +5,47 @@ let reasons(hash: String): (Bool * List<(LanguageTools.Permissions.Effect * List
   Builtin.pmFnEffectReasons(hash)
 
 
+/// One effect as `effects --json` reports it, with the calls that lead to it.
+type EffectJson =
+  { effect: String
+    via: List<String> }
+
+
+/// What `effects --json` prints. <param complete> is false when some calls could not be
+/// resolved, so more effects may occur.
+type EffectsJson =
+  { item: String
+    complete: Bool
+    effects: List<EffectJson> }
+
+
+let printJsonAnswer(
+  state: AppState,
+  name: String,
+  complete: Bool,
+  reasons: List<(LanguageTools.Permissions.Effect * List<String>)>)
+  : AppState =
+  let effects =
+    reasons
+    |> Stdlib.List.map(fun((effect, path)) ->
+      EffectJson
+        { effect = LanguageTools.Permissions.effectName(effect)
+          via = path })
+
+  let printed =
+    printJson(
+      Stdlib.Json.checkedSerialize<EffectsJson>(
+        EffectsJson
+          { item = name
+            complete = complete
+            effects = effects }))
+
+  exitWith(state, printed)
+
+
 let execute(state: AppState, args: List<String>): AppState =
-  match args with
+  let json = Stdlib.List.contains(args, "--json")
+  match Stdlib.List.filter(args, fun a -> a != "--json") with
   | [name] ->
     let name = TraceVerbs.canonicalFnName(state.currentBranchId, name)
     match Permissions.Command.resolveVersionArg(state, name) with
@@ -15,26 +54,37 @@ let execute(state: AppState, args: List<String>): AppState =
       failed(state)
     | Some(hash) ->
       let (complete, reasons) = Effects.reasons(hash)
-      if Stdlib.List.isEmpty(reasons) then
-        Stdlib.printLine(if complete then "effect-free" else "no known effects")
+      if json then
+        printJsonAnswer(state, name, complete, reasons)
       else
-        Stdlib.List.iter(reasons, fun((effect, path)) ->
-          Stdlib.printLine(LanguageTools.Permissions.effectName(effect))
-          Stdlib.printLine("  via " + Stdlib.String.join(path, " -> ")))
+        if Stdlib.List.isEmpty(reasons) then
+          Stdlib.printLine(if complete then "effect-free" else "no known effects")
+        else
+          Stdlib.List.iter(reasons, fun((effect, path)) ->
+            Stdlib.printLine(LanguageTools.Permissions.effectName(effect))
+            Stdlib.printLine("  via " + Stdlib.String.join(path, " -> ")))
 
-      if complete then
-        ()
-      else
-        printErr("Incomplete: some calls could not be resolved. More effects may occur.")
+        if complete then
+          ()
+        else
+          printErr("Incomplete: some calls could not be resolved. More effects may occur.")
 
-      state
+        state
   | _ ->
-    printErr("Usage: effects <function>")
+    printErr("Usage: effects <function> [--json]")
     failed(state)
 
 
 let help(_state: AppState): String =
-  "Usage: effects <function>\nShow possible effects and the calls that cause them, without running code.\nExample: effects Me.reports.report\nSee allowed access with: permissions show Me.reports.report"
+  [ "Usage: effects <function> [--json]"
+    "Show possible effects and the calls that cause them, without running code."
+    ""
+    "  --json   One object: {\"item\", \"complete\", \"effects\": [{\"effect\", \"via\": [names]}]}"
+    "           \"complete\" is false when some calls could not be resolved."
+    ""
+    "Example: effects Me.reports.report"
+    "See allowed access with: permissions show Me.reports.report" ]
+  |> Stdlib.String.join("\n")
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =

@@ -141,7 +141,7 @@ module Registry =
 
   let acceptsRename(): Accepts.Accepts = Accepts.between(2, 2, [])
 
-  let acceptsHash(): Accepts.Accepts = Accepts.between(1, 1, [ "--long", "--full" ])
+  let acceptsHash(): Accepts.Accepts = Accepts.between(1, 1, [ "--long", "--full", "--json" ])
 
   let acceptsStatus(): Accepts.Accepts = Accepts.flagsOnly([ "--json" ])
 
@@ -230,7 +230,7 @@ module Registry =
       Accepts.nothing())
 
 
-  let acceptsBuiltins(): Accepts.Accepts = Accepts.upTo(1, [ "--with-sigs", "--with-purity" ])
+  let acceptsBuiltins(): Accepts.Accepts = Accepts.upTo(1, [ "--with-sigs", "--with-purity", "--json" ])
 
   let acceptsFindValues(): Accepts.Accepts = Accepts.between(1, 2, [])
 
@@ -366,7 +366,7 @@ module Registry =
 
 
   let acceptsEffects(): Accepts.Accepts =
-    Accepts.between(1, 1, [])
+    Accepts.between(1, 1, [ "--json" ])
 
 
   let acceptsPermissions(): Accepts.Accepts =

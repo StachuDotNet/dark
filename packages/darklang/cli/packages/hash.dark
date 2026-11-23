@@ -15,12 +15,21 @@ let formatHash(hash: LanguageTools.ProgramTypes.Hash, long: Bool): String =
     LanguageTools.ProgramTypes.hashToShort(hash)
 
 
+/// What `hash --json` prints. <param hash> is always the full hash.
+type HashJson =
+  { item: String
+    kind: String
+    hash: String }
+
+
 let execute(state: AppState, args: List<String>): AppState =
   let long = Stdlib.List.any(args, fun a -> a == "--long" || a == "--full")
-  let filteredArgs = args |> Stdlib.List.filter(fun a -> a != "--long" && a != "--full")
+  let json = Stdlib.List.contains(args, "--json")
+  let filteredArgs =
+    args |> Stdlib.List.filter(fun a -> a != "--long" && a != "--full" && a != "--json")
   match filteredArgs with
   | [] ->
-    Stdlib.printLine("Usage: hash <location>")
+    Stdlib.printLine("Usage: hash [--long] [--json] <location>")
     state
   | [locationStr, ...] ->
     let branchId = state.currentBranchId
@@ -34,27 +43,38 @@ let execute(state: AppState, args: List<String>): AppState =
         | Module(_) -> Option.None
         | Type(loc) ->
           LanguageTools.PackageManager.Type.find(branchId, loc)
-          |> Stdlib.Option.map(fun h -> ("type", h))
+          |> Stdlib.Option.map(fun h -> ("type", Deps.fqnOf(loc), h))
         | Function(loc) ->
           LanguageTools.PackageManager.Function.find(branchId, loc)
-          |> Stdlib.Option.map(fun h -> ("fn", h))
+          |> Stdlib.Option.map(fun h -> ("fn", Deps.fqnOf(loc), h))
         | Value(loc) ->
           LanguageTools.PackageManager.Value.find(branchId, loc)
-          |> Stdlib.Option.map(fun h -> ("value", h))
+          |> Stdlib.Option.map(fun h -> ("value", Deps.fqnOf(loc), h))
         | Trait(loc) ->
           LanguageTools.PackageManager.Trait.find(branchId, loc)
-          |> Stdlib.Option.map(fun h -> ("trait", h))
+          |> Stdlib.Option.map(fun h -> ("trait", Deps.fqnOf(loc), h))
         | Impl(loc) ->
           LanguageTools.PackageManager.TraitImpl.find(branchId, loc)
-          |> Stdlib.Option.map(fun h -> ("impl", h))
+          |> Stdlib.Option.map(fun h -> ("impl", Deps.fqnOf(loc), h))
         | Test(loc) ->
           LanguageTools.PackageManager.Test.find(branchId, loc)
-          |> Stdlib.Option.map(fun h -> ("test", h))
+          |> Stdlib.Option.map(fun h -> ("test", Deps.fqnOf(loc), h))
 
       match found with
-      | Some((kindStr, hash)) ->
-        Stdlib.printLine($"{kindStr} {formatHash(hash, long)}")
-        state
+      | Some((kindStr, name, hash)) ->
+        if json then
+          let printed =
+            printJson(
+              Stdlib.Json.checkedSerialize<HashJson>(
+                HashJson
+                  { item = name
+                    kind = kindStr
+                    hash = formatHash(hash, true) }))
+
+          exitWith(state, printed)
+        else
+          Stdlib.printLine($"{kindStr} {formatHash(hash, long)}")
+          state
       | None ->
         // A module resolves fine and simply has nothing to hash: it is a path, not content.
         match location with
@@ -71,9 +91,10 @@ let execute(state: AppState, args: List<String>): AppState =
 
 
 let help(_state: AppState): String =
-  [ "Usage: hash [--long] <location>"
+  [ "Usage: hash [--long] [--json] <location>"
     "Show the hash of a package type, function, value, or test."
     "By default shows a short (8-char) hash; use --long or --full for the full hash."
+    "--json prints one object, {\"item\", \"kind\", \"hash\"}, with the full hash."
     ""
     "The name is resolved the way `view` resolves it, so anything you can view,"
     "you can hash: relative to where you are, or absolute with a leading `/`."
@@ -81,6 +102,7 @@ let help(_state: AppState): String =
     "Examples:"
     "  hash MyType          -- short hash of type at current location"
     "  hash --long MyType   -- full hash"
+    "  hash --json MyType   -- {\"item\":\"Owner.M.MyType\",\"kind\":\"type\",\"hash\":\"...\"}"
     "  hash Module.myFn     -- hash of fn in submodule"
     "  hash /Owner.M.x      -- hash at absolute path" ]
   |> Stdlib.String.join("\n")

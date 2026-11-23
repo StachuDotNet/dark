@@ -146,12 +146,82 @@ let matchingValues(filter: Option<String>): List<LanguageTools.BuiltinValue> =
     all |> Stdlib.List.filter(fun v -> Stdlib.String.contains(v.name.name, pattern))
 
 
+type ParameterJson =
+  { name: String
+    type: String }
+
+
+/// One builtin fn as `builtins --json` reports it.
+type FunctionJson =
+  { name: String
+    group: String
+    parameters: List<ParameterJson>
+    returnType: String
+    pure: Bool }
+
+
+type ValueJson =
+  { name: String
+    type: String }
+
+
+/// What `builtins --json` prints: every matching fn, with its signature, then every matching value.
+type BuiltinsJson =
+  { functions: List<FunctionJson>
+    values: List<ValueJson> }
+
+
+let typeText(t: LanguageTools.RuntimeTypes.TypeReference): String =
+  PrettyPrinter.RuntimeTypes.typeReference(SCM.Branch.mainBranchId, t)
+
+
+let printJsonAnswer(
+  state: AppState,
+  groups: List<(String * List<LanguageTools.BuiltinFunction>)>,
+  values: List<LanguageTools.BuiltinValue>)
+  : AppState =
+  let functions =
+    groups
+    |> Stdlib.List.map(fun((group, fns)) ->
+      fns
+      |> Stdlib.List.map(fun fn ->
+        FunctionJson
+          { name = fn.name.name + versionSuffix(fn.name.version)
+            group = getDisplayName(group)
+            parameters =
+              fn.parameters
+              |> Stdlib.List.map(fun p -> ParameterJson { name = p.name, type = typeText(p.type) })
+            returnType = typeText(fn.returnType)
+            pure =
+              match fn.purity with
+              | Pure -> true
+              | Impure -> false }))
+    |> Stdlib.List.flatten
+
+  let values =
+    values
+    |> Stdlib.List.map(fun v ->
+      ValueJson
+        { name = v.name.name + versionSuffix(v.name.version)
+          type = typeText(v.type) })
+
+  let printed =
+    printJson(
+      Stdlib.Json.checkedSerialize<BuiltinsJson>(
+        BuiltinsJson { functions = functions, values = values }))
+
+  exitWith(state, printed)
+
+
 let execute(state: AppState, args: List<String>): AppState =
   let allBuiltins = LanguageTools.allBuiltinFns()
   let withSigs = Stdlib.List.any(args, fun arg -> arg == "--with-sigs")
   let withPurity = Stdlib.List.any(args, fun arg -> arg == "--with-purity")
+  let json = Stdlib.List.contains(args, "--json")
   let filterArgs =
-    args |> Stdlib.List.filter(fun arg -> arg != "--with-sigs" && arg != "--with-purity")
+    args
+    |> Stdlib.List.filter(fun arg ->
+      arg != "--with-sigs" && arg != "--with-purity" && arg != "--json")
 
   let filter =
     match filterArgs with
@@ -190,99 +260,105 @@ let execute(state: AppState, args: List<String>): AppState =
         else
           Option.Some((group, matchingFns)))
 
-  if withSigs then
-    filteredGroups
-    |> Stdlib.List.iter(fun pair ->
-      let group = Stdlib.Tuple2.first(pair)
-      let fns = Stdlib.Tuple2.second(pair)
-      Stdlib.printLine("")
+  let values = matchingValues(filter)
+  if json then
+    printJsonAnswer(state, filteredGroups, values)
+  else
+    if withSigs then
+      filteredGroups
+      |> Stdlib.List.iter(fun pair ->
+        let group = Stdlib.Tuple2.first(pair)
+        let fns = Stdlib.Tuple2.second(pair)
+        Stdlib.printLine("")
 
-      Stdlib.printLine(
-        Stdlib.Cli.UI.Colors.colorize(Stdlib.Cli.UI.Colors.bold, getDisplayName(group)))
+        Stdlib.printLine(
+          Stdlib.Cli.UI.Colors.colorize(Stdlib.Cli.UI.Colors.bold, getDisplayName(group)))
 
-      fns
-      |> Stdlib.List.iter(fun fn ->
-        let branchId = SCM.Branch.mainBranchId
-        let params =
-          fn.parameters
-          |> Stdlib.List.map(fun p ->
-            let typStr = PrettyPrinter.RuntimeTypes.typeReference(branchId, p.type)
-            $"{p.name}: {typStr}")
+        fns
+        |> Stdlib.List.iter(fun fn ->
+          let branchId = SCM.Branch.mainBranchId
+          let params =
+            fn.parameters
+            |> Stdlib.List.map(fun p ->
+              let typStr = PrettyPrinter.RuntimeTypes.typeReference(branchId, p.type)
+              $"{p.name}: {typStr}")
+            |> Stdlib.String.join(", ")
+
+          let returnTypeStr = PrettyPrinter.RuntimeTypes.typeReference(branchId, fn.returnType)
+          let suffix = if withPurity then $" {purityTag(fn.purity)}" else ""
+          Stdlib.printLine(
+            $"  {fn.name.name}{versionSuffix(fn.name.version)}({params}) -> {returnTypeStr}{suffix}")))
+    else
+      // Compact output: comma-separated names
+      filteredGroups
+      |> Stdlib.List.iter(fun pair ->
+        let group = Stdlib.Tuple2.first(pair)
+        let fns = Stdlib.Tuple2.second(pair)
+        let names =
+          fns
+          |> Stdlib.List.map(fun fn ->
+            let suffix = if withPurity then $" {purityTag(fn.purity)}" else ""
+            $"{fn.name.name}{versionSuffix(fn.name.version)}{suffix}")
           |> Stdlib.String.join(", ")
 
-        let returnTypeStr = PrettyPrinter.RuntimeTypes.typeReference(branchId, fn.returnType)
-        let suffix = if withPurity then $" {purityTag(fn.purity)}" else ""
+        Stdlib.printLine("")
+
         Stdlib.printLine(
-          $"  {fn.name.name}{versionSuffix(fn.name.version)}({params}) -> {returnTypeStr}{suffix}")))
-  else
-    // Compact output: comma-separated names
-    filteredGroups
-    |> Stdlib.List.iter(fun pair ->
-      let group = Stdlib.Tuple2.first(pair)
-      let fns = Stdlib.Tuple2.second(pair)
+          $"{Stdlib.Cli.UI.Colors.colorize(Stdlib.Cli.UI.Colors.bold, getDisplayName(group))}: {names}"))
+
+    let valuesHeading = Stdlib.Cli.UI.Colors.colorize(Stdlib.Cli.UI.Colors.bold, "Values")
+    if Stdlib.List.isEmpty(values) then
+      ()
+    else if withSigs then
+      Stdlib.printLine("")
+      Stdlib.printLine(valuesHeading)
+      values
+      |> Stdlib.List.iter(fun v ->
+        let typStr = PrettyPrinter.RuntimeTypes.typeReference(SCM.Branch.mainBranchId, v.type)
+        Stdlib.printLine($"  {v.name.name}{versionSuffix(v.name.version)}: {typStr}"))
+    else
       let names =
-        fns
-        |> Stdlib.List.map(fun fn ->
-          let suffix = if withPurity then $" {purityTag(fn.purity)}" else ""
-          $"{fn.name.name}{versionSuffix(fn.name.version)}{suffix}")
+        values
+        |> Stdlib.List.map(fun v -> $"{v.name.name}{versionSuffix(v.name.version)}")
         |> Stdlib.String.join(", ")
 
       Stdlib.printLine("")
+      Stdlib.printLine($"{valuesHeading}: {names}")
 
-      Stdlib.printLine(
-        $"{Stdlib.Cli.UI.Colors.colorize(Stdlib.Cli.UI.Colors.bold, getDisplayName(group))}: {names}"))
+    let totalCount =
+      filteredGroups
+      |> Stdlib.List.map(fun pair -> Stdlib.List.length(Stdlib.Tuple2.second(pair)))
+      |> Stdlib.List.fold(0, fun(acc, n) -> acc + n)
 
-  let values = matchingValues(filter)
-  let valuesHeading = Stdlib.Cli.UI.Colors.colorize(Stdlib.Cli.UI.Colors.bold, "Values")
-  if Stdlib.List.isEmpty(values) then
-    ()
-  else if withSigs then
-    Stdlib.printLine("")
-    Stdlib.printLine(valuesHeading)
-    values
-    |> Stdlib.List.iter(fun v ->
-      let typStr = PrettyPrinter.RuntimeTypes.typeReference(SCM.Branch.mainBranchId, v.type)
-      Stdlib.printLine($"  {v.name.name}{versionSuffix(v.name.version)}: {typStr}"))
-  else
-    let names =
-      values
-      |> Stdlib.List.map(fun v -> $"{v.name.name}{versionSuffix(v.name.version)}")
-      |> Stdlib.String.join(", ")
+    let fnCount = Stdlib.display(totalCount)
+    let valueCount = Stdlib.List.length(values)
+    let valueText = Stdlib.display(valueCount) + (if valueCount == 1 then " value" else " values")
+    let summary =
+      match filter with
+      | None -> $"Total: {fnCount} builtin functions, {valueText}"
+      | Some(pattern) -> $"Showing {fnCount} functions and {valueText} matching '{pattern}'"
 
-    Stdlib.printLine("")
-    Stdlib.printLine($"{valuesHeading}: {names}")
+    Stdlib.printErrorLine("")
+    Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint(summary))
+    if Stdlib.Bool.not(withSigs) then
+      Stdlib.printErrorLine(
+        Stdlib.Cli.UI.Colors.hint(
+          "Use --with-sigs to see full function signatures, --with-purity to tag pure/impure"))
 
-  let totalCount =
-    filteredGroups
-    |> Stdlib.List.map(fun pair -> Stdlib.List.length(Stdlib.Tuple2.second(pair)))
-    |> Stdlib.List.fold(0, fun(acc, n) -> acc + n)
-
-  let fnCount = Stdlib.display(totalCount)
-  let valueCount = Stdlib.List.length(values)
-  let valueText = Stdlib.display(valueCount) + (if valueCount == 1 then " value" else " values")
-  let summary =
-    match filter with
-    | None -> $"Total: {fnCount} builtin functions, {valueText}"
-    | Some(pattern) -> $"Showing {fnCount} functions and {valueText} matching '{pattern}'"
-
-  Stdlib.printErrorLine("")
-  Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint(summary))
-  if Stdlib.Bool.not(withSigs) then
-    Stdlib.printErrorLine(
-      Stdlib.Cli.UI.Colors.hint(
-        "Use --with-sigs to see full function signatures, --with-purity to tag pure/impure"))
-
-  state
+    state
 
 
 let help(_state: AppState): String =
-  [ "Usage: builtins [--with-sigs] [--with-purity] [filter]"
+  [ "Usage: builtins [--with-sigs] [--with-purity] [--json] [filter]"
     ""
     "Lists all builtin functions grouped by category, then the builtin values."
     ""
     "Options:"
     "  --with-sigs    Show full function signatures with parameter types"
     "  --with-purity  Tag each fn with [pure] / [impure]"
+    "  --json         One object with every signature and purity:"
+    "                 {\"functions\": [{\"name\", \"group\", \"parameters\": [{\"name\", \"type\"}],"
+    "                 \"returnType\", \"pure\"}], \"values\": [{\"name\", \"type\"}]}"
     ""
     "Arguments:"
     "  filter         Optional pattern to filter fns by name or group, values by name"

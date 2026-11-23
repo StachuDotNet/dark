@@ -853,3 +853,65 @@ test searchJsonRanksAndLimitsLikeText = Instance.withInstance(fun i ->
              |> Stdlib.Test.equal(Option.Some("Darklang.Stdlib.List.map"))
 
              Stdlib.List.length(fns) |> Stdlib.Test.equal(2) ])) ]))
+
+
+/// `effects`, `hash` and `builtins` answer the question their text answers. A fn with no
+/// effects is the empty ARRAY, and a filter that matches nothing keeps both arrays.
+test effectsHashAndBuiltinsAnswerInJson = Instance.withInstance(fun i ->
+  let setup =
+    Stdlib.Test.all(
+      [ step(i, [ "fn", "Tests.JsonEffects.plain", "() : Int64 = 7401" ])
+        step(i, [ "fn", "Tests.JsonEffects.prints", "() : Unit = Stdlib.printLine(\"hi\")" ]) ])
+
+  // `fn <full hash>`
+  let longHash =
+    Instance.output(i, [ "hash", "--long", "Tests.JsonEffects.prints" ])
+    |> Stdlib.String.dropFirst(3)
+
+  Stdlib.Test.all(
+    [ setup
+      check(
+        i,
+        [ "effects", "Tests.JsonEffects.plain", "--json" ],
+        [ (fun j -> hasKeys(j, [ "item", "complete", "effects" ]))
+          (fun j -> fieldIsArray(j, "effects"))
+          (fun j ->
+             field(j, "complete")
+             |> Stdlib.Test.equal(Stdlib.AltJson.Json.Bool(true))) ])
+
+      check(
+        i,
+        [ "effects", "Tests.JsonEffects.prints", "--json" ],
+        [ (fun j -> rowsHaveKeys(field(j, "effects"), [ "effect", "via" ]))
+          (fun j ->
+             rows(field(j, "effects"))
+             |> Stdlib.List.map(fun e -> string(e, "effect"))
+             |> Stdlib.Test.equal([ "stdout" ])) ])
+
+      check(
+        i,
+        [ "hash", "--json", "Tests.JsonEffects.prints" ],
+        [ (fun j -> hasKeys(j, [ "item", "kind", "hash" ]))
+          (fun j -> string(j, "item") |> Stdlib.Test.equal("Tests.JsonEffects.prints"))
+          (fun j -> string(j, "kind") |> Stdlib.Test.equal("fn"))
+          (fun j -> string(j, "hash") |> Stdlib.Test.equal(longHash)) ])
+
+      check(
+        i,
+        [ "builtins", "listMap", "--json" ],
+        [ (fun j -> hasKeys(j, [ "functions", "values" ]))
+          (fun j ->
+             rowsHaveKeys(
+               field(j, "functions"),
+               [ "name", "group", "parameters", "returnType", "pure" ]))
+          (fun j ->
+             isTrue(
+               rows(field(j, "functions"))
+               |> Stdlib.List.any(fun f -> string(f, "name") == "listMap"),
+               "lists listMap")) ])
+
+      check(
+        i,
+        [ "builtins", "zzz-nothing-matches-this", "--json" ],
+        [ (fun j -> fieldIsArray(j, "functions"))
+          (fun j -> fieldIsArray(j, "values")) ]) ]))
