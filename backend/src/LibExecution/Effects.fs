@@ -35,16 +35,14 @@ type Effect =
   /// every other class: a person turns it on with `dark permissions allow runtime`.
   | Runtime
   /// The effect for a builtin nobody can scope: it can reach anything on the
-  /// host, and no rule could honestly say otherwise. `Sqlite.query` is the
-  /// canonical case: it is given one database path, but the SQL it runs can
-  /// say `ATTACH '/home/you/.ssh/id_rsa' AS x` and open any file on the
-  /// machine. Checking the database path alone would pretend to confine
-  /// something the runtime cannot see, so the builtin declares `Native`
-  /// instead, which means "granting this hands over the keys". The same
-  /// applies to raw descriptors and process handles (the operation names a
-  /// number, not a resource). Plain host facts such as `uname` are not this:
-  /// they name nothing and declare no effect at all. There is deliberately no
-  /// scoped form: a policy grants it whole, with `allow native`, or not at all.
+  /// host, and no rule could honestly say otherwise. `syscallKill` is the
+  /// canonical case: it is given a process ID, a number rather than a
+  /// resource, and can signal any process the user owns. No rule could name
+  /// what that number points at, so the builtin declares `Native`, which means
+  /// "granting this hands over the keys". The same applies to raw descriptors.
+  /// Plain host facts such as `uname` are not this: they name nothing and
+  /// declare no effect at all. There is deliberately no scoped form: a policy
+  /// grants it whole, with `allow native`, or not at all.
   | Native
   /// A call can stop with a runtime error: dividing by zero, an argument out of range, `unwrap`
   /// of a `None`. Information for a reader, not a permission: no policy grants or denies it, and
