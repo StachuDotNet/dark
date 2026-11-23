@@ -388,11 +388,31 @@ let readAndSaveEdit(state: AppState, modulePath: String, sourcePath: String): Ap
   readAndSave(state, modulePath, sourcePath, SaveMode.Edit)
 
 
+/// `--test`: once a save has succeeded, run the tests in the module at <param modulePath> as
+/// `dark test run` does, so the exit code is theirs.
+let testAfterSave(state: AppState, modulePath: String): AppState =
+  if state.exitCode != 0 then
+    state
+  else
+    match Location.parseRelativeTo(state.packageData.currentLocation, modulePath + ".__module__") with
+    | Error(message) ->
+      printErr($"Invalid module location: {message}")
+      failed(state)
+    | Ok(location) ->
+      let moduleName = Stdlib.String.join(Stdlib.List.prepend(location.modules, location.owner), ".")
+      Test.runTests(state, [ moduleName ])
+
+
 let execute(state: AppState, args: List<String>): AppState =
-  match args with
-  | [modulePath, sourcePath] -> readAndSave(state, modulePath, sourcePath, SaveMode.Module)
+  match Stdlib.List.filter(args, fun arg -> arg != "--test") with
+  | [modulePath, sourcePath] ->
+    let saved = readAndSave(state, modulePath, sourcePath, SaveMode.Module)
+    if Stdlib.List.contains(args, "--test") then
+      testAfterSave(saved, modulePath)
+    else
+      saved
   | _ ->
-    printErr("Usage: module <module> <source-file|->")
+    printErr("Usage: module <module> <source-file|-> [--test]")
     failed(state)
 
 
@@ -410,7 +430,7 @@ let defineBundled(modulePath: String, source: String): Int64 =
 let help(_state: AppState): String =
   [ "Define a module from multiple package declarations"
     ""
-    "Usage: module <module> <source-file|->"
+    "Usage: module <module> <source-file|-> [--test]"
     ""
     "The source may contain functions, types, values, tests, and nested modules."
     "Valid declarations are saved as WIP in one batch; the at-rest"
@@ -421,6 +441,8 @@ let help(_state: AppState): String =
     "as drafts. Other incomplete checks warn and exit 0."
     "Saving again replaces what the source has; names it no longer has stay and"
     "are listed, for `delete`."
+    "--test runs the module's tests after a save that succeeded, and exits"
+    "with their result."
     ""
     "Example:"
     "  dark module /Me.Example - <<'EOF'"

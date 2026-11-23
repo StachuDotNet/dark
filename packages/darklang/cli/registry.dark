@@ -135,9 +135,9 @@ module Registry =
 
   let acceptsImpl(): Accepts.Accepts = Accepts.text(2)
 
-  let acceptsModule(): Accepts.Accepts = Accepts.between(2, 2, [])
+  let acceptsModule(): Accepts.Accepts = Accepts.between(2, 2, [ "--test" ])
 
-  let acceptsEdit(): Accepts.Accepts = Accepts.between(1, 2, [ "--patch" ])
+  let acceptsEdit(): Accepts.Accepts = Accepts.between(1, 2, [ "--patch", "--test" ])
 
   let acceptsRename(): Accepts.Accepts = Accepts.between(2, 2, [])
 
