@@ -249,8 +249,8 @@ test emptyAnswersKeepTheirShape = Instance.withInstance(fun i ->
 
       check(i, [ "traces", "list", "--json" ], [ isArray ])
       // A command with no JSON form has to SAY so, rather than print prose for a caller
-      // to parse as a payload. `ops` takes no flags at all.
-      refuses(i, [ "ops", "--json" ], "does not take `--json`") ]))
+      // to parse as a payload.
+      refuses(i, [ "clear", "--json" ], "does not take `--json`") ]))
 
 
 /// A draft, reviewed, committed and then read back: each answer describes the change rather
@@ -853,3 +853,24 @@ test searchJsonRanksAndLimitsLikeText = Instance.withInstance(fun i ->
              |> Stdlib.Test.equal(Option.Some("Darklang.Stdlib.List.map"))
 
              Stdlib.List.length(fns) |> Stdlib.Test.equal(2) ])) ]))
+
+
+/// `ops --json` lists the newest ops first, each with the first line `ops show` prints.
+test opsAnswersInJson = Instance.withInstance(fun i ->
+  Stdlib.Test.all(
+    [ step(i, [ "fn", "Tests.JsonOps.older", "() : Int64 = 1" ])
+      step(i, [ "fn", "Tests.JsonOps.newer", "() : Int64 = 2" ])
+      check(
+        i,
+        [ "ops", "2", "--json" ],
+        [ (fun j -> hasKeys(j, [ "branch", "total", "ops" ]))
+          (fun j -> string(j, "branch") |> Stdlib.Test.equal("main"))
+          (fun j -> isTrue(int(j, "total") >= 2, "counts every op"))
+          (fun j -> rowsHaveKeys(field(j, "ops"), [ "id", "what", "at" ]))
+          (fun j -> Stdlib.List.length(rows(field(j, "ops"))) |> Stdlib.Test.equal(2))
+          (fun j ->
+             rows(field(j, "ops"))
+             |> Stdlib.List.map(fun op -> Stdlib.String.first(string(op, "what"), 30))
+             |> Stdlib.Test.equal(
+               [ "SetName Tests.JsonOps.newer to", "SetName Tests.JsonOps.older to" ])) ])
+      refuses(i, [ "ops", "show", "abc", "--json" ], "does not take `--json`") ]))

@@ -391,8 +391,8 @@ module Registry =
 
   let acceptsOps(): Accepts.Accepts =
     Accepts.subcommands(
-      [ ("list", Accepts.upTo(1, [])), ("show", Accepts.between(1, 1, [])) ],
-      Accepts.upTo(1, []))
+      [ ("list", Accepts.upTo(1, [ "--json" ])), ("show", Accepts.between(1, 1, [])) ],
+      Accepts.upTo(1, [ "--json" ]))
 
 
   let acceptsPs(): Accepts.Accepts =

@@ -20,19 +20,21 @@ let short(s: String): String =
 /// size answers nothing. Same printer `dark ops show` uses, so the two cannot drift; this
 /// takes the head line and `show` takes all of it.
 let describe(branchId: Uuid, width: Int64, s: SCM.PackageOps.OpSummary): String =
+  let line = firstLine(branchId, s)
+  if Stdlib.String.displayWidth(line) <= width then
+    line
+  else
+    Stdlib.String.first(line, width - 1) + "..."
+
+
+let firstLine(branchId: Uuid, s: SCM.PackageOps.OpSummary): String =
   match s.op with
   | None -> "(unreadable by this build)"
   | Some(op) ->
-    let firstLine =
-      PrettyPrinter.ProgramTypes.PackageOp.packageOp(branchId, op)
-      |> Stdlib.String.split("\n")
-      |> Stdlib.List.head
-      |> Stdlib.Option.withDefault("")
-
-    if Stdlib.String.displayWidth(firstLine) <= width then
-      firstLine
-    else
-      Stdlib.String.first(firstLine, width - 1) + "..."
+    PrettyPrinter.ProgramTypes.PackageOp.packageOp(branchId, op)
+    |> Stdlib.String.split("\n")
+    |> Stdlib.List.head
+    |> Stdlib.Option.withDefault("")
 
 
 /// One display row for an op summary: [short id; what it does; when].
@@ -60,34 +62,68 @@ let executeShow(state: AppState, idPrefix: String): AppState =
       state
 
 
+/// One op in `ops --json`: <param what> is the first line `ops show` prints, unclipped.
+type OpJson =
+  { id: String
+    what: String
+    at: String }
+
+
+/// What `ops --json` prints.
+type OpsJson =
+  { branch: String
+    total: Int64
+    ops: List<OpJson> }
+
+
 /// The most recent <param limit> ops this branch can see, newest first.
-let executeList(state: AppState, limit: Int64): AppState =
+let executeList(state: AppState, limit: Int64, json: Bool): AppState =
   let branch = SCM.PackageOps.currentBranch()
   // Through `branchName`, so a branch shows its name rather than its raw id.
   let branchName = SCM.PackageOps.branchName(branch)
   let total = SCM.PackageOps.countFor(branch)
   let summaries = SCM.PackageOps.summariesFor(branch, limit)
-  let shown = Stdlib.List.length(summaries)
-  let header =
-    // "on main" for main, like every other command; "on branch X" only when there is a branch.
-    let where = if SCM.Branch.isMain(branch) then "on main" else $"on branch {branchName}"
-    if shown >= total then
-      $"{Stdlib.display(total)} ops {where}"
-    else
-      $"{Stdlib.display(total)} ops {where} - showing the {Stdlib.display(shown)} most recent"
+  if json then
+    let ops =
+      summaries
+      |> Stdlib.List.map(fun s ->
+        OpJson
+          { id = s.id
+            what = firstLine(state.currentBranchId, s)
+            at = s.ts })
 
-  printOk(header)
-  Stdlib.Cli.UI.Table.print(
-    [ "op", "what", "when" ],
-    summaries |> Stdlib.List.map(fun s -> summaryRow(state.currentBranchId, s)))
+    exitWith(
+      state,
+      printJson(
+        Stdlib.Json.checkedSerialize<OpsJson>(
+          OpsJson
+            { branch = branchName
+              total = total
+              ops = ops })))
+  else
+    let shown = Stdlib.List.length(summaries)
+    let header =
+      // "on main" for main, like every other command; "on branch X" only when there is a branch.
+      let where = if SCM.Branch.isMain(branch) then "on main" else $"on branch {branchName}"
+      if shown >= total then
+        $"{Stdlib.display(total)} ops {where}"
+      else
+        $"{Stdlib.display(total)} ops {where} - showing the {Stdlib.display(shown)} most recent"
 
-  state
+    printOk(header)
+    Stdlib.Cli.UI.Table.print(
+      [ "op", "what", "when" ],
+      summaries |> Stdlib.List.map(fun s -> summaryRow(state.currentBranchId, s)))
+
+    state
 
 
 let help(_state: AppState): String =
   [ ""
     "  dark ops              the 20 most recent ops on this branch"
     "  dark ops <n>          the n most recent"
+    "  dark ops --json       the same as one object: {\"branch\", \"total\","
+    "                        \"ops\": [{\"id\", \"what\", \"at\"}]}, newest first"
     "  dark ops show <id>    pretty-print what an op does (by id-prefix)"
     ""
     "  Changing the log has its own commands: `dark commit`,"
@@ -109,12 +145,14 @@ let movedFromOps(verb: String): Option<String> =
 
 
 let execute(state: AppState, args: List<String>): AppState =
-  // `ops` takes no flags at all, and every unrecognised argument shape falls through to `help` -- which
-  // would answer a flag mistake with the manual and no error.
+  let json = Stdlib.List.contains(args, "--json")
+  let args = args |> Stdlib.List.filter(fun a -> a != "--json")
+  // Every unrecognised argument shape falls through to `help` -- which would answer a flag
+  // mistake with the manual and no error.
   let flags = args |> Stdlib.List.filter(fun a -> Stdlib.String.startsWith(a, "--"))
   if Stdlib.Bool.not(Stdlib.List.isEmpty(flags)) then
     let f = Stdlib.String.join(flags, " ")
-    printErr($"ops takes no flags, and doesn't understand {f}.")
+    printErr($"ops takes only --json, and doesn't understand {f}.")
     printHint("  `dark ops help` says what it does.")
     failed(state)
   else
@@ -127,11 +165,11 @@ let execute(state: AppState, args: List<String>): AppState =
       | Error(_) -> Result.Error($"\"{n}\" isn't a count. `dark ops 50` shows the 50 most recent.")
 
     match args with
-    | [] -> executeList(state, 20)
-    | ["list"] -> executeList(state, 20)
+    | [] -> executeList(state, 20, json)
+    | ["list"] -> executeList(state, 20, json)
     | ["list", n] ->
       match countOf(n) with
-      | Ok(l) -> executeList(state, l)
+      | Ok(l) -> executeList(state, l, json)
       | Error(why) ->
         printErr(why)
         failed(state)
@@ -146,7 +184,7 @@ let execute(state: AppState, args: List<String>): AppState =
         failed(state)
       | None ->
         match countOf(verb) with
-        | Ok(l) -> executeList(state, l)
+        | Ok(l) -> executeList(state, l, json)
         | Error(why) ->
           printErr(why)
           printHint("  `dark ops help` says what it does.")
