@@ -853,3 +853,64 @@ test searchJsonRanksAndLimitsLikeText = Instance.withInstance(fun i ->
              |> Stdlib.Test.equal(Option.Some("Darklang.Stdlib.List.map"))
 
              Stdlib.List.length(fns) |> Stdlib.Test.equal(2) ])) ]))
+
+
+/// `view --json` gives one item's name, kind, full hash, source, doc and effects. A module
+/// has no one source, so it is refused.
+test viewAnswersInJson = Instance.withInstance(fun i ->
+  let setup =
+    step(
+      i,
+      [ "fn"
+        "Tests.JsonView.greet"
+        "/// Says hello.\nlet greet(): Unit = Stdlib.printLine(\"hi\")" ])
+
+  // `fn <full hash>`
+  let longHash =
+    Instance.output(i, [ "hash", "--long", "Tests.JsonView.greet" ])
+    |> Stdlib.String.dropFirst(3)
+
+  Stdlib.Test.all(
+    [ setup
+      check(
+        i,
+        [ "view", "Tests.JsonView.greet", "--json" ],
+        [ (fun j ->
+             hasKeys(
+               j,
+               [ "name"
+                 "kind"
+                 "hash"
+                 "source"
+                 "doc"
+                 "effects"
+                 "effectsComplete"
+                 "canRaise" ]))
+          (fun j -> string(j, "name") |> Stdlib.Test.equal("Tests.JsonView.greet"))
+          (fun j -> string(j, "kind") |> Stdlib.Test.equal("fn"))
+          (fun j -> string(j, "hash") |> Stdlib.Test.equal(longHash))
+          (fun j -> string(j, "doc") |> Stdlib.Test.equal("Says hello."))
+          (fun j ->
+             isTrue(
+               Stdlib.String.contains(string(j, "source"), "let greet(): Unit"),
+               "source is the declaration"))
+          (fun j ->
+             field(j, "effects")
+             |> Stdlib.Test.equal(
+               Stdlib.AltJson.Json.Array([ Stdlib.AltJson.Json.String("stdout") ])))
+          (fun j ->
+             field(j, "canRaise") |> Stdlib.Test.equal(Stdlib.AltJson.Json.Bool(false))) ])
+
+      check(
+        i,
+        [ "view", "Darklang.Stdlib.Float64.round", "--json" ],
+        [ (fun j ->
+             field(j, "canRaise") |> Stdlib.Test.equal(Stdlib.AltJson.Json.Bool(true))) ])
+
+      check(
+        i,
+        [ "view", "Darklang.Stdlib.Option.Option", "--json" ],
+        [ (fun j -> string(j, "kind") |> Stdlib.Test.equal("type"))
+          (fun j -> fieldIsArray(j, "effects")) ])
+
+      refuses(i, [ "view", "Darklang.Stdlib.List", "--json" ], "not a module") ]))

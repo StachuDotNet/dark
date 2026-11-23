@@ -71,7 +71,9 @@ module Registry =
 
 
   let acceptsView(): Accepts.Accepts =
-    Accepts.freeText(0, [ "--raw", "--ast", "--instructions", "--instrs", "--include-tests" ])
+    Accepts.freeText(
+      0,
+      [ "--raw", "--ast", "--instructions", "--instrs", "--include-tests", "--json" ])
 
 
   let acceptsTree(): Accepts.Accepts =

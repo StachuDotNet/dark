@@ -162,6 +162,82 @@ let printRaw(branchId: Uuid, location: PackageLocation): Unit =
   | Error(e) -> printErr(e)
 
 
+/// What `view --json` prints. <param source> is what `--raw` prints. <param effects>,
+/// <param effectsComplete> and <param canRaise> are what the text view says under a function;
+/// other kinds have none. <param effectsComplete> is false when some calls could not be resolved.
+type ViewJson =
+  { name: String
+    kind: String
+    hash: String
+    source: String
+    doc: String
+    effects: List<String>
+    effectsComplete: Bool
+    canRaise: Bool }
+
+
+let itemJson(branchId: Uuid, location: PackageLocation): Result<ViewJson, String> =
+  let find = fun loc ->
+    Query.searchExactMatch(branchId, Stdlib.List.prepend(loc.modules, loc.owner), loc.name)
+
+  let found =
+    match location with
+    | Module(_) -> Option.None
+    | Type(loc) ->
+      (find(loc)).types
+      |> Stdlib.List.head
+      |> Stdlib.Option.map(fun i -> (loc, "type", i.entity.hash, i.entity.description))
+    | Function(loc) ->
+      (find(loc)).fns
+      |> Stdlib.List.head
+      |> Stdlib.Option.map(fun i -> (loc, "fn", i.entity.hash, i.entity.description))
+    | Value(loc) ->
+      (find(loc)).values
+      |> Stdlib.List.head
+      |> Stdlib.Option.map(fun i -> (loc, "value", i.entity.hash, i.entity.description))
+    | Trait(loc) ->
+      (find(loc)).traits
+      |> Stdlib.List.head
+      |> Stdlib.Option.map(fun i -> (loc, "trait", i.entity.hash, i.entity.description))
+    | Impl(loc) ->
+      (find(loc)).impls
+      |> Stdlib.List.head
+      |> Stdlib.Option.map(fun i -> (loc, "impl", i.entity.hash, i.entity.description))
+    | Test(loc) ->
+      (find(loc)).tests
+      |> Stdlib.List.head
+      |> Stdlib.Option.map(fun i -> (loc, "test", i.entity.hash, i.entity.description))
+
+  match location, found with
+  | Module(_), _ -> Result.Error("--json views one item, not a module")
+  | _, None -> Result.Error($"nothing at {formatLocation(location)}")
+  | _, Some((loc, kind, hash, doc)) ->
+    rawSource(branchId, location)
+    |> Stdlib.Result.map(fun source ->
+      let hash = LanguageTools.ProgramTypes.hashToString(hash)
+      let (effects, complete, canRaise) =
+        if kind == "fn" then
+          let (effects, complete) = Permissions.Command.permissionRequirementsForHash(hash)
+          let (_, reasons) = Effects.reasons(hash)
+          let raises =
+            Stdlib.List.any(reasons, fun((effect, _)) ->
+              effect == LanguageTools.Permissions.Effect.Raise)
+
+          (Stdlib.List.map(effects, LanguageTools.Permissions.effectName), complete, raises)
+        else
+          ([], true, false)
+
+      ViewJson
+        { name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(loc)
+          kind = kind
+          hash = hash
+          source = source
+          doc = doc
+          effects = effects
+          effectsComplete = complete
+          canRaise = canRaise })
+
+
 /// Build a deprecation header for the item at a name, if any.
 let deprecationHeaderRowsFor(
   branchId: Uuid,
@@ -578,6 +654,8 @@ type ViewMode =
   | Ast
   /// The register-machine instructions the function actually runs.
   | Instructions
+  /// One item as a `ViewJson` object.
+  | Json
 
 
 let modeName(mode: ViewMode): String =
@@ -586,6 +664,7 @@ let modeName(mode: ViewMode): String =
   | Raw -> "--raw"
   | Ast -> "--ast"
   | Instructions -> "--instructions"
+  | Json -> "--json"
 
 
 // TODO: neither `--raw` nor `--include-tests` has earned its place, and both should be
@@ -621,6 +700,7 @@ let parseArgs(args: List<String>): Result<(List<String> * ViewMode * Bool), Stri
       | "--ast" -> Result.Ok(ViewMode.Ast)
       | "--instructions" -> Result.Ok(ViewMode.Instructions)
       | "--instrs" -> Result.Ok(ViewMode.Instructions)
+      | "--json" -> Result.Ok(ViewMode.Json)
       | other -> Result.Error($"unknown option `{other}`"))
 
   match modeResult with
@@ -630,6 +710,8 @@ let parseArgs(args: List<String>): Result<(List<String> * ViewMode * Bool), Stri
       // The other modes print one declaration for a machine or a debugger;
       // a tests list in that output would break the pipe `--raw` exists for.
       Result.Error("`--include-tests` goes with the default view only")
+    else if mode == ViewMode.Json && Stdlib.List.length(paths) > 1 then
+      Result.Error("`--json` views one item at a time")
     else
       Result.Ok((paths, mode, includeTests))
 
@@ -854,6 +936,12 @@ let viewOne(
       // Show the trace hint only for the human-readable source view.
       printTraceHint(branchId, location)
       state
+    | Json ->
+      match itemJson(branchId, location) with
+      | Ok(item) -> exitWith(state, printJson(Stdlib.Json.checkedSerialize<ViewJson>(item)))
+      | Error(e) ->
+        printErr(e)
+        failed(state)
     | _ ->
       viewCompiled(branchId, location, mode)
       state
@@ -893,7 +981,7 @@ let complete(state: AppState, args: List<String>): List<Completion.CompletionIte
   // Complete the path as before, and offer the view flags once something is typed. Flags are filtered
   // out of the path completion so `view List.last --a` completes the flag, not a package path.
   let flagCompletions(partial: String): List<Completion.CompletionItem> =
-    [ "--raw", "--ast", "--instructions", "--include-tests" ]
+    [ "--raw", "--ast", "--instructions", "--include-tests", "--json" ]
     |> Stdlib.List.filter(fun name -> Stdlib.String.startsWith(name, partial))
     |> Stdlib.List.map(fun name -> Completion.simple(name))
 
@@ -908,6 +996,7 @@ let complete(state: AppState, args: List<String>): List<Completion.CompletionIte
 
 let help(_state: AppState): String =
   [ "Usage: view [path...] [--include-tests] [--raw | --ast | --instructions]"
+    "       view <path> --json"
     "View a function, type, value, trait, implementation, test or module."
     ""
     "With path: View the specified item with syntax highlighting."
@@ -920,6 +1009,10 @@ let help(_state: AppState): String =
     "                    item and writing it back is a pipe. For a module, every"
     "                    declaration directly in it (not its submodules), as one"
     "                    file `dark module` reads back."
+    "  --json            One item as one object: {\"name\", \"kind\", \"hash\","
+    "                    \"source\", \"doc\", \"effects\": [names], \"effectsComplete\","
+    "                    \"canRaise\"}. \"source\" is what --raw prints. A function's"
+    "                    effects and whether it can raise; other kinds have none."
     ""
     "Options (functions only):"
     "  --include-tests   Also list the tests that call the function, each with"
@@ -936,6 +1029,7 @@ let help(_state: AppState): String =
     "  view Option                     - View the Option type"
     "  view Stdlib.List                - View contents of Stdlib.List module"
     "  view List.head --raw            - Print just the declaration"
+    "  view List.head --json           - List.head as JSON"
     "  view Me.Example --raw > ex.dark - Save a module as a file `dark module` reads"
     "  view Float64.add --include-tests  - Float64.add and the tests that call it"
     "  view List.last --ast            - View List.last as a syntax tree"
