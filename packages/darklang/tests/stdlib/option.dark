@@ -422,16 +422,16 @@ test or =
       |> Stdlib.Test.equal(Stdlib.Option.Option.None) ])
 
 
-test join =
+test flatten =
   Stdlib.Test.all(
-    [ Stdlib.Option.join(
+    [ Stdlib.Option.flatten(
         Stdlib.Option.Option.Some(Stdlib.Option.Option.Some(6)))
       |> Stdlib.Test.equal(Stdlib.Option.Option.Some(6))
 
-      Stdlib.Option.join(Stdlib.Option.Option.Some(Stdlib.Option.Option.None))
+      Stdlib.Option.flatten(Stdlib.Option.Option.Some(Stdlib.Option.Option.None))
       |> Stdlib.Test.equal(Stdlib.Option.Option.None)
 
-      Stdlib.Option.join(Stdlib.Option.Option.None)
+      Stdlib.Option.flatten(Stdlib.Option.Option.None)
       |> Stdlib.Test.equal(Stdlib.Option.Option.None) ])
 
 

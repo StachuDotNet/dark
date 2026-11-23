@@ -208,28 +208,10 @@ let toList(result: Result<'t, 'e>): List<'t> =
 /// Flattens a nested result. If <param result> is {{Ok (Ok <var value>)}},
 /// returns {{Ok <var value>}}. If <param result> is {{Ok (Error <var msg>)}}, returns {{Error <var msg>}}.
 /// If <param result> is {{Error <var msg>}}, returns {{Error <var msg>}}.
-let join(result: Result<Result<'t, 'e>, 'e>): Result<'t, 'e> =
+let flatten(result: Result<Result<'t, 'e>, 'e>): Result<'t, 'e> =
   match result with
   | Ok(value) -> value
   | Error(msg) -> Result.Error(msg)
-
-
-/// Combines a list of results into a single list of unwrapped values.
-/// If all of the results are {{Ok <var value>}}, returns {{Ok <list of unwrapped values>}}.
-/// If any of the results are {{Error <var msg>}}, returns {{Error <var msg>}}.
-let combine(results: List<Result<'t, 'e>>): Result<List<'t>, 'e> =
-  // Built back to front and reversed once, as `Option.combine` is: `append` copies the
-  // accumulator every element, so this was quadratic in the list length.
-  let folded =
-    results
-    |> List.fold(Result.Ok([]), fun(acc, result) ->
-      match acc, result with
-      | Ok(acc), Ok(result) -> Result.Ok(List.prepend(acc, result))
-      | (Ok(_), Error(err)) | (Error(err), _) -> Result.Error(err))
-
-  match folded with
-  | Ok(list) -> Result.Ok(List.reverse(list))
-  | Error(err) -> Result.Error(err)
 
 
 /// Returns a list of all the values that are {{Ok <var value>}}, and ignores any values that are {{Error <var msg>}}.

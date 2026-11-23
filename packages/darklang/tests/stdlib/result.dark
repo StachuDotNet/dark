@@ -365,41 +365,18 @@ test or =
       |> Stdlib.Test.equal(Stdlib.Result.Result.Error("test2")) ])
 
 
-test join =
+test flatten =
   Stdlib.Test.all(
-    [ Stdlib.Result.join(
+    [ Stdlib.Result.flatten(
         Stdlib.Result.Result.Ok(Stdlib.Result.Result.Ok("test")))
       |> Stdlib.Test.equal(Stdlib.Result.Result.Ok("test"))
 
-      Stdlib.Result.join(
+      Stdlib.Result.flatten(
         Stdlib.Result.Result.Ok(Stdlib.Result.Result.Error("test")))
       |> Stdlib.Test.equal(Stdlib.Result.Result.Error("test"))
 
-      Stdlib.Result.join(Stdlib.Result.Result.Error("test"))
+      Stdlib.Result.flatten(Stdlib.Result.Result.Error("test"))
       |> Stdlib.Test.equal(Stdlib.Result.Result.Error("test")) ])
-
-
-test combine =
-  Stdlib.Test.all(
-    [ Stdlib.Result.combine(
-        [ Stdlib.Result.Result.Ok(1)
-          Stdlib.Result.Result.Ok(2)
-          Stdlib.Result.Result.Ok(3) ])
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Ok([ 1, 2, 3 ]))
-
-      Stdlib.Result.combine(
-        [ Stdlib.Result.Result.Ok(1)
-          Stdlib.Result.Result.Error("test")
-          Stdlib.Result.Result.Ok(3) ])
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("test"))
-
-      Stdlib.Result.combine(
-        [ Stdlib.Result.Result.Error("test1")
-          Stdlib.Result.Result.Error("test2") ])
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Error("test1"))
-
-      Stdlib.Result.combine([])
-      |> Stdlib.Test.equal(Stdlib.Result.Result.Ok([])) ])
 
 
 test values =

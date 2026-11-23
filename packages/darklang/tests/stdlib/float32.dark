@@ -87,12 +87,9 @@ test compare =
 test rounding =
   Stdlib.Test.all(
     [ Stdlib.Float32.ceiling(1.3f32) |> Stdlib.Test.equal(2)
-      Stdlib.Float32.roundUp(1.3f32) |> Stdlib.Test.equal(2)
       Stdlib.Float32.floor(-1.5f32) |> Stdlib.Test.equal(-2)
-      Stdlib.Float32.roundDown(-1.5f32) |> Stdlib.Test.equal(-2)
       // ties to even, as Float64.round does
       Stdlib.Float32.round(2.5f32) |> Stdlib.Test.equal(2)
-      Stdlib.Float32.roundTowardsZero(-1.9f32) |> Stdlib.Test.equal(-1)
       Stdlib.Float32.truncate(-1.9f32) |> Stdlib.Test.equal(-1)
       Stdlib.Float32.toInt64(16777216.0f32) |> Stdlib.Test.equal(16777216) ])
 

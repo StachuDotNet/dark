@@ -35,11 +35,6 @@ let ceiling(a: Float32): Int64 =
   Float64.ceiling(toFloat64(a))
 
 
-/// Round up to an integer value
-let roundUp(a: Float32): Int64 =
-  Float64.roundUp(toFloat64(a))
-
-
 /// Round down to an integer value.
 /// Consider <fn Float32.truncate> if your goal is to discard the fractional part
 /// of a number: {{Float32.floor(-1.9f32) == -2}} but {{Float32.truncate(-1.9f32) == -1}}
@@ -47,19 +42,9 @@ let floor(a: Float32): Int64 =
   Float64.floor(toFloat64(a))
 
 
-/// Round down to an integer value.
-let roundDown(a: Float32): Int64 =
-  Float64.roundDown(toFloat64(a))
-
-
 /// Round to the nearest integer value
 let round(a: Float32): Int64 =
   Float64.round(toFloat64(a))
-
-
-/// Round towards zero, discarding the fractional part
-let roundTowardsZero(a: Float32): Int64 =
-  Float64.roundTowardsZero(toFloat64(a))
 
 
 /// Discard the fractional portion of the float, rounding towards zero
@@ -249,9 +234,9 @@ let isFinite(f: Float32): Bool =
 
 
 /// Convert <param a> to an <type Int64> by discarding its fractional part.
-/// Raises for NaN and infinities. Alias of <fn Float32.roundTowardsZero>.
+/// Raises for NaN and infinities. Alias of <fn Float32.truncate>.
 let toInt64(a: Float32): Int64 =
-  roundTowardsZero(a)
+  truncate(a)
 
 
 /// Return <param a>'s IEEE 754 binary32 bits as an unsigned 32-bit value.

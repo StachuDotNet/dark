@@ -190,7 +190,7 @@ let toList(option: Option<'a>): List<'a> =
 
 
 /// Flattens a nested option. If <param option> is {{Some (Some <var value>)}}, returns {{Some <var value>}}. If <param option> is {{Some None}}, returns {{None}}.
-let join(option: Option<Option<'a>>): Option<'a> =
+let flatten(option: Option<Option<'a>>): Option<'a> =
   match option with
   | Some(v) -> v
   | None -> Option.None
