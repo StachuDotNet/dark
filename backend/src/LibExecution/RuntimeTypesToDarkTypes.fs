@@ -2158,6 +2158,8 @@ module RuntimeError =
       | RuntimeError.CLI e -> "CLI", [ CLIs.toDT e ]
       | RuntimeError.TrustedCommandOnly action ->
         "TrustedCommandOnly", [ TrustedCommands.toDT action ]
+      | RuntimeError.TestTempDirUnusable(dir, errno) ->
+        "TestTempDirUnusable", [ DString dir; dintOfInt errno ]
       | RuntimeError.UncaughtException(msg, metadata) ->
         "UncaughtException",
         [ DString msg
@@ -2235,6 +2237,8 @@ module RuntimeError =
     | DEnum(_, _, [], "CLI", [ e ]) -> RuntimeError.CLI(CLIs.fromDT e)
     | DEnum(_, _, [], "TrustedCommandOnly", [ action ]) ->
       RuntimeError.TrustedCommandOnly(TrustedCommands.fromDT action)
+    | DEnum(_, _, [], "TestTempDirUnusable", [ DString dir; errno ]) ->
+      RuntimeError.TestTempDirUnusable(dir, D.int errno)
     | DEnum(_, _, [], "UncaughtException", [ DString msg; DList(_, Items(metadata)) ]) ->
       RuntimeError.UncaughtException(
         msg,

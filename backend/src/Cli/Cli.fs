@@ -971,6 +971,14 @@ let private runCli (args : string[]) : int =
           LibExecution.HostEvents.runHere (fun () ->
             LibExecution.Execution.runtimeErrorToString state rte)
         with
+        // the machine, not the program: the sentence says what to change, and a call stack
+        // would only bury it
+        | Ok(RT.DString s) when
+          (match rte with
+           | RT.RuntimeError.TestTempDirUnusable _ -> true
+           | _ -> false)
+          ->
+          logError s
         | Ok(RT.DString s) ->
           // "Function <64 hex chars> couldn't be found" almost always means the STORE is
           // older than the binary: package code was reloaded, every hash moved, and this

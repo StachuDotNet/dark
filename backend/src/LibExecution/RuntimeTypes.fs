@@ -4090,6 +4090,10 @@ module RuntimeError =
     /// Code asked for something only the trusted CLI command may do.
     | TrustedCommandOnly of action : TrustedCommands.Action
 
+    /// Isolated tests could not make a directory in the temp directory <param dir>; <param errno>
+    /// says why.
+    | TestTempDirUnusable of dir : string * errno : int
+
 
     /// Sometimes, very-unexpected things happen. This is a catch-all for those.
     ///

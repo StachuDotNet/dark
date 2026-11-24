@@ -32,8 +32,8 @@ test unwritableTempDirIsNamedOnce = Instance.withInstance(fun i ->
     [ Instance.exitedWith(out.exitCode, 1, "the run could not finish")
       Instance.says(
         shown,
-        $"Isolated tests need a writable temp directory, and {notADir} is not (no such directory)",
+        $"Isolated tests need a writable temp directory, and {notADir} is not (Not a directory). Set TMPDIR to a writable directory and run again.",
         "the cause")
 
-      Instance.says(shown, "Set TMPDIR to a writable directory", "what to do")
+      Instance.doesNotSay(shown, "Call stack", "the machine, not the program")
       Instance.doesNotSay(shown, "FAIL", "not a test failure") ]))

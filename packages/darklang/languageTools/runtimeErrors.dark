@@ -270,6 +270,9 @@ type Error =
   | Statement(Statements.Error)
   /// Code asked for something only the trusted CLI command may do
   | TrustedCommandOnly(action: TrustedCommands.Action)
+  /// Isolated tests could not make a directory in the temp directory <param dir>; <param errno>
+  /// says why
+  | TestTempDirUnusable(dir: String, errno: Int64)
   | UncaughtException(msg: String, metadata: List<(String * Dval)>)
   /// Something the person running the program can resolve once told, with the sentence that tells
   /// them: an approval names a version the store no longer holds, the policy file cannot be trusted.

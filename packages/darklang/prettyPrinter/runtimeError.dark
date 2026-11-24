@@ -784,6 +784,11 @@ module RuntimeError =
 
       [ ES.String($"permission denied: {text}") ]
 
+    | TestTempDirUnusable(dir, errno) ->
+      let cause = Stdlib.display(Stdlib.Cli.Posix.__fromErrno(errno))
+      [ ES.String(
+          $"Isolated tests need a writable temp directory, and {dir} is not ({cause}). Set TMPDIR to a writable directory and run again.") ]
+
     | UncaughtException(msg, metadata) ->
       let withMetadata =
         match metadata with

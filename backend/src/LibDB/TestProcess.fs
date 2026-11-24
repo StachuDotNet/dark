@@ -400,19 +400,18 @@ let private runOnce
       return Error $"Isolated test failed: {e.Message}"
   }
 
-/// The temp directory and why a worker can't be given a directory in it, if it can't.
-let private tempDirProblem () : Option<string * string> =
+/// The temp directory and the errno that stops a worker getting a directory in it, if one does.
+let private tempDirProblem () : Option<string * int> =
   let dir = System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetTempPath())
-  try
-    System.IO.Directory.Delete(
-      System.IO.Directory.CreateTempSubdirectory("dark-test-").FullName
-    )
+  let probe = System.IO.Path.Combine(dir, $"dark-test-{System.Guid.NewGuid()}")
+  if not LibExecution.HostPosix.isPosix then
     None
-  with
-  // these two carry a resource key, not words, in a trimmed build
-  | :? System.UnauthorizedAccessException -> Some(dir, "permission denied")
-  | :? System.IO.DirectoryNotFoundException -> Some(dir, "no such directory")
-  | :? System.IO.IOException as e -> Some(dir, e.Message)
+  else
+    match LibExecution.HostPosix.mkdir probe 0o700 with
+    | Ok() ->
+      LibExecution.HostPosix.rmdir probe |> ignore<Result<unit, int * string>>
+      None
+    | Error(errno, _) -> Some(dir, errno)
 
 /// The request and result travel separately from stdout. The host owns the
 /// temporary directory and process tree, and reports cleanup failures even after success.
@@ -457,10 +456,7 @@ let run
     match outcome with
     | Error _ ->
       match tempDirProblem () with
-      | Some(dir, cause) ->
-        Exception.raiseStoreCondition
-          $"Isolated tests need a writable temp directory, and {dir} is not ({cause}). Set TMPDIR to a writable directory and run again."
-          []
+      | Some(dir, errno) -> raiseRTE (RuntimeError.TestTempDirUnusable(dir, errno))
       | None -> ()
     | Ok _ -> ()
     let wrote = shared.Value && System.IO.File.Exists marker
