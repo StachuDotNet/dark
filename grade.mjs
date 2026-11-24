@@ -82,7 +82,7 @@ function ctxFor(row, runRoot, entry) {
   // what any program in these tasks may need, scoped to the grading folder
   // plus the non-file, non-server rules the agent itself passed to `run` (`concurrency`, `env read X`, ...)
   // with `$D` as this attempt's dark and any other `$VAR...` path as the grading folder
-  const theirs = entry.rules.filter(r => !/^(file|http-server)\b/.test(r))
+  const theirs = entry.rules.filter(r => /^[a-z][\w-]*(\s|$)/.test(r) && !/^(file|http-server)\b/.test(r))
     .map(r => r.replace(/["']?\$\{?(?:D|DARK)\}?["']?(?=\s|$)/g, D).replace(/\$\{?\w+\}?(\/[^\s'"]*)?/g, tmp));
   const allow = (extra = []) => ['--allow', [...new Set([`file read ${tmp}`, `file write ${tmp}`, 'env read *', ...theirs, ...extra])].join('; ')];
   // an agent's path argument becomes one inside the grading folder; one without an extension is a folder
