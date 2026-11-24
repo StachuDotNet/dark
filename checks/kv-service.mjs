@@ -1,7 +1,8 @@
 export default async (c) => {
-  const port = 18600 + Math.floor(Math.random() * 300);
-  const s = await c.serve(port);
-  if (!s) return [{ name: 'server starts', ok: false, got: `${c.entry.router || c.entry.main}` }];
+  let port = 18600 + Math.floor(Math.random() * 300);
+  const s0 = await c.serve(port);
+  if (!s0) return [{ name: 'server starts', ok: false, got: `${c.entry.router || c.entry.main}` }];
+  const s = s0; port = s0.port;
   const h = (m, p, b) => c.http(port, m, p, b);
   const p1 = await h('PUT', '/kv/a', 'hello'), p2 = await h('PUT', '/kv/a', 'world'), g = await h('GET', '/kv/a');
   const miss = await h('GET', '/kv/missing'), d1 = await h('DELETE', '/kv/a'), d2 = await h('DELETE', '/kv/a');

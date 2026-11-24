@@ -1,8 +1,9 @@
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 export default async (c) => {
-  const port = 18084 + Math.floor(Math.random() * 500);
-  const s = await c.serve(port);
-  if (!s) return [{ name: 'server starts', ok: false, got: `${c.entry.router || c.entry.main}` }];
+  let port = 18084 + Math.floor(Math.random() * 500);
+  const s0 = await c.serve(port);
+  if (!s0) return [{ name: 'server starts', ok: false, got: `${c.entry.router || c.entry.main}` }];
+  const s = s0; port = s0.port;
   const post = (b) => c.http(port, 'POST', '/jobs', JSON.stringify(b), { 'content-type': 'application/json' });
   const id = (r) => { try { const j = JSON.parse(r.text); return j.id ?? j.jobId ?? j.job?.id; } catch { return null; } };
   const out = [{ name: 'server starts', ok: true }];

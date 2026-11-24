@@ -5,7 +5,7 @@
 // The entry point comes from the transcript: the function the agent last ran without a Dark error
 // (or served), and the modules it saved. Any agent that writes stream-json and uses `dark run`/`serve`
 // or saves with `module` is graded the same way.
-import { readFileSync, existsSync, appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, appendFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync, spawn } from 'node:child_process';
 import path from 'node:path';
 
@@ -28,15 +28,17 @@ const NAME = String.raw`([A-Z]\w*(?:\.\w+)+)`;
 function runsIn(text) {
   const out = [];
   for (const line of text.split('\n')) for (const m of line.matchAll(/(?<!test )\brun\b(.*)/g)) {
-    const words = m[1].split(/[;|&>]/)[0].trim().split(/\s+/);
+    // quoted flag values (`--allow "a; b"`) can hold `;`, so they go first
+    const words = m[1].replace(/"[^"]*"|'[^']*'/g, (q) => /^["'][^"' ]*["']$/.test(q) ? q : 'Q').split(/[;|&>]/)[0].trim().split(/\s+/);
     const i = words.findIndex(w => /^[A-Z]\w*(?:\.\w+)*\.[a-z]\w*$/.test(w));
-    if (i >= 0 && !/^(Stdlib|Darklang)\./.test(words[i])) out.push({ fn: words[i], rest: words.slice(i + 1) });
+    const rest = words.slice(i + 1); const f = rest.findIndex(w => /^--allow/.test(w));
+    if (i >= 0 && !/^(Stdlib|Darklang)\./.test(words[i])) out.push({ fn: words[i], rest: f >= 0 ? rest.slice(0, f) : rest });
   }
   return out;
 }
 
 function entryFrom(transcript) {
-  const tools = new Map(); const runs = [], serves = [], modules = new Set(); let final = '', argsOf = {};
+  const tools = new Map(); const runs = [], serves = [], modules = new Set(); let final = '', argsOf = {}; const ports = [], rules = new Set();
   for (const line of transcript.split('\n')) {
     let e; try { e = JSON.parse(line); } catch { continue; }
     if (e.type === 'assistant') for (const c of e.message?.content || []) if (c.type === 'tool_use') tools.set(c.id, c);
@@ -51,18 +53,20 @@ function entryFrom(transcript) {
       for (const m of cmd.matchAll(/\b(?:module|fn)\s+\/?([A-Z][\w.]*)/g)) modules.add(m[1].replace(/\.Tests$/, ''));
       if (!ok) continue;
       for (const { fn, rest } of runsIn(cmd)) { runs.push(fn); argsOf[fn] = rest; }
+      for (const m of cmd.matchAll(/(?:127\.0\.0\.1|localhost):(\d{4,5})/g)) ports.push(+m[1]);
+      for (const m of cmd.matchAll(/--allow[= ]+(?:"([^"]*)"|'([^']*)')/g)) for (const r of (m[1] ?? m[2]).split(';')) rules.add(r.trim());
       for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:serve|http-server)\s+` + NAME, 'g'))) serves.push(m[1]);
     }
     if (e.type === 'result' && !final) final = String(e.result || '');
   }
-  for (const { fn } of runsIn(final.replace(/`/g, ' '))) runs.push(fn);
+  for (const { fn, rest } of runsIn(final.replace(/`/g, ' '))) { runs.push(fn); argsOf[fn] ??= rest; }
   for (const m of final.matchAll(new RegExp(String.raw`\bserve\s+` + NAME, 'g'))) serves.push(m[1]);
   const count = xs => { const c = {}; xs.forEach((x, i) => c[x] = (c[x] || 0) + 1 + i / 1000); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); };
   // the program is the one the final answer names, else the one run most often, else the last one run
   const inFinal = [...final.matchAll(/\b([A-Z]\w*(?:\.[A-Z]\w*)*\.main)\b/g)].map(m => m[1]);
   const named = [...runs].reverse().find(f => inFinal.includes(f)) || inFinal[0] || [...runs].reverse().find(f => final.includes(f));
   const main = named || count(runs)[0] || null;
-  return { main, mainArgs: argsOf[main] || [], mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final };
+  return { main, mainArgs: argsOf[main] || [], mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final, ports: [...new Set(ports.reverse())], rules: [...rules].filter(r => r && !r.includes('$')) };
 }
 
 function ctxFor(row, runRoot, entry) {
@@ -74,7 +78,12 @@ function ctxFor(row, runRoot, entry) {
     const r = spawnSync(D, argv, { cwd: o.cwd || tmp, input: o.stdin ?? '', env: { ...env, ...(o.env || {}) }, timeout: o.timeout || 60000, maxBuffer: 64 << 20 });
     return { code: r.status, out: String(r.stdout || ''), err: String(r.stderr || ''), timedOut: !!r.error };
   };
-  const allow = (extra = []) => ['--allow', [`file read ${tmp}`, `file write ${tmp}`, ...extra].join('; ')];
+  // what any program in these tasks may need, scoped to the grading folder
+  // plus the non-file, non-server rules the agent itself passed to `run` (`concurrency`, `env read X`, ...)
+  const theirs = entry.rules.filter(r => !/^(file|http-server)\b/.test(r));
+  const allow = (extra = []) => ['--allow', [...new Set([`file read ${tmp}`, `file write ${tmp}`, ...theirs, ...extra])].join('; ')];
+  // an agent's path argument becomes one inside the grading folder; one without an extension is a folder
+  const here = (x) => { const q = path.join(tmp, path.basename(x)); if (!path.extname(q)) mkdirSync(q, { recursive: true }); return q; };
   const ctx = {
     tmp, entry, dark, final: entry.final,
     write: (name, content) => { writeFileSync(path.join(tmp, name), content); return path.join(tmp, name); },
@@ -82,10 +91,10 @@ function ctxFor(row, runRoot, entry) {
     run: (argv, o = {}) => dark(['run', ...allow(o.allow), o.fn || entry.main, ...argv], o),
     eval: (expr, o = {}) => dark(['eval', expr], o),
     // counts from the summary line, which every release prints (`--json` is newer)
-    // tests named after the program, else after any saved module, else every test in the store
+    // tests named after the program, else after any saved module, else any of the user's own
     test: (filter) => {
       let last;
-      for (const f of [filter, ...entry.modules, null]) {
+      for (const f of [filter, ...entry.modules, 'Me.']) {
         const r = dark(['test', 'run', ...(f ? [f] : [])], { timeout: 300000 });
         const m = (r.out + r.err).match(/(\d+) tests?[^\n]*?: (\d+) passed, (\d+) failed/);
         last = m ? { tests: +m[1], passed: +m[2], failed: +m[3], code: r.code, filter: f } : { passed: 0, failed: 0, code: r.code, raw: (r.out + r.err).slice(-200) };
@@ -97,20 +106,29 @@ function ctxFor(row, runRoot, entry) {
     // the user's declarations `let f(...): T` in the saved modules
     fns: () => entry.modules.flatMap(m => [...ctx.source(m).matchAll(/^\s*let (\w+)\(([^)]*)\)\s*:\s*([^=]+)=/gm)].map(x => ({ module: m, name: `${m}.${x[1]}`, short: x[1], params: x[2].trim(), ret: x[3].trim() }))),
     owner: () => (entry.main || entry.router || entry.modules[0] || 'Me.X').split('.').slice(0, 2).join('.'),
+    // start the server on our port; if it never answers there, start it as the agent did and try the
+    // ports its own requests used. Returns { stop, port } or null.
     async serve(port, extraAllow = []) {
-      let p;
+      const up = async (p, proc) => { for (let i = 0; i < 40; i++) { if (proc.exitCode != null) return false; try { await fetch(`http://127.0.0.1:${p}/`); return true; } catch { await new Promise(r => setTimeout(r, 500)); } } return false; };
+      const start = (argv, allowPorts) => spawn(D, argv[0] === 'serve' ? argv : ['run', ...allow([...allowPorts.map(q => `http-server 127.0.0.1 ${q}`), ...extraAllow]), entry.main, ...argv], { cwd: tmp, env, stdio: 'ignore' });
       if (entry.router) {
         dark(['permissions', 'allow', 'http-server', '127.0.0.1', String(port)]);
-        p = spawn(D, ['serve', entry.router, '--port', String(port)], { cwd: tmp, env, stdio: 'ignore' });
-      } else {
-        // the agent's own last arguments, with its port swapped for ours
-        // and its absolute paths moved into the grading folder
-        const a = entry.mainArgs.map(x => x.replace(/^["']|["']$/g, '')).map(x => /^\d{4,5}$/.test(x) ? String(port) : x.startsWith('/') || x.startsWith('$') ? path.join(tmp, path.basename(x)) : x.replace(/:\d{4,5}$/, `:${port}`));
-        const argv = a.some(x => x.includes(String(port))) ? a : [...a, String(port)];
-        p = spawn(D, ['run', ...allow([`http-server 127.0.0.1 ${port}`, ...extraAllow]), entry.main, ...argv], { cwd: tmp, env, stdio: 'ignore' });
+        const p = start(['serve', entry.router, '--port', String(port)], []);
+        if (await up(port, p)) return { stop: () => p.kill('SIGKILL'), port };
+        p.kill('SIGKILL'); return null;
       }
-      for (let i = 0; i < 60; i++) { try { await fetch(`http://127.0.0.1:${port}/`); return { stop: () => p.kill('SIGKILL') }; } catch { await new Promise(r => setTimeout(r, 500)); } }
-      p.kill('SIGKILL'); return null;
+      // the agent's own last arguments, with its port swapped for ours and its absolute paths moved here
+      const a = entry.mainArgs.map(x => x.replace(/^["']|["']$/g, '')).map(x => /^\d{4,5}$/.test(x) ? String(port) : x.startsWith('/') || x.startsWith('$') ? here(x) : x.replace(/:\d{4,5}$/, `:${port}`));
+      let p = start(a.some(x => x.includes(String(port))) ? a : [...a, String(port)], [port]);
+      if (await up(port, p)) return { stop: () => p.kill('SIGKILL'), port };
+      p.kill('SIGKILL');
+      const plain = entry.mainArgs.map(x => x.replace(/^["']|["']$/g, '')).map(x => x.startsWith('/') || x.startsWith('$') ? here(x) : x);
+      for (const q of [...entry.ports, 8080].slice(0, 3)) {
+        p = start(plain, [q]);
+        if (await up(q, p)) return { stop: () => p.kill('SIGKILL'), port: q };
+        p.kill('SIGKILL');
+      }
+      return null;
     },
     async http(port, method, p, body, headers = {}) {
       try { const r = await fetch(`http://127.0.0.1:${port}${p}`, { method, body, headers }); return { status: r.status, text: await r.text() }; } catch (e) { return { status: 0, text: String(e) }; }
