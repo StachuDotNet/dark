@@ -385,6 +385,11 @@ let runScriptMeasured(
   stats: Bool)
   : AppState =
   let traceId = Stdlib.Uuid.generate()
+  // A resume (`Skip`) records under the trace it resumes, and says so itself.
+  match approval with
+  | Offer -> Cli.Tracing.printStartedTrace(traceId)
+  | Skip -> ()
+
   let run = fun () ->
     parseAndExecute(
       state.accountID,
