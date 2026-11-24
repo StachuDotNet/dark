@@ -1,13 +1,21 @@
-// usage: node reflect.mjs <label>... [--md out.md] [--json out.json] [--timeline label/task-n] [--examples N]
+// usage: node reflect.mjs <label>... [--md out.md] [--json out.json] [--timeline label/task-n] [--examples N] [--seq] [--tool-phases map.json]
+// Input: results/<label>/<task>-<n>/agent-0.jsonl in Claude Code's stream-json (any agent that writes it works:
+// one `assistant` event per model call with message.id and usage, `tool_use` / `tool_result` blocks, a final
+// `result`), and results/<label>.jsonl rows (cost, status). One label per arm, so two agents compare side by side.
+// Tools other than Claude Code's: a tool whose input has `command` is read as a shell call; --tool-phases maps
+// any other tool name to a phase, e.g. {"dark_save": "author", "dark_search": "lookup", "dark_run": "run"}.
+// --json writes schema "reflect/1": one object per label with the aggregates and a perSession list.
 // Turns bench transcripts into: where turns go, failure classes, the first wrong turn, what each
 // failure costs to recover from, the tokens tool output adds to every later turn, and (with several
 // labels) how all of that moves between runs.
 // Measure-set tasks are counted, never quoted: no examples, commands or timelines from them.
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 
-const B = new URL('.', import.meta.url).pathname;
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
+// --root: a bench folder with results/, lists/ and tasks/ (default: this script's folder)
+const B = opt('--root', new URL('.', import.meta.url).pathname);
+const phaseMapFile = opt('--tool-phases'); const toolPhases = phaseMapFile ? JSON.parse(readFileSync(phaseMapFile, 'utf8')) : {};
 const mdOut = opt('--md'), jsonOut = opt('--json'), timelineOf = opt('--timeline'), nEx = +opt('--examples', 3);
 const labels = args;
 const kindOf = {};
@@ -37,7 +45,8 @@ function classify(tu) {
   const n = tu.name, i = tu.input || {};
   if (n === 'Write' || n === 'Edit' || n === 'MultiEdit' || n === 'NotebookEdit') return { phase: 'author', subs: [], what: `${n} ${short(i.file_path)}`, writeChars: (i.content || i.new_string || '').length, file: i.file_path };
   if (n === 'Read' || n === 'Glob' || n === 'Grep' || n === 'LS') return { phase: 'orient', subs: [], what: `${n} ${short(i.file_path || i.pattern || i.path)}` };
-  if (n !== 'Bash' && n !== 'BashOutput') return { phase: 'meta', subs: [], what: n };
+  if (toolPhases[n]) return { phase: toolPhases[n], subs: [n], what: `${n} ${JSON.stringify(i).slice(0, 300)}` };
+  if (n !== 'Bash' && n !== 'BashOutput' && typeof i.command !== 'string') return { phase: 'meta', subs: [], what: n };
   const cmd = i.command || '';
   const subs = [];
   for (const m of cmd.matchAll(darkSub)) {
@@ -97,7 +106,7 @@ function session(label, dir) {
   for (const line of readFileSync(f, 'utf8').split('\n')) {
     let e; try { e = JSON.parse(line); } catch { continue; }
     if (e.type === 'assistant' && !e.parent_tool_use_id) {
-      const id = e.message?.id; if (!id) continue;
+      const id = e.message?.id || e.uuid || `turn-${msgs.size}`;
       if (!msgs.has(id)) { msgs.set(id, { turn: msgs.size + 1, ctx: 0, out: 0, text: '' }); turnsOrder.push(id); }
       const m = msgs.get(id), u = e.message.usage || {};
       m.ctx = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
@@ -128,7 +137,8 @@ function session(label, dir) {
     // closed by a call of the same kind that no longer shows the error, or by any clean save, run or test
     const cleanSame = open && t.calls.some(c => (c.phase === open.phase && !c.errs.includes(open.cls) && (c.subs.length || c.phase === 'run'))
       || (['author', 'run', 'test'].includes(c.phase) && c.subs.length && !c.errs.length));
-    if (open && cleanSame && !darkErrs.length) { open.end = t.turn; open = null; t.fixing = false; continue; }
+    // the clean redo is part of the recovery, so it counts as fixing too
+    if (open && cleanSame && !darkErrs.length) { open.end = t.turn; open.turns++; open = null; t.fixing = true; continue; }
     if (open) { t.fixing = true; open.turns++; }
     if (darkErrs.length && !open) {
       const c = t.calls.find(c => c.errs.some(x => DARK_ERR.has(x) || x === 'sandbox-net'));
@@ -152,7 +162,7 @@ function session(label, dir) {
   const toolMs = calls.reduce((a, c) => a + (c.ms > 0 && c.ms < 3.6e6 ? c.ms : 0), 0), spanMs = (t1 - t0) || 0;
   const darkMs = calls.filter(c => c.subs.length === 1 && c.what.length < 400).map(c => c.ms).filter(x => x > 0);
   const looked = [], docParts = [];
-  for (const c of calls) if (c.tool === 'Bash') {
+  for (const c of calls) if (c.tool === 'Bash' || c.subs.length) {
     for (const m of c.what.matchAll(/\b(?:signatures|view|search(?: --batch)?)\s+((?:"[^"]*"|'[^']*'|[A-Za-z][\w.]*)(?:\s+(?:"[^"]*"|'[^']*'|[A-Z][\w.]*))*)/g)) for (const w of m[1].split(/\s+/)) if (w && !w.startsWith('-')) looked.push(w.replace(/["']/g, '').replace(/^Darklang\./, '').split('.').slice(0, 2).join('.'));
     for (const m of c.what.matchAll(/\bdocs\s+(for-ai(?:\s+[a-z][\w-]*)*|[a-z][\w-]*)/g)) docParts.push(m[1].replace(/\s+\d.*/, ''));
   }
@@ -180,7 +190,7 @@ function aggregate(S) {
   const ctx = S.reduce((a, s) => a + s.ctxSum, 0), carried = S.reduce((a, s) => a + s.carried, 0);
   const carryBy = {}; for (const s of S) for (const [k, v] of Object.entries(s.carryBy)) carryBy[k] = (carryBy[k] || 0) + v;
   const base = S.reduce((a, s) => a + s.firstCtx * s.T, 0);
-  const cls = {}; for (const s of S) for (const e of s.episodes) { const c = (cls[e.cls] ||= { episodes: 0, sessions: new Set(), turns: 0, ex: [] }); c.episodes++; c.sessions.add(s.dir + s.label); c.turns += e.turns + 1; if (!s.measure && c.ex.length < nEx && e.line) c.ex.push(`${s.task}#${s.n} t${e.start}: ${e.line}`); }
+  const cls = {}; for (const s of S) for (const e of s.episodes) { const c = (cls[e.cls] ||= { episodes: 0, sessions: new Set(), turns: 0, ex: [] }); c.episodes++; c.sessions.add(s.dir + s.label); c.turns += e.turns; if (!s.measure && c.ex.length < nEx && e.line) c.ex.push(`${s.task}#${s.n} t${e.start}: ${e.line}`); }
   const first = {}; for (const s of S) if (s.firstWrong) first[s.firstWrong.cls] = (first[s.firstWrong.cls] || 0) + 1;
   const subs = {}; for (const s of S) for (const [k, v] of Object.entries(s.subs)) subs[k] = (subs[k] || 0) + v;
   return { sessions: S.length, turns, medTurns: med(S.map(s => s.T)), cost: +S.reduce((a, s) => a + (s.row.cost || 0), 0).toFixed(2), medCost: med(S.map(s => s.row.cost)),
@@ -216,14 +226,14 @@ for (const [label, S] of all) {
   p(`| whole-file rewrites | ${A.rewrites} |`);
   p(`| wall time in tools (Bash, files) / in the model | ${pct(A.toolMs, A.spanMs)}% / ${100 - pct(A.toolMs, A.spanMs)}% |`);
   p(`| median single Dark call | ${A.medDarkMs} ms |\n`);
-  p(`**Where turns go** (a turn counts once, under its strongest call; "fix" is any turn between a Dark error and the next clean call of that kind)\n`);
+  p(`**Where turns go** (a turn counts once, under its strongest call; "fix" is every turn after a Dark error up to and including the clean redo)\n`);
   p(`| phase | turns | share |\n|---|---:|---:|`);
   for (const ph of PH) if (A.phase[ph]) p(`| ${ph} | ${A.phase[ph]} | ${pct(A.phase[ph], A.turns)}% |`);
   p(`\n**Tool output carried forward, by phase** (estimated tokens × later turns, share of all input tokens)\n`);
   p(`| phase | share |\n|---|---:|`);
   for (const [k, v] of Object.entries(A.carryBy).sort((a, b) => b[1] - a[1]).slice(0, 8)) p(`| ${k} | ${pct(v, A.ctx)}% |`);
-  p(`\n**Failure classes** (an episode starts at a Dark error and ends at the next clean call of that kind)\n`);
-  p(`| class | sessions | episodes | turns in episodes | first wrong turn in |\n|---|---:|---:|---:|---:|`);
+  p(`\n**Failure classes** (an episode starts at a Dark error; its recovery turns run up to and including the clean redo)\n`);
+  p(`| class | sessions | episodes | recovery turns | first wrong turn in |\n|---|---:|---:|---:|---:|`);
   for (const [k, c] of Object.entries(A.cls).sort((a, b) => b[1].sessions.size - a[1].sessions.size)) p(`| ${k} | ${c.sessions.size} | ${c.episodes} | ${c.turns} | ${A.first[k] || 0} |`);
   p('');
   for (const [k, c] of Object.entries(A.cls)) if (c.ex.length) { p(`- **${k}**:`); for (const x of c.ex) p(`  - \`${x.replace(/`/g, "'")}\``); }
@@ -268,4 +278,4 @@ if (timelineOf) {
 }
 const md = L.join('\n');
 if (mdOut) writeFileSync(mdOut, md); else console.log(md);
-if (jsonOut) writeFileSync(jsonOut, JSON.stringify(all.map(([l, S]) => ({ label: l, ...aggregate(S), cls: Object.fromEntries(Object.entries(aggregate(S).cls).map(([k, c]) => [k, { ...c, sessions: c.sessions.size }])), perSession: S.map(s => ({ task: s.task, n: s.n, measure: s.measure, T: s.T, cost: s.row.cost, phaseTurns: s.phaseTurns, episodes: s.episodes.map(e => ({ cls: e.cls, start: e.start, turns: e.turns })), carried: s.carried, ctx: s.ctxSum })) })), null, 1));
+if (jsonOut) writeFileSync(jsonOut, JSON.stringify(all.map(([l, S]) => ({ schema: 'reflect/1', label: l, ...aggregate(S), cls: Object.fromEntries(Object.entries(aggregate(S).cls).map(([k, c]) => [k, { ...c, sessions: c.sessions.size }])), perSession: S.map(s => ({ task: s.task, n: s.n, measure: s.measure, kind: s.kind, seq: s.measure ? null : s.seq, firstSaveErrs: s.firstSaveErrs, firstGreen: s.firstGreen, firstAuthor: s.firstAuthor, T: s.T, cost: s.row.cost, phaseTurns: s.phaseTurns, episodes: s.episodes.map(e => ({ cls: e.cls, start: e.start, turns: e.turns, closed: e.end != null })), carried: s.carried, ctx: s.ctxSum })) })), null, 1));
