@@ -66,7 +66,7 @@ GATES=(
 CI_GATES=(workbench-scm workbench-views old-store-resets backups-restore
           trait-choice-survives-rival trait-choice-any-batching trait-checker-vs-dispatch
           trait-deprecation-is-per-branch trait-pin-across-branches
-          shipped-tree-typechecks perf-probes-run prompts-unattended lsp
+          shipped-tree-typechecks perf-probes-run prompts-unattended dark-format lsp
           vscode-extension)
 
 describe() {
