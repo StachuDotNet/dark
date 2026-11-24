@@ -106,15 +106,21 @@ let token(inp: Input, i: Int64): Token =
 
 /// The kind of the token at <param i>; TEOF past the end.
 let tok(inp: Input, i: Int64): TokenKind =
-  if i < inp.count then (token(inp, i)).kind else TokenKind.TEOF
+  match Builtin.listGetAt(inp.tokens, i) with
+  | Some(t) -> t.kind
+  | None -> TokenKind.TEOF
 
 
 let rng(inp: Input, i: Int64): Range =
-  (token(inp, i)).range
+  match Builtin.listGetAt(inp.tokens, i) with
+  | Some(t) -> t.range
+  | None -> (token(inp, i)).range
 
 
 let txt(inp: Input, i: Int64): String =
-  if i < inp.count then (token(inp, i)).text else ""
+  match Builtin.listGetAt(inp.tokens, i) with
+  | Some(t) -> t.text
+  | None -> ""
 
 
 let docOf(inp: Input, i: Int64): String =
@@ -661,21 +667,28 @@ val maxDepth = 200
 /// Run <param p> one level deeper. Past `maxDepth` levels, or past the step budget, the parse
 /// is abandoned with one diagnostic, and <param hole> stands in for what was being parsed.
 let guarded(inp: Input, st: St, p: Parser<'a>, hole: Range -> 'a): ('a * St) =
-  let i = st.index
-  let stop =
-    fun(code, message, hint) ->
-      let st1 = errFull(inp, st, code, i, message, [], Stdlib.Option.Option.Some(hint))
-      (hole(rng(inp, i)), { st1 with abandoned = true, index = inp.count - 1 })
   if st.depth >= maxDepth then
-    stop(
+    abandon(
+      inp,
+      st,
+      hole,
       Code.TooDeep,
       $"nesting too deep (over {maxDepth} levels); parsing abandoned",
       "split the expression with intermediate `let` bindings")
   else if st.steps + 1 > 4000 + inp.count * 300 then
-    stop(
+    abandon(
+      inp,
+      st,
+      hole,
       Code.InternalLoop,
       "internal parser error: step budget exhausted (parser loop?); parsing abandoned",
       "please report this — it indicates a parser bug, not a problem with your code")
   else
     let (v, after) = p(inp, { st with depth = st.depth + 1, steps = st.steps + 1 })
     (v, { after with depth = st.depth })
+
+
+let abandon(inp: Input, st: St, hole: Range -> 'a, code: Code, message: String, hint: String): ('a * St) =
+  let i = st.index
+  let st1 = errFull(inp, st, code, i, message, [], Stdlib.Option.Option.Some(hint))
+  (hole(rng(inp, i)), { st1 with abandoned = true, index = inp.count - 1 })
