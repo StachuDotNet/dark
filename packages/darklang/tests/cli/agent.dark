@@ -1,0 +1,45 @@
+/// `dark agent` end to end on a recorded conversation: the model's turns come from a file, and
+/// everything else is real (the session's branch, the repl, the effects policy, stream-json).
+module Darklang.Cli.Tests.Agent
+
+val recorded =
+  "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t1\", \"name\": \"dark\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"batch\\\": \\\"fn Me.Agent.Test.triple '(a: \"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"Int64): Int64 = a * 3'\\\\nMe.Agent.Test.tr\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"iple(5)\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 1, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t2\", \"name\": \"bash\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 1, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"command\\\": \\\"echo hi\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 1}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 120}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Made Me.Agent.Test.t\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"riple.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 120}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n"
+
+
+test aRecordedSessionBuildsOnItsOwnBranch = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/session.replay"
+  let _ = Stdlib.Cli.File.writeText(path, recorded)
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "agent"
+        "-p"
+        "make triple"
+        "--replay"
+        path
+        "--output-format"
+        "stream-json" ])
+
+  let (_c, onBranch) =
+    Instance.runWithStdin(i, [ "@a1" ], "Me.Agent.Test.triple(2)\n")
+
+  let (_m, main) = Instance.ran(i, [ "status" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the session answers")
+      Instance.says(
+        out,
+        "\"type\":\"system\",\"subtype\":\"init\"",
+        "stream-json starts with init")
+
+      Instance.says(out, "2 15", "the batch ran in the session's repl")
+
+      Instance.says(
+        out,
+        "denied: bash needs process",
+        "bash is not allowed by default")
+
+      Instance.says(out, "\"subtype\":\"success\"", "the result")
+
+      Instance.says(onBranch, "1 6", "the function is on the session's branch")
+
+      Instance.says(main, "clean", "main is untouched") ]))

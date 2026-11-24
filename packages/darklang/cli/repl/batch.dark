@@ -1,0 +1,737 @@
+/// Running one batch in a repl: split it into statements, run each, number the replies, and report
+/// what the batch changed. `docs/repl.md` is the contract; the agent's Dark tools call `run`
+/// directly.
+module Darklang.Cli.Repls.Batch
+
+type Statement =
+  | Bind(name: String, rhs: String)
+  | Command(name: String, args: List<String>, stdin: Option<String>)
+  | WatchAdd(String)
+  | WatchRemove(String)
+  | Expression(String)
+  | Refused(String)
+
+
+/// What a failed statement does to the rest of the batch.
+type OnFailure =
+  | Stop
+  | KeepGoing
+
+
+type ModuleCheck =
+  { name: String
+    checked: Int64
+    /// (item, its issues)
+    failures: List<(String * List<String>)> }
+
+
+type WatchResult =
+  { expression: String
+    status: String
+    value: String
+    changed: Bool }
+
+
+type Outcome =
+  { replies: List<Reply>
+    ms: Int64
+    checks: List<ModuleCheck>
+    watches: List<WatchResult>
+    /// Where the batch left the repl, when it moved: (branch, location).
+    moved: Option<(String * String)> }
+
+
+/// Commands that write declarations, so their module goes into the report's typecheck.
+val writeCommands =
+  [ "fn"
+    "function"
+    "val"
+    "value"
+    "type"
+    "trait"
+    "impl"
+    "module"
+    "edit"
+    "delete"
+    "rename"
+    "deprecate"
+    "test" ]
+
+
+/// How much of one reply is shown before it points to `dark repl show`.
+type Caps =
+  { lines: Int64
+    chars: Int64 }
+
+
+/// What a person or an outside agent reading `dark @r1` gets: the contract's caps.
+let replyCaps(): Caps =
+  Caps { lines = 20, chars = 2000 }
+
+
+val reportLineCap = 12
+
+
+let stripAnsi(text: String): String =
+  Stdlib.Regex.replaceAll(text, "\u001b\\[[0-9;?]*[A-Za-z]", "") |> Stdlib.Result.withDefault(text)
+
+
+let outputLines(text: String): List<String> =
+  let lines =
+    stripAnsi(text)
+    |> Stdlib.String.splitOnNewline
+    |> Stdlib.List.map(fun l -> Stdlib.String.trimEnd(l))
+
+  // trailing blank lines say nothing
+  lines
+  |> Stdlib.List.reverse
+  |> Stdlib.List.dropWhile(fun l -> l == "")
+  |> Stdlib.List.reverse
+
+
+/// A success line's leading tick says nothing the reply's `ok` does not.
+let dropGlyph(line: String): String =
+  match Stdlib.String.toList(line) with
+  | [g, s, ...rest] when Stdlib.display(s) == " " && Stdlib.Bool.not(Stdlib.Char.isASCII(g)) ->
+    Stdlib.String.fromList(rest)
+  | _ -> line
+
+
+let indentOf(line: String): Int64 =
+  Stdlib.String.length(line) - Stdlib.String.length(Stdlib.String.trimStart(line))
+
+
+/// Remove the indent every non-blank line shares.
+let dedent(lines: List<String>): String =
+  let widths =
+    lines
+    |> Stdlib.List.filter(fun l -> Stdlib.String.trim(l) != "")
+    |> Stdlib.List.map(fun l -> indentOf(l))
+
+  let common =
+    match widths with
+    | [] -> 0
+    | [w, ...ws] -> ws |> Stdlib.List.fold(w, fun(acc, x) -> if x < acc then x else acc)
+
+  lines
+  |> Stdlib.List.map(fun l -> Stdlib.String.dropFirst(l, common))
+  |> Stdlib.String.join("\n")
+
+
+let commandNames(state: AppState): List<String> =
+  state.allCommandsCache
+  |> Stdlib.List.fold([], fun(acc, h) ->
+    Stdlib.List.concat(Stdlib.List.append(acc, h.name), h.aliases))
+
+
+let firstWord(text: String): String =
+  Stdlib.String.split(Stdlib.String.trim(text), " ")
+  |> Stdlib.List.head
+  |> Stdlib.Option.withDefault("")
+  |> Stdlib.String.trim
+
+
+let classify(state: AppState, text: String): Statement =
+  // a line written as it would be typed in a shell, `dark fn ...`, means the same as `fn ...`
+  let text =
+    if Stdlib.String.startsWith(text, "dark ") then
+      Stdlib.String.dropFirst(text, 5)
+    else
+      text
+
+  let word = firstWord(text)
+  match Repl.parseLetBinding(text) with
+  | Some((name, rhs)) -> Statement.Bind(name, rhs)
+  | None ->
+    if word == "watch" then
+      Statement.WatchAdd(Stdlib.String.trim(Stdlib.String.dropFirst(Stdlib.String.trim(text), 5)))
+    else if word == "unwatch" then
+      Statement.WatchRemove(
+        Stdlib.String.trim(Stdlib.String.dropFirst(Stdlib.String.trim(text), 7)))
+    else if word == "repl" || Stdlib.String.startsWith(word, "@") then
+      Statement.Refused($"`{word}` cannot run inside a batch")
+    else if Stdlib.List.contains(commandNames(state), word) then
+      let lines = Stdlib.String.split(text, "\n")
+      let firstLine = Stdlib.List.head(lines) |> Stdlib.Option.withDefault("")
+      let rest = Stdlib.List.drop(lines, 1)
+      match LanguageTools.Permissions.tokens(firstLine) with
+      | None -> Statement.Refused("a quote is not closed")
+      | Some(words) ->
+        let endsInDash = Stdlib.List.last(words) == Option.Some("-")
+        if endsInDash && Stdlib.Bool.not(Stdlib.List.isEmpty(rest)) then
+          Statement.Command(word, Stdlib.List.drop(words, 1), Option.Some(dedent(rest)))
+        else
+          match LanguageTools.Permissions.tokens(text) with
+          | None -> Statement.Refused("a quote is not closed")
+          | Some(all) -> Statement.Command(word, Stdlib.List.drop(all, 1), Option.None)
+    else
+      Statement.Expression(text)
+
+
+/// A value as a Dark literal you can paste back, or as `eval` prints it when it has none. "" for
+/// unit.
+let literal(branchId: Uuid, v: 'a): String =
+  let dv = LanguageTools.RuntimeTypes.reflect(v)
+  match dv with
+  | DUnit -> ""
+  | _ ->
+    match LanguageTools.RuntimeTypesToProgramTypes.dvalToExpr(branchId, dv) with
+    | Ok(e) ->
+      PrettyPrinter.ProgramTypes.expr(PrettyPrinter.ProgramTypes.Context.forBranch(branchId), e)
+    | Error(_) -> Stdlib.inspect(v)
+
+
+/// An error's line numbers, less the <param k> lines of bindings put in front of what was typed.
+let shiftLine(line: String, k: Int64): String =
+  let fix(s: String, pattern: String, suffix: String): String =
+    Stdlib.Regex.replaceAllWith(s, pattern, fun m ->
+      match m.captures with
+      | [Some(lead), Some(num)] ->
+        match Stdlib.Int64.parse(num.text) with
+        | Ok(n) when n > k -> lead.text + Stdlib.display(n - k) + suffix
+        | _ -> m.text
+      | _ -> m.text)
+    |> Stdlib.Result.withDefault(s)
+
+  if k == 0 then
+    line
+  else
+    fix(fix(line, "(at )(\\d+):", ":"), "^(\\s*)(\\d+) \\|", " |")
+
+
+/// Evaluate <param expr> with the bindings in scope: (the literal, or the error's lines; what it
+/// printed on the way).
+let evalLiteral(
+  state: AppState,
+  bindings: List<Repl.Binding>,
+  expr: String)
+  : (Result<String, List<String>> * List<String>) =
+  let source = Repl.withBindings(bindings, expr)
+  let (result, printed) = Workbench.captureOutputAnd(fun () ->
+    match Eval.evaluateValue(state.accountID, state.currentBranchId, source, Eval.Harmful.Halt) with
+    | Ok(v) -> Result.Ok(literal(state.currentBranchId, v))
+    | Error(e) ->
+      let k = Stdlib.List.length(Stdlib.String.split(Repl.bindingChain(bindings), "\n")) - 1
+      Result.Error(
+        outputLines(ExecutionError.formatForTerminal(state.accountID, state.currentBranchId, e))
+        |> Stdlib.List.map(fun l -> shiftLine(l, k))))
+
+  (result, outputLines(printed))
+
+
+let errorLines(lines: List<String>): List<String> =
+  match lines |> Stdlib.List.filter(fun l -> Stdlib.String.trim(l) != "") with
+  | [first, ...rest] ->
+    let first = Stdlib.String.trim(first)
+    let first =
+      if Stdlib.String.startsWith(first, "Error: ") then
+        Stdlib.String.dropFirst(first, 7)
+      else
+        first
+
+    Stdlib.List.prepend(rest, "error: " + first)
+  | [] -> [ "error" ]
+
+
+let reply(n: Int64, kind: String, status: String, lines: List<String>): Reply =
+  Reply { n = n, kind = kind, status = status, lines = lines }
+
+
+let runBind(state: AppState, r: Record, n: Int64, name: String, rhs: String): (Record * Reply) =
+  let capture = Repl.captureExpr(r.bindings, state.currentBranchId, name, rhs)
+  let (result, _stray) =
+    Workbench.captureOutputAnd(fun () -> Eval.evaluate(state, capture, Eval.Harmful.Halt))
+
+  let keep(binding: Repl.Binding, shown: String): (Record * Reply) =
+    ({ r with bindings = Repl.upsert(r.bindings, binding) }, reply(n, "binding", "ok", [ shown ]))
+
+  let uncaptured(): (Record * Reply) =
+    keep(
+      Repl.Binding { name = name, source = rhs, value = rhs, captured = false },
+      $"ok {name} ~ {rhs}")
+
+  match result with
+  | Error(_) ->
+    // the capture wrapper's error mentions code nobody wrote; ask again in their words
+    let (plain, _) = evalLiteral(state, r.bindings, $"let {name} = {rhs}\n{name}")
+    let lines =
+      match plain with
+      | Error(lines) -> lines
+      | Ok(_) -> [ "could not bind " + name ]
+
+    (r, reply(n, "binding", "error", errorLines(lines)))
+  | Ok(None) -> uncaptured()
+  | Ok(Some(out)) ->
+    match Repl.readCaptured(out) with
+    | Some(source) ->
+      keep(
+        Repl.Binding { name = name, source = source, value = source, captured = true },
+        $"ok {name} = {source}")
+    | None -> uncaptured()
+
+
+let runExpression(state: AppState, r: Record, n: Int64, expr: String): Reply =
+  match evalLiteral(state, r.bindings, expr) with
+  | Ok(value), printed ->
+    let head = if value == "" then "ok" else value
+    let valueLines = Stdlib.String.splitOnNewline(head)
+    match valueLines with
+    | [first, ...more] ->
+      reply(n, "expression", "ok", Stdlib.List.concat([ first ], Stdlib.List.concat(more, printed)))
+    | [] -> reply(n, "expression", "ok", Stdlib.List.prepend(printed, "ok"))
+  | Error(lines), printed ->
+    reply(n, "expression", "error", Stdlib.List.concat(errorLines(lines), printed))
+
+
+/// The module a write command's name lands in, relative names resolved against <param here>.
+let moduleOfWrite(here: List<String>, name: String, args: List<String>): Option<String> =
+  // of the `test` verbs only `test add` writes
+  let isTestAdd = Stdlib.List.head(args) == Option.Some("add")
+  let args = if name == "test" then Stdlib.List.drop(args, 1) else args
+  let writes = Stdlib.List.contains(writeCommands, name) && (name != "test" || isTestAdd)
+  if Stdlib.Bool.not(writes) then
+    Option.None
+  else
+    let positional =
+      args
+      |> Stdlib.List.filter(fun a -> Stdlib.Bool.not(Stdlib.String.startsWith(a, "-")))
+      |> Stdlib.List.head
+
+    match positional with
+    | None -> Option.None
+    | Some(target) ->
+      let absolute = Stdlib.String.startsWith(target, "/")
+      let target = if absolute then Stdlib.String.dropFirst(target, 1) else target
+      let parts = Stdlib.String.split(target, ".") |> Stdlib.List.filter(fun p -> p != "")
+      let full = if absolute then parts else Stdlib.List.concat(here, parts)
+
+      // `module X` names the module itself; every other write names an item in one
+      let path =
+        if name == "module" then
+          full
+        else
+          Stdlib.List.take(full, Stdlib.List.length(full) - 1)
+
+      if Stdlib.List.isEmpty(path) then
+        Option.None
+      else
+        Option.Some(Stdlib.String.join(path, "."))
+
+
+let runCommand(
+  state: AppState,
+  n: Int64,
+  name: String,
+  args: List<String>,
+  stdin: Option<String>)
+  : (AppState * Reply * Option<String>) =
+  // `edit` opens $EDITOR only when given nothing to apply: a patch, a file or `-` needs no terminal
+  let editsWithoutEditor = name == "edit" && Stdlib.List.length(args) >= 2
+  if
+    Registry.needsTerminal(state.allCommandsCache, name, args)
+    && Stdlib.Bool.not(editsWithoutEditor)
+  then
+    (
+      state,
+      reply(
+        n,
+        "command",
+        "error",
+        [ $"error: `{name}` asks a question here; add -y, or run it outside the repl" ]),
+      Option.None)
+  else
+    let here = modulePathOf(state.packageData.currentLocation)
+    let before = { state with exitCode = 0, stdinText = stdin }
+    let (after, out) =
+      Workbench.captureOutputAnd(fun () -> Registry.executeCommand(name, before, args))
+
+    let lines = outputLines(out) |> Stdlib.List.map(fun l -> dropGlyph(l))
+    let ok = after.exitCode == 0
+    let lines =
+      match ok, lines with
+      | true, [] -> [ "ok" ]
+      | true, [first, ...rest] -> Stdlib.List.prepend(rest, "ok " + first)
+      | false, [] -> [ $"error: `{name}` exited {Stdlib.display(after.exitCode)}" ]
+      | false, _ -> errorLines(lines)
+
+    // a run leaves a trace: say which, so the next question is one command away
+    let lines =
+      if name == "run" then
+        match Tracing.Store.list(1) with
+        | [t] ->
+          let short = Text.shortIdText(t.id)
+          Stdlib.List.append(lines, $"trace {short}: dark traces inspect {short}")
+        | _ -> lines
+      else
+        lines
+
+    let touched = moduleOfWrite(here, name, args)
+    (
+      { after with exitCode = 0, stdinText = Option.None, isExiting = false },
+      reply(n, "command", (if ok then "ok" else "error"), lines),
+      touched)
+
+
+/// Run one statement: the state and record after it, its reply, and the module it wrote to.
+let runStatement(
+  state: AppState,
+  r: Record,
+  n: Int64,
+  statement: Statement)
+  : (AppState * Record * Reply * Option<String>) =
+  match statement with
+  | Bind(name, rhs) ->
+    let (r2, rep) = runBind(state, r, n, name, rhs)
+    (state, r2, rep, Option.None)
+  | Expression(expr) -> (state, r, runExpression(state, r, n, expr), Option.None)
+  | WatchAdd(expr) ->
+    let watches =
+      Stdlib.List.append(
+        r.watches |> Stdlib.List.filter(fun w -> w.expr != expr),
+        Watch { expr = expr, last = "" })
+
+    (
+      state,
+      { r with watches = watches },
+      reply(n, "watch", "ok", [ "ok watching " + expr ]),
+      Option.None)
+  | WatchRemove(expr) ->
+    let watches = r.watches |> Stdlib.List.filter(fun w -> w.expr != expr)
+    if Stdlib.List.length(watches) == Stdlib.List.length(r.watches) then
+      (state, r, reply(n, "watch", "error", [ "error: not watching " + expr ]), Option.None)
+    else
+      (state, { r with watches = watches }, reply(n, "watch", "ok", [ "ok" ]), Option.None)
+  | Command(name, args, stdin) ->
+    let (s2, rep, touched) = runCommand(state, n, name, args, stdin)
+    (s2, r, rep, touched)
+  | Refused(why) -> (state, r, reply(n, "command", "error", [ "error: " + why ]), Option.None)
+
+
+let checkModule(branchId: Uuid, name: String): ModuleCheck =
+  let scope = Stdlib.String.split(name, ".")
+  let report = Packages.AtRestCheck.checkModule(branchId, scope)
+  let totals = Packages.Typecheck.counts(report.items)
+  let failedOnly =
+    Packages.Typecheck.OutputFilter
+      { showChecked = false, showFailed = true, showIncomplete = false }
+
+  let failures =
+    Packages.Typecheck.listed(branchId, [], failedOnly, report.items)
+    |> Stdlib.List.map(fun((label, item)) ->
+      (
+        label,
+        Packages.AtRestCheck.issueLines(branchId, item.diagnostics)
+        |> Stdlib.List.map(fun l -> stripAnsi(Stdlib.String.trim(l)))))
+
+  ModuleCheck
+    { name = name, checked = totals.checkedCount + totals.failedCount, failures = failures }
+
+
+let runWatches(state: AppState, r: Record): (Record * List<WatchResult>) =
+  let results =
+    r.watches
+    |> Stdlib.List.map(fun w ->
+      match evalLiteral(state, r.bindings, w.expr) with
+      | Ok(value), _ ->
+        WatchResult { expression = w.expr, status = "ok", value = value, changed = value != w.last }
+      | Error(lines), _ ->
+        let message =
+          errorLines(lines)
+          |> Stdlib.List.head
+          |> Stdlib.Option.withDefault("error")
+
+        WatchResult { expression = w.expr, status = "error", value = message, changed = true })
+
+  let watches = results |> Stdlib.List.map(fun w -> Watch { expr = w.expression, last = w.value })
+  ({ r with watches = watches }, results)
+
+
+/// Run <param text> in <param r>, starting from <param state>. Stops at the first failure unless
+/// <param keepGoing>. Returns the state and record afterwards; the caller saves the record.
+let run(
+  state: AppState,
+  r: Record,
+  text: String,
+  onFailure: OnFailure)
+  : (AppState * Record * Outcome) =
+  let started = Stdlib.DateTime.now()
+  let stored = SCM.PackageOps.currentBranch()
+  let startBranch = branchOf(r)
+  let _ = SCM.PackageOps.selectBranch(startBranch)
+  let state = enter(state, r)
+  let statements = Repl.splitStatements(text)
+  let (endState, endRecord, replies, _failed, touched) =
+    statements
+    |> Stdlib.List.indexedMap(fun(i, s) -> (i + 1, s))
+    |> Stdlib.List.fold((state, r, [], false, []), fun(acc, numbered) ->
+      let (st, rc, replies, failed, touched) = acc
+      let (n, text) = numbered
+      if failed && onFailure == OnFailure.Stop then
+        (
+          st,
+          rc,
+          Stdlib.List.append(replies, reply(n, "skipped", "skipped", [ "skipped" ])),
+          failed,
+          touched)
+      else
+        let (st2, rec2, rep, wrote) = runStatement(st, rc, n, classify(st, text))
+        let touched =
+          match wrote with
+          | Some(m) ->
+            if Stdlib.List.contains(touched, m) then
+              touched
+            else
+              Stdlib.List.append(touched, m)
+          | None -> touched
+
+        (st2, rec2, Stdlib.List.append(replies, rep), failed || rep.status == "error", touched))
+
+  let endBranch = endState.currentBranchId
+  let endLocation = modulePathOf(endState.packageData.currentLocation)
+  let checks = touched |> Stdlib.List.map(fun m -> checkModule(endBranch, m))
+  let endRecord =
+    { endRecord with
+        branchId = Stdlib.display(endBranch)
+        location = endLocation
+        lastReplies = replies }
+
+  let (endRecord, watches) = runWatches(endState, endRecord)
+  let _ = SCM.PackageOps.selectBranch(stored)
+  let moved =
+    if endBranch != startBranch || endLocation != r.location then
+      Option.Some((branchText(endBranch), locationText(endLocation)))
+    else
+      Option.None
+
+  let outcome =
+    Outcome
+      { replies = replies
+        ms = Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), started)
+        checks = checks
+        watches = watches
+        moved = moved }
+
+  (endState, endRecord, outcome)
+
+
+/// Before a fork: commit what <param r> has drafted on its own branch, because a new branch
+/// starts from its parent's commits and would not see the draft. Never on main, where a commit is
+/// the person's call; there the fork goes without the draft, and the caller says so.
+let commitForFork(state: AppState, r: Record, forkId: String): Bool =
+  let branch = branchOf(r)
+  if SCM.Branch.isMain(branch) then
+    false
+  else
+    let (_s, _r, outcome) = run(state, r, $"commit \"fork point for {forkId}\" -y", OnFailure.Stop)
+    count(outcome, "error") == 0
+
+
+let count(outcome: Outcome, status: String): Int64 =
+  outcome.replies
+  |> Stdlib.List.filter(fun r -> r.status == status)
+  |> Stdlib.List.length
+
+
+/// A reply cut to the caps: (its lines, how many lines were dropped).
+let capped(caps: Caps, reply: Reply): (List<String> * Int64) =
+  let lines = Stdlib.List.take(reply.lines, caps.lines)
+  let (kept, _chars) =
+    lines
+    |> Stdlib.List.fold(([], 0), fun(acc, l) ->
+      let (kept, chars) = acc
+      let size = Stdlib.String.length(l) + 1
+      if chars + size > caps.chars && Stdlib.Bool.not(Stdlib.List.isEmpty(kept)) then
+        (kept, caps.chars + 1)
+      else if chars > caps.chars then
+        (kept, chars)
+      else
+        (Stdlib.List.append(kept, Stdlib.String.first(l, caps.chars)), chars + size))
+
+  (kept, Stdlib.List.length(reply.lines) - Stdlib.List.length(kept))
+
+
+let reportLines(id: String, outcome: Outcome): List<String> =
+  let checkLines =
+    outcome.checks
+    |> Stdlib.List.map(fun c ->
+      let failedCount = Stdlib.List.length(c.failures)
+      let head =
+        $"typecheck {c.name}: {Stdlib.display(c.checked)} checked, {Stdlib.display(failedCount)} failed"
+
+      let items =
+        c.failures
+        |> Stdlib.List.map(fun((label, issues)) ->
+          let first = Stdlib.List.head(issues) |> Stdlib.Option.withDefault("")
+          let first =
+            if Stdlib.String.startsWith(first, "- ") then
+              Stdlib.String.dropFirst(first, 2)
+            else
+              first
+
+          $"  {label}: {first}")
+
+      Stdlib.List.prepend(items, head))
+    |> Stdlib.List.flatten
+
+  let watchLines =
+    outcome.watches
+    |> Stdlib.List.map(fun w ->
+      if w.status != "ok" then
+        $"watch {w.expression} {w.value}"
+      else if w.changed then
+        $"watch {w.expression} = {w.value}"
+      else
+        $"watch {w.expression} unchanged")
+
+  let movedLines =
+    match outcome.moved with
+    | Some((b, l)) -> [ $"branch {b}, at {l}" ]
+    | None -> []
+
+  let all = Stdlib.List.flatten([ checkLines, watchLines, movedLines ])
+  let shown =
+    if Stdlib.List.length(all) > reportLineCap then
+      Stdlib.List.append(
+        Stdlib.List.take(all, reportLineCap - 1),
+        $"... {Stdlib.display(Stdlib.List.length(all) - reportLineCap + 1)} more: dark repl show {id}")
+    else
+      all
+
+  shown |> Stdlib.List.map(fun l -> "-- " + l)
+
+
+/// The batch's text form: numbered replies, the summary, the report.
+let renderText(id: String, caps: Caps, outcome: Outcome): List<String> =
+  let replyText =
+    outcome.replies
+    |> Stdlib.List.map(fun reply ->
+      let (kept, more) = capped(caps, reply)
+      let shown =
+        if more > 0 then
+          Stdlib.List.append(
+            kept,
+            $"... {Stdlib.display(more)} more lines: dark repl show {id} {Stdlib.display(reply.n)}")
+        else
+          kept
+
+      replyLines({ reply with lines = shown }))
+    |> Stdlib.List.flatten
+
+  let summary =
+    $"-- {Stdlib.display(count(outcome, "ok"))} ok, {Stdlib.display(count(outcome, "error"))} failed, {Stdlib.display(count(outcome, "skipped"))} skipped, {Stdlib.display(outcome.ms)} ms"
+
+  Stdlib.List.flatten([ replyText, [ summary ], reportLines(id, outcome) ])
+
+
+type JsonReply =
+  { n: Int64
+    kind: String
+    status: String
+    text: String
+    more: Int64 }
+
+
+type JsonFailure =
+  { name: String
+    issues: List<String> }
+
+
+type JsonCheck =
+  { module: String
+    checked: Int64
+    failed: List<JsonFailure> }
+
+
+type JsonSummary =
+  { ok: Int64
+    failed: Int64
+    skipped: Int64
+    ms: Int64 }
+
+
+type JsonBatch =
+  { repl: String
+    branch: String
+    location: String
+    replies: List<JsonReply>
+    summary: JsonSummary
+    typecheck: List<JsonCheck>
+    watches: List<WatchResult> }
+
+
+let toJson(r: Record, outcome: Outcome): JsonBatch =
+  JsonBatch
+    { repl = r.id
+      branch = branchText(branchOf(r))
+      location = locationText(r.location)
+      replies =
+        outcome.replies
+        |> Stdlib.List.map(fun reply ->
+          let (kept, more) = capped(replyCaps(), reply)
+          JsonReply
+            { n = reply.n
+              kind = reply.kind
+              status = reply.status
+              text = Stdlib.String.join(kept, "\n")
+              more = more })
+      summary =
+        JsonSummary
+          { ok = count(outcome, "ok")
+            failed = count(outcome, "error")
+            skipped = count(outcome, "skipped")
+            ms = outcome.ms }
+      typecheck =
+        outcome.checks
+        |> Stdlib.List.map(fun c ->
+          JsonCheck
+            { module = c.name
+              checked = c.checked
+              failed =
+                c.failures
+                |> Stdlib.List.map(fun((label, issues)) ->
+                  JsonFailure { name = label, issues = issues }) })
+      watches = outcome.watches }
+
+
+/// `dark @<id>`: read the batch on stdin, run it, print the replies, save the repl.
+let executeCli(state: AppState, target: String, args: List<String>): AppState =
+  let id = if target == "" then current() |> Stdlib.Option.withDefault("") else target
+  let badFlags = args |> Stdlib.List.filter(fun a -> a != "--continue" && a != "--json")
+  if Stdlib.Bool.not(Stdlib.List.isEmpty(badFlags)) then
+    printErr(
+      $"`dark @{target}` takes --continue and --json, not {Stdlib.String.join(badFlags, " ")}")
+
+    { state with exitCode = 2 }
+  else if id == "" then
+    printErr("no current repl")
+    printHint("  `dark repl new` makes one.")
+    { state with exitCode = 2 }
+  else
+    match load(id) with
+    | None -> unknown(state, id)
+    | Some(r) ->
+      match Stdlib.Cli.Stdin.readAll() with
+      | Error(message) ->
+        printErr(message)
+        { state with exitCode = 2 }
+      | Ok(text) ->
+        let onFailure =
+          if Stdlib.List.contains(args, "--continue") then
+            OnFailure.KeepGoing
+          else
+            OnFailure.Stop
+
+        let (_after, r2, outcome) = run(state, r, text, onFailure)
+        let saved = save(r2)
+        let _ =
+          if Stdlib.List.contains(args, "--json") then
+            let _ = printJson(Stdlib.Json.checkedSerialize<JsonBatch>(toJson(r2, outcome)))
+            ()
+          else
+            renderText(id, replyCaps(), outcome) |> Stdlib.List.iter(fun l -> Stdlib.printLine(l))
+
+        match saved with
+        | Error(message) ->
+          printErr(message)
+          { state with exitCode = 1 }
+        | Ok(_) -> { state with exitCode = if count(outcome, "error") > 0 then 1 else 0 }

@@ -440,6 +440,9 @@ let knownGood(
   [ ("help", [ "status" ])
     // `config set` writes keys the boot reads at startup.
     ("config", [ "list" ])
+    ("repl", [ "list" ])
+    // Without a prompt it lists the sessions; with one it would call the model.
+    ("agent", [ "--list" ])
     // Bare asks GitHub for the latest release.
     ("version", [ "--local" ])
     ("nav", [ "Darklang.Stdlib.List" ])

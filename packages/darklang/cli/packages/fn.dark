@@ -7,7 +7,7 @@ let execute(state: AppState, args: List<String>): AppState =
     state
   // fn SomeModule.myFn (param: Type): ReturnType = body
   | [location, ...definitionParts] ->
-    match definitionAndDescription(definitionParts) with
+    match definitionAndDescription(state, definitionParts) with
     | Error(message) ->
       printErr(message)
       failed(state)

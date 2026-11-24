@@ -1,0 +1,141 @@
+// The agent's edit and truncation, and the repl's statement parsing: pure parts only.
+module Darklang.Cli.Agent.Tools.Tests
+
+test editReplacesTheOneExactMatch =
+  Cli.Agent.Tools.editText(
+    "a = 1\nb = 2\n",
+    "b = 2",
+    "b = 3",
+    Cli.Agent.Tools.Occurrences.One)
+  |> Stdlib.Test.equal(Result.Ok("a = 1\nb = 3\n"))
+
+
+test editRefusesAnAmbiguousMatch =
+  Cli.Agent.Tools.editText("x\nx\n", "x", "y", Cli.Agent.Tools.Occurrences.One)
+  |> Stdlib.Test.equal(
+    Result.Error(
+      "old_string occurs 2 times; add context to make it unique, or set replace_all"))
+
+
+test editReplacesEveryMatchWhenAsked =
+  Cli.Agent.Tools.editText(
+    "x\nx\n",
+    "x",
+    "y",
+    Cli.Agent.Tools.Occurrences.Every)
+  |> Stdlib.Test.equal(Result.Ok("y\ny\n"))
+
+
+test editFallsBackToIgnoringIndentation =
+  Cli.Agent.Tools.editText(
+    "let f =\n    1 + 1\n",
+    "let f =\n  1 + 1",
+    "let f =\n    2",
+    Cli.Agent.Tools.Occurrences.One)
+  |> Stdlib.Test.equal(Result.Ok("let f =\n    2\n"))
+
+
+test editSaysWhenNothingMatches =
+  Cli.Agent.Tools.editText("abc", "zzz", "y", Cli.Agent.Tools.Occurrences.One)
+  |> Stdlib.Test.equal(
+    Result.Error(
+      "old_string is not in the file (even ignoring indentation); read the file again"))
+
+
+test truncateKeepsHeadAndTail =
+  let long = Stdlib.String.repeat("a", 20000) + Stdlib.String.repeat("b", 20000)
+  let cut = Cli.Agent.Tools.truncate(long)
+  (
+    Stdlib.String.startsWith(cut, "aaa"),
+    Stdlib.String.endsWith(cut, "bbb"),
+    Stdlib.String.length(cut) < 31000)
+  |> Stdlib.Test.equal((true, true, true))
+
+
+test dedentRemovesTheCommonIndent =
+  Cli.Repls.Batch.dedent([ "  let a = 1", "    a + 1", "" ])
+  |> Stdlib.Test.equal("let a = 1\n  a + 1\n")
+
+
+test aWriteNamesItsModule =
+  Cli.Repls.Batch.moduleOfWrite(
+    [],
+    "fn",
+    [ "Me.Demo.double", "(a: Int64): Int64 = a" ])
+  |> Stdlib.Test.equal(Option.Some("Me.Demo"))
+
+
+test aModuleWriteNamesItself =
+  Cli.Repls.Batch.moduleOfWrite([], "module", [ "/Me.Greet", "-" ])
+  |> Stdlib.Test.equal(Option.Some("Me.Greet"))
+
+
+test aRelativeWriteResolvesAgainstTheLocation =
+  Cli.Repls.Batch.moduleOfWrite([ "Me", "Demo" ], "fn", [ "double", "x" ])
+  |> Stdlib.Test.equal(Option.Some("Me.Demo"))
+
+
+test aReadIsNotAWrite =
+  Cli.Repls.Batch.moduleOfWrite([], "view", [ "Me.Demo.double" ])
+  |> Stdlib.Test.equal(Option.None)
+
+
+test stripAnsiLeavesPlainText =
+  Cli.Repls.Batch.stripAnsi("\u001b[32mok\u001b[0m done")
+  |> Stdlib.Test.equal("ok done")
+
+
+test errorLinesSkipTheBindings =
+  (
+    Cli.Repls.Batch.shiftLine("error[PARSE] at 3:5: oops", 2),
+    Cli.Repls.Batch.shiftLine("    3 | x y", 2))
+  |> Stdlib.Test.equal(("error[PARSE] at 1:5: oops", "    1 | x y"))
+
+
+let ctxAllowing(
+  effects: List<LanguageTools.Permissions.Effect>)
+  : Cli.Agent.Tools.Context =
+  Cli.Agent.Tools.Context
+    { app = Cli.initState()
+      repl =
+        Cli.Repls.Record
+          { id = "t"
+            branchId = ""
+            location = []
+            bindings = []
+            watches = []
+            lastReplies = [] }
+      cwd = "/"
+      seen = []
+      allowed = effects
+      ask = false }
+
+
+test aBatchCannotChangeThePolicy =
+  Cli.Agent.Tools.batchRefusal(
+    ctxAllowing([]),
+    "fn Me.A.b '(): Int64 = 1'\npermissions allow file read /")
+  |> Stdlib.Test.equal(
+    Option.Some(
+      "`permissions` changes more than this session's branch; the person runs it"))
+
+
+test aBatchCannotGrantWhatTheSessionLacks =
+  Cli.Agent.Tools.batchRefusal(
+    ctxAllowing([]),
+    "run Me.A.main --allow 'file write /tmp' x")
+  |> Stdlib.Test.equal(
+    Option.Some(
+      "denied: `--allow file write /tmp` grants what this session does not have (the person can rerun the agent with --allow)"))
+
+
+test aBatchMayPassOnWhatTheSessionHas =
+  Cli.Agent.Tools.batchRefusal(
+    ctxAllowing([ LanguageTools.Permissions.Effect.FileRead ]),
+    "run Me.A.main --allow 'file read /data' x")
+  |> Stdlib.Test.equal(Option.None)
+
+
+test testRunIsNotAWrite =
+  Cli.Repls.Batch.moduleOfWrite([ "Me", "Demo" ], "test", [ "run", "Me.Demo" ])
+  |> Stdlib.Test.equal(Option.None)

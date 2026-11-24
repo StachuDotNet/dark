@@ -431,7 +431,7 @@ let save(state: AppState, modulePath: String, source: String, mode: SaveMode): A
 let readAndSave(state: AppState, modulePath: String, sourcePath: String, mode: SaveMode): AppState =
   let input =
     if sourcePath == "-" then
-      Stdlib.Cli.Stdin.readAll()
+      readStdin(state)
     else
       Stdlib.Cli.File.readText(sourcePath)
       |> Stdlib.Result.mapError(fun err -> $"Could not read '{sourcePath}': {Stdlib.display(err)}")

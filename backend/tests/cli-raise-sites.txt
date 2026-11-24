@@ -1,3 +1,19 @@
+1 Darklang.Agent.Anthropic.call Darklang.Stdlib.HttpClient.stream
+1 Darklang.Cli.Agent.Tools.editFile Darklang.Stdlib.Cli.File.readText
+1 Darklang.Cli.Agent.Tools.editFile Darklang.Stdlib.Cli.File.writeText
+1 Darklang.Cli.Agent.Tools.ls Darklang.Stdlib.Cli.FileSystem.isDirectory
+1 Darklang.Cli.Agent.Tools.ls Darklang.Stdlib.Cli.FileSystem.listDirectory
+1 Darklang.Cli.Agent.Tools.ls Darklang.Stdlib.List.sort
+1 Darklang.Cli.Agent.Tools.readFile Darklang.Stdlib.Cli.File.readText
+1 Darklang.Cli.Agent.Tools.readFile Darklang.Stdlib.Cli.FileSystem.isDirectory
+1 Darklang.Cli.Agent.Tools.writeFile Darklang.Stdlib.Cli.File.writeText
+1 Darklang.Cli.Agent.prepare Darklang.Stdlib.Cli.Posix.getCwd
+1 Darklang.Cli.Agent.projectContext Darklang.Stdlib.Cli.File.readText
+1 Darklang.Cli.Agent.providerFor Darklang.Stdlib.Cli.File.readText
+1 Darklang.Cli.Agent.readKey Darklang.Stdlib.Cli.File.readText
+1 Darklang.Cli.Agent.skillsIndex Darklang.Stdlib.Cli.File.readText
+1 Darklang.Cli.Agent.skillsIndex Darklang.Stdlib.Cli.FileSystem.isDirectory
+1 Darklang.Cli.Agent.skillsIndex Darklang.Stdlib.Cli.FileSystem.listDirectory
 1 Darklang.Cli.Completion.addSlashToDirectories Darklang.Stdlib.Cli.FileSystem.isDirectoryAtPath
 1 Darklang.Cli.Completion.completeFilesystemPath Darklang.Stdlib.Cli.FileSystem.isDirectoryAtPath
 1 Darklang.Cli.Docs.StdlibOverview.execute Darklang.Stdlib.List.sort
@@ -56,6 +72,7 @@
 1 Darklang.LanguageTools.PackageManager.Test.withStoreSnapshot Builtin.pmTestWithStoreSnapshot
 1 Darklang.SCM.Deps.dependentsFor Builtin.unwrap
 1 Darklang.SCM.PartialCommit.stringGt Darklang.Stdlib.List.sort
+2 Darklang.Cli.Agent.Tools.shell Darklang.Stdlib.Cli.Process.runWithTimeout
 2 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.Dir.deleteRecursive
 2 Darklang.Cli.Packages.Signatures.namedLike Darklang.Stdlib.List.sort
 2 Darklang.LanguageTools.AtRestTypeChecker.Generate.orPattern Darklang.Stdlib.List.sort

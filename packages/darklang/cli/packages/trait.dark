@@ -11,7 +11,7 @@ let execute(state: AppState, args: List<String>): AppState =
     Stdlib.printLine(help(state))
     state
   | [location, ...definitionParts] ->
-    match definitionAndDescription(definitionParts) with
+    match definitionAndDescription(state, definitionParts) with
     | Error(message) ->
       printErr(message)
       failed(state)

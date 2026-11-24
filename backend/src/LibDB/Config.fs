@@ -90,6 +90,13 @@ let readable : List<string> = settings @ [ "instance.id" ]
 /// `traces watch` follows. Nobody types these.
 let private internalKeys = [ "live.show"; "traces.watch.fn" ]
 
+/// Namespaces Dark code keeps records under, with any key: a repl (`repl.r1`), an agent session.
+let private internalPrefixes = [ "repl."; "agent." ]
+
+let private isInternal (key : string) =
+  List.contains key internalKeys
+  || List.exists (fun (p : string) -> key.StartsWith p) internalPrefixes
+
 /// Scratch keys for tests. Nothing in the product reads a key under this prefix.
 let private testPrefix = "test."
 
@@ -153,7 +160,7 @@ let check
     Error "instance.id is made once for this install, and cannot be set"
   elif key = "current_branch" || key = "current_branch_name" then
     Error $"{key} follows `dark switch`, and cannot be set directly"
-  elif List.contains key internalKeys || key.StartsWith testPrefix then
+  elif isInternal key || key.StartsWith testPrefix then
     Ok()
   else
     Error $"{key} is not a config key"
@@ -166,11 +173,7 @@ let checkUnset (key : string) : Result<unit, string> =
     Error "instance.id is made once for this install, and cannot be unset"
   elif key = "current_branch" || key = "current_branch_name" then
     Error $"{key} follows `dark switch`, and cannot be unset directly"
-  elif
-    List.contains key settings
-    || List.contains key internalKeys
-    || key.StartsWith testPrefix
-  then
+  elif List.contains key settings || isInternal key || key.StartsWith testPrefix then
     Ok()
   else
     Error $"{key} is not a config key"

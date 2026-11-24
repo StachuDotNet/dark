@@ -84,7 +84,9 @@ type AppState =
     /// only; they set this as they are touched.)
     exitCode: Int64
     /// How the command being run prints its answer; `Registry.executeCommand` sets it per command.
-    output: Output.Mode }
+    output: Output.Mode
+    /// What a command that reads stdin gets instead, when set: a repl statement's indented block.
+    stdinText: Option<String> }
 
 
 /// What the prompt shows to your left: where you are in the package tree, and WHICH BRANCH, when you're on
@@ -262,7 +264,15 @@ let initState(): AppState =
       commandOptionsCache = commandOptions(commands)
       telemetryEnabled = Stdlib.Env.get("DARK_TELEMETRY") == Option.Some("1")
       exitCode = 0
-      output = Output.Mode.Pretty }
+      output = Output.Mode.Pretty
+      stdinText = Option.None }
+
+
+/// All of stdin, or the text a repl statement handed the command in its place.
+let readStdin(state: AppState): Result<String, String> =
+  match state.stdinText with
+  | Some(text) -> Result.Ok(text)
+  | None -> Stdlib.Cli.Stdin.readAll()
 
 
 type Msg =

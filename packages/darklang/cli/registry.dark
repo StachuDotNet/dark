@@ -769,6 +769,24 @@ module Registry =
         Branch.complete)
 
       (
+        "agent",
+        "Build what a prompt asks for, in Dark, on a branch of its own",
+        [],
+        Agent.accepts,
+        Agent.execute,
+        Agent.help,
+        Agent.complete)
+
+      (
+        "repl",
+        "Repls that keep a branch, a location and bindings across batches (`dark @r1`)",
+        [],
+        Repls.accepts,
+        Repls.execute,
+        Repls.help,
+        Repls.complete)
+
+      (
         "diff",
         "What a branch changes vs its parent",
         [],
@@ -1154,7 +1172,7 @@ module Registry =
           "ops" ])
 
       ("Branches", [ "branch", "branches", "switch", "merge", "rebase", "diff", "log", "resolve" ])
-      ("Execution", [ "run-script", "eval", "ps", "traces", "serve", "format" ])
+      ("Execution", [ "run-script", "eval", "repl", "agent", "ps", "traces", "serve", "format" ])
       ("Installation", [ "install", "update", "uninstall", "version", "install-status" ])
       ("Security", [ "effects", "permissions" ])
       (

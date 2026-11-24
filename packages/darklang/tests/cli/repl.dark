@@ -1,0 +1,87 @@
+/// `dark repl` and `dark @r1`, run as a person or an outside agent runs them: the reply framing in
+/// `docs/repl.md` is a contract, and these hold it.
+module Darklang.Cli.Tests.Repl
+
+test aBatchAnswersEachLineByNumber = Instance.withInstance(fun i ->
+  let (newCode, id) = Instance.ran(i, [ "repl", "new" ])
+  let batch =
+    "let xs = [1, 2]\nStdlib.List.length(xs)\nfn Me.T.double '(a: Int64): Int64 = a * 2'\nMe.T.double(4)\n"
+
+  let (code, out) = Instance.runWithStdin(i, [ "@r1" ], batch)
+  Stdlib.Test.all(
+    [ Instance.exitedWith(newCode, 0, "repl new")
+      Instance.says(id, "r1", "the first repl is r1")
+      Instance.exitedWith(code, 0, "a batch that all works")
+      Instance.says(out, "1 ok xs = ", "a binding replies with its value")
+      Instance.says(out, "\n2 2\n", "an expression replies with its value")
+      Instance.says(out, "\n3 ok ", "a command replies ok")
+      Instance.says(out, "\n4 8\n", "the new function runs")
+      Instance.says(out, "-- 4 ok, 0 failed, 0 skipped, ", "the summary")
+      Instance.says(
+        out,
+        "-- typecheck Me.T: 1 checked, 0 failed",
+        "the report") ]))
+
+
+test aFailureSkipsTheRest = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "repl", "new" ])
+  let (code, out) = Instance.runWithStdin(i, [ "@r1" ], "1 + \"a\"\n2\n")
+
+  let (keepCode, kept) =
+    Instance.runWithStdin(i, [ "@r1", "--continue" ], "1 + \"a\"\n2\n")
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 1, "a failed line fails the batch")
+      Instance.says(out, "1 error: ", "the failure")
+      Instance.says(out, "2 skipped", "the line after it")
+      Instance.exitedWith(keepCode, 1, "--continue still fails the batch")
+      Instance.says(kept, "\n2 2\n", "--continue runs the line after it") ]))
+
+
+test bindingsLastBetweenBatches = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "repl", "new" ])
+  let _ = Instance.runWithStdin(i, [ "@r1" ], "let n = 20\n")
+  let (_code, out) = Instance.runWithStdin(i, [ "@r1" ], "n + 1\n")
+  Instance.says(out, "1 21", "a binding from the batch before"))
+
+
+test anIndentedBlockIsTheCommandsStdin = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "repl", "new" ])
+  let batch =
+    "module /Me.Greet -\n  let greeting(name: String): String = \"Hello, \" + name\nMe.Greet.greeting(\"Ada\")\n"
+
+  let (code, out) = Instance.runWithStdin(i, [ "@r1" ], batch)
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "module from an indented block")
+      Instance.says(out, "2 \"Hello, Ada\"", "the module's function runs") ]))
+
+
+test jsonHasTheSameNumbering = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "repl", "new" ])
+  let (code, out) = Instance.runWithStdin(i, [ "@r1", "--json" ], "1 + 1\n")
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "--json")
+      Instance.says(
+        out,
+        "\"n\":1,\"kind\":\"expression\",\"status\":\"ok\",\"text\":\"2\"",
+        "the reply") ]))
+
+
+test anUnknownReplExitsTwo = Instance.withInstance(fun i ->
+  let (code, out) = Instance.runWithStdin(i, [ "@r9" ], "1\n")
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 2, "no such repl")
+      Instance.says(out, "no repl r9", "says which") ]))
+
+
+test aShellStyleDarkPrefixIsTheSameCommand = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "repl", "new" ])
+  let (code, out) =
+    Instance.runWithStdin(
+      i,
+      [ "@r1" ],
+      "dark fn Me.P.one '(): Int64 = 1'\nMe.P.one()\n")
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "dark-prefixed command")
+      Instance.says(out, "\n2 1\n", "the function it made") ]))

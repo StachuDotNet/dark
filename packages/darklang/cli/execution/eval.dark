@@ -149,7 +149,7 @@ let executeUnder(
     // callers can pipe multi-line expressions via heredoc without quoting.
     let expr =
       match args with
-      | ["-"] -> Stdlib.Cli.Stdin.readAll()
+      | ["-"] -> readStdin(state)
       | parts -> Result.Ok(Stdlib.String.join(parts, " "))
 
     match expr with
