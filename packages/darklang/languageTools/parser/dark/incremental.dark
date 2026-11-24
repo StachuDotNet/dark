@@ -1,0 +1,267 @@
+/// Parsing a script again after an edit, re-parsing only the declarations whose text changed.
+///
+/// A script splits into chunks at the lines that start a declaration at column 0, each with the
+/// comments above it. A chunk is lexed and parsed on its own and remembered by its first row and
+/// text, so an edit inside one declaration parses that declaration only. Text the split can't be
+/// sure of (a top-level expression or `let x =`, a block comment, a triple-quoted string) is
+/// parsed whole.
+module Darklang.LanguageTools.Parser.Dark.Incremental
+
+type Range = LanguageTools.Parser.Range
+type Point = LanguageTools.Parser.Point
+
+
+/// One chunk, parsed: its tokens' first and last ranges, its items and top-level expressions,
+/// its diagnostics, and its share of the checks a clean file gets.
+type ChunkResult =
+  { key: String
+    first: Option<Range>
+    last: Option<Range>
+    items: List<Decls.Item>
+    exprs: List<WrittenTypes.Expr>
+    lexDiagnostics: List<Core.Diagnostic>
+    parseDiagnostics: List<Core.Diagnostic> }
+
+
+/// What the last parse of a document remembers.
+type Cache = { chunks: Dict<String, ChunkResult> }
+
+
+val empty: Cache = Cache { chunks = Stdlib.Dict.empty }
+
+
+/// What a parse did: the result, the cache for the next one, and how many chunks it parsed
+/// (`-1` for a whole-file parse).
+type Reparsed =
+  { parsed: Dark.Parsed
+    cache: Cache
+    parsedChunks: Int64
+    totalChunks: Int64 }
+
+
+let startsDeclaration(line: String): Bool =
+  Stdlib.String.startsWith(line, "let ") && Stdlib.String.contains(line, "(")
+  || Stdlib.String.startsWith(line, "type ")
+  || Stdlib.String.startsWith(line, "val ")
+  || Stdlib.String.startsWith(line, "trait ")
+  || Stdlib.String.startsWith(line, "impl ")
+  || Stdlib.String.startsWith(line, "test ")
+
+
+let isTrivia(line: String): Bool =
+  line == "" || Stdlib.String.startsWith(line, "//") || Stdlib.String.startsWith(line, " ")
+  || Stdlib.String.startsWith(line, "\t") || Stdlib.String.startsWith(line, "\r")
+
+
+/// A `let` fn's first line is `let name(`, not `let name =`.
+let fnLet(line: String): Bool =
+  match Stdlib.String.indexOf(line, "(") with
+  | Some(paren) ->
+    match Stdlib.String.indexOf(line, "=") with
+    | Some(eq) -> paren < eq
+    | None -> true
+  | None -> false
+
+
+/// The rows where chunks start, or None when the text should be parsed whole.
+let chunkStarts(lines: List<String>): Option<List<Int64>> =
+  let indexed = Stdlib.List.indexedMap(lines, fun(i, l) -> (i, l))
+  let unsure =
+    Stdlib.List.any(indexed, fun((_, l)) ->
+      Stdlib.Bool.not(isTrivia(l))
+      && Stdlib.Bool.not(startsDeclaration(l) && (Stdlib.Bool.not(Stdlib.String.startsWith(l, "let ")) || fnLet(l))))
+  if unsure then
+    Stdlib.Option.Option.None
+  else
+    let decls = Stdlib.List.filterMap(indexed, fun((i, l)) -> if startsDeclaration(l) then Stdlib.Option.Option.Some(i) else Stdlib.Option.Option.None)
+    // each declaration takes the comment and blank lines above it
+    let starts = Stdlib.List.map(decls, fun row -> withCommentsAbove(lines, row))
+    match starts with
+    | [ 0, ... ] -> Stdlib.Option.Option.Some(starts)
+    | _ -> Stdlib.Option.Option.Some([ 0, ...starts ])
+
+
+let withCommentsAbove(lines: List<String>, row: Int64): Int64 =
+  if row == 0 then 0
+  else
+    match Stdlib.List.getAt(lines, row - 1) with
+    | Some(above) ->
+      // a `///` comment documents the next declaration across blank lines too
+      if Stdlib.String.startsWith(above, "//") || Stdlib.String.trim(above) == "" then withCommentsAbove(lines, row - 1)
+      else row
+    | None -> row
+
+
+/// The chunks of <param lines> between the rows in <param starts>: (first row, text).
+let chunksOf(lines: List<String>, starts: List<Int64>): List<(Int64 * String)> =
+  let ends = Stdlib.List.append(Stdlib.List.drop(starts, 1), Stdlib.List.length(lines))
+  Stdlib.List.map(Stdlib.List.zipShortest(starts, ends), fun((from, to)) ->
+    (from, Stdlib.String.join(Stdlib.List.take(Stdlib.List.drop(lines, from), to - from), "\n")))
+
+
+let shiftPoint(p: Point, rows: Int64): Point =
+  Point { row = p.row + rows, column = p.column }
+
+
+let shiftRange(r: Range, rows: Int64): Range =
+  Range { start = shiftPoint(r.start, rows), end_ = shiftPoint(r.end_, rows) }
+
+
+let shiftToken(t: Lexer.Token, rows: Int64): Lexer.Token =
+  { t with
+      range = shiftRange(t.range, rows)
+      leadingTrivia = Stdlib.List.map(t.leadingTrivia, fun tr -> { tr with range = shiftRange(tr.range, rows) }) }
+
+
+/// One chunk lexed and parsed, its ranges where they are in the whole text. A chunk that is
+/// not the last ends at a line break, so its own end-of-file token is dropped.
+let parseChunk(scope: Decls.ItemScope, row: Int64, text: String, isLast: Bool): ChunkResult =
+  let lexed = Lexer.lex(if isLast then text else text + "\n")
+  let tokens = if row == 0 then lexed.tokens else Stdlib.List.map(lexed.tokens, fun t -> shiftToken(t, row))
+  let lexDiagnostics =
+    Stdlib.List.map(lexed.diagnostics, fun d -> Dark.lexDiagnostic({ d with range = shiftRange(d.range, row) }))
+  let (items, exprs, parseDiagnostics) = Decls.parseTokensSaving(tokens, scope, Stdlib.Option.Option.None, 0)
+  let real = Stdlib.List.filter(tokens, fun t -> t.kind != Lexer.TokenKind.TEOF)
+  ChunkResult
+    { key = $"{row}:{text}"
+      first = Stdlib.List.head(real) |> Stdlib.Option.map(fun t -> t.range)
+      last = Stdlib.List.last(real) |> Stdlib.Option.map(fun t -> t.range)
+      items = items
+      exprs = exprs
+      lexDiagnostics = lexDiagnostics
+      parseDiagnostics = parseDiagnostics }
+
+
+/// The script <param code>, parsed again with what <param cache> remembers from the last parse.
+let reparse(cache: Cache, code: String): Reparsed =
+  let lines = Stdlib.String.split(code, "\n")
+  let whole =
+    Stdlib.String.contains(code, "\"\"\"") || Stdlib.String.contains(code, "(*")
+  match (if whole then Stdlib.Option.Option.None else chunkStarts(lines)) with
+  | None ->
+    Reparsed
+      { parsed = Dark.parseWith(LanguageTools.Parser.FileKind.Script, code)
+        cache = empty
+        parsedChunks = -1
+        totalChunks = 1 }
+  | Some(starts) ->
+    let chunks = chunksOf(lines, starts)
+    let count = Stdlib.List.length(chunks)
+    let results =
+      Stdlib.List.indexedMap(chunks, fun(i, chunk) ->
+        let (row, text) = chunk
+        match Stdlib.Dict.get(cache.chunks, $"{row}:{text}") with
+        | Some(r) -> (false, r)
+        | None -> (true, parseChunk(Decls.ItemScope.Script, row, text, i == count - 1)))
+    let parsedNow = Stdlib.List.length(Stdlib.List.filter(results, fun((fresh, _)) -> fresh))
+    let rs = Stdlib.List.map(results, fun((_, r)) -> r)
+    Reparsed
+      { parsed = combine(rs, code)
+        cache = Cache { chunks = Stdlib.Dict.fromList(Stdlib.List.map(rs, fun r -> (r.key, r))) }
+        parsedChunks = parsedNow
+        totalChunks = count }
+
+
+/// The chunks' results as one file's, as `Dark.parseWith` would put them together.
+let combine(rs: List<ChunkResult>, code: String): Dark.Parsed =
+  let items = Stdlib.List.flatten(Stdlib.List.map(rs, fun r -> r.items))
+  let exprs = Stdlib.List.flatten(Stdlib.List.map(rs, fun r -> r.exprs))
+  let firsts = Stdlib.List.filterMap(rs, fun r -> r.first)
+  let lasts = Stdlib.List.filterMap(rs, fun r -> r.last)
+  let zero = Range { start = Point { row = 0, column = 0 }, end_ = Point { row = 0, column = 0 } }
+  let fileRange =
+    match (Stdlib.List.head(firsts), Stdlib.List.last(lasts)) with
+    | (Some(a), Some(b)) -> Core.span(a, b)
+    | _ -> zero
+  let file =
+    WrittenTypes.SourceFile.SourceFile
+      { range = fileRange
+        declarations = Stdlib.List.filterMap(items, fun d -> Decls.sourceFileDeclaration(d))
+        exprsToEval = Stdlib.List.concat(exprs, Stdlib.List.flatten(Stdlib.List.map(items, fun d -> Decls.assertionExprs(d)))) }
+  let syntax =
+    Stdlib.List.concat(
+      Stdlib.List.flatten(Stdlib.List.map(rs, fun r -> r.lexDiagnostics)),
+      Stdlib.List.flatten(Stdlib.List.map(rs, fun r -> r.parseDiagnostics)))
+    |> Stdlib.List.indexedMap(fun(i, d) -> (i, d))
+    |> Stdlib.List.sortBy(fun((i, d)) -> (d.range.start.row, d.range.start.column, i))
+    |> Stdlib.List.map(fun((_, d)) -> d)
+  let diagnostics =
+    match syntax with
+    | [] -> Validation.validate(Validation.Mode.Script, items, exprs)
+    | _ -> syntax
+  Dark.Parsed
+    { parsed = Stdlib.Option.Option.Some(WrittenTypes.ParsedFile.SourceFile(file))
+      diagnostics = diagnostics }
+
+
+/// `Builtin.parse`'s shape, for a script parsed again with <param cache>.
+let parseScript(cache: Cache, code: String): ((Option<WrittenTypes.ParsedFile> * List<(Range * String)>) * Cache) =
+  let r = reparse(cache, code)
+  ((r.parsed.parsed, Stdlib.List.map(r.parsed.diagnostics, fun d -> (d.range, d.message))), r.cache)
+
+
+// --- checking it against whole-file parses ---
+
+let ms(f: Unit -> 'a): (Int64 * 'a) =
+  let t0 = Stdlib.DateTime.__monotonicMilliseconds()
+  let v = f()
+  (Stdlib.DateTime.__monotonicMilliseconds() - t0, v)
+
+
+/// <param text> with line <param row> changed by <param f>.
+let editLine(text: String, row: Int64, f: String -> String): String =
+  Stdlib.String.split(text, "\n")
+  |> Stdlib.List.indexedMap(fun(i, l) -> if i == row then f(l) else l)
+  |> fun ls -> Stdlib.String.join(ls, "\n")
+
+
+/// For each file named in the file <param listFile>, its `module` header blanked so it reads as
+/// a script: the incremental parse against a whole parse, first from nothing, then after a
+/// trailing space and after a deleted line in the middle declaration. Prints a line per file
+/// and a summary with the per-edit times.
+let main(args: List<String>): Int64 =
+  let paths =
+    match args with
+    | [ listFile, ... ] ->
+      Stdlib.Cli.FileSystem.readFileAsString(listFile)
+      |> Stdlib.Result.withDefault("")
+      |> Stdlib.String.splitOnNewline
+      |> Stdlib.List.filter(fun p -> p != "")
+    | [] -> []
+  let rows =
+    Stdlib.List.filterMap(paths, fun path ->
+      match Stdlib.Cli.FileSystem.readFileAsString(path) with
+      | Ok(source) ->
+        let text = Stdlib.String.split(source, "\n") |> Stdlib.List.map(fun l -> if Stdlib.String.startsWith(l, "module ") && Stdlib.Bool.not(Stdlib.String.contains(l, "=")) then "" else l) |> fun ls -> Stdlib.String.join(ls, "\n")
+        let full = fun t -> Dark.parseWith(LanguageTools.Parser.FileKind.Script, t)
+        let first = reparse(empty, text)
+        let same0 = first.parsed == full(text)
+        let mid = Stdlib.List.length(Stdlib.String.split(text, "\n")) / 2
+        let spaced = editLine(text, mid, fun l -> l + " ")
+        let (spaceMs, afterSpace) = ms(fun () -> reparse(first.cache, spaced))
+        let (fullMs, fullSpaced) = ms(fun () -> full(spaced))
+        let same1 = afterSpace.parsed == fullSpaced
+        let dropped = editLine(text, mid, fun _ -> "")
+        let (dropMs, afterDrop) = ms(fun () -> reparse(first.cache, dropped))
+        let same2 = afterDrop.parsed.parsed == (full(dropped)).parsed
+        let mark = fun b -> if b then "same" else "DIFF"
+        Stdlib.printLine($"{mark(same0)} {mark(same1)} {mark(same2)} chunks {first.totalChunks} edit {afterSpace.parsedChunks} in {spaceMs}ms (whole {fullMs}ms), dropped line {afterDrop.parsedChunks} in {dropMs}ms {path}")
+        Stdlib.Option.Option.Some((same0, same1, same2, first.parsedChunks >= 0, spaceMs, fullMs))
+      | Error(_) -> Stdlib.Option.Option.None)
+  let count = fun f -> Stdlib.List.length(Stdlib.List.filter(rows, f))
+  let chunked = Stdlib.List.filter(rows, fun((_, _, _, c, _, _)) -> c)
+  let editMs = Stdlib.List.fold(chunked, 0, fun(acc, r) -> acc + editOf(r))
+  let wholeMs = Stdlib.List.fold(chunked, 0, fun(acc, r) -> acc + wholeOf(r))
+  Stdlib.printLine($"files {Stdlib.List.length(rows)}, chunked {Stdlib.List.length(chunked)}; same from nothing {count(fun((a, _, _, _, _, _)) -> a)}, same after an edit {count(fun((_, b, _, _, _, _)) -> b)}, same tree after a dropped line {count(fun((_, _, c, _, _, _)) -> c)}")
+  Stdlib.printLine($"chunked files: edits re-parsed in {editMs}ms in all, whole parses {wholeMs}ms")
+  0
+
+
+let editOf(r: (Bool * Bool * Bool * Bool * Int64 * Int64)): Int64 =
+  let (_, _, _, _, e, _) = r
+  e
+
+
+let wholeOf(r: (Bool * Bool * Bool * Bool * Int64 * Int64)): Int64 =
+  let (_, _, _, _, _, w) = r
+  w
