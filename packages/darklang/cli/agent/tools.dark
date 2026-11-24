@@ -321,7 +321,9 @@ let shell(
       timeoutMs,
       "/usr/bin/bwrap",
       Stdlib.List.flatten(
-        [ [ "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc" ]
+        // /dev read-only too: a fresh /dev has a writable /dev/shm of its own, and a program that
+        // keeps its state there works only inside this sandbox
+        [ [ "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--remount-ro", "/dev" ]
           binds
           [ "--unshare-net", "--die-with-parent", "/bin/bash", "-c", script ] ]))
   else if Stdlib.List.contains(ctx.allowed, LanguageTools.Permissions.Effect.Http) then

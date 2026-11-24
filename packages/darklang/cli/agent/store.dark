@@ -310,10 +310,26 @@ let moduleProblems(ctx: Tools.Context, m: String): List<String> =
   Stdlib.List.concat(typeProblems, testProblems)
 
 
-/// The modules this session wrote, without the agent's own prompt and tools.
+/// The modules this session wrote and still has live items in, without the agent's own prompt and
+/// tools: a scratch module whose items were all deleted is not part of the work.
 let workModules(ctx: Tools.Context): List<String> =
   ctx.touched
   |> Stdlib.List.filter(fun m -> Stdlib.Bool.not(Stdlib.String.startsWith(m, "Me.Agent")))
+  |> Stdlib.List.filter(fun m -> hasLiveItems(ctx, m))
+
+
+/// Whether <param m> holds a function, value, type or test that isn't deleted.
+let hasLiveItems(ctx: Tools.Context, m: String): Bool =
+  let path = Stdlib.String.split(m, ".")
+  let branch = Repls.branchOf(ctx.repl)
+  let (_subs, types, values, fns, _traits, _impls, tests) =
+    Packages.Query.allDirectDescendantNamesAndHashes(branch, path)
+
+  let sets = Packages.Query.loadDeprecationSets(branch)
+  [ types, values, fns, tests ]
+  |> Stdlib.List.flatten
+  |> Stdlib.List.any(fun((name, hash)) ->
+    Stdlib.Bool.not(Packages.Query.isHiddenAt(sets, path, name, hash)))
 
 
 /// Nothing, or what to fix before the answer is accepted.
