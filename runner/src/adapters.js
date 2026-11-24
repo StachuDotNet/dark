@@ -47,9 +47,12 @@ export function parseUsage(agent, events) {
 
 export function launchArgs(agent, model, dirs = [], sites = []) {
   if (agent.startsWith('dark-agent')) {
-    // the Dark binary itself is the agent; the prompt arrives on stdin, as for claude
-    const allow = ['file-write', 'process', ...(sites.length ? ['http'] : [])].join(',');
-    const args = ['agent', '--output-format', 'stream-json', '--allow', allow, '--merge'];
+    // the Dark binary itself is the agent; the prompt arrives on stdin, as for claude.
+    // --sandbox matches claudeSandbox: writes only in the workspace and the attempt's store, bash
+    // in bwrap with loopback only, and code may reach loopback and the task's sites only.
+    const allow = ['file-write', 'process', 'http-server', ...(sites.length ? ['http'] : [])].join(',');
+    const args = ['agent', '--output-format', 'stream-json', '--allow', allow, '--merge', '--sandbox'];
+    if (sites.length) args.push('--hosts', sites.join(','));
     if (agent === 'dark-agent-generic') args.push('--tools', 'generic');
     if (agent === 'dark-agent-attempts') args.push('--attempts', '3');
     if (model) args.push('--model', model);
