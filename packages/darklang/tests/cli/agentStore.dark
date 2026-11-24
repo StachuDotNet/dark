@@ -398,3 +398,24 @@ test thePromptCarriesTheReferenceAndTheSandbox = Instance.withInstance(fun i ->
         plain,
         "Your bash runs in a sandbox",
         "and only then") ]))
+
+
+test aFailedRunNamesTheTraceItLeft =
+  let reply =
+    Cli.Repls.Reply
+      { n = 1
+        kind = "command"
+        status = "error"
+        lines =
+          [ "Error: Cannot divide by 0"
+            "trace 827051ce: dark traces show Me.Tw.average 827051ce" ] }
+
+  let outcome =
+    Cli.Repls.Batch.Outcome
+      { replies = [ reply ]
+        ms = 0
+        checks = []
+        watches = []
+        moved = Option.None }
+
+  Cli.Agent.Store.failedTraces(outcome) |> Stdlib.Test.equal([ "827051ce" ])

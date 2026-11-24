@@ -671,7 +671,7 @@ let comparable(text: String): String =
     if Stdlib.String.startsWith(l, "-- ") && Stdlib.String.contains(l, " skipped, ") then
       "-- (summary)"
     else if
-      Stdlib.String.contains(l, "trace ") && Stdlib.String.contains(l, "dark traces inspect")
+      Stdlib.String.contains(l, "trace ") && Stdlib.String.contains(l, "dark traces show")
     then
       "(trace)"
     else if Stdlib.String.startsWith(l, "the values in run ") then

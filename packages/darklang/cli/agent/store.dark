@@ -218,7 +218,7 @@ let failedTraces(outcome: Repls.Batch.Outcome): List<String> =
   |> Stdlib.List.filterMap(fun l ->
     let l = Stdlib.String.trim(l)
     if
-      Stdlib.String.startsWith(l, "trace ") && Stdlib.String.contains(l, ": dark traces inspect ")
+      Stdlib.String.startsWith(l, "trace ") && Stdlib.String.contains(l, ": dark traces show ")
     then
       Stdlib.String.split(Stdlib.String.dropFirst(l, 6), ":") |> Stdlib.List.head
     else

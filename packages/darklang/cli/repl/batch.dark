@@ -406,7 +406,7 @@ let runCommand(
         match Tracing.Store.list(1) with
         | [t] ->
           let short = Text.shortIdText(t.id)
-          Stdlib.List.append(lines, $"trace {short}: dark traces inspect {short}")
+          Stdlib.List.append(lines, $"trace {short}: dark traces show {short}")
         | _ -> lines
       else
         lines
