@@ -166,7 +166,7 @@ let executeUnder(
       failed(state)
     | Ok(expr) ->
       let traceId = Stdlib.Uuid.generate()
-      Cli.Tracing.printStartedTrace(traceId)
+      Tracing.printStartedTrace(traceId)
       let (stats, outcome) =
         if wantStats then
           let harness = LanguageTools.Perf.floor()
@@ -186,7 +186,7 @@ let executeUnder(
         | Ok(None) -> state
         | Error(message) ->
           Stdlib.printErrorLine($"Error: {message}")
-          Cli.Tracing.printFailedTrace(state.currentBranchId, traceId)
+          Tracing.printFailedTrace(state.currentBranchId, traceId)
           { state with exitCode = 1 }
 
       match stats with
