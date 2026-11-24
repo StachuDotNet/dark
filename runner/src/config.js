@@ -32,7 +32,7 @@ export function selectedTasks(config) {
 }
 export function validate(config) {
   if (!Array.isArray(config.agents) || !config.agents.length) throw Error('Select at least one agent.');
-  for (const a of config.agents) if (!['codex', 'claude'].includes(a.agent) || !a.path || typeof a.model !== 'string') throw Error('Provide an executable and model setting for each agent.');
+  for (const a of config.agents) if (!(['codex', 'claude'].includes(a.agent) || a.agent.startsWith('dark-agent')) || !a.path || typeof a.model !== 'string') throw Error('Provide an executable and model setting for each agent.');
   if (!config.languages?.length || config.languages.some(l => !['Dark', 'Python', 'TypeScript'].includes(l))) throw Error('Select supported languages.');
   for (const [key, min, max] of [['repetitions', 1, 100], ['minutes', 0.01, 1440]]) {
     if (!Number.isFinite(config[key]) || config[key] < min || config[key] > max || (key !== 'minutes' && !Number.isInteger(config[key]))) throw Error(`Invalid ${key}.`);
@@ -83,7 +83,9 @@ async function inspect(config, signal, runtime) {
   const agents = [];
   for (const a of config.agents) {
     const version = await probe(`${a.agent} version`, a.path, ['--version']);
-    await probe(`${a.agent} help`, a.path, a.agent === 'codex' ? ['exec', '--help'] : ['--help'], a.agent === 'codex' ? ['--json', '--sandbox', '--skip-git-repo-check', '--add-dir'] : ['--output-format', '--permission-prompts', 'acceptEdits', '--settings', '--allowedTools', '--add-dir']);
+    // dark-agent arms are the Dark binary: check it has the agent command, not Claude's flags
+    if (a.agent.startsWith('dark-agent')) await probe(`${a.agent} help`, a.path, ['help', 'agent'], ['--output-format']);
+    else await probe(`${a.agent} help`, a.path, a.agent === 'codex' ? ['exec', '--help'] : ['--help'], a.agent === 'codex' ? ['--json', '--sandbox', '--skip-git-repo-check', '--add-dir'] : ['--output-format', '--permission-prompts', 'acceptEdits', '--settings', '--allowedTools', '--add-dir']);
     agents.push({ ...a, version, binary: await identity(a.path) });
   }
   const languages = {};
