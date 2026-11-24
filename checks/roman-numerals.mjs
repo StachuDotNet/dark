@@ -1,8 +1,9 @@
+import { pick } from '../grade-lib.mjs';
 export const opt = (f) => /^Result</.test(f.ret) ? (x) => `(match ${f.name}(${x}) with | Ok(v) -> Stdlib.Option.Option.Some(v) | Error(_) -> Stdlib.Option.Option.None)` : /^Option</.test(f.ret) ? (x) => `${f.name}(${x})` : (x) => `Stdlib.Option.Option.Some(${f.name}(${x}))`;
 export default async (c) => {
   const fns = c.fns().filter(f => !/Tests?$/.test(f.module));
-  const to = fns.find(f => /^\w+\s*:\s*Int64$/.test(f.params) && /String/.test(f.ret));
-  const from = fns.find(f => /^\w+\s*:\s*String$/.test(f.params) && /Int64/.test(f.ret));
+  const to = pick(fns, /^(to|int|encode|format)/i, f => /^\w+\s*:\s*Int64$/.test(f.params) && /String/.test(f.ret));
+  const from = pick(fns, /^(from|parse|decode)/i, f => /^\w+\s*:\s*String$/.test(f.params) && /Int64/.test(f.ret));
   if (!to || !from) return [{ name: 'found both functions by name', ok: false, got: fns.map(f => `${f.name}(${f.params}): ${f.ret}`).join('; ') }];
   const T = opt(to), F = opt(from);
   const ev = (e) => c.eval(e).out.trim();

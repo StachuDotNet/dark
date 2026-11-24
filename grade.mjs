@@ -8,6 +8,7 @@
 import { readFileSync, existsSync, appendFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync, spawn } from 'node:child_process';
 import path from 'node:path';
+import { entryFrom, testFilters } from './grade-lib.mjs';
 
 const B = new URL('.', import.meta.url).pathname;
 const args = process.argv.slice(2);
@@ -19,55 +20,6 @@ const label = args[0];
 const outFile = `${B}/results/${label}.grades.jsonl`;
 const done = new Set(!force && existsSync(outFile) ? readFileSync(outFile, 'utf8').trim().split('\n').filter(Boolean).map(l => { const r = JSON.parse(l); return `${r.task}-${r.n}`; }) : []);
 const rows = readFileSync(`${B}/results/${label}.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
-
-const DARK_ERR = /error\[(?:LEX|PARSE)|Parse error|Not found: |not found\. Did you mean|is unresolved|Type check failed|permission denied|No script file or function named|Uncaught exception|Encountered a Runtime Error/;
-const NAME = String.raw`([A-Z]\w*(?:\.\w+)+)`;
-
-// `dark run [flags] Fn args`: the first dotted name after `run` whose last part is lower case, however
-// the flags were written (quoted, or a shell array), and the words after it up to `;`, `|`, `&` or `>`
-function runsIn(text) {
-  const out = [];
-  for (const line of text.split('\n')) for (const m of line.matchAll(/(?<!test )\brun\b(.*)/g)) {
-    // quoted flag values (`--allow "a; b"`) can hold `;`, so they go first
-    const words = m[1].replace(/"[^"]*"|'[^']*'/g, (q) => /^["'][^"' ]*["']$/.test(q) ? q : 'Q').split(/[;|&>]/)[0].trim().split(/\s+/);
-    const i = words.findIndex(w => /^[A-Z]\w*(?:\.\w+)*\.[a-z]\w*$/.test(w));
-    const rest = words.slice(i + 1); const f = rest.findIndex(w => /^--allow/.test(w));
-    if (i >= 0 && !/^(Stdlib|Darklang)\./.test(words[i])) out.push({ fn: words[i], rest: f >= 0 ? rest.slice(0, f) : rest });
-  }
-  return out;
-}
-
-function entryFrom(transcript) {
-  const tools = new Map(); const runs = [], serves = [], modules = new Set(); let final = '', argsOf = {}; const ports = [], rules = new Set();
-  for (const line of transcript.split('\n')) {
-    let e; try { e = JSON.parse(line); } catch { continue; }
-    if (e.type === 'assistant') for (const c of e.message?.content || []) if (c.type === 'tool_use') tools.set(c.id, c);
-    if (e.type === 'user' && Array.isArray(e.message?.content)) for (const c of e.message.content) if (c.type === 'tool_result') {
-      const tu = tools.get(c.tool_use_id);
-      // structured save tools: { module: "Me.X", source } or { name: "Me.X.f", source }
-      if (typeof tu?.input?.module === 'string') modules.add(tu.input.module.replace(/^\//, '').replace(/\.Tests$/, ''));
-      else if (typeof tu?.input?.name === 'string' && typeof tu.input.source === 'string') modules.add(tu.input.name.replace(/^\//, '').split('.').slice(0, -1).join('.').replace(/\.Tests$/, ''));
-      const cmd = tu?.input?.command; if (typeof cmd !== 'string') continue;
-      const t = typeof c.content === 'string' ? c.content : (c.content || []).map(x => x.text || '').join('\n');
-      const ok = !DARK_ERR.test(t);
-      for (const m of cmd.matchAll(/\b(?:module|fn)\s+\/?([A-Z][\w.]*)/g)) modules.add(m[1].replace(/\.Tests$/, ''));
-      if (!ok) continue;
-      for (const { fn, rest } of runsIn(cmd)) { runs.push(fn); argsOf[fn] = rest; }
-      for (const m of cmd.matchAll(/(?:127\.0\.0\.1|localhost):(\d{4,5})/g)) ports.push(+m[1]);
-      for (const m of cmd.matchAll(/--allow[= ]+(?:"([^"]*)"|'([^']*)'|([a-z][\w-]*)(?=\s|$))/g)) for (const r of (m[1] ?? m[2] ?? m[3]).split(';')) rules.add(r.trim());
-      for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:serve|http-server)\s+` + NAME, 'g'))) serves.push(m[1]);
-    }
-    if (e.type === 'result' && !final) final = String(e.result || '');
-  }
-  for (const { fn, rest } of runsIn(final.replace(/`/g, ' '))) { runs.push(fn); argsOf[fn] ??= rest; }
-  for (const m of final.matchAll(new RegExp(String.raw`\bserve\s+` + NAME, 'g'))) serves.push(m[1]);
-  const count = xs => { const c = {}; xs.forEach((x, i) => c[x] = (c[x] || 0) + 1 + i / 1000); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); };
-  // the program is the one the final answer names, else the one run most often, else the last one run
-  const inFinal = [...final.matchAll(/\b([A-Z]\w*(?:\.[A-Z]\w*)*\.main)\b/g)].map(m => m[1]);
-  const named = [...runs].reverse().find(f => inFinal.includes(f)) || inFinal[0] || [...runs].reverse().find(f => final.includes(f));
-  const main = named || count(runs)[0] || null;
-  return { main, mainArgs: argsOf[main] || [], mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final, ports: [...new Set(ports.reverse())], rules: [...rules].filter(Boolean) };
-}
 
 function ctxFor(row, runRoot, entry) {
   // the attempt's own copy of the binary, else the label's wrapper
@@ -94,10 +46,10 @@ function ctxFor(row, runRoot, entry) {
     run: (argv, o = {}) => dark(['run', ...allow(o.allow), o.fn || entry.main, ...argv], o),
     eval: (expr, o = {}) => dark(['eval', expr], o),
     // counts from the summary line, which every release prints (`--json` is newer)
-    // tests named after the program, else after any saved module, else any of the user's own
+    // tests named after the program, else after any saved module
     test: (filter) => {
-      let last;
-      for (const f of [filter, ...entry.modules, 'Me.']) {
+      let last = { passed: 0, failed: 0, code: null, raw: 'no test filter: nothing was saved by name' };
+      for (const f of testFilters(filter, entry)) {
         const r = dark(['test', 'run', ...(f ? [f] : [])], { timeout: 300000 });
         const m = (r.out + r.err).match(/(\d+) tests?[^\n]*?: (\d+) passed, (\d+) failed/);
         last = m ? { tests: +m[1], passed: +m[2], failed: +m[3], code: r.code, filter: f } : { passed: 0, failed: 0, code: r.code, raw: (r.out + r.err).slice(-200) };

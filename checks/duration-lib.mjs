@@ -4,7 +4,7 @@ export default async (c) => {
   const got = cases.map(([a]) => r(...a));
   const bad = [['add', '1h1h', '5m'], ['add', '5x', '1m'], ['add', '', '1m']].map(a => r(...a));
   // separate modules: saved apart, or nested `module X =` blocks in one save
-  const saved = c.entry.modules.filter(m => !/Tests?$/.test(m));
+  const saved = c.entry.moduleSaves.filter(m => !/Tests?$/.test(m));
   const nested = saved.flatMap(m => [...c.source(m).matchAll(/^\s*module (\w+)\s*=/gm)].map(x => `${m}.${x[1]}`)).filter(m => !/Tests?$/.test(m));
   const mods = [...new Set([...saved, ...nested])];
   const fns = c.fns().filter(f => !/Tests?$/.test(f.module) && !/^main$/.test(f.short));

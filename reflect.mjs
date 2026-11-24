@@ -58,10 +58,12 @@ function classify(tu) {
   }
   const phases = subs.map(PHASE_OF);
   if (/\bcurl\b|\bwget\b|\bnc\b /.test(cmd)) phases.push('run');
+  // another language's own run (the Python floor): a script, pytest or unittest
+  if (/\bpython3?\s+(?:-m\s+(?:pytest|unittest)|\S+\.py)|\bpytest\b/.test(cmd)) phases.push('run');
   if (/<<\s*'?EOF'?[\s\S]*\btest\s+\w+\s*=/.test(cmd)) phases.push('test');
   if (!phases.length) phases.push(/^\s*(ls|cat|head|tail|find|tree|pwd|wc|file)\b/.test(cmd) ? 'orient' : 'shell');
   const phase = RANK.find(r => phases.includes(r));
-  return { phase, subs, what: cmd };
+  return { phase, subs, what: cmd, bg: !!i.run_in_background };
 }
 const short = s => String(s || '').replace(/.*\//, '');
 
@@ -80,9 +82,11 @@ const ERR = [
   ['runtime', /Encountered a Runtime Error|Uncaught exception(?!: permission)|Script error:(?! permission)|\[HttpServer\] internal error/],
   ['test-fail', /\d+ tests?[^\n]*: \d+ passed, [1-9]\d* failed|failed [1-9]\d*, incomplete|^\s*FAIL Me\./m],
   ['harness', /bwrap: |Exit code 143|Command timed out|timed out after/],
+  ['py-error', /Traceback \(most recent call last\):|^\s*(?:SyntaxError|NameError|TypeError|AttributeError|ImportError|IndentationError): /m],
   ['shell', /command not found|: No such file or directory$/m],
 ];
-const DARK_ERR = new Set(['foreign-syntax', 'parse', 'stdlib-name', 'own-name', 'store-model', 'type', 'permission', 'cli-usage', 'runtime', 'test-fail']);
+// errors in the language under test: Dark's own diagnostics, or a Python traceback for the floor
+const DARK_ERR = new Set(['py-error', 'foreign-syntax', 'parse', 'stdlib-name', 'own-name', 'store-model', 'type', 'permission', 'cli-usage', 'runtime', 'test-fail']);
 function outcome(phase, text, isErr, cmd) {
   if (phase === 'docs' || phase === 'lookup' || phase === 'orient') return { errs: [], line: '' };
   const errs = ERR.filter(([k, re]) => re.test(text) && !(k === 'cli-usage' && /\bhelp\b|--help/.test(cmd))).map(([k]) => k);
@@ -138,14 +142,22 @@ function session(label, dir) {
     const cleanSame = open && t.calls.some(c => (c.phase === open.phase && !c.errs.includes(open.cls) && (c.subs.length || c.phase === 'run'))
       || (['author', 'run', 'test'].includes(c.phase) && c.subs.length && !c.errs.length));
     // the clean redo is part of the recovery, so it counts as fixing too
-    if (open && cleanSame && !darkErrs.length) { open.end = t.turn; open.turns++; open = null; t.fixing = true; continue; }
-    if (open) { t.fixing = true; open.turns++; }
+    if (open && cleanSame && !darkErrs.length) { open.end = t.turn; open.turns++; t.fixing = true; t.fixCls = open.cls; open = null; continue; }
+    if (open) { t.fixing = true; t.fixCls = open.cls; open.turns++; }
     if (darkErrs.length && !open) {
       const c = t.calls.find(c => c.errs.some(x => DARK_ERR.has(x) || x === 'sandbox-net'));
       open = { start: t.turn, phase: c.phase, cls: c.errs.find(x => DARK_ERR.has(x) || x === 'sandbox-net'), all: [...new Set(darkErrs)], line: c.line, cmd: c.what, turns: 0, end: null };
       episodes.push(open);
     }
   }
+  // one category per turn, for comparing two languages call by call: recovering from a permission
+  // denial, recovering from another error, a server's background process or requests, docs, lookups and
+  // probes, saving or writing code, everything else (runs, tests, shell, the answer)
+  const serverish = c => c.tool === 'Bash' && /run_in_background|\bkill\b|\bpkill\b|\bsleep\b|\bcurl\b|&\s*$|&\s*\n| & /m.test(c.what + (c.bg ? ' run_in_background' : ''));
+  for (const t of turns) t.cat = t.fixing ? (t.fixCls === 'permission' ? 'permission' : 'fix')
+    : t.calls.some(serverish) && !['author'].includes(t.phase) ? 'server'
+    : t.phase === 'docs' ? 'docs' : ['lookup', 'probe'].includes(t.phase) ? 'lookup' : t.phase === 'author' ? 'save' : 'other';
+  const cats = {}; for (const t of turns) cats[t.cat] = (cats[t.cat] || 0) + 1;
   // tokens: each tool result rides along in every later turn's context
   let carried = 0; const big = [];
   for (const c of calls) { const tk = toks(c.resChars), later = T - c.turn; c.carry = tk * later; carried += c.carry; if (tk >= 3000) big.push({ turn: c.turn, phase: c.phase, tokens: tk, carry: c.carry, what: c.what }); }
@@ -168,7 +180,7 @@ function session(label, dir) {
   }
   const seq = turns.map(t => t.fixing ? 'F' : ({ orient: 'o', docs: 'D', lookup: 'L', probe: 'p', author: 'A', run: 'R', test: 'T', store: 's', perms: 'P', shell: 'h', 'other-dark': 'x', meta: 'm', talk: '.' })[t.phase] || '?').join('');
   const firstSave = calls.find(c => c.phase === 'author' && c.subs.some(x => SAVE.has(x)));
-  return { firstSaveErrs: firstSave ? firstSave.errs.filter(x => DARK_ERR.has(x)) : null, looked, docParts, seq, kind: kindOf[task] || '?', toolMs, spanMs, darkMs, label, task, n, dir, measure: measure.has(task), T, turns, calls, episodes, carried, ctxSum, firstCtx, carryBy, big, rewrites, writeChars, phaseTurns, errSessions, subs, finalText,
+  return { cats, firstSaveErrs: firstSave ? firstSave.errs.filter(x => DARK_ERR.has(x)) : null, looked, docParts, seq, kind: kindOf[task] || '?', toolMs, spanMs, darkMs, label, task, n, dir, measure: measure.has(task), T, turns, calls, episodes, carried, ctxSum, firstCtx, carryBy, big, rewrites, writeChars, phaseTurns, errSessions, subs, finalText,
     outTok: turns.reduce((a, t) => a + t.out, 0), firstWrong: episodes[0] || null,
     firstAuthor: turns.find(t => t.phase === 'author')?.turn ?? null, firstGreen: turns.find(t => t.calls.some(c => (c.phase === 'run' || c.phase === 'test') && !c.errs.length))?.turn ?? null };
 }
@@ -278,4 +290,4 @@ if (timelineOf) {
 }
 const md = L.join('\n');
 if (mdOut) writeFileSync(mdOut, md); else console.log(md);
-if (jsonOut) writeFileSync(jsonOut, JSON.stringify(all.map(([l, S]) => ({ schema: 'reflect/1', label: l, ...aggregate(S), cls: Object.fromEntries(Object.entries(aggregate(S).cls).map(([k, c]) => [k, { ...c, sessions: c.sessions.size }])), perSession: S.map(s => ({ task: s.task, n: s.n, measure: s.measure, kind: s.kind, seq: s.measure ? null : s.seq, firstSaveErrs: s.firstSaveErrs, firstGreen: s.firstGreen, firstAuthor: s.firstAuthor, T: s.T, cost: s.row.cost, phaseTurns: s.phaseTurns, episodes: s.episodes.map(e => ({ cls: e.cls, start: e.start, turns: e.turns, closed: e.end != null })), carried: s.carried, ctx: s.ctxSum })) })), null, 1));
+if (jsonOut) writeFileSync(jsonOut, JSON.stringify(all.map(([l, S]) => ({ schema: 'reflect/1', label: l, ...aggregate(S), cls: Object.fromEntries(Object.entries(aggregate(S).cls).map(([k, c]) => [k, { ...c, sessions: c.sessions.size }])), perSession: S.map(s => ({ task: s.task, n: s.n, measure: s.measure, kind: s.kind, seq: s.measure ? null : s.seq, firstSaveErrs: s.firstSaveErrs, firstGreen: s.firstGreen, firstAuthor: s.firstAuthor, T: s.T, cost: s.row.cost, cats: s.cats, phaseTurns: s.phaseTurns, episodes: s.episodes.map(e => ({ cls: e.cls, start: e.start, turns: e.turns, closed: e.end != null })), carried: s.carried, ctx: s.ctxSum })) })), null, 1));
