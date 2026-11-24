@@ -197,3 +197,106 @@ test listedFunctionsExist =
         Stdlib.Test.expect(
           Stdlib.List.all(names, fun n -> Stdlib.String.contains(page, n)),
           "the page names each one") ]))
+
+
+// `--for` adds what each area needs to the main page, in one read.
+test forOneArea = Instance.withInstance(fun i ->
+  let (code, out) = Instance.ran(i, [ "docs", "for-ai", "--for", "json" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "one area prints")
+      Instance.says(out, "## Dark syntax at a glance", "the syntax")
+      Instance.says(out, "## Build, run, test", "the recipe")
+      Instance.says(out, "(filter: Stdlib.Json)", "the area's signatures")
+      Instance.says(out, "parse(json: String)", "a signature")
+      Instance.doesNotSay(out, "Add `--for <areas>`", "the pointer to itself")
+      Instance.doesNotSay(out, "# Darklang AI: tests", "another area's part")
+      Instance.said(i, [ "docs", "for-ai", "--for=json" ])
+      |> Stdlib.Test.equal(out) ]))
+
+
+test forSeveralAreas = Instance.withInstance(fun i ->
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "docs", "for-ai", "--for", "files,json,http-server,tests" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "several areas print")
+      Instance.says(out, "# HTTP Server", "a docs topic")
+
+      Instance.says(out, "# Darklang AI: tests", "a part")
+
+      Instance.says(
+        out,
+        "(filter: Stdlib.Cli.FileSystem)",
+        "the first area's signatures")
+
+      Instance.says(
+        out,
+        "(filter: Stdlib.HttpServer)",
+        "another area's signatures")
+
+      Instance.says(out, "(filter: Stdlib.Test)", "the last area's signatures")
+      Stdlib.Test.expect(
+        Stdlib.List.length(
+          Stdlib.String.split(out, "# Darklang AI: permissions"))
+        == 2,
+        "a part two areas need prints once") ]))
+
+
+test forListsTheAreas = Instance.withInstance(fun i ->
+  let (code, out) = Instance.ran(i, [ "docs", "for-ai", "--for" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the index prints")
+      Stdlib.Test.all(
+        Cli.Docs.ForAIAreas.all()
+        |> Stdlib.List.map(fun a ->
+          Instance.says(out, $"{a.name}  ", $"the index lists {a.name}"))) ]))
+
+
+test forRefusesAnUnknownArea = Instance.withInstance(fun i ->
+  let (code, out) = Instance.ran(i, [ "docs", "for-ai", "--for", "json,zzz" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 1, "an unknown area fails")
+      Instance.says(
+        plain(out),
+        "Unknown area: zzz\n\n  cli ",
+        "and names it, then the areas")
+
+      Instance.says(out, "http-server  Serving HTTP", "with a line each")
+      Instance.doesNotSay(
+        out,
+        "## Dark syntax at a glance",
+        "and prints no docs") ]))
+
+
+// What `--for` adds is read in full, so each area has a budget, in characters.
+test forStaysWithinBudget = Instance.withInstance(fun i ->
+  let budgets =
+    [ ("cli", 15500)
+      ("files", 16500)
+      ("json", 9200)
+      ("csv", 8100)
+      ("http-server", 24200)
+      ("http-client", 25500)
+      ("tests", 12200)
+      ("strings", 13500)
+      ("collections", 13300)
+      ("numbers", 14800)
+      ("dates", 11500)
+      ("processes", 20500) ]
+
+  budgets
+  |> Stdlib.List.map(fun((area, budget)) ->
+    let size =
+      Stdlib.String.length(
+        Instance.said(i, [ "docs", "for-ai", "--for", area ]))
+
+    Stdlib.Test.expect(
+      size < budget,
+      $"docs for-ai --for {area} is {size} characters"))
+  |> Stdlib.List.append(
+    (budgets |> Stdlib.List.map(fun((area, _)) -> area))
+    |> Stdlib.Test.equal(
+      Cli.Docs.ForAIAreas.all() |> Stdlib.List.map(fun a -> a.name)))
+  |> Stdlib.Test.all)

@@ -1,0 +1,160 @@
+module Darklang.Cli.Docs.ForAIAreas
+
+// `docs for-ai --for <areas>`: the main page, the parts an area needs and the signatures
+// of its Stdlib modules, in one read.
+
+type Area =
+  { name: String
+    description: String
+    /// Parts of `docs for-ai`, or other docs topics.
+    parts: List<String>
+    /// Filters for `docs signatures`.
+    modules: List<String> }
+
+
+let area(name: String, description: String, parts: List<String>, modules: List<String>): Area =
+  Area { name = name, description = description, parts = parts, modules = modules }
+
+
+let all(): List<Area> =
+  [ area(
+      "cli",
+      "A command-line tool: arguments, stdin, environment, exit codes",
+      [ "packages" ],
+      [ "Stdlib.Cli.Stdin", "Stdlib.Cli.Env" ])
+
+    area(
+      "files",
+      "Reading and writing files and folders",
+      [ "permissions" ],
+      [ "Stdlib.Cli.FileSystem", "Stdlib.Cli.Dir", "Stdlib.Cli.Path" ])
+
+    area("json", "Parsing and writing JSON", [], [ "Stdlib.Json" ])
+
+    area("csv", "Parsing and writing CSV", [], [ "Stdlib.Csv" ])
+
+    area(
+      "http-server",
+      "Serving HTTP: routes, requests, responses",
+      [ "http-server", "permissions" ],
+      [ "Stdlib.HttpServer", "Stdlib.Http" ])
+
+    area(
+      "http-client",
+      "Calling HTTP APIs",
+      [ "http-client", "permissions" ],
+      [ "Stdlib.HttpClient" ])
+
+    area("tests", "Package tests", [ "tests" ], [ "Stdlib.Test" ])
+
+    area(
+      "strings",
+      "Strings, characters and regular expressions",
+      [],
+      [ "Stdlib.String", "Stdlib.Char", "Stdlib.Regex" ])
+
+    area("collections", "Lists and dictionaries", [], [ "Stdlib.List", "Stdlib.Dict" ])
+
+    area(
+      "numbers",
+      "Integers, floats and decimals",
+      [],
+      [ "Stdlib.Int64", "Stdlib.Float64", "Stdlib.Decimal" ])
+
+    area("dates", "Dates, times and durations", [], [ "Stdlib.DateTime", "Stdlib.Duration" ])
+
+    area(
+      "processes",
+      "Running other programs, things that run at once, and what a run did",
+      [ "traces", "permissions" ],
+      [ "Stdlib.Cli.Process" ]) ]
+
+
+let find(name: String): Option<Area> =
+  let lower = Stdlib.String.toLowercase(name)
+  all() |> Stdlib.List.findFirst(fun a -> a.name == lower)
+
+
+/// The areas, one per line.
+let index(): String =
+  let width =
+    all()
+    |> Stdlib.List.map(fun a -> Stdlib.String.length(a.name))
+    |> Stdlib.List.fold(0, fun(acc, w) -> if w > acc then w else acc)
+
+  all()
+  |> Stdlib.List.map(fun a -> $"  {Stdlib.Text.padEndToWidth(a.name, width)}  {a.description}")
+  |> Stdlib.String.join("\n")
+
+
+/// The names in `--for files,json tests` or `--for=files`: split on commas, without `--for`.
+let names(args: List<String>): List<String> =
+  args
+  |> Stdlib.List.map(fun a ->
+    if a == "--for" then
+      []
+    else if Stdlib.String.startsWith(a, "--for=") then
+      Stdlib.String.split(Stdlib.String.dropFirst(a, 6), ",")
+    else
+      Stdlib.String.split(a, ","))
+  |> Stdlib.List.flatten
+  |> Stdlib.List.map(Stdlib.String.trim)
+  |> Stdlib.List.filter(fun a -> a != "")
+
+
+let execute(state: AppState, args: List<String>): AppState =
+  match names(args) with
+  | [] ->
+    Stdlib.printLine("Areas for `docs for-ai --for <areas>`, several split by commas:\n")
+    Stdlib.printLine(index())
+    state
+  | asked ->
+    let unknown = asked |> Stdlib.List.filter(fun n -> Stdlib.Option.isNone(find(n)))
+    match unknown with
+    | [] ->
+      let areas =
+        asked
+        |> Stdlib.List.filterMap(find)
+        |> Stdlib.List.uniqueBy(fun a -> a.name)
+
+      let pages =
+        areas
+        |> Stdlib.List.map(fun a -> a.parts)
+        |> Stdlib.List.flatten
+        |> Stdlib.List.unique
+        |> Stdlib.List.filterMap(page)
+
+      let modules =
+        areas
+        |> Stdlib.List.map(fun a -> a.modules)
+        |> Stdlib.List.flatten
+        |> Stdlib.List.unique
+
+      Stdlib.printLine(Stdlib.String.join(Stdlib.List.prepend(pages, ForAI.page("")), "\n\n"))
+      Stdlib.printLine("")
+      Packages.Signatures.execute(state, modules)
+    | _ ->
+      let names = Stdlib.String.join(unknown, ", ")
+      let noun = if Stdlib.List.length(unknown) > 1 then "areas" else "area"
+      Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.error($"Unknown {noun}: {names}"))
+      Stdlib.printErrorLine("")
+      Stdlib.printErrorLine(index())
+      failed(state)
+
+
+/// A part of `docs for-ai`, or another docs topic, as text.
+let page(name: String): Option<String> =
+  let parts =
+    match Command.Topics.findTopic("for-ai") with
+    | Some(t) -> t.subtopics
+    | None -> []
+
+  let found =
+    match Command.Topics.findIn(parts, name) with
+    | Some(t) -> Option.Some(t)
+    | None -> Command.Topics.findStaticTopic(name)
+
+  found
+  |> Stdlib.Option.map(fun t ->
+    let content = t.content
+    content())

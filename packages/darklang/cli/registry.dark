@@ -288,9 +288,9 @@ module Registry =
 
         ("stdlib", Accepts.nothing())
         ("lib", Accepts.nothing())
-        ("for-ai", Accepts.freeText(0, []))
-        ("ai", Accepts.freeText(0, []))
-        ("agent", Accepts.freeText(0, [])) ],
+        ("for-ai", Accepts.withValues([ "--for" ], Accepts.freeText(0, [ "--for" ])))
+        ("ai", Accepts.withValues([ "--for" ], Accepts.freeText(0, [ "--for" ])))
+        ("agent", Accepts.withValues([ "--for" ], Accepts.freeText(0, [ "--for" ]))) ],
       Accepts.freeText(0, []))
 
 
@@ -1247,7 +1247,7 @@ module Registry =
     // gets to and the first thing they needed: what the loop is, and where an agent should go instead of
     // reading a hundred command names.
     let header =
-      "Workflow: fn Me.Demo.f <body> → eval 'Me.Demo.f(2)' → status → commit\nhelp <command> for details. AI agents: docs for-ai"
+      "Workflow: fn Me.Demo.f <body> → eval 'Me.Demo.f(2)' → status → commit\nhelp <command> for details. AI agents: docs for-ai; add `--for <areas>` to get what you need in one read"
 
     let globalFlags =
       [ "Global flags:"

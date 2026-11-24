@@ -1,9 +1,14 @@
 module Darklang.Cli.Docs.ForAI
 
 let content(): String =
-  """# Darklang AI Quick Reference
+  page(
+    "Add `--for <areas>` to get what you need in one read: `docs for-ai --for files,json,tests`.\n\n")
 
-"""
+
+/// The page, with <param intro> under its title.
+let page(intro: String): String =
+  "# Darklang AI Quick Reference\n\n"
+  + intro
   + SyntaxAtAGlance.content()
   + """
 Saved code lives in a persistent package tree, not in files. Put your code in your own
