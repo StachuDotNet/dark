@@ -2,7 +2,7 @@
 /// same source, so either can stand in for the other.
 module Darklang.LanguageTools.Parser.Dark
 
-type Range = LanguageTools.Parser.Range
+type Range = Parser.Range
 
 
 type Parsed =
@@ -13,9 +13,9 @@ type Parsed =
 /// The Dark spelling, for a slip the lexer knows one for.
 let lexFix(d: Lexer.Diagnostic): Option<Core.Edit> =
   match d.problem with
-  | InvalidNumber(_, Some((_, dark))) -> Stdlib.Option.Option.Some(Core.Edit { range = d.range, text = dark })
-  | RefusedOperator("++") -> Stdlib.Option.Option.Some(Core.Edit { range = d.range, text = "+" })
-  | _ -> Stdlib.Option.Option.None
+  | InvalidNumber(_, Some((_, dark))) -> Option.Some(Core.Edit { range = d.range, text = dark })
+  | RefusedOperator("++") -> Option.Some(Core.Edit { range = d.range, text = "+" })
+  | _ -> Option.None
 
 
 let lexDiagnostic(d: Lexer.Diagnostic): Core.Diagnostic =
@@ -24,50 +24,63 @@ let lexDiagnostic(d: Lexer.Diagnostic): Core.Diagnostic =
       range = d.range
       message = Lexer.problemMessage(d.problem)
       related = []
-      hint = Stdlib.Option.Option.None
+      hint = Option.None
       fix = lexFix(d) }
 
 
-let parseWith(kind: LanguageTools.Parser.FileKind, code: String): Parsed =
+let parseWith(kind: FileKind, code: String): Parsed =
   let scope =
     match kind with
     | Script -> Decls.ItemScope.Script
     | _ -> Decls.ItemScope.Module
+
   let lexed = Lexer.lex(code)
   let inp = Core.Input { tokens = lexed.tokens, count = Stdlib.List.length(lexed.tokens) }
   let lexDiagnostics = Stdlib.List.map(lexed.diagnostics, fun d -> lexDiagnostic(d))
   let partialSave =
     match kind with
-    | Script | Package -> Stdlib.Option.Option.None
-    | _ -> Stdlib.Option.Option.Some(lexDiagnostics)
-  let (items, exprs, parseDiagnostics) = Decls.parseTokensSaving(lexed.tokens, scope, partialSave, 0)
+    | Script | Package -> Option.None
+    | _ -> Option.Some(lexDiagnostics)
+
+  let (items, exprs, parseDiagnostics) =
+    Decls.parseTokensSaving(lexed.tokens, scope, partialSave, 0)
+
   let fileRange =
-    if inp.count > 1 then Core.span(Core.rng(inp, 0), Core.rng(inp, inp.count - 2)) else Core.rng(inp, 0)
+    if inp.count > 1 then
+      Core.span(Core.rng(inp, 0), Core.rng(inp, inp.count - 2))
+    else
+      Core.rng(inp, 0)
+
   let file =
     WrittenTypes.SourceFile.SourceFile
       { range = fileRange
         declarations = Stdlib.List.filterMap(items, fun d -> Decls.sourceFileDeclaration(d))
-        exprsToEval = Stdlib.List.concat(exprs, Stdlib.List.flatten(Stdlib.List.map(items, fun d -> Decls.assertionExprs(d)))) }
+        exprsToEval =
+          Stdlib.List.concat(
+            exprs,
+            Stdlib.List.flatten(Stdlib.List.map(items, fun d -> Decls.assertionExprs(d)))) }
+
   // in source order; equal positions keep the order they were found in
   let syntax =
     Stdlib.List.concat(lexDiagnostics, parseDiagnostics)
     |> Stdlib.List.indexedMap(fun(i, d) -> (i, d))
     |> Stdlib.List.sortBy(fun((i, d)) -> (d.range.start.row, d.range.start.column, i))
     |> Stdlib.List.map(fun((_, d)) -> d)
+
   // the tree's own rules only once it parsed cleanly: recovery nodes would mislead them
   let diagnostics =
-    match (syntax, kind) with
-    | ([], Script) -> Validation.validate(Validation.Mode.Script, items, exprs)
-    | ([], Package) -> Validation.validate(Validation.Mode.Package, items, exprs)
+    match syntax, kind with
+    | [], Script -> Validation.validate(Validation.Mode.Script, items, exprs)
+    | [], Package -> Validation.validate(Validation.Mode.Package, items, exprs)
     | _ -> syntax
+
   Parsed
-    { parsed = Stdlib.Option.Option.Some(WrittenTypes.ParsedFile.SourceFile(file))
-      diagnostics = diagnostics }
+    { parsed = Option.Some(WrittenTypes.ParsedFile.SourceFile(file)), diagnostics = diagnostics }
 
 
 /// What `Builtin.parse` returns: the tree, and the diagnostics as (range, message).
 let parse(
-  kind: LanguageTools.Parser.FileKind,
+  kind: FileKind,
   code: String)
   : (Option<WrittenTypes.ParsedFile> * List<(Range * String)>) =
   let r = parseWith(kind, code)

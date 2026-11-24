@@ -15,24 +15,28 @@ type FileResult =
 
 
 /// Package files declare; anything else is a script.
-let kindFor(path: String): LanguageTools.Parser.FileKind =
+let kindFor(path: String): FileKind =
   if Stdlib.String.contains(path, "packages/") then
-    LanguageTools.Parser.FileKind.Package
+    FileKind.Package
   else
-    LanguageTools.Parser.FileKind.Script
+    FileKind.Script
 
 
 let compare(path: String, source: String, partial: Bool): FileResult =
-  let kind = if partial then LanguageTools.Parser.FileKind.PackagePartialSave else kindFor(path)
+  let kind = if partial then FileKind.PackagePartialSave else kindFor(path)
   let t0 = Stdlib.DateTime.now()
-  let (darkTree, darkDiagnostics) = Dark.parse(kind, source)
+  let (darkTree, darkDiagnostics) = parse(kind, source)
   let t1 = Stdlib.DateTime.now()
   let (builtinTree, builtinDiagnostics) = Builtin.parse(kind, source)
   let t2 = Stdlib.DateTime.now()
   let outcome =
-    if darkTree != builtinTree then Outcome.TreeDiffers
-    else if darkDiagnostics != builtinDiagnostics then Outcome.DiagnosticsDiffer
-    else Outcome.Same
+    if darkTree != builtinTree then
+      Outcome.TreeDiffers
+    else if darkDiagnostics != builtinDiagnostics then
+      Outcome.DiagnosticsDiffer
+    else
+      Outcome.Same
+
   FileResult
     { path = path
       outcome = outcome
@@ -41,7 +45,8 @@ let compare(path: String, source: String, partial: Bool): FileResult =
 
 
 let percent(n: Int64, total: Int64): String =
-  if total == 0 then "0%"
+  if total == 0 then
+    "0%"
   else
     let tenths = n * 1000 / total
     $"{tenths / 10}.{tenths % 10}%"
@@ -56,7 +61,12 @@ let brokenVersions(source: String): List<(String * String)> =
   |> Stdlib.List.map(fun k ->
     let at = n * k / 8
     let cut = Stdlib.String.join(Stdlib.List.take(lines, at), "\n")
-    let dropped = Stdlib.String.join(Stdlib.List.concat(Stdlib.List.take(lines, at), Stdlib.List.drop(lines, at + 1)), "\n")
+
+    let dropped =
+      Stdlib.String.join(
+        Stdlib.List.concat(Stdlib.List.take(lines, at), Stdlib.List.drop(lines, at + 1)),
+        "\n")
+
     [ ($"cut@{at}", cut), ($"drop@{at}", dropped) ])
   |> Stdlib.List.flatten
 
@@ -67,12 +77,13 @@ let brokenVersions(source: String): List<(String * String)> =
 let main(args: List<String>): Int64 =
   let paths =
     match args with
-    | [ "--list", listFile, ... ] ->
+    | ["--list", listFile, ...] ->
       Stdlib.Cli.FileSystem.readFileAsString(listFile)
       |> Stdlib.Result.withDefault("")
       |> Stdlib.String.splitOnNewline
       |> Stdlib.List.filter(fun p -> p != "")
     | _ -> Stdlib.List.filter(args, fun a -> a != "--broken" && a != "--partial")
+
   let broken = Stdlib.List.contains(args, "--broken")
   let partial = Stdlib.List.contains(args, "--partial")
   let results =
@@ -87,18 +98,22 @@ let main(args: List<String>): Int64 =
             | Same -> "same "
             | TreeDiffers -> "TREE "
             | DiagnosticsDiffer -> "DIAG "
+
           Stdlib.printLine($"{mark} {r.darkMs}ms {r.builtinMs}ms {path} {label}")
           r)
       | Error(_) ->
         Stdlib.printLine($"unreadable {path}")
         [])
     |> Stdlib.List.flatten
+
   let total = Stdlib.List.length(results)
   let count = fun o -> Stdlib.List.length(Stdlib.List.filter(results, fun r -> r.outcome == o))
   let same = count(Outcome.Same)
   let treeSame = same + count(Outcome.DiagnosticsDiffer)
   let darkMs = Stdlib.List.fold(results, 0, fun(acc, r) -> acc + r.darkMs)
   let builtinMs = Stdlib.List.fold(results, 0, fun(acc, r) -> acc + r.builtinMs)
-  Stdlib.printLine($"files {total}: same tree {treeSame} ({percent(treeSame, total)}), same tree and diagnostics {same} ({percent(same, total)})")
+  Stdlib.printLine(
+    $"files {total}: same tree {treeSame} ({percent(treeSame, total)}), same tree and diagnostics {same} ({percent(same, total)})")
+
   Stdlib.printLine($"time: Dark parser {darkMs}ms, builtin {builtinMs}ms")
   0

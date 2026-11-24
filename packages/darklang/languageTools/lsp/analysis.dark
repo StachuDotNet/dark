@@ -296,9 +296,10 @@ let analyseIncrementally(
     let syntax = Stdlib.List.map(r.parsed.diagnostics, fun d -> (d.range, d.message))
     Rpc.log(
       $"parsed {r.parsedChunks} of {r.totalChunks} declarations in {Stdlib.DateTime.__monotonicMilliseconds() - t0}ms")
+
     (analyseParsed(ctx, r.parsed.parsed, syntax), r.cache)
   | None ->
-    Rpc.log($"parsed whole with the F# parser")
+    Rpc.log("parsed whole with the F# parser")
     (analyse(ctx, text), Parser.Dark.Incremental.empty)
 
 

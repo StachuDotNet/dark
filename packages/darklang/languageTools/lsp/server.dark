@@ -129,9 +129,15 @@ let setDocument(state: State, uri: String, text: String): State =
     match Stdlib.Dict.get(state.documents, uri) with
     | Some(previous) -> previous.parseCache
     | None -> Parser.Dark.Incremental.empty
+
   let doc =
     Requests.Document
-      { uri = uri, text = text, analysis = Option.None, live = Option.None, parseCache = parseCache }
+      { uri = uri
+        text = text
+        analysis = Option.None
+        live = Option.None
+        parseCache = parseCache }
+
   { state with documents = Stdlib.Dict.set(state.documents, uri, doc) }
 
 
@@ -165,9 +171,14 @@ let analysePending(state: State): State =
 /// <param doc> analysed, with the parse cache for its next change. The Dark parser reads it,
 /// re-parsing only the declarations that changed; if that fails the F# parser reads it, and an
 /// analysis that fails then too is a diagnostic saying so, not the end of the server.
-let analyseSafely(branchId: Uuid, doc: Requests.Document): (Analysis.Analysis * Parser.Dark.Incremental.Cache) =
+let analyseSafely(
+  branchId: Uuid,
+  doc: Requests.Document)
+  : (Analysis.Analysis * Parser.Dark.Incremental.Cache) =
   let ctx = Names.context(branchId, doc.uri)
-  match Live.apply((fun text -> Analysis.analyseIncrementally(ctx, doc.parseCache, text)), doc.text) with
+  match Live.apply(
+          (fun text -> Analysis.analyseIncrementally(ctx, doc.parseCache, text)),
+          doc.text) with
   | Ok(result) -> result
   | Error(darkError) ->
     Rpc.log($"the Dark parser failed on {doc.uri}, so the F# parser reads it: {darkError}")
@@ -186,6 +197,7 @@ let analyseSafely(branchId: Uuid, doc: Requests.Document): (Analysis.Analysis * 
                   Option.None,
                   $"The analysis failed: {e}") ]
             typeHints = [] }
+
       (failed, Parser.Dark.Incremental.empty)
 
 

@@ -2,8 +2,9 @@
 /// comment it carries. Columns count UTF-16 units, as the F# lexer's do.
 module Darklang.LanguageTools.Parser.Dark.Lexer
 
-type Range = LanguageTools.Parser.Range
-type Point = LanguageTools.Parser.Point
+type Range = Parser.Range
+
+type Point = Parser.Point
 
 
 type TokenKind =
@@ -177,45 +178,57 @@ let keywordKind(word: String): TokenKind =
 
 /// The operator at <param i>, longest first: its length and token.
 let operatorAt(src: Source, i: Int64, c: UInt32, c1: UInt32): Option<(Int64 * TokenKind)> =
-  if c == cDot && c1 == cDot && at(src, i + 2) == cDot then Stdlib.Option.Option.Some((3, TokenKind.TDotDotDot))
-  else if c == cStar && c1 == cStar then Stdlib.Option.Option.Some((2, TokenKind.TStarStar))
-  else if c == cMinus && c1 == cGt then Stdlib.Option.Option.Some((2, TokenKind.TArrow))
-  else if c == cEquals && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TEqEq))
-  else if c == 33u32 && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TNeq))
-  else if c == 60u32 && c1 == 60u32 then Stdlib.Option.Option.Some((2, TokenKind.TShl))
-  else if c == 60u32 && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TLte))
-  else if c == cGt && c1 == cGt then Stdlib.Option.Option.Some((2, TokenKind.TShr))
-  else if c == cGt && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TGte))
-  else if c == 38u32 && c1 == 38u32 then Stdlib.Option.Option.Some((2, TokenKind.TAnd))
-  else if c == 124u32 && c1 == 124u32 then Stdlib.Option.Option.Some((2, TokenKind.TOr))
-  else if c == 124u32 && c1 == cGt then Stdlib.Option.Option.Some((2, TokenKind.TPipe))
+  if c == cDot && c1 == cDot && at(src, i + 2) == cDot then
+    Option.Some((3, TokenKind.TDotDotDot))
+  else if c == cStar && c1 == cStar then
+    Option.Some((2, TokenKind.TStarStar))
+  else if c == cMinus && c1 == cGt then
+    Option.Some((2, TokenKind.TArrow))
+  else if c == cEquals && c1 == cEquals then
+    Option.Some((2, TokenKind.TEqEq))
+  else if c == 33u32 && c1 == cEquals then
+    Option.Some((2, TokenKind.TNeq))
+  else if c == 60u32 && c1 == 60u32 then
+    Option.Some((2, TokenKind.TShl))
+  else if c == 60u32 && c1 == cEquals then
+    Option.Some((2, TokenKind.TLte))
+  else if c == cGt && c1 == cGt then
+    Option.Some((2, TokenKind.TShr))
+  else if c == cGt && c1 == cEquals then
+    Option.Some((2, TokenKind.TGte))
+  else if c == 38u32 && c1 == 38u32 then
+    Option.Some((2, TokenKind.TAnd))
+  else if c == 124u32 && c1 == 124u32 then
+    Option.Some((2, TokenKind.TOr))
+  else if c == 124u32 && c1 == cGt then
+    Option.Some((2, TokenKind.TPipe))
   else
     match Stdlib.UInt32.toInt64(c) with
-    | 43 -> Stdlib.Option.Option.Some((1, TokenKind.TPlus))
-    | 45 -> Stdlib.Option.Option.Some((1, TokenKind.TMinus))
-    | 42 -> Stdlib.Option.Option.Some((1, TokenKind.TStar))
-    | 47 -> Stdlib.Option.Option.Some((1, TokenKind.TSlash))
-    | 40 -> Stdlib.Option.Option.Some((1, TokenKind.TLParen))
-    | 41 -> Stdlib.Option.Option.Some((1, TokenKind.TRParen))
-    | 123 -> Stdlib.Option.Option.Some((1, TokenKind.TLBrace))
-    | 125 -> Stdlib.Option.Option.Some((1, TokenKind.TRBrace))
-    | 91 -> Stdlib.Option.Option.Some((1, TokenKind.TLBracket))
-    | 93 -> Stdlib.Option.Option.Some((1, TokenKind.TRBracket))
-    | 58 -> Stdlib.Option.Option.Some((1, TokenKind.TColon))
-    | 44 -> Stdlib.Option.Option.Some((1, TokenKind.TComma))
-    | 59 -> Stdlib.Option.Option.Some((1, TokenKind.TSemicolon))
-    | 46 -> Stdlib.Option.Option.Some((1, TokenKind.TDot))
-    | 61 -> Stdlib.Option.Option.Some((1, TokenKind.TEquals))
-    | 63 -> Stdlib.Option.Option.Some((1, TokenKind.TQuestion))
-    | 33 -> Stdlib.Option.Option.Some((1, TokenKind.TNot))
-    | 60 -> Stdlib.Option.Option.Some((1, TokenKind.TLt))
-    | 62 -> Stdlib.Option.Option.Some((1, TokenKind.TGt))
-    | 38 -> Stdlib.Option.Option.Some((1, TokenKind.TBitAnd))
-    | 94 -> Stdlib.Option.Option.Some((1, TokenKind.TBitXor))
-    | 126 -> Stdlib.Option.Option.Some((1, TokenKind.TBitNot))
-    | 37 -> Stdlib.Option.Option.Some((1, TokenKind.TPercent))
-    | 124 -> Stdlib.Option.Option.Some((1, TokenKind.TBar))
-    | _ -> Stdlib.Option.Option.None
+    | 43 -> Option.Some((1, TokenKind.TPlus))
+    | 45 -> Option.Some((1, TokenKind.TMinus))
+    | 42 -> Option.Some((1, TokenKind.TStar))
+    | 47 -> Option.Some((1, TokenKind.TSlash))
+    | 40 -> Option.Some((1, TokenKind.TLParen))
+    | 41 -> Option.Some((1, TokenKind.TRParen))
+    | 123 -> Option.Some((1, TokenKind.TLBrace))
+    | 125 -> Option.Some((1, TokenKind.TRBrace))
+    | 91 -> Option.Some((1, TokenKind.TLBracket))
+    | 93 -> Option.Some((1, TokenKind.TRBracket))
+    | 58 -> Option.Some((1, TokenKind.TColon))
+    | 44 -> Option.Some((1, TokenKind.TComma))
+    | 59 -> Option.Some((1, TokenKind.TSemicolon))
+    | 46 -> Option.Some((1, TokenKind.TDot))
+    | 61 -> Option.Some((1, TokenKind.TEquals))
+    | 63 -> Option.Some((1, TokenKind.TQuestion))
+    | 33 -> Option.Some((1, TokenKind.TNot))
+    | 60 -> Option.Some((1, TokenKind.TLt))
+    | 62 -> Option.Some((1, TokenKind.TGt))
+    | 38 -> Option.Some((1, TokenKind.TBitAnd))
+    | 94 -> Option.Some((1, TokenKind.TBitXor))
+    | 126 -> Option.Some((1, TokenKind.TBitNot))
+    | 37 -> Option.Some((1, TokenKind.TPercent))
+    | 124 -> Option.Some((1, TokenKind.TBar))
+    | _ -> Option.None
 
 
 // --- the source, as codepoints ---
@@ -235,7 +248,10 @@ type Source =
 let source(text: String): Source =
   let cps = Stdlib.String.toCodepoints(text)
   let length = Stdlib.List.length(cps)
-  let lineLengths = Stdlib.List.map(Stdlib.String.split(text, "\n"), fun line -> Stdlib.String.codepointLength(line))
+  let lineLengths =
+    Stdlib.List.map(Stdlib.String.split(text, "\n"), fun line ->
+      Stdlib.String.codepointLength(line))
+
   Source
     { text = text
       cps = cps
@@ -247,7 +263,7 @@ let source(text: String): Source =
 
 let lineEndsFrom(lengths: List<Int64>, start: Int64, endsRev: List<Int64>): List<Int64> =
   match lengths with
-  | [ n, ...rest ] -> lineEndsFrom(rest, start + n + 1, [ start + n, ...endsRev ])
+  | [n, ...rest] -> lineEndsFrom(rest, start + n + 1, [ start + n, ...endsRev ])
   | [] -> Stdlib.List.reverse(endsRev)
 
 
@@ -276,24 +292,43 @@ let code(c: Char): UInt32 =
 
 
 val nl = 10u32
+
 val quote = 34u32
+
 val apostrophe = 39u32
+
 val backslash = 92u32
+
 val backtick = 96u32
+
 val underscore = 95u32
+
 val cLParen = 40u32
+
 val cRParen = 41u32
+
 val cStar = 42u32
+
 val cPlus = 43u32
+
 val cMinus = 45u32
+
 val cDot = 46u32
+
 val cSlash = 47u32
+
 val cEquals = 61u32
+
 val cGt = 62u32
+
 val cLBrace = 123u32
+
 val cRBrace = 125u32
+
 val cDollar = 36u32
+
 val cLowerE = 101u32
+
 val cUpperE = 69u32
 
 
@@ -302,7 +337,7 @@ let isDigit(c: UInt32): Bool =
 
 
 let isAsciiLetter(c: UInt32): Bool =
-  (c >= 97u32 && c <= 122u32) || (c >= 65u32 && c <= 90u32)
+  c >= 97u32 && c <= 122u32 || c >= 65u32 && c <= 90u32
 
 
 let isLetter(c: UInt32): Bool =
@@ -330,7 +365,8 @@ let text(src: Source, from: Int64, to: Int64): String =
     | Some(t) -> t
     | None ->
       let a = minI(maxI(0, from), src.length)
-      Builtin.stringSlice(src.text, a, minI(maxI(a, to), src.length)) |> Stdlib.Option.withDefault("")
+      Builtin.stringSlice(src.text, a, minI(maxI(a, to), src.length))
+      |> Stdlib.Option.withDefault("")
   else
     src.cps
     |> Stdlib.List.drop(from)
@@ -346,8 +382,10 @@ let startsWith(src: Source, i: Int64, s: String): Bool =
 
 /// Where <param pos> moves to over codepoints [<param from>, <param to>).
 let advance(src: Source, pos: Point, from: Int64, to: Int64): Point =
-  if from >= to then pos
-  else advanceIn(Builtin.listDrop(src.cps, from), pos.row, pos.column, to - from)
+  if from >= to then
+    pos
+  else
+    advanceIn(Builtin.listDrop(src.cps, from), pos.row, pos.column, to - from)
 
 
 // The scanners below walk the list from a position rather than index it: a step is then one
@@ -357,10 +395,13 @@ let advanceIn(rest: List<UInt32>, row: Int64, column: Int64, count: Int64): Poin
     Point { row = row, column = column }
   else
     match rest with
-    | [ c, ...tail ] ->
-      if c == 10u32 then advanceIn(tail, row + 1, 0, count - 1)
-      else if c > 65535u32 then advanceIn(tail, row, column + 2, count - 1)
-      else advanceIn(tail, row, column + 1, count - 1)
+    | [c, ...tail] ->
+      if c == 10u32 then
+        advanceIn(tail, row + 1, 0, count - 1)
+      else if c > 65535u32 then
+        advanceIn(tail, row, column + 2, count - 1)
+      else
+        advanceIn(tail, row, column + 1, count - 1)
     | [] -> Point { row = row, column = column + count }
 
 
@@ -372,7 +413,7 @@ let scanWhile(src: Source, i: Int64, keep: UInt32 -> Bool): Int64 =
 
 let scanWhileIn(rest: List<UInt32>, i: Int64, keep: UInt32 -> Bool): Int64 =
   match rest with
-  | [ c, ...tail ] -> if keep(c) then scanWhileIn(tail, i + 1, keep) else i
+  | [c, ...tail] -> if keep(c) then scanWhileIn(tail, i + 1, keep) else i
   | [] -> i
 
 
@@ -382,7 +423,7 @@ let digitsEnd(src: Source, i: Int64): Int64 =
 
 let digitsEndIn(rest: List<UInt32>, i: Int64): Int64 =
   match rest with
-  | [ c, ...tail ] -> if c >= 48u32 && c <= 57u32 then digitsEndIn(tail, i + 1) else i
+  | [c, ...tail] -> if c >= 48u32 && c <= 57u32 then digitsEndIn(tail, i + 1) else i
   | [] -> i
 
 
@@ -394,8 +435,14 @@ let identEnd(src: Source, i: Int64): Int64 =
 
 let identEndIn(rest: List<UInt32>, i: Int64): Int64 =
   match rest with
-  | [ c, ...tail ] ->
-    if (c >= 97u32 && c <= 122u32) || (c >= 65u32 && c <= 90u32) || (c >= 48u32 && c <= 57u32) || c == 95u32 || c == 39u32 then
+  | [c, ...tail] ->
+    if
+      c >= 97u32 && c <= 122u32
+      || c >= 65u32 && c <= 90u32
+      || c >= 48u32 && c <= 57u32
+      || c == 95u32
+      || c == 39u32
+    then
       identEndIn(tail, i + 1)
     else if c >= 128u32 && Stdlib.Codepoint.isAlphanumeric(c) then
       identEndIn(tail, i + 1)
@@ -410,7 +457,7 @@ let lineEnd(src: Source, i: Int64): Int64 =
 
 let lineEndIn(rest: List<UInt32>, i: Int64): Int64 =
   match rest with
-  | [ c, ...tail ] -> if c == 10u32 then i else lineEndIn(tail, i + 1)
+  | [c, ...tail] -> if c == 10u32 then i else lineEndIn(tail, i + 1)
   | [] -> i
 
 
@@ -421,16 +468,20 @@ let scanQuoted(src: Source, i: Int64, close: UInt32): Option<Int64> =
 
 let scanQuotedIn(rest: List<UInt32>, i: Int64, close: UInt32): Option<Int64> =
   match rest with
-  | [ 92u32, _, ...tail ] -> scanQuotedIn(tail, i + 2, close)
-  | [ c, ...tail ] -> if c == close then Stdlib.Option.Option.Some(i + 1) else scanQuotedIn(tail, i + 1, close)
-  | [] -> Stdlib.Option.Option.None
+  | [92u32, _, ...tail] -> scanQuotedIn(tail, i + 2, close)
+  | [c, ...tail] -> if c == close then Option.Some(i + 1) else scanQuotedIn(tail, i + 1, close)
+  | [] -> Option.None
 
 
 let skipQuoted(src: Source, i: Int64, close: UInt32): Int64 =
-  if i >= src.length then i
-  else if at(src, i) == backslash then skipQuoted(src, i + 2, close)
-  else if at(src, i) == close then i + 1
-  else skipQuoted(src, i + 1, close)
+  if i >= src.length then
+    i
+  else if at(src, i) == backslash then
+    skipQuoted(src, i + 2, close)
+  else if at(src, i) == close then
+    i + 1
+  else
+    skipQuoted(src, i + 1, close)
 
 
 let isTripleQuote(src: Source, i: Int64): Bool =
@@ -438,9 +489,12 @@ let isTripleQuote(src: Source, i: Int64): Bool =
 
 
 let findTripleQuote(src: Source, i: Int64): Option<Int64> =
-  if isTripleQuote(src, i) then Stdlib.Option.Option.Some(i + 3)
-  else if i >= src.length then Stdlib.Option.Option.None
-  else findTripleQuote(src, i + 1)
+  if isTripleQuote(src, i) then
+    Option.Some(i + 3)
+  else if i >= src.length then
+    Option.None
+  else
+    findTripleQuote(src, i + 1)
 
 
 /// The end of a `(* … *)` comment whose `(*` is before <param i>, and whether it closed.
@@ -459,7 +513,7 @@ let blockCommentEnd(src: Source, i: Int64, depth: Int64): (Int64 * Bool) =
 /// and comments inside the body are skipped, so their braces don't count.
 let interpClose(src: Source, i: Int64, depth: Int64): Option<Int64> =
   if i >= src.length then
-    Stdlib.Option.Option.None
+    Option.None
   else if at(src, i) == cSlash && at(src, i + 1) == cSlash && i + 1 < src.length then
     interpClose(src, lineEnd(src, i + 2), depth)
   else if at(src, i) == cLParen && at(src, i + 1) == cStar && i + 1 < src.length then
@@ -469,6 +523,7 @@ let interpClose(src: Source, i: Int64, depth: Int64): Option<Int64> =
       match findTripleQuote(src, i + 3) with
       | Some(e) -> e
       | None -> src.length
+
     interpClose(src, close, depth)
   else if at(src, i) == quote then
     interpClose(src, skipQuoted(src, i + 1, quote), depth)
@@ -479,7 +534,7 @@ let interpClose(src: Source, i: Int64, depth: Int64): Option<Int64> =
   else if at(src, i) == cLBrace then
     interpClose(src, i + 1, depth + 1)
   else if at(src, i) == cRBrace && depth == 0 then
-    Stdlib.Option.Option.Some(i)
+    Option.Some(i)
   else if at(src, i) == cRBrace then
     interpClose(src, i + 1, depth - 1)
   else
@@ -495,9 +550,9 @@ let interpEnd(src: Source, start: Int64): Option<Int64> =
 
 let interpEndFrom(src: Source, triple: Bool, closeLength: Int64, i: Int64): Option<Int64> =
   if i >= src.length then
-    Stdlib.Option.Option.None
-  else if (triple && isTripleQuote(src, i)) || (Stdlib.Bool.not(triple) && at(src, i) == quote) then
-    Stdlib.Option.Option.Some(i + closeLength)
+    Option.None
+  else if triple && isTripleQuote(src, i) || Stdlib.Bool.not(triple) && at(src, i) == quote then
+    Option.Some(i + closeLength)
   else if at(src, i) == backslash && i + 1 < src.length && Stdlib.Bool.not(triple) then
     interpEndFrom(src, triple, closeLength, i + 2)
   else if at(src, i) == cLBrace && at(src, i + 1) == cLBrace && i + 1 < src.length then
@@ -507,7 +562,7 @@ let interpEndFrom(src: Source, triple: Bool, closeLength: Int64, i: Int64): Opti
   else if at(src, i) == cLBrace then
     match interpClose(src, i + 1, 0) with
     | Some(close) -> interpEndFrom(src, triple, closeLength, close + 1)
-    | None -> Stdlib.Option.Option.None
+    | None -> Option.None
   else
     interpEndFrom(src, triple, closeLength, i + 1)
 
@@ -516,42 +571,47 @@ let interpEndFrom(src: Source, triple: Bool, closeLength: Int64, i: Int64): Opti
 
 let hexValue(src: Source, from: Int64, count: Int64): Option<Int64> =
   if from + count > src.length then
-    Stdlib.Option.Option.None
+    Option.None
   else
     let digits = text(src, from, from + count)
     if Stdlib.String.length(digits) != count then
-      Stdlib.Option.Option.None
+      Option.None
     else
       Stdlib.String.toList(digits)
-      |> Stdlib.List.fold(Stdlib.Option.Option.Some(0), fun(acc, c) ->
+      |> Stdlib.List.fold(Option.Some(0), fun(acc, c) ->
         match acc with
         | Some(n) ->
           match hexDigit(c) with
-          | Some(d) -> Stdlib.Option.Option.Some(n * 16 + d)
-          | None -> Stdlib.Option.Option.None
-        | None -> Stdlib.Option.Option.None)
+          | Some(d) -> Option.Some(n * 16 + d)
+          | None -> Option.None
+        | None -> Option.None)
 
 
 let hexDigit(c: Char): Option<Int64> =
   let cp = Stdlib.UInt32.toInt64(code(c))
-  if cp >= 48 && cp <= 57 then Stdlib.Option.Option.Some(cp - 48)
-  else if cp >= 97 && cp <= 102 then Stdlib.Option.Option.Some(cp - 87)
-  else if cp >= 65 && cp <= 70 then Stdlib.Option.Option.Some(cp - 55)
-  else Stdlib.Option.Option.None
+  if cp >= 48 && cp <= 57 then
+    Option.Some(cp - 48)
+  else if cp >= 97 && cp <= 102 then
+    Option.Some(cp - 87)
+  else if cp >= 65 && cp <= 70 then
+    Option.Some(cp - 55)
+  else
+    Option.None
 
 
 let scalarText(value: Int64): Option<String> =
   match Stdlib.Codepoint.fromInt64(value) with
-  | Some(cp) -> Stdlib.Char.fromCodepoint(cp) |> Stdlib.Option.map(fun c -> Stdlib.String.fromChar(c))
-  | None -> Stdlib.Option.Option.None
+  | Some(cp) ->
+    Stdlib.Char.fromCodepoint(cp) |> Stdlib.Option.map(fun c -> Stdlib.String.fromChar(c))
+  | None -> Option.None
 
 
 /// The escape starting at the `\` at <param i>: how many codepoints it takes, and its text.
 let decodeEscape(src: Source, i: Int64): Option<(Int64 * String)> =
   if i + 1 >= src.length then
-    Stdlib.Option.Option.None
+    Option.None
   else
-    let simple = fun s -> Stdlib.Option.Option.Some((2, s))
+    let simple = fun s -> Option.Some((2, s))
     match text(src, i + 1, i + 2) with
     | "n" -> simple("\n")
     | "t" -> simple("\t")
@@ -583,7 +643,7 @@ let decodeEscape(src: Source, i: Int64): Option<(Int64 * String)> =
       hexValue(src, i + 2, 8)
       |> Stdlib.Option.andThen(fun v -> scalarText(v))
       |> Stdlib.Option.map(fun s -> (10, s))
-    | _ -> Stdlib.Option.Option.None
+    | _ -> Option.None
 
 
 /// The text of [<param from>, <param to>) with escapes decoded; a bad escape keeps its `\`.
@@ -603,95 +663,122 @@ let unescapeFrom(src: Source, from: Int64, to: Int64, i: Int64, partsRev: List<S
 
 
 let findBackslash(src: Source, i: Int64, to: Int64): Option<Int64> =
-  if i >= to then Stdlib.Option.Option.None
-  else if at(src, i) == backslash then Stdlib.Option.Option.Some(i)
-  else findBackslash(src, i + 1, to)
+  if i >= to then
+    Option.None
+  else if at(src, i) == backslash then
+    Option.Some(i)
+  else
+    findBackslash(src, i + 1, to)
 
 
 // --- numbers ---
 
 let intToken(digits: String, suffix: String): Option<Result<TokenKind, IntType>> =
-  let sized =
-    fun(typ, minMagnitude, parsed, minValue) ->
-      match parsed with
-      | Some(token) -> Stdlib.Option.Option.Some(Stdlib.Result.Result.Ok(token))
-      | None ->
-        if digits == minMagnitude then
-          Stdlib.Option.Option.Some(Stdlib.Result.Result.Ok(minValue))
-        else
-          Stdlib.Option.Option.Some(Stdlib.Result.Result.Error(typ))
+  let sized = fun(typ, minMagnitude, parsed, minValue) ->
+    match parsed with
+    | Some(token) -> Option.Some(Result.Ok(token))
+    | None ->
+      if digits == minMagnitude then
+        Option.Some(Result.Ok(minValue))
+      else
+        Option.Some(Result.Error(typ))
 
   match suffix with
   | "" | "s" | "s64" ->
     sized(
       IntType.Int64,
       "9223372036854775808",
-      Stdlib.Int64.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TInt64(v)),
+      Stdlib.Int64.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TInt64(v)),
       TokenKind.TInt64(Stdlib.Int64.minValue))
   | "u" | "u64" ->
     sized(
       IntType.UInt64,
       "",
-      Stdlib.UInt64.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TUInt64(v)),
+      Stdlib.UInt64.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TUInt64(v)),
       TokenKind.TUInt64(0u64))
   | "s8" ->
     sized(
       IntType.Int8,
       "128",
-      Stdlib.Int8.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TInt8(v)),
+      Stdlib.Int8.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TInt8(v)),
       TokenKind.TInt8(Stdlib.Int8.minValue))
   | "u8" ->
     sized(
       IntType.UInt8,
       "",
-      Stdlib.UInt8.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TUInt8(v)),
+      Stdlib.UInt8.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TUInt8(v)),
       TokenKind.TUInt8(0u8))
   | "s16" ->
     sized(
       IntType.Int16,
       "32768",
-      Stdlib.Int16.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TInt16(v)),
+      Stdlib.Int16.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TInt16(v)),
       TokenKind.TInt16(Stdlib.Int16.minValue))
   | "u16" ->
     sized(
       IntType.UInt16,
       "",
-      Stdlib.UInt16.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TUInt16(v)),
+      Stdlib.UInt16.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TUInt16(v)),
       TokenKind.TUInt16(0u16))
   | "s32" ->
     sized(
       IntType.Int32,
       "2147483648",
-      Stdlib.Int32.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TInt32(v)),
+      Stdlib.Int32.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TInt32(v)),
       TokenKind.TInt32(Stdlib.Int32.minValue))
   | "u32" ->
     sized(
       IntType.UInt32,
       "",
-      Stdlib.UInt32.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TUInt32(v)),
+      Stdlib.UInt32.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TUInt32(v)),
       TokenKind.TUInt32(0u32))
   | "s128" ->
     sized(
       IntType.Int128,
       "170141183460469231731687303715884105728",
-      Stdlib.Int128.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TInt128(v)),
+      Stdlib.Int128.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TInt128(v)),
       TokenKind.TInt128(Stdlib.Int128.minValue))
   | "u128" ->
     sized(
       IntType.UInt128,
       "",
-      Stdlib.UInt128.parse(digits) |> Stdlib.Result.toOption |> Stdlib.Option.map(fun v -> TokenKind.TUInt128(v)),
+      Stdlib.UInt128.parse(digits)
+      |> Stdlib.Result.toOption
+      |> Stdlib.Option.map(fun v -> TokenKind.TUInt128(v)),
       TokenKind.TUInt128(0u128))
   | "z" ->
     match Stdlib.BigInt.parse(digits) with
-    | Ok(v) -> Stdlib.Option.Option.Some(Stdlib.Result.Result.Ok(TokenKind.TBigInt(v)))
-    | Error(_) -> Stdlib.Option.Option.None
-  | _ -> Stdlib.Option.Option.None
+    | Ok(v) -> Option.Some(Result.Ok(TokenKind.TBigInt(v)))
+    | Error(_) -> Option.None
+  | _ -> Option.None
 
 
 /// Another language's suffix, as (the type, the Dark spelling).
-let foreignSuffix(body: String, suffix: String, fraction: Bool, exponent: Bool): Option<(String * String)> =
-  let some = fun(typ, dark) -> Stdlib.Option.Option.Some((typ, dark))
+let foreignSuffix(
+  body: String,
+  suffix: String,
+  fraction: Bool,
+  exponent: Bool)
+  : Option<(String * String)> =
+  let some = fun(typ, dark) -> Option.Some((typ, dark))
   if Stdlib.Bool.not(fraction) then
     match suffix with
     | "L" | "l" -> some("an Int64", body)
@@ -701,12 +788,12 @@ let foreignSuffix(body: String, suffix: String, fraction: Bool, exponent: Bool):
     | "us" -> some("a UInt16", body + "u16")
     | "I" -> some("a BigInt", body + "z")
     | "m" | "M" -> some("a Decimal", body + "dec")
-    | _ -> Stdlib.Option.Option.None
+    | _ -> Option.None
   else
     match suffix with
-    | "m" | "M" -> if exponent then Stdlib.Option.Option.None else some("a Decimal", body + "dec")
+    | "m" | "M" -> if exponent then Option.None else some("a Decimal", body + "dec")
     | "f" | "F" -> some("a Float32", body + "f32")
-    | _ -> Stdlib.Option.Option.None
+    | _ -> Option.None
 
 
 /// The token for a number from <param i> to <param endIndex>, and its problem if any.
@@ -714,6 +801,7 @@ let numberToken(src: Source, i: Int64): (TokenKind * Int64 * Option<Problem>) =
   let digitEnd = digitsEnd(src, i + 1)
   let hasFraction =
     digitEnd + 1 < src.length && at(src, digitEnd) == cDot && isDigit(at(src, digitEnd + 1))
+
   let fractionEnd = if hasFraction then digitsEnd(src, digitEnd + 1) else digitEnd
   let signIndex = fractionEnd + 1
   let digitsIndex =
@@ -721,29 +809,33 @@ let numberToken(src: Source, i: Int64): (TokenKind * Int64 * Option<Problem>) =
       signIndex + 1
     else
       signIndex
+
   let exponentEnd =
-    if fractionEnd < src.length
-       && (at(src, fractionEnd) == cLowerE || at(src, fractionEnd) == cUpperE)
-       && digitsIndex < src.length
-       && isDigit(at(src, digitsIndex)) then
+    if
+      fractionEnd < src.length
+      && (at(src, fractionEnd) == cLowerE || at(src, fractionEnd) == cUpperE)
+      && digitsIndex < src.length
+      && isDigit(at(src, digitsIndex))
+    then
       digitsEnd(src, digitsIndex)
     else
       fractionEnd
+
   let hasExponent = exponentEnd > fractionEnd
   let endIndex = scanWhile(src, exponentEnd, isIdentChar)
   let suffix = text(src, exponentEnd, endIndex)
   let body = text(src, i, exponentEnd)
   let written = body + suffix
   let isFloat = hasFraction || hasExponent
-  let ok = fun kind -> (kind, endIndex, Stdlib.Option.Option.None)
-  let bad = fun(kind, problem) -> (kind, endIndex, Stdlib.Option.Option.Some(problem))
-  let invalid =
-    fun kind -> bad(kind, Problem.InvalidNumber(written, foreignSuffix(body, suffix, isFloat, hasExponent)))
-  let float64 =
-    fun () ->
-      match Stdlib.Float64.parse(body) with
-      | Ok(_) -> ok(TokenKind.TFloat64)
-      | Error(_) -> bad(TokenKind.TFloat64, Problem.MalformedFloat(written))
+  let ok = fun kind -> (kind, endIndex, Option.None)
+  let bad = fun(kind, problem) -> (kind, endIndex, Option.Some(problem))
+  let invalid = fun kind ->
+    bad(kind, Problem.InvalidNumber(written, foreignSuffix(body, suffix, isFloat, hasExponent)))
+
+  let float64 = fun () ->
+    match Stdlib.Float64.parse(body) with
+    | Ok(_) -> ok(TokenKind.TFloat64)
+    | Error(_) -> bad(TokenKind.TFloat64, Problem.MalformedFloat(written))
 
   match suffix with
   | "dec" ->
@@ -757,10 +849,10 @@ let numberToken(src: Source, i: Int64): (TokenKind * Int64 * Option<Problem>) =
     match Stdlib.Float32.parse(body) with
     | Ok(_) -> ok(TokenKind.TFloat32)
     | Error(_) -> bad(TokenKind.TFloat32, Problem.MalformedFloat(written))
-  | "f64" -> float64(())
+  | "f64" -> float64()
   | _ ->
     if isFloat then
-      if suffix == "" then float64(()) else invalid(TokenKind.TFloat64)
+      if suffix == "" then float64() else invalid(TokenKind.TFloat64)
     else
       match intToken(body, suffix) with
       | Some(Ok(kind)) -> ok(kind)
@@ -800,7 +892,7 @@ let lex(input: String): Lexed =
         pos = Point { row = 0, column = 0 }
         tokensRev = []
         triviaRev = []
-        doc = Stdlib.Option.Option.None
+        doc = Option.None
         diagnosticsRev = [] }
 
   let final = go(src, start)
@@ -832,7 +924,10 @@ let emitInLine(src: Source, st: State, kind: TokenKind, endIndex: Int64): State 
 
 
 let sameLineEnd(src: Source, pos: Point, from: Int64, to: Int64): Point =
-  if src.astral then advance(src, pos, from, to) else Point { row = pos.row, column = pos.column + to - from }
+  if src.astral then
+    advance(src, pos, from, to)
+  else
+    Point { row = pos.row, column = pos.column + to - from }
 
 
 let emitEndingAt(src: Source, st: State, kind: TokenKind, endIndex: Int64, endPos: Point): State =
@@ -850,7 +945,7 @@ let emitEndingAt(src: Source, st: State, kind: TokenKind, endIndex: Int64, endPo
       pos = endPos
       tokensRev = [ token, ...st.tokensRev ]
       triviaRev = []
-      doc = Stdlib.Option.Option.None }
+      doc = Option.None }
 
 
 /// Emit, and record <param p> at the token's range.
@@ -861,17 +956,20 @@ let emitBad(src: Source, st: State, kind: TokenKind, endIndex: Int64, p: Problem
 
 let lastRange(st: State): Range =
   match st.tokensRev with
-  | [ t, ... ] -> t.range
+  | [t, ...] -> t.range
   | [] -> Range { start = st.pos, end_ = st.pos }
 
 
 /// Past the spaces, tabs and line breaks from <param i>, and the position there.
 let skipSpacesIn(rest: List<UInt32>, i: Int64, row: Int64, column: Int64): (Int64 * Point) =
   match rest with
-  | [ c, ...tail ] ->
-    if c == 10u32 then skipSpacesIn(tail, i + 1, row + 1, 0)
-    else if c == 32u32 || c == 9u32 || c == 13u32 then skipSpacesIn(tail, i + 1, row, column + 1)
-    else (i, Point { row = row, column = column })
+  | [c, ...tail] ->
+    if c == 10u32 then
+      skipSpacesIn(tail, i + 1, row + 1, 0)
+    else if c == 32u32 || c == 9u32 || c == 13u32 then
+      skipSpacesIn(tail, i + 1, row, column + 1)
+    else
+      (i, Point { row = row, column = column })
   | [] -> (i, Point { row = row, column = column })
 
 
@@ -880,7 +978,7 @@ let skipTrivia(src: Source, st: State): State =
   let rest = Builtin.listDrop(src.cps, i)
   match rest with
   | [] -> st
-  | [ c, ... ] ->
+  | [c, ...] ->
     if c == 32u32 || c == 9u32 || c == 13u32 || c == 10u32 then
       let (e, pos) = skipSpacesIn(rest, i, st.pos.row, st.pos.column)
       skipTrivia(src, { st with index = e, pos = pos })
@@ -893,20 +991,31 @@ let skipTrivia(src: Source, st: State): State =
           { kind = if isDoc then TriviaKind.DocComment else TriviaKind.LineComment
             text = text(src, i, e)
             range = Range { start = st.pos, end_ = endPos } }
+
       let doc =
         if isDoc then
           let raw = Stdlib.String.trimEnd(text(src, i + 3, e))
-          let line = if Stdlib.String.startsWith(raw, " ") then Stdlib.String.dropFirst(raw, 1) else raw
+          let line =
+            if Stdlib.String.startsWith(raw, " ") then
+              Stdlib.String.dropFirst(raw, 1)
+            else
+              raw
+
           match st.doc with
-          | Some(existing) -> Stdlib.Option.Option.Some(existing + "\n" + line)
-          | None -> Stdlib.Option.Option.Some(line)
+          | Some(existing) -> Option.Some(existing + "\n" + line)
+          | None -> Option.Some(line)
         else
           st.doc
-      skipTrivia(src, { st with index = e, pos = endPos, triviaRev = [ trivia, ...st.triviaRev ], doc = doc })
-    else if c == cLParen
-            && at(src, i + 1) == cStar
-            && Stdlib.Bool.not(at(src, i + 2) == cRParen)
-            && Stdlib.Bool.not(at(src, i + 2) == cStar && at(src, i + 3) == cRParen) then
+
+      skipTrivia(
+        src,
+        { st with index = e, pos = endPos, triviaRev = [ trivia, ...st.triviaRev ], doc = doc })
+    else if
+      c == cLParen
+      && at(src, i + 1) == cStar
+      && Stdlib.Bool.not(at(src, i + 2) == cRParen)
+      && Stdlib.Bool.not(at(src, i + 2) == cStar && at(src, i + 3) == cRParen)
+    then
       let (e, closed) = blockCommentEnd(src, i + 2, 0)
       let endPos = advance(src, st.pos, i, e)
       let range = Range { start = st.pos, end_ = endPos }
@@ -921,7 +1030,7 @@ let skipTrivia(src: Source, st: State): State =
 /// Whether a `'` here starts a type variable rather than a char, by the token before it.
 let inTypeContext(st: State): Bool =
   match st.tokensRev with
-  | [ t, ... ] ->
+  | [t, ...] ->
     match t.kind with
     | TLParen | TStar | TLt | TComma | TColon | TArrow | TEquals | TOf -> true
     | _ -> false
@@ -934,7 +1043,8 @@ let graphemeEnd(src: Source, i: Int64): Int64 =
   // letter, a digit nor anything printable on its own, so a base and what isn't a new base
   let rest = Stdlib.String.toList(text(src, i, minI(src.length, i + 16)))
   match rest with
-  | [ first, ... ] -> i + Stdlib.List.length(Stdlib.String.toCodepoints(Stdlib.String.fromChar(first)))
+  | [first, ...] ->
+    i + Stdlib.List.length(Stdlib.String.toCodepoints(Stdlib.String.fromChar(first)))
   | [] -> i
 
 
@@ -958,9 +1068,10 @@ let go(src: Source, st0: State): State =
 let step(src: Source, st: State, i: Int64): State =
   let (c, c1) =
     match Builtin.listDrop(src.cps, i) with
-    | [ a, b, ... ] -> (a, b)
-    | [ a ] -> (a, 0u32)
+    | [a, b, ...] -> (a, b)
+    | [a] -> (a, 0u32)
     | [] -> (0u32, 0u32)
+
   if c == cEquals && c1 == cGt then
     // `=>` lexes as `=` then `>`, for the parser to refuse
     emit(src, st, TokenKind.TEquals, i + 1)
@@ -971,6 +1082,7 @@ let step(src: Source, st: State, i: Int64): State =
       let words =
         Stdlib.String.split(name, " ")
         |> Stdlib.List.filter(fun w -> Stdlib.Bool.not(Stdlib.String.isEmpty(w)))
+
       if Stdlib.String.contains(name, " ") || Stdlib.String.contains(name, "\t") then
         emitBad(src, st, TokenKind.TIdent(name), close + 1, Problem.SpacedName(words))
       else
@@ -981,8 +1093,7 @@ let step(src: Source, st: State, i: Int64): State =
   else if isLetter(c) || c == underscore then
     let e = identEnd(src, i + 1)
     let word = text(src, i, e)
-    let kind =
-      keywordKind(word)
+    let kind = keywordKind(word)
     emitInLine(src, st, kind, e)
   else if isDigit(c) then
     let (kind, e, p) = numberToken(src, i)
@@ -1009,8 +1120,10 @@ let step(src: Source, st: State, i: Int64): State =
     if inTypeContext(st) && i + 1 < src.length && (isLetter(c1) || c1 == underscore) then
       let varEnd = scanWhile(src, i + 1, isTypeVarChar)
       let gEnd = graphemeEnd(src, i + 1)
-      if (varEnd < src.length && at(src, varEnd) == apostrophe)
-         || (gEnd < src.length && at(src, gEnd) == apostrophe) then
+      if
+        varEnd < src.length && at(src, varEnd) == apostrophe
+        || gEnd < src.length && at(src, gEnd) == apostrophe
+      then
         charLiteral(src, st, i + 1)
       else
         emitInLine(src, st, TokenKind.TIdent(text(src, i + 1, varEnd)), varEnd)
@@ -1037,13 +1150,19 @@ let step(src: Source, st: State, i: Int64): State =
           else
             Problem.UnterminatedInterpolatedString
         | None -> Problem.UnterminatedInterpolatedString
+
       emitBad(src, st, TokenKind.TInterpString, e, p)
   else
     let refused =
-      if c == 58u32 && c1 == 58u32 then Stdlib.Option.Option.Some("::")
-      else if c == 64u32 then Stdlib.Option.Option.Some("@")
-      else if c == cPlus && c1 == cPlus then Stdlib.Option.Option.Some("++")
-      else Stdlib.Option.Option.None
+      if c == 58u32 && c1 == 58u32 then
+        Option.Some("::")
+      else if c == 64u32 then
+        Option.Some("@")
+      else if c == cPlus && c1 == cPlus then
+        Option.Some("++")
+      else
+        Option.None
+
     match refused with
     | Some(s) ->
       emitBad(src, st, TokenKind.TPlus, i + Stdlib.String.length(s), Problem.RefusedOperator(s))
@@ -1091,8 +1210,8 @@ let problemMessage(p: Problem): String =
     let message = "a name can't hold spaces"
     match words with
     | [] -> message
-    | [ word ] -> $"{message}; use {word}"
-    | [ first, ...rest ] ->
+    | [word] -> $"{message}; use {word}"
+    | [first, ...rest] ->
       let camel = first + Stdlib.String.join(Stdlib.List.map(rest, capitalize), "")
       $"{message}; use {Stdlib.String.join(words, "_")} or {camel}"
   | IntOutOfRange(typ, written) -> $"out of range for {intTypeName(typ)}: {written}"
@@ -1124,15 +1243,21 @@ let badEscapeFrom(src: Source, i: Int64): Bool =
 
 
 let hasInvalidEscape(content: String): Bool =
-  if Stdlib.String.contains(content, "\\") then badEscapeFrom(source(content), 0) else false
+  if Stdlib.String.contains(content, "\\") then
+    badEscapeFrom(source(content), 0)
+  else
+    false
 
 
 /// Like `badEscapeFrom` for `$"…"` text: `{{`/`}}` are literal and `{…}` is code.
 let badEscapeInterpFrom(src: Source, i: Int64): Bool =
   let n = src.length
-  if i >= n then false
-  else if at(src, i) == cLBrace && at(src, i + 1) == cLBrace && i + 1 < n then badEscapeInterpFrom(src, i + 2)
-  else if at(src, i) == cRBrace && at(src, i + 1) == cRBrace && i + 1 < n then badEscapeInterpFrom(src, i + 2)
+  if i >= n then
+    false
+  else if at(src, i) == cLBrace && at(src, i + 1) == cLBrace && i + 1 < n then
+    badEscapeInterpFrom(src, i + 2)
+  else if at(src, i) == cRBrace && at(src, i + 1) == cRBrace && i + 1 < n then
+    badEscapeInterpFrom(src, i + 2)
   else if at(src, i) == cLBrace then
     match interpClose(src, i + 1, 0) with
     | Some(close) -> badEscapeInterpFrom(src, close + 1)
@@ -1152,16 +1277,22 @@ let hasInvalidEscapeInterp(inner: String): Bool =
 /// A single `}` in interpolated-string text, outside any `{…}`.
 let singleCloseBraceFrom(src: Source, raw: Bool, i: Int64): Bool =
   let n = src.length
-  if i >= n then false
-  else if at(src, i) == cLBrace && at(src, i + 1) == cLBrace && i + 1 < n then singleCloseBraceFrom(src, raw, i + 2)
-  else if at(src, i) == cRBrace && at(src, i + 1) == cRBrace && i + 1 < n then singleCloseBraceFrom(src, raw, i + 2)
+  if i >= n then
+    false
+  else if at(src, i) == cLBrace && at(src, i + 1) == cLBrace && i + 1 < n then
+    singleCloseBraceFrom(src, raw, i + 2)
+  else if at(src, i) == cRBrace && at(src, i + 1) == cRBrace && i + 1 < n then
+    singleCloseBraceFrom(src, raw, i + 2)
   else if at(src, i) == cLBrace then
     match interpClose(src, i + 1, 0) with
     | Some(close) -> singleCloseBraceFrom(src, raw, close + 1)
     | None -> false
-  else if at(src, i) == cRBrace then true
-  else if at(src, i) == backslash && Stdlib.Bool.not(raw) && i + 1 < n then singleCloseBraceFrom(src, raw, i + 2)
-  else singleCloseBraceFrom(src, raw, i + 1)
+  else if at(src, i) == cRBrace then
+    true
+  else if at(src, i) == backslash && Stdlib.Bool.not(raw) && i + 1 < n then
+    singleCloseBraceFrom(src, raw, i + 2)
+  else
+    singleCloseBraceFrom(src, raw, i + 1)
 
 
 let hasSingleCloseBraceInterp(inner: String, raw: Bool): Bool =
@@ -1172,5 +1303,13 @@ let hasSingleCloseBraceInterp(inner: String, raw: Bool): Bool =
 let stripDelims(raw: String, lead: String, close: String): String =
   let a = if Stdlib.String.startsWith(raw, lead) then Stdlib.String.length(lead) else 0
   let n = Stdlib.String.length(raw)
-  let b = if n > a && Stdlib.String.endsWith(raw, close) then n - Stdlib.String.length(close) else n
-  if b > a then Stdlib.String.slice(raw, a, b) |> Stdlib.Result.withDefault("") else ""
+  let b =
+    if n > a && Stdlib.String.endsWith(raw, close) then
+      n - Stdlib.String.length(close)
+    else
+      n
+
+  if b > a then
+    Stdlib.String.slice(raw, a, b) |> Stdlib.Result.withDefault("")
+  else
+    ""

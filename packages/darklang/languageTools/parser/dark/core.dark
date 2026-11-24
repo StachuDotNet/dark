@@ -4,9 +4,12 @@
 /// so callers always get a tree.
 module Darklang.LanguageTools.Parser.Dark.Core
 
-type Range = LanguageTools.Parser.Range
-type Point = LanguageTools.Parser.Point
+type Range = Parser.Range
+
+type Point = Parser.Point
+
 type Token = Lexer.Token
+
 type TokenKind = Lexer.TokenKind
 
 
@@ -99,7 +102,7 @@ let token(inp: Input, i: Int64): Token =
         { kind = TokenKind.TEOF
           text = ""
           range = Range { start = p, end_ = p }
-          docComment = Stdlib.Option.Option.None
+          docComment = Option.None
           leadingTrivia = []
           lexError = false }
 
@@ -161,7 +164,7 @@ let zeroWidthAtStart(r: Range): Range =
 
 
 let pointBefore(a: Point, b: Point): Bool =
-  a.row < b.row || (a.row == b.row && a.column < b.column)
+  a.row < b.row || a.row == b.row && a.column < b.column
 
 
 let at(st: St, i: Int64): St =
@@ -202,11 +205,11 @@ let errFull(
           message = message
           related = related
           hint = hint
-          fix = Stdlib.Option.Option.None })
+          fix = Option.None })
 
 
 let err(inp: Input, st: St, code: Code, i: Int64, message: String): St =
-  errFull(inp, st, code, i, message, [], Stdlib.Option.Option.None)
+  errFull(inp, st, code, i, message, [], Option.None)
 
 
 let errAt(st: St, code: Code, range: Range, message: String, hint: Option<String>): St =
@@ -218,7 +221,7 @@ let errAt(st: St, code: Code, range: Range, message: String, hint: Option<String
         message = message
         related = []
         hint = hint
-        fix = Stdlib.Option.Option.None })
+        fix = Option.None })
 
 
 /// What the parser is looking at, for "expected X, found Y".
@@ -261,10 +264,12 @@ let isKeyword(k: TokenKind): Bool =
 
 
 let keywordHint(inp: Input, i: Int64): String =
-  if i > 0
-     && i < inp.count
-     && isKeyword(tok(inp, i))
-     && (rng(inp, i)).start.row == (rng(inp, i - 1)).end_.row then
+  if
+    i > 0
+    && i < inp.count
+    && isKeyword(tok(inp, i))
+    && (rng(inp, i)).start.row == (rng(inp, i - 1)).end_.row
+  then
     let w = txt(inp, i)
     $"; {w} is a keyword, so to use it as a name write `{w}`"
   else
@@ -272,12 +277,7 @@ let keywordHint(inp: Input, i: Int64): String =
 
 
 let errExpectedName(inp: Input, st: St, i: Int64, what: String): St =
-  err(
-    inp,
-    st,
-    Code.Expected,
-    i,
-    $"expected {what}, found {foundDesc(inp, i)}{keywordHint(inp, i)}")
+  err(inp, st, Code.Expected, i, $"expected {what}, found {foundDesc(inp, i)}{keywordHint(inp, i)}")
 
 
 let errUnclosed(inp: Input, st: St, i: Int64, closeSym: String, openSym: String, openR: Range): St =
@@ -288,30 +288,31 @@ let errUnclosed(inp: Input, st: St, i: Int64, closeSym: String, openSym: String,
     i,
     $"expected '{closeSym}' to close the '{openSym}' at line {openR.start.row + 1}:{openR.start.column + 1}, found {foundDesc(inp, i)}",
     [ (openR, $"the '{openSym}' opened here") ],
-    Stdlib.Option.Option.None)
+    Option.None)
 
 
 /// The name of a `name = value` or `name: Type` field at <param k>, when <param sep> follows.
 let fieldName(inp: Input, k: Int64, sep: TokenKind): Option<String> =
   let t = tok(inp, k)
-  if tok(inp, k + 1) != sep then Stdlib.Option.Option.None
+  if tok(inp, k + 1) != sep then
+    Option.None
   else
     match t with
-    | TIdent(name) -> Stdlib.Option.Option.Some(name)
-    | _ -> if isKeyword(t) then Stdlib.Option.Option.Some(txt(inp, k)) else Stdlib.Option.Option.None
+    | TIdent(name) -> Option.Some(name)
+    | _ -> if isKeyword(t) then Option.Some(txt(inp, k)) else Option.None
 
 
 // --- offside scopes ---
 
 let currentScope(st: St): Scope =
   match st.scopes with
-  | [ s, ... ] -> s
+  | [s, ...] -> s
   | [] -> Scope { stmtCol = -1, stmtExact = false }
 
 
 let setStmtCol(st: St, col: Int64): St =
   match st.scopes with
-  | [ s, ...rest ] -> { st with scopes = [ { s with stmtCol = col }, ...rest ] }
+  | [s, ...rest] -> { st with scopes = [ { s with stmtCol = col }, ...rest ] }
   | [] -> { st with scopes = [ Scope { stmtCol = col, stmtExact = false } ] }
 
 
@@ -326,22 +327,23 @@ let withStmtScope(inp: Input, st: St, col: Int64, p: Parser<'a>): ('a * St) =
   scoped(
     inp,
     st,
-    fun s -> { s with scopes = [ Scope { stmtCol = col, stmtExact = false }, ...s.scopes ] },
+    (fun s -> { s with scopes = [ Scope { stmtCol = col, stmtExact = false }, ...s.scopes ] }),
     p)
 
 
 let withoutMatchArms(inp: Input, st: St, p: Parser<'a>): ('a * St) =
-  scoped(inp, st, fun s -> { s with matchArms = [] }, p)
+  scoped(inp, st, (fun s -> { s with matchArms = [] }), p)
 
 
 let withElementScope(inp: Input, st: St, p: Parser<'a>): ('a * St) =
   scoped(
     inp,
     st,
-    fun s ->
-      { s with
-          scopes = [ Scope { stmtCol = (currentScope(s)).stmtCol, stmtExact = false }, ...s.scopes ]
-          matchArms = [] },
+    (fun s ->
+       { s with
+           scopes =
+             [ Scope { stmtCol = (currentScope(s)).stmtCol, stmtExact = false }, ...s.scopes ]
+           matchArms = [] }),
     p)
 
 
@@ -349,17 +351,20 @@ let withStmtColExact(inp: Input, st: St, col: Int64, p: Parser<'a>): ('a * St) =
   scoped(
     inp,
     st,
-    fun s ->
-      match s.scopes with
-      | [ top, ...rest ] ->
-        { s with scopes = [ { top with stmtCol = col, stmtExact = true }, ...rest ], matchArms = [] }
-      | [] -> { s with scopes = [ Scope { stmtCol = col, stmtExact = true } ], matchArms = [] },
+    (fun s ->
+       match s.scopes with
+       | [top, ...rest] ->
+         { s with
+             scopes = [ { top with stmtCol = col, stmtExact = true }, ...rest ]
+             matchArms = [] }
+       | [] -> { s with scopes = [ Scope { stmtCol = col, stmtExact = true } ], matchArms = [] }),
     p)
 
 
 let barStartsArm(inp: Input, st: St, i: Int64): Bool =
   let r = rng(inp, i)
-  Stdlib.List.any(st.matchArms, fun((armRow, armCol)) -> r.start.row == armRow || r.start.column == armCol)
+  Stdlib.List.any(st.matchArms, fun((armRow, armCol)) ->
+    r.start.row == armRow || r.start.column == armCol)
 
 
 let declBarrier(inp: Input, st: St, k: Int64): Bool =
@@ -378,7 +383,10 @@ let offsideContinues(inp: Input, st: St, headIdx: Int64, k: Int64): Bool =
   || rk.start.column > rh.start.column
   || (let s = currentScope(st)
       s.stmtCol >= 0
-      && (if s.stmtExact then rk.start.column != s.stmtCol else rk.start.column > s.stmtCol))
+      && (if s.stmtExact then
+            rk.start.column != s.stmtCol
+          else
+            rk.start.column > s.stmtCol))
 
 
 /// Are the tokens at <param i> and <param j> written with nothing between them?
@@ -390,7 +398,18 @@ let adjacent(inp: Input, i: Int64, j: Int64): Bool =
 
 let isIntLit(t: TokenKind): Bool =
   match t with
-  | TBigInt(_) | TInt64(_) | TInt8(_) | TUInt8(_) | TInt16(_) | TUInt16(_) | TInt32(_) | TUInt32(_) | TUInt64(_) | TInt128(_) | TUInt128(_) -> true
+  | TBigInt(_)
+  | TInt64(_)
+  | TInt8(_)
+  | TUInt8(_)
+  | TInt16(_)
+  | TUInt16(_)
+  | TInt32(_)
+  | TUInt32(_)
+  | TUInt64(_)
+  | TInt128(_)
+  | TUInt128(_) ->
+    true
   | _ -> false
 
 
@@ -404,20 +423,57 @@ let isNumberLit(t: TokenKind): Bool =
 let canStartAtom(t: TokenKind): Bool =
   isIntLit(t)
   || (match t with
-      | TFloat64 | TFloat32 | TDecimal(_) | TCharLit(_) | TTrue | TFalse | TStringLit(_) | TInterpString | TIdent(_) | TLParen | TLBracket | TLBrace | TNot | TBitNot -> true
+      | TFloat64
+      | TFloat32
+      | TDecimal(_)
+      | TCharLit(_)
+      | TTrue
+      | TFalse
+      | TStringLit(_)
+      | TInterpString
+      | TIdent(_)
+      | TLParen
+      | TLBracket
+      | TLBrace
+      | TNot
+      | TBitNot ->
+        true
       | _ -> false)
 
 
 let canStartPattern(t: TokenKind): Bool =
   isIntLit(t)
   || (match t with
-      | TUnderscore | TMinus | TFloat64 | TFloat32 | TDecimal(_) | TCharLit(_) | TTrue | TFalse | TStringLit(_) | TIdent(_) | TLParen | TLBracket -> true
+      | TUnderscore
+      | TMinus
+      | TFloat64
+      | TFloat32
+      | TDecimal(_)
+      | TCharLit(_)
+      | TTrue
+      | TFalse
+      | TStringLit(_)
+      | TIdent(_)
+      | TLParen
+      | TLBracket ->
+        true
       | _ -> false)
 
 
 let closesOrSeparates(t: TokenKind): Bool =
   match t with
-  | TRParen | TRBracket | TRBrace | TSemicolon | TComma | TIn | TThen | TElse | TWith | TArrow | TEOF -> true
+  | TRParen
+  | TRBracket
+  | TRBrace
+  | TSemicolon
+  | TComma
+  | TIn
+  | TThen
+  | TElse
+  | TWith
+  | TArrow
+  | TEOF ->
+    true
   | _ -> false
 
 
@@ -430,11 +486,19 @@ let isRecoveryBarrier(t: TokenKind): Bool =
 
 /// After a failed parse at <param i>: skip the token unless the enclosing construct needs it.
 let recoverPast(inp: Input, i: Int64): Int64 =
-  if i < inp.count && Stdlib.Bool.not(isRecoveryBarrier(tok(inp, i))) then i + 1 else i
+  if i < inp.count && Stdlib.Bool.not(isRecoveryBarrier(tok(inp, i))) then
+    i + 1
+  else
+    i
 
 
 let isUpperIdentifier(name: String): Bool =
-  let rest = if Stdlib.String.startsWith(name, "__") then Stdlib.String.dropFirst(name, 2) else name
+  let rest =
+    if Stdlib.String.startsWith(name, "__") then
+      Stdlib.String.dropFirst(name, 2)
+    else
+      name
+
   match Stdlib.String.head(rest) with
   | Some(c) -> Stdlib.Char.isUppercase(c)
   | None -> false
@@ -455,19 +519,19 @@ let startsLowerOrUnderscore(name: String): Bool =
 // --- combinators ---
 
 let succeed(value: 'a): Parser<'a> =
-  fun(_inp, st) -> (value, st)
+  (fun(_inp, st) -> (value, st))
 
 
 let map(p: Parser<'a>, f: 'a -> 'b): Parser<'b> =
-  fun(inp, st) ->
-    let (v, st2) = p(inp, st)
-    (f(v), st2)
+  (fun(inp, st) ->
+     let (v, st2) = p(inp, st)
+     (f(v), st2))
 
 
 let andThen(p: Parser<'a>, next: 'a -> Parser<'b>): Parser<'b> =
-  fun(inp, st) ->
-    let (v, st2) = p(inp, st)
-    (next(v))(inp, st2)
+  (fun(inp, st) ->
+     let (v, st2) = p(inp, st)
+     next(v)(inp, st2))
 
 
 /// `sep item sep item …`: each item with the range of the separator before it. A parse
@@ -516,12 +580,18 @@ let separatedSkippingFrom(
   itemsRev: List<(Range * 'a)>)
   : (List<(Range * 'a)> * St) =
   let m = st.index
-  if tok(inp, m) != sep || (stopAtPendingGt && st.pendingGt > 0) then
+  if tok(inp, m) != sep || stopAtPendingGt && st.pendingGt > 0 then
     (Stdlib.List.reverse(itemsRev), st)
   else
     let (item, st2) = p(inp, at(st, m + 1))
     let next = if st2.index > m then st2.index else m + 1
-    separatedSkippingFrom(inp, at(st2, next), sep, stopAtPendingGt, p, [ (rng(inp, m), item), ...itemsRev ])
+    separatedSkippingFrom(
+      inp,
+      at(st2, next),
+      sep,
+      stopAtPendingGt,
+      p,
+      [ (rng(inp, m), item), ...itemsRev ])
 
 
 /// The range of <param kind> at the current token and the state past it, or a diagnostic and a
@@ -548,16 +618,16 @@ let pointAtOrAfter(a: Point, b: Point): Bool =
 
 /// For each range, what was written there when it is one token, else a placeholder.
 let writtenOrPlaceholders(inp: Input, ranges: List<Range>): List<String> =
-  let written =
-    fun r ->
-      let inside =
-        Stdlib.List.filter(inp.tokens, fun t ->
-          pointBefore(t.range.start, t.range.end_)
-          && pointAtOrAfter(t.range.start, r.start)
-          && pointAtOrAfter(r.end_, t.range.end_))
-      match inside with
-      | [ t ] -> Stdlib.Option.Option.Some(t.text)
-      | _ -> Stdlib.Option.Option.None
+  let written = fun r ->
+    let inside =
+      Stdlib.List.filter(inp.tokens, fun t ->
+        pointBefore(t.range.start, t.range.end_)
+        && pointAtOrAfter(t.range.start, r.start)
+        && pointAtOrAfter(r.end_, t.range.end_))
+
+    match inside with
+    | [t] -> Option.Some(t.text)
+    | _ -> Option.None
 
   Stdlib.List.indexedMap(placeholders(Stdlib.List.length(ranges)), fun(i, p) ->
     match Stdlib.List.getAt(ranges, i) with
@@ -578,41 +648,65 @@ val escapeForms =
 let validateLiterals(inp: Input): List<Diagnostic> =
   Stdlib.List.indexedMap(inp.tokens, fun(i, t) ->
     let diag = fun(code, message) ->
-      Diagnostic { code = code, range = t.range, message = message, related = [], hint = Stdlib.Option.Option.None, fix = Stdlib.Option.Option.None }
+      Diagnostic
+        { code = code
+          range = t.range
+          message = message
+          related = []
+          hint = Option.None
+          fix = Option.None }
+
     match t.kind with
     | TStringLit(_) ->
-      if Stdlib.Bool.not(Stdlib.String.startsWith(t.text, "\"\"\""))
-         && Lexer.hasInvalidEscape(Lexer.stripDelims(t.text, "\"", "\"")) then
-        [ diag(Code.Escape, "Invalid escape sequence or codepoint in string literal" + escapeForms) ]
+      if
+        Stdlib.Bool.not(Stdlib.String.startsWith(t.text, "\"\"\""))
+        && Lexer.hasInvalidEscape(Lexer.stripDelims(t.text, "\"", "\""))
+      then
+        [ diag(
+            Code.Escape,
+            "Invalid escape sequence or codepoint in string literal" + escapeForms) ]
       else
         []
     | TCharLit(value) ->
       let escape =
         if Lexer.hasInvalidEscape(Lexer.stripDelims(t.text, "'", "'")) then
-          [ diag(Code.Escape, "Invalid escape sequence or codepoint in character literal" + escapeForms) ]
+          [ diag(
+              Code.Escape,
+              "Invalid escape sequence or codepoint in character literal" + escapeForms) ]
         else
           []
+
       let one =
-        if Stdlib.String.length(value) == 1 then [] else [ diag(Code.Escape, "Character literal must contain exactly one grapheme") ]
+        if Stdlib.String.length(value) == 1 then
+          []
+        else
+          [ diag(Code.Escape, "Character literal must contain exactly one grapheme") ]
+
       Stdlib.List.concat(escape, one)
     | TInterpString ->
       if Stdlib.String.startsWith(t.text, "$\"\"\"") then
         let inner = Lexer.stripDelims(t.text, "$\"\"\"", "\"\"\"")
         if Lexer.hasSingleCloseBraceInterp(inner, true) then
-          [ diag(Code.Interpolation, "Single '}' in raw interpolated string text; use '}}' for a literal brace") ]
+          [ diag(
+              Code.Interpolation,
+              "Single '}' in raw interpolated string text; use '}}' for a literal brace") ]
         else
           []
       else
         let inner = Lexer.stripDelims(t.text, "$\"", "\"")
         Stdlib.List.concat(
           (if Lexer.hasInvalidEscapeInterp(inner) then
-             [ diag(Code.Escape, "Invalid escape sequence or codepoint in interpolated string" + escapeForms) ]
+             [ diag(
+                 Code.Escape,
+                 "Invalid escape sequence or codepoint in interpolated string" + escapeForms) ]
            else
              []),
-          (if Lexer.hasSingleCloseBraceInterp(inner, false) then
-             [ diag(Code.Interpolation, "Single '}' in interpolated string text; use '}}' or '\\}' for a literal brace") ]
-           else
-             []))
+          if Lexer.hasSingleCloseBraceInterp(inner, false) then
+            [ diag(
+                Code.Interpolation,
+                "Single '}' in interpolated string text; use '}}' or '\\}' for a literal brace") ]
+          else
+            [])
     | _ -> [])
   |> Stdlib.List.flatten
 
@@ -620,7 +714,7 @@ let validateLiterals(inp: Input): List<Diagnostic> =
 /// The last diagnostic, with <param edit> as its fix.
 let withFix(st: St, edit: Edit): St =
   match st.diagnosticsRev with
-  | [ d, ...rest ] -> { st with diagnosticsRev = [ { d with fix = Stdlib.Option.Option.Some(edit) }, ...rest ] }
+  | [d, ...rest] -> { st with diagnosticsRev = [ { d with fix = Option.Some(edit) }, ...rest ] }
   | [] -> st
 
 
@@ -628,10 +722,13 @@ let withFix(st: St, edit: Edit): St =
 let spacedFix(range: Range, name: String, inp: Input, ranges: List<Range>): Option<Edit> =
   let shown = writtenOrPlaceholders(inp, ranges)
   let placeholder = placeholders(Stdlib.List.length(ranges))
-  if Stdlib.List.any(Stdlib.List.indexedMap(shown, fun(i, s) -> (i, s)), fun((i, s)) -> Stdlib.List.getAt(placeholder, i) == Stdlib.Option.Option.Some(s)) then
-    Stdlib.Option.Option.None
+  if
+    Stdlib.List.any(Stdlib.List.indexedMap(shown, fun(i, s) -> (i, s)), fun((i, s)) ->
+      Stdlib.List.getAt(placeholder, i) == Option.Some(s))
+  then
+    Option.None
   else
-    Stdlib.Option.Option.Some(Edit { range = range, text = $"{name}({Stdlib.String.join(shown, ", ")})" })
+    Option.Some(Edit { range = range, text = $"{name}({Stdlib.String.join(shown, ", ")})" })
 
 
 /// What was written across <param range>, token by token, when nothing but the tokens' own
@@ -639,20 +736,25 @@ let spacedFix(range: Range, name: String, inp: Input, ranges: List<Range>): Opti
 let sourceText(inp: Input, range: Range): Option<String> =
   let inside =
     Stdlib.List.filter(inp.tokens, fun t ->
-      pointAtOrAfter(t.range.start, range.start) && pointAtOrAfter(range.end_, t.range.end_) && t.kind != TokenKind.TEOF)
+      pointAtOrAfter(t.range.start, range.start)
+      && pointAtOrAfter(range.end_, t.range.end_)
+      && t.kind != TokenKind.TEOF)
+
   let gapless =
-    Stdlib.List.all(Stdlib.List.zipShortest(inside, Stdlib.List.drop(inside, 1)), fun((a, b)) -> a.range.end_ == b.range.start)
+    Stdlib.List.all(Stdlib.List.zipShortest(inside, Stdlib.List.drop(inside, 1)), fun((a, b)) ->
+      a.range.end_ == b.range.start)
+
   if gapless && Stdlib.Bool.not(Stdlib.List.isEmpty(inside)) then
-    Stdlib.Option.Option.Some(Stdlib.String.join(Stdlib.List.map(inside, fun t -> t.text), ""))
+    Option.Some(Stdlib.String.join(Stdlib.List.map(inside, fun t -> t.text), ""))
   else
-    Stdlib.Option.Option.None
+    Option.None
 
 
 /// `name a b` written as `name(a, b)`, when the name and each item are written plainly.
 let spacedCallFix(inp: Input, whole: Range, name: Range, items: List<Range>): Option<Edit> =
   match sourceText(inp, name) with
   | Some(n) -> spacedFix(whole, n, inp, items)
-  | None -> Stdlib.Option.Option.None
+  | None -> Option.None
 
 
 let attachFix(st: St, fix: Option<Edit>): St =
@@ -688,7 +790,14 @@ let guarded(inp: Input, st: St, p: Parser<'a>, hole: Range -> 'a): ('a * St) =
     (v, { after with depth = st.depth })
 
 
-let abandon(inp: Input, st: St, hole: Range -> 'a, code: Code, message: String, hint: String): ('a * St) =
+let abandon(
+  inp: Input,
+  st: St,
+  hole: Range -> 'a,
+  code: Code,
+  message: String,
+  hint: String)
+  : ('a * St) =
   let i = st.index
-  let st1 = errFull(inp, st, code, i, message, [], Stdlib.Option.Option.Some(hint))
+  let st1 = errFull(inp, st, code, i, message, [], Option.Some(hint))
   (hole(rng(inp, i)), { st1 with abandoned = true, index = inp.count - 1 })
