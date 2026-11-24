@@ -21,6 +21,8 @@ type Provider =
   | Live(Agent.Anthropic.Config)
   /// recorded SSE responses, answered in order
   | Replay(List<String>)
+  /// an earlier session's replies, answered in order (`--rerun`)
+  | Recorded(List<Agent.Reply>)
 
 
 /// When the model's text reaches the person: as it streams (a conversation at a terminal), or
@@ -58,7 +60,11 @@ type Options =
     checks: Int64
     /// compact once a call's input passes this many tokens; 0 never
     compactAt: Int64
-    showPrompt: Bool }
+    showPrompt: Bool
+    /// attempts, each on a fresh branch, until one passes the done-check
+    attempts: Int64
+    /// run an earlier session's model turns again, against today's code and tools
+    rerun: Option<String> }
 
 
 type Run =
@@ -315,6 +321,11 @@ let callModel(run: Run, messages: List<Agent.Message>): (Run * Agent.Event) =
     match result with
     | Ok(reply) -> (run, Agent.Event.ModelReplied(reply))
     | Error(why) -> (run, Agent.Event.ModelFailed(why))
+  | Recorded(replies) ->
+    match replies with
+    | [] -> (run, Agent.Event.ModelFailed("the earlier session has no more replies"))
+    | [next, ...rest] ->
+      ({ run with provider = Provider.Recorded(rest) }, Agent.Event.ModelReplied(next))
   | Replay(recorded) ->
     match recorded with
     | [] -> (run, Agent.Event.ModelFailed("the recording has no more responses"))
@@ -446,6 +457,11 @@ let parseArgs(args: List<String>, o: Options): Result<Options, String> =
     | Ok(v) when v >= 0 -> parseArgs(rest, { o with compactAt = v })
     | _ -> Result.Error($"--compact-at takes a number of tokens, not {n}")
   | ["--show-prompt", ...rest] -> parseArgs(rest, { o with showPrompt = true })
+  | ["--attempts", n, ...rest] ->
+    match Stdlib.Int64.parse(n) with
+    | Ok(v) when v > 0 && v <= 8 -> parseArgs(rest, { o with attempts = v })
+    | _ -> Result.Error($"--attempts takes a number from 1 to 8, not {n}")
+  | ["--rerun", id, ...rest] -> parseArgs(rest, { o with rerun = Option.Some(id) })
   | ["--allow", names, ...rest] ->
     let wanted = Stdlib.String.split(names, ",") |> Stdlib.List.map(fun n -> Stdlib.String.trim(n))
     let expanded =
@@ -488,7 +504,9 @@ let defaultOptions(): Options =
       toolset = Toolset.StoreTools
       checks = 2
       compactAt = 120000
-      showPrompt = false }
+      showPrompt = false
+      attempts = 1
+      rerun = Option.None }
 
 
 /// The session to run in: a resumed one, a fork of one, or a new one on its own new branch.
@@ -582,6 +600,95 @@ let register(s: Session): Unit =
 
 
 let providerFor(o: Options): Result<Provider, String> =
+  match o.rerun with
+  | Some(id) ->
+    match loadSession(id) with
+    | Some(s) -> Result.Ok(Provider.Recorded(repliesOf(messagesOf(s))))
+    | None -> Result.Error($"no session {id}")
+  | None -> replayOrLive(o)
+
+
+/// An earlier session's model turns, as the replies that produced them.
+let repliesOf(messages: List<Agent.Message>): List<Agent.Reply> =
+  messages
+  |> Stdlib.List.filter(fun m -> m.role == Agent.Role.Assistant)
+  |> Stdlib.List.map(fun m ->
+    let stop =
+      if Stdlib.List.isEmpty(Agent.toolUses(m.content)) then
+        Agent.StopReason.EndTurn
+      else
+        Agent.StopReason.ToolUseStop
+
+    Agent.Reply { content = m.content, stop = stop, usage = Agent.noUsage() })
+
+
+/// What each tool call answered, in order, with the tool's name.
+let toolResultsOf(messages: List<Agent.Message>): List<(String * String)> =
+  let names =
+    messages
+    |> Stdlib.List.map(fun m -> Agent.toolUses(m.content))
+    |> Stdlib.List.flatten
+    |> Stdlib.List.map(fun((id, name, _input)) -> (id, name))
+
+  messages
+  |> Stdlib.List.map(fun m -> m.content)
+  |> Stdlib.List.flatten
+  |> Stdlib.List.filterMap(fun b ->
+    match b with
+    | ToolResult(id, content, _isError) ->
+      let name =
+        names
+        |> Stdlib.List.findFirst(fun((i, _n)) -> i == id)
+        |> Stdlib.Option.map(fun((_i, n)) -> n)
+        |> Stdlib.Option.withDefault("?")
+
+      Option.Some((name, content))
+    | _ -> Option.None)
+
+
+/// A tool result without what changes on every run: timings and trace ids.
+let comparable(text: String): String =
+  Stdlib.String.splitOnNewline(text)
+  |> Stdlib.List.map(fun l ->
+    if Stdlib.String.startsWith(l, "-- ") && Stdlib.String.contains(l, " skipped, ") then
+      "-- (summary)"
+    else if
+      Stdlib.String.contains(l, "trace ") && Stdlib.String.contains(l, "dark traces inspect")
+    then
+      "(trace)"
+    else if Stdlib.String.startsWith(l, "the values in run ") then
+      "the values in run (trace)"
+    else
+      l)
+  |> Stdlib.String.join("\n")
+
+
+/// Which tool results changed between an earlier session and its rerun.
+let rerunDiff(before: List<Agent.Message>, after: List<Agent.Message>): (Int64 * List<String>) =
+  let was = toolResultsOf(before)
+  let now = toolResultsOf(after)
+  let rows =
+    Stdlib.List.zipShortest(was, now)
+    |> Stdlib.List.indexedMap(fun(i, pair) -> (i + 1, pair))
+    |> Stdlib.List.filterMap(fun numbered ->
+      let (i, ((name, a), (_n, b))) = numbered
+      if comparable(a) == comparable(b) then
+        Option.None
+      else
+        Option.Some(
+          $"  #{Stdlib.display(i)} {name}\n    was {Stdlib.String.first(a, 200)}\n    now {Stdlib.String.first(b, 200)}"))
+
+  let missing = Stdlib.List.length(was) - Stdlib.List.length(now)
+  let rows =
+    if missing > 0 then
+      Stdlib.List.append(rows, $"  the rerun stopped {Stdlib.display(missing)} tool calls early")
+    else
+      rows
+
+  (Stdlib.List.length(was), rows)
+
+
+let replayOrLive(o: Options): Result<Provider, String> =
   match o.replay with
   | Some(path) ->
     match Stdlib.Cli.File.readText(path) with
@@ -648,6 +755,13 @@ let run(state: AppState, args: List<String>): AppState =
     printErr(why)
     { state with exitCode = 2 }
   | Ok(o) when o.showPrompt -> showPrompt(state, o)
+  | Ok(o) when o.prompt == "" && Stdlib.Option.isSome(o.rerun) ->
+    let old = o.rerun |> Stdlib.Option.andThen(fun id -> loadSession(id))
+    match old with
+    | Some(s) -> runWith(state, { o with prompt = taskOf(messagesOf(s)) })
+    | None ->
+      printErr("no such session to rerun; `dark agent --list` shows them")
+      { state with exitCode = 2 }
   | Ok(o) when o.prompt == "" && Stdlib.Cli.Sys.isTerminal(0) -> chat(state, o)
   | Ok(o) when o.prompt == "" ->
     match Stdlib.Cli.Stdin.readAll() with
@@ -822,10 +936,32 @@ let runWith(state: AppState, o: Options): AppState =
               Stdlib.AltJson.Json.Array(run.tools |> Stdlib.List.map(fun t -> str(t.spec.name)))) ])
       | PlainText -> Stdlib.printErrorLine($"session {run.session.id} on branch {branchOfRun(run)}")
 
-    let finished = turn(run, o.prompt)
+    let (finished, usage, turns) = attempts(state, o, run)
+    let run = finished
     let ending =
       finished.ending
       |> Stdlib.Option.withDefault(Agent.Ending.Failed("the run stopped without an answer"))
+
+    let _ =
+      match o.rerun with
+      | Some(id) ->
+        match loadSession(id) with
+        | Some(old) ->
+          let (total, rows) = rerunDiff(messagesOf(old), finished.loop.messages)
+          let head =
+            $"rerun of {id} as {finished.session.id}: {Stdlib.display(total)} tool results, {Stdlib.display(Stdlib.List.length(rows))} differ"
+
+          match o.format with
+          | StreamJson ->
+            emitJson(
+              [ ("type", str("rerun"))
+                ("of", str(id))
+                ("summary", str(head))
+                ("changed", Stdlib.AltJson.Json.Array(rows |> Stdlib.List.map(fun r -> str(r)))) ])
+          | PlainText ->
+            Stdlib.printErrorLine(Stdlib.String.join(Stdlib.List.prepend(rows, head), "\n"))
+        | None -> ()
+      | None -> ()
 
     let (text, isError) = endingText(ending)
     let ms = Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), started)
@@ -843,22 +979,91 @@ let runWith(state: AppState, o: Options): AppState =
             ("subtype", str(subtype))
             ("is_error", Stdlib.AltJson.Json.Bool(isError))
             ("result", str(text))
-            ("num_turns", Stdlib.AltJson.Json.Integer(finished.loop.turns))
+            ("num_turns", Stdlib.AltJson.Json.Integer(turns))
             ("duration_ms", Stdlib.AltJson.Json.Integer(ms))
             ("session_id", str(run.session.id))
             (
               "total_cost_usd",
-              match Agent.Anthropic.cost(o.model, finished.loop.usage) with
+              match Agent.Anthropic.cost(o.model, usage) with
               | Some(c) -> Stdlib.AltJson.Json.Float(c)
               | None -> Stdlib.AltJson.Json.Null)
 
-            ("usage", usageJson(finished.loop.usage)) ])
+            ("usage", usageJson(usage)) ])
       | PlainText ->
         if isError then printErr(text) else Stdlib.printLine(text)
         draftLines(finished) |> Stdlib.List.iter(fun l -> Stdlib.printErrorLine(l))
-        Stdlib.printErrorLine(usageLine(finished, ms))
+        Stdlib.printErrorLine(
+          usageLine(
+            { finished with loop = { finished.loop with usage = usage, turns = turns } },
+            ms))
 
     { state with exitCode = if isError then 1 else 0 }
+
+
+/// How far a finished attempt is from done: 0 when the done-check passes, else the number of
+/// problems it found; an attempt that stopped without an answer is furthest.
+let distance(run: Run): (Int64 * String) =
+  match run.ending with
+  | Some(Answered(_)) ->
+    match Store.doneCheck(run.ctx) with
+    | None -> (0, "")
+    | Some(problems) ->
+      let n =
+        Stdlib.String.splitOnNewline(problems)
+        |> Stdlib.List.filter(fun l -> Stdlib.String.startsWith(l, "- "))
+        |> Stdlib.List.length
+
+      (if n > 0 then n else 1, problems)
+  | Some(ending) -> (1000, Stdlib.Tuple2.first(endingText(ending)))
+  | None -> (1000, "the run stopped without an answer")
+
+
+/// The prompt for a later attempt: the task, and what the earlier ones ended with.
+let retryPrompt(prompt: String, failures: List<String>): String =
+  let notes =
+    failures
+    |> Stdlib.List.indexedMap(fun(i, f) ->
+      $"Attempt {Stdlib.display(i + 1)}, on another branch, ended with:\n{Stdlib.String.first(f, 1500)}")
+
+  prompt
+  + "\n\n"
+  + Stdlib.String.join(notes, "\n\n")
+  + "\n\nThis is a fresh attempt on a new branch: nothing from the earlier ones is here. Avoid what went wrong."
+
+
+/// Up to `o.attempts` attempts, each on a fresh branch of its own, until one passes the done-check.
+/// The attempt closest to done is kept (the first, on a tie); the others' branches are left
+/// unmerged. The usage and turns are those of every attempt.
+let attempts(state: AppState, o: Options, first: Run): (Run * Agent.Usage * Int64) =
+  let one = turn(first, o.prompt)
+  let (d1, why1) = if o.attempts > 1 then distance(one) else (0, "")
+  let start = (one, d1, one, [ why1 ], one.loop.usage, one.loop.turns)
+  let (best, _bestD, _last, _failures, usage, turns) =
+    Stdlib.List.checkedRange(2, o.attempts)
+    |> Stdlib.Result.withDefault([])
+    |> Stdlib.List.fold(start, fun(acc, i) ->
+      let (best, bestD, last, failures, usage, turns) = acc
+      if bestD == 0 then
+        acc
+      else
+        let _ =
+          Stdlib.printErrorLine(
+            $"attempt {Stdlib.display(i - 1)} ({last.session.id}) is not done; attempt {Stdlib.display(i)} on a fresh branch")
+
+        match prepare(state, { o with prompt = "" }, first.text) with
+        | Error(why) -> (best, bestD, last, Stdlib.List.append(failures, why), usage, turns)
+        | Ok(next) ->
+          let next = { next with provider = last.provider }
+          let done = turn(next, retryPrompt(o.prompt, failures))
+          let (d, why) = distance(done)
+          let usage = Agent.addUsage(usage, done.loop.usage)
+          let turns = turns + done.loop.turns
+          if d < bestD then
+            (done, d, done, Stdlib.List.append(failures, why), usage, turns)
+          else
+            (best, bestD, done, Stdlib.List.append(failures, why), usage, turns))
+
+  (best, usage, turns)
 
 
 /// `dark agent` at a terminal with no prompt: a conversation, one prompt per line, the answer
@@ -918,7 +1123,9 @@ let accepts(): Accepts.Accepts =
       "--effort"
       "--tools"
       "--checks"
-      "--compact-at" ],
+      "--compact-at"
+      "--attempts"
+      "--rerun" ],
     Accepts.freeText(0, [ "-p", "--print", "--continue", "--list", "--show-prompt" ]))
 
 
@@ -952,6 +1159,10 @@ let help(_state: AppState): String =
     "                             have passing tests, and send it back up to n times (default 2; 0 off)"
     "  --compact-at <tokens>      compact the conversation once a call's input passes this (default 120000)"
     "  --show-prompt              print everything sent to the model before the conversation, and stop"
+    "  --attempts <n>             if an attempt is not done (the done-check), start again on a fresh branch,"
+    "                             told what went wrong, up to n in all; the closest to done is kept"
+    "  --rerun <id>               run session <id>'s model turns again on a new branch, against today's code"
+    "                             and tools, and say which tool results changed"
     "  --base-url <url>           the Messages API's address (default https://api.anthropic.com)"
     ""
     "The API key is read from secrets/anthropic.key beside the store." ]
