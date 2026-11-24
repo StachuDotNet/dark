@@ -16,6 +16,12 @@ let onBranch(ctx: Tools.Context, f: AppState -> 'a): 'a =
 val listCap = 40
 
 
+/// How far `callers` looks: direct users, or everything that depends on the item.
+type Reach =
+  | Direct
+  | Transitive
+
+
 /// Names, at most `listCap`, tests counted rather than listed.
 let nameList(rows: List<ScmJson.DependencyJson>): String =
   let tests = rows |> Stdlib.List.filter(fun r -> r.kind == "test")
@@ -46,28 +52,39 @@ let depsOf(
   ctx: Tools.Context,
   name: String,
   direction: Deps.Direction,
-  deep: Bool)
+  reach: Reach)
   : Result<ScmJson.DepsJson, String> =
   onBranch(ctx, fun app ->
     match Deps.resolvePath(app.currentBranchId, app.packageData.currentLocation, name) with
     | Error(e) -> Result.Error(e)
     | Ok((hash, loc, label, kind)) ->
-      Deps.answerOf(app.currentBranchId, hash, loc, kind, label, direction, deep))
+      Deps.answerOf(
+        app.currentBranchId,
+        hash,
+        loc,
+        kind,
+        label,
+        direction,
+        reach == Reach.Transitive))
 
 
 let callers(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Agent.ToolOutput) =
   Tools.needing(ctx, input, "name", fun name ->
-    let deep = Tools.getBool(input, "deep")
-    match depsOf(ctx, name, Deps.Direction.UsedBy, deep) with
+    let reach = if Tools.getBool(input, "deep") then Reach.Transitive else Reach.Direct
+    match depsOf(ctx, name, Deps.Direction.UsedBy, reach) with
     | Error(e) -> (ctx, Tools.fail(e))
     | Ok(answer) ->
-      let what = if deep then "Everything that depends on" else "What uses"
+      let what =
+        match reach with
+        | Transitive -> "Everything that depends on"
+        | Direct -> "What uses"
+
       (ctx, Tools.ok($"{what} {answer.item}:\n{nameList(answer.dependents)}")))
 
 
 let calls(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Agent.ToolOutput) =
   Tools.needing(ctx, input, "name", fun name ->
-    match depsOf(ctx, name, Deps.Direction.Uses, false) with
+    match depsOf(ctx, name, Deps.Direction.Uses, Reach.Direct) with
     | Error(e) -> (ctx, Tools.fail(e))
     | Ok(answer) -> (ctx, Tools.ok($"What {answer.item} uses:\n{nameList(answer.dependencies)}")))
 

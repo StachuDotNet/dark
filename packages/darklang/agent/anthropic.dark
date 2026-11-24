@@ -107,11 +107,13 @@ let messagesToJson(messages: List<Message>): Stdlib.AltJson.Json =
   |> Stdlib.AltJson.Json.Array
 
 
-let toolToJson(t: ToolSpec, cache: Bool): Stdlib.AltJson.Json =
+let toolToJson(t: ToolSpec, breakpoint: Breakpoint): Stdlib.AltJson.Json =
   let j =
     obj([ ("name", str(t.name)), ("description", str(t.description)), ("input_schema", t.schema) ])
 
-  if cache then withCache(j) else j
+  match breakpoint with
+  | CacheLast -> withCache(j)
+  | NoBreakpoint -> j
 
 
 /// The request body. Cache breakpoints on the system prompt, the last tool and the last message.
@@ -138,7 +140,9 @@ let request(
       (
         "tools",
         Stdlib.AltJson.Json.Array(
-          tools |> Stdlib.List.indexedMap(fun(i, t) -> toolToJson(t, i == n - 1))))
+          tools
+          |> Stdlib.List.indexedMap(fun(i, t) ->
+            toolToJson(t, if i == n - 1 then Breakpoint.CacheLast else Breakpoint.NoBreakpoint))))
 
       ("messages", messagesToJson(messages)) ])
 

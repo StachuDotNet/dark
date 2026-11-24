@@ -713,7 +713,9 @@ let showPrompt(state: AppState, o: Options): AppState =
     toolsFor(o)
     |> Stdlib.List.iter(fun t ->
       let _ = Stdlib.printLine($"\n=== tool {t.spec.name}")
-      Stdlib.printLine(Stdlib.AltJson.format(Agent.Anthropic.toolToJson(t.spec, false))))
+      Stdlib.printLine(
+        Stdlib.AltJson.format(
+          Agent.Anthropic.toolToJson(t.spec, Agent.Anthropic.Breakpoint.NoBreakpoint))))
 
   let _ = Stdlib.printLine("\n=== compaction request")
   let _ = Stdlib.printLine(Agent.Prompt.compaction)
