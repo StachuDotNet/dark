@@ -20,7 +20,11 @@ type Context =
     /// The modules this session wrote to.
     touched: List<String>
     /// Earlier evals and their answers, run again after each save.
-    probes: List<(String * String)> }
+    probes: List<(String * String)>
+    /// Under `--sandbox`, the folders anything the session does may write to; empty otherwise.
+    writable: List<String>
+    /// Under `--sandbox`, the hosts code the session runs may reach, besides loopback.
+    hosts: List<String> }
 
 
 type Tool =
@@ -112,6 +116,21 @@ let getBool(input: Stdlib.AltJson.Json, key: String): Bool =
   Stdlib.AltJson.Helpers.getBool(key, fields(input)) |> Stdlib.Option.withDefault(false)
 
 
+/// Whether <param path> may be written: anywhere without a sandbox; inside one of its folders
+/// with one. A path with `..` in it is refused rather than resolved.
+let mayWrite(ctx: Context, path: String): Bool =
+  match ctx.writable with
+  | [] -> true
+  | dirs ->
+    Stdlib.Bool.not(Stdlib.String.contains(path, "/../"))
+    && Stdlib.Bool.not(Stdlib.String.endsWith(path, "/.."))
+    && Stdlib.List.any(dirs, fun d -> path == d || Stdlib.String.startsWith(path, d + "/"))
+
+
+let outsideSandbox(path: String): Agent.ToolOutput =
+  fail($"{path} is outside this session's sandbox; write under the working directory")
+
+
 let absolute(ctx: Context, path: String): String =
   if Stdlib.String.startsWith(path, "/") then path else ctx.cwd + "/" + path
 
@@ -174,7 +193,11 @@ let writeFile(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOu
   needing(ctx, input, "path", fun path ->
     needing(ctx, input, "content", fun content ->
       let full = absolute(ctx, path)
-      if Stdlib.Cli.File.exists(full) && Stdlib.Bool.not(Stdlib.List.contains(ctx.seen, full)) then
+      if Stdlib.Bool.not(mayWrite(ctx, full)) then
+        (ctx, outsideSandbox(path))
+      else if
+        Stdlib.Cli.File.exists(full) && Stdlib.Bool.not(Stdlib.List.contains(ctx.seen, full))
+      then
         (ctx, fail($"{path} exists and has not been read this session; read it first"))
       else
         match Stdlib.Cli.File.writeText(full, content) with
@@ -258,7 +281,9 @@ let editFile(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOut
     needing(ctx, input, "old_string", fun old ->
       needing(ctx, input, "new_string", fun replacement ->
         let full = absolute(ctx, path)
-        if Stdlib.Bool.not(Stdlib.List.contains(ctx.seen, full)) then
+        if Stdlib.Bool.not(mayWrite(ctx, full)) then
+          (ctx, outsideSandbox(path))
+        else if Stdlib.Bool.not(Stdlib.List.contains(ctx.seen, full)) then
           (ctx, fail($"read {path} before editing it"))
         else
           match Stdlib.Cli.File.readText(full) with
@@ -283,7 +308,23 @@ let shell(
   timeoutMs: Int64)
   : Result<Stdlib.Cli.Process.Output, String> =
   let script = $"cd {Stdlib.Cli.Process.shellQuote(ctx.cwd)} && {command}"
-  if Stdlib.List.contains(ctx.allowed, LanguageTools.Permissions.Effect.Http) then
+  if Stdlib.Bool.not(Stdlib.List.isEmpty(ctx.writable)) then
+    // the sandbox: the filesystem read-only but for the session's folders, and a network of its
+    // own with only loopback
+    let binds =
+      ctx.writable
+      |> Stdlib.List.filter(fun d -> Stdlib.Cli.FileSystem.isDirectory(d))
+      |> Stdlib.List.map(fun d -> [ "--bind", d, d ])
+      |> Stdlib.List.flatten
+
+    Stdlib.Cli.Process.runWithTimeout(
+      timeoutMs,
+      "/usr/bin/bwrap",
+      Stdlib.List.flatten(
+        [ [ "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc" ]
+          binds
+          [ "--unshare-net", "--die-with-parent", "/bin/bash", "-c", script ] ]))
+  else if Stdlib.List.contains(ctx.allowed, LanguageTools.Permissions.Effect.Http) then
     Stdlib.Cli.Process.runWithTimeout(timeoutMs, "/bin/bash", [ "-c", script ])
   else
     // loopback stays usable, so a server started in the call can be tried from the same call
@@ -400,6 +441,44 @@ let ruleEffect(rule: String): Option<LanguageTools.Permissions.Effect> =
   | _ -> Option.None
 
 
+let sandboxHosts(ctx: Context): String =
+  match ctx.hosts with
+  | [] -> "none"
+  | hs -> Stdlib.String.join(hs, ", ")
+
+
+/// Whether a `run --allow` rule stays inside the sandbox: file writes under its folders, network
+/// to loopback or its hosts, no processes (they would run outside it).
+let sandboxAllows(ctx: Context, rule: String): Bool =
+  let words =
+    Stdlib.String.split(Stdlib.String.trim(rule), " ") |> Stdlib.List.filter(fun w -> w != "")
+
+  let local = [ "127.0.0.1", "localhost", "[::1]" ]
+  let names = fun w ->
+    Stdlib.List.any(Stdlib.List.concat(local, ctx.hosts), fun h -> Stdlib.String.contains(w, h))
+
+  match words with
+  | ["file", "read", ...] -> true
+  | ["file", "write", ...paths] ->
+    Stdlib.Bool.not(Stdlib.List.isEmpty(paths))
+    && Stdlib.List.all(paths, fun p -> mayWrite(ctx, absolute(ctx, p)))
+  | ["file", ...] -> false
+  | ["http-server", ...rest] -> Stdlib.List.any(rest, fun w -> Stdlib.List.contains(local, w))
+  | ["http", ...rest] ->
+    // the words that say where: a host, a URL, or `*`; each must be loopback or a listed host
+    let wheres =
+      rest
+      |> Stdlib.List.filter(fun w ->
+        w == "*"
+        || Stdlib.String.contains(w, ".")
+        || Stdlib.String.contains(w, "/")
+        || Stdlib.String.contains(w, ":"))
+
+    Stdlib.Bool.not(Stdlib.List.isEmpty(wheres)) && Stdlib.List.all(wheres, fun w -> names(w))
+  | ["env", ...] -> true
+  | _ -> false
+
+
 /// Why a batch may not run in this session, or None. A grant in the batch (`run --allow ...`)
 /// must be one the session itself has: code the agent writes gets no more than the agent.
 let batchRefusal(ctx: Context, text: String): Option<String> =
@@ -431,6 +510,12 @@ let batchRefusal(ctx: Context, text: String): Option<String> =
     |> Stdlib.List.map(fun g -> Stdlib.String.split(g, ";"))
     |> Stdlib.List.flatten
 
+  let outside =
+    if Stdlib.List.isEmpty(ctx.writable) then
+      []
+    else
+      grants |> Stdlib.List.filter(fun g -> Stdlib.Bool.not(sandboxAllows(ctx, g)))
+
   let ungranted =
     grants
     |> Stdlib.List.filter(fun g ->
@@ -438,13 +523,16 @@ let batchRefusal(ctx: Context, text: String): Option<String> =
       | Some(e) -> Stdlib.Bool.not(Stdlib.List.contains(ctx.allowed, e))
       | None -> true)
 
-  match forbidden, ungranted with
-  | [first, ...], _ ->
+  match forbidden, outside, ungranted with
+  | [first, ...], _, _ ->
     Option.Some($"`{first}` changes more than this session's branch; the person runs it")
-  | [], [first, ...] ->
+  | [], [first, ...], _ ->
+    Option.Some(
+      $"denied: `--allow {Stdlib.String.trim(first)}` reaches outside this session's sandbox: files under the working directory, loopback, and these hosts only: {sandboxHosts(ctx)}")
+  | [], [], [first, ...] ->
     Option.Some(
       $"denied: `--allow {first}` grants what this session does not have (the person can rerun the agent with --allow)")
-  | [], [] -> Option.None
+  | [], [], [] -> Option.None
 
 
 /// Run a repl batch in the session's repl: its numbered replies and report, as `dark @r1` prints them.

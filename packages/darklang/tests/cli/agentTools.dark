@@ -111,7 +111,9 @@ let ctxAllowing(
       ask = false
       store = true
       touched = []
-      probes = [] }
+      probes = []
+      writable = []
+      hosts = [] }
 
 
 test aBatchCannotChangeThePolicy =
@@ -162,3 +164,38 @@ test aBlankLineInsideABlockKeepsTheBlock =
         "Me.A.f()" ]
 
       [ "1 + 1", "2" ] ])
+
+
+let sandboxed(): Cli.Agent.Tools.Context =
+  { ctxAllowing(
+      [ LanguageTools.Permissions.Effect.FileRead
+        LanguageTools.Permissions.Effect.FileWrite
+        LanguageTools.Permissions.Effect.Http
+        LanguageTools.Permissions.Effect.HttpServer ]) with
+      cwd = "/work"
+      writable = [ "/work", "/store" ]
+      hosts = [ "api.github.com" ] }
+
+
+test theSandboxKeepsRulesInside =
+  let ctx = sandboxed()
+  [ "file write /work/out"
+    "file write /etc/passwd"
+    "file write /work/../etc"
+    "file read /"
+    "http GET https://api.github.com/repos"
+    "http GET https://example.com/"
+    "http *"
+    "http-server 127.0.0.1 9000"
+    "http-server 0.0.0.0 9000"
+    "process ls" ]
+  |> Stdlib.List.map(fun r -> Cli.Agent.Tools.sandboxAllows(ctx, r))
+  |> Stdlib.Test.equal(
+    [ true, false, false, true, true, false, false, true, false, false ])
+
+
+test theSandboxRefusesWritesOutside =
+  [ Cli.Agent.Tools.mayWrite(sandboxed(), "/work/a.txt")
+    Cli.Agent.Tools.mayWrite(sandboxed(), "/workother/a.txt")
+    Cli.Agent.Tools.mayWrite(ctxAllowing([]), "/anywhere") ]
+  |> Stdlib.Test.equal([ true, false, true ])

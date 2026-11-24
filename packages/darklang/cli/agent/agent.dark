@@ -66,7 +66,11 @@ type Options =
     /// run an earlier session's model turns again, against today's code and tools
     rerun: Option<String>
     /// at the end, merge the kept session's branch into the branch `dark` started on
-    merge: Bool }
+    merge: Bool
+    /// write only under the working directory and the store; bash in bwrap with no network
+    sandbox: Bool
+    /// under the sandbox, the hosts code may reach besides loopback
+    hosts: List<String> }
 
 
 type Run =
@@ -465,6 +469,14 @@ let parseArgs(args: List<String>, o: Options): Result<Options, String> =
     | _ -> Result.Error($"--attempts takes a number from 1 to 8, not {n}")
   | ["--rerun", id, ...rest] -> parseArgs(rest, { o with rerun = Option.Some(id) })
   | ["--merge", ...rest] -> parseArgs(rest, { o with merge = true })
+  | ["--sandbox", ...rest] -> parseArgs(rest, { o with sandbox = true })
+  | ["--hosts", names, ...rest] ->
+    let hosts =
+      Stdlib.String.split(names, ",")
+      |> Stdlib.List.map(fun h -> Stdlib.String.trim(h))
+      |> Stdlib.List.filter(fun h -> h != "")
+
+    parseArgs(rest, { o with hosts = hosts })
   | ["--allow", names, ...rest] ->
     let wanted = Stdlib.String.split(names, ",") |> Stdlib.List.map(fun n -> Stdlib.String.trim(n))
     let expanded =
@@ -510,7 +522,9 @@ let defaultOptions(): Options =
       showPrompt = false
       attempts = 1
       rerun = Option.None
-      merge = false }
+      merge = false
+      sandbox = false
+      hosts = [] }
 
 
 /// The session to run in: a resumed one, a fork of one, or a new one on its own new branch.
@@ -795,6 +809,18 @@ let promptSections(state: AppState): List<Agent.Prompt.PromptSection> =
   | Error(_) -> Agent.Prompt.sections
 
 
+/// What a sandboxed session may write to: the working directory, the store's folder, .NET's lock
+/// folder, and the temporary folder the environment names.
+let sandboxFolders(cwd: String): List<String> =
+  let store = Stdlib.Cli.Path.parent(LanguageTools.LocalStore.path())
+  let extra =
+    [ "TMPDIR", "DOTNET_BUNDLE_EXTRACT_BASE_DIR" ]
+    |> Stdlib.List.filterMap(fun k -> Stdlib.Env.get(k))
+    |> Stdlib.List.filter(fun d -> d != "" && d != "/" && d != "/tmp")
+
+  Stdlib.List.flatten([ [ cwd, store, "/tmp/.dotnet" ], extra ])
+
+
 let toolsFor(o: Options): List<Tools.Tool> =
   match o.toolset with
   | StoreTools -> Tools.all()
@@ -865,7 +891,9 @@ let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
             && Stdlib.Cli.Sys.isTerminal(2)
           store = o.toolset == Toolset.StoreTools
           touched = []
-          probes = [] }
+          probes = []
+          writable = if o.sandbox then sandboxFolders(cwd) else []
+          hosts = o.hosts }
 
     let loop = Agent.start(messagesOf(session), o.maxTurns)
     Result.Ok(
@@ -1158,8 +1186,11 @@ let accepts(): Accepts.Accepts =
       "--checks"
       "--compact-at"
       "--attempts"
-      "--rerun" ],
-    Accepts.freeText(0, [ "-p", "--print", "--continue", "--list", "--show-prompt", "--merge" ]))
+      "--rerun"
+      "--hosts" ],
+    Accepts.freeText(
+      0,
+      [ "-p", "--print", "--continue", "--list", "--show-prompt", "--merge", "--sandbox" ]))
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
@@ -1196,6 +1227,9 @@ let help(_state: AppState): String =
     "                             told what went wrong, up to n in all; the closest to done is kept"
     "  --merge                    at the end, commit the kept session's branch and merge it into the branch"
     "                             dark started on, type errors and all, so its work is where a run looks"
+    "  --sandbox                  write only under the working directory and the store; bash runs in bwrap"
+    "                             with no network; code may reach loopback and --hosts only"
+    "  --hosts <a,b>              under --sandbox, the hosts code may reach"
     "  --rerun <id>               run session <id>'s model turns again on a new branch, against today's code"
     "                             and tools, and say which tool results changed"
     "  --base-url <url>           the Messages API's address (default https://api.anthropic.com)"

@@ -6,6 +6,7 @@
 1 Darklang.Cli.Agent.Tools.ls Darklang.Stdlib.List.sort
 1 Darklang.Cli.Agent.Tools.readFile Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Agent.Tools.readFile Darklang.Stdlib.Cli.FileSystem.isDirectory
+1 Darklang.Cli.Agent.Tools.shell Darklang.Stdlib.Cli.FileSystem.isDirectory
 1 Darklang.Cli.Agent.Tools.writeFile Darklang.Stdlib.Cli.File.writeText
 1 Darklang.Cli.Agent.prepare Darklang.Stdlib.Cli.Posix.getCwd
 1 Darklang.Cli.Agent.projectContext Darklang.Stdlib.Cli.File.readText
@@ -73,11 +74,11 @@
 1 Darklang.LanguageTools.PackageManager.Test.withStoreSnapshot Builtin.pmTestWithStoreSnapshot
 1 Darklang.SCM.Deps.dependentsFor Builtin.unwrap
 1 Darklang.SCM.PartialCommit.stringGt Darklang.Stdlib.List.sort
-2 Darklang.Cli.Agent.Tools.shell Darklang.Stdlib.Cli.Process.runWithTimeout
 2 Darklang.Cli.Packages.Edit.execute Darklang.Stdlib.Cli.Dir.deleteRecursive
 2 Darklang.Cli.Packages.Signatures.namedLike Darklang.Stdlib.List.sort
 2 Darklang.LanguageTools.AtRestTypeChecker.Generate.orPattern Darklang.Stdlib.List.sort
 2 Darklang.LanguageTools.PackageManager.Test.Worker.main Darklang.Stdlib.Cli.FileSystem.readFile
+3 Darklang.Cli.Agent.Tools.shell Darklang.Stdlib.Cli.Process.runWithTimeout
 3 Darklang.Cli.Completion.completeFilesystemPath Darklang.Stdlib.Cli.FileSystem.getDirectoryContents
 3 Darklang.Cli.Installation.Download.replaceBinary Darklang.Stdlib.Cli.executeWithUnitOrStdErr
 3 Darklang.Cli.Installation.Download.smokeTest Darklang.Stdlib.Cli.execute
