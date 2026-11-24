@@ -284,6 +284,12 @@ let clampRefusingNaN(value: Float64, limitA: Float64, limitB: Float64): Result<F
 
 
 /// Returns the <type Float64> value wrapped in a {{Result}} of the <type String>
+///
+/// Examples:
+///   Stdlib.Float64.parse("2") → Ok(2.0)
+///   Stdlib.Float64.parse("-0.5") → Ok(-0.5)
+///   Stdlib.Float64.parse("1e3") → Ok(1000.0)
+///   Stdlib.Float64.parse("1,5") → Error(BadFormat)
 let parse(s: String): Result<Float64, ParseError> =
   Builtin.float64Parse(s)
 

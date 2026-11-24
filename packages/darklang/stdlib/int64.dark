@@ -147,6 +147,14 @@ let __inRange(a: Float64): Result<Float64, Math.NonFinite> =
 /// parsed value on success, or {{Error}} with a <type ParseError> ({{BadFormat}}
 /// if the string isn't a valid integer, {{OutOfRange}} if it's outside the
 /// <type Int64> range).
+///
+/// Examples:
+///   Stdlib.Int64.parse("+3") → Ok(3)
+///   Stdlib.Int64.parse("007") → Ok(7)
+///   Stdlib.Int64.parse(" -12") → Ok(-12)
+///   Stdlib.Int64.parse("1.5") → Error(BadFormat)
+///   Stdlib.Int64.parse("1_000") → Error(BadFormat)
+///   Stdlib.Int64.parse("99999999999999999999") → Error(OutOfRange)
 let parse(s: String): Result<Int64, ParseError> =
   // a plain match: the generic Option.toResult call was a quarter of the cost
   match BigInt.parse(s) with

@@ -1,6 +1,11 @@
 module Darklang.Stdlib.Utf8
 
 /// Encodes <param s> as UTF-8.
+///
+/// Examples:
+///   Stdlib.Utf8.encode("hé") → <Bytes: 3 bytes 68 c3 a9>
+///   Stdlib.Utf8.encode("") → <Bytes: 0 bytes>
+///   Stdlib.Utf8.encode("hé") |> Stdlib.Utf8.decode → Ok("hé")
 let encode(s: String): Bytes =
   Builtin.utf8Encode(s)
 

@@ -1,0 +1,54 @@
+module Darklang.Cli.Tests.FnExamples
+
+test parseReadsTheBlock =
+  "Splits.\n\nExamples:\n  f(1) → 2\n  not an example\n  g(\"a\") → \"a → b\"\n\nMore prose → here"
+  |> Cli.Packages.Examples.parse
+  |> Stdlib.Test.equal(
+    [ Cli.Packages.Examples.Example { input = "f(1)", output = "2" }
+      Cli.Packages.Examples.Example
+        { input = "g(\"a\")", output = "\"a → b\"" } ])
+
+
+// every stdlib example prints what its doc comment says
+test stdlibExamplesHold =
+  let branch = SCM.Branch.mainBranchId
+  let fns =
+    (LanguageTools.PackageManager.Search.search(
+       branch,
+       LanguageTools.ProgramTypes.Search.SearchQuery
+         { currentModule = [ "Darklang", "Stdlib" ]
+           text = ""
+           searchDepth =
+             LanguageTools.ProgramTypes.Search.SearchDepth.AllDescendants
+           entityTypes = [ LanguageTools.ProgramTypes.Search.EntityType.Fn ]
+           exactMatch = false })).fns
+
+  let examples =
+    fns
+    |> Stdlib.List.map(fun f ->
+      Cli.Packages.Examples.parse(f.entity.description))
+    |> Stdlib.List.flatten
+
+  let wrong =
+    examples
+    |> Stdlib.List.filterMap(fun ex ->
+      let printed =
+        match Cli.Eval.evaluateRaw(
+                Stdlib.Option.Option.None,
+                branch,
+                ex.input,
+                [],
+                Cli.Eval.Harmful.Halt) with
+        | Ok(Some(out)) -> out
+        | Ok(None) -> ""
+        | Error(_) -> "an error"
+
+      if printed == ex.output then
+        Stdlib.Option.Option.None
+      else
+        Stdlib.Option.Option.Some(
+          $"{ex.input} → {printed}, but the doc says {ex.output}"))
+
+  Stdlib.Test.all(
+    [ Stdlib.List.length(examples) >= 40 |> Stdlib.Test.equal(true)
+      wrong |> Stdlib.Test.equal([]) ])

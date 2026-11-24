@@ -168,5 +168,13 @@ let product<'a: Multiply>(seed: 'a, xs: List<'a>): 'a =
 
 /// <param v> as text for a person, for any type with a `Display`. <fn Stdlib.inspect>
 /// shows any value.
+///
+/// Examples:
+///   Stdlib.display(3) → 3
+///   Stdlib.display(1.0) → 1.0
+///   Stdlib.display("hi") → hi
+///   Stdlib.display(Some(3)) → Some(3)
+///   Stdlib.display(Error("bad")) → Error(bad)
+///   Stdlib.display(Stdlib.DateTime.fromMilliseconds(1500)) → 1970-01-01T00:00:01.500Z
 let display<'a: Display>(v: 'a): String =
   Display.display(v)

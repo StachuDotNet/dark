@@ -47,6 +47,11 @@ let requestTarget(url: String): Url.Url =
 /// Parses a URL's query string into a dictionary, keeping the last value for
 /// each key: <fn Stdlib.Url.queryParams> of <fn requestTarget>, through
 /// {{Dict.fromEntries}}.
+///
+/// Examples:
+///   Stdlib.Http.parseQueryString("/search?q=dark&page=2") → { "page": "2", "q": "dark" }
+///   Stdlib.Http.parseQueryString("https://x.com/?q=a%20b&q=c") → { "q": "c" }
+///   Stdlib.Http.parseQueryString("q=dark") → {}
 let parseQueryString(url: String): Dict<String, String> =
   url
   |> requestTarget

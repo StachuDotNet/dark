@@ -76,8 +76,12 @@ let __matchSegment(
     Option.Some([ (name, fullPath) ])
 
 
-/// Match a request path against a route pattern
 /// Split a request path into non-empty segments.
+///
+/// Examples:
+///   Stdlib.HttpServer.splitPath("/users/42/") → ["users", "42"]
+///   Stdlib.HttpServer.splitPath("/") → List<String> []
+///   Stdlib.HttpServer.splitPath("/users/42?x=1") → ["users", "42?x=1"]
 let splitPath(requestPath: String): List<String> =
   String.split(requestPath, "/") |> List.filter(fun s -> Bool.not(String.isEmpty(s)))
 

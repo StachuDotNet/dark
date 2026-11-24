@@ -4,6 +4,13 @@ module Darklang.Stdlib.Json
 /// <fn Options.defaults>. An `Option` is its value, or `null` for `None`, and a `None`
 /// record field is left out: `{"host":"a1","cpu":38.5}`.
 /// Record fields are written in the order the type declares them; dict keys are sorted.
+///
+/// Examples:
+///   Stdlib.Json.serialize<List<Option<Int64>>>([Some(1), None]) → [1,null]
+///   Stdlib.Json.serialize<Dict<String, Int64>>(Dict { "b": 1, "a": 2 }) → {"a":2,"b":1}
+///   Stdlib.Json.serialize<(Int64 * String)>((1, "a")) → [1,"a"]
+///   Stdlib.Json.serialize<Float64>(1.0) → 1.0
+///   Stdlib.Json.serialize<DateTime>(Stdlib.DateTime.fromSeconds(0)) → "1970-01-01T00:00:00Z"
 let serialize(value: 'a): String =
   serializeWith<'a>(Options.defaults(), value)
 
@@ -32,6 +39,12 @@ let checkedSerializeWith(
 /// <fn serialize> writes, with either <type Options.NoneFields>, and the tagged
 /// `{"Some":[1]}` form of an `Option` too. A record field of type `Option` may be missing.
 /// Show an error with `$"{e}"` or `Stdlib.display(e)`.
+///
+/// Examples:
+///   Stdlib.Json.parse<Option<Int64>>("null") → Ok(None)
+///   Stdlib.Json.parse<Float64>("1") → Ok(1.0)
+///   Stdlib.Json.parse<Dict<String, Int64>>("{\"a\": 1}") → Ok({ "a": 1 })
+///   Stdlib.Json.parse<Int64>("1.5") |> Stdlib.Result.isOk → false
 let parse(json: String): Result<'a, ParseError.ParseError> =
   Builtin.jsonParse<'a>(json)
 

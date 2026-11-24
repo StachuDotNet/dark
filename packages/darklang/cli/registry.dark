@@ -249,43 +249,22 @@ module Registry =
 
 
   let acceptsDocs(): Accepts.Accepts =
+    let signatures =
+      Accepts.withValues(
+        [ "--module" ],
+        Accepts.freeText(
+          0,
+          [ "--types"
+            "--include-deprecated"
+            "--include-internal"
+            "--include-tests"
+            "--examples"
+            "--all" ]))
+
     Accepts.subcommands(
-      [ (
-          "signatures",
-          Accepts.withValues(
-            [ "--module" ],
-            Accepts.freeText(
-              0,
-              [ "--types"
-                "--include-deprecated"
-                "--include-internal"
-                "--include-tests"
-                "--all" ])))
-
-        (
-          "sigs",
-          Accepts.withValues(
-            [ "--module" ],
-            Accepts.freeText(
-              0,
-              [ "--types"
-                "--include-deprecated"
-                "--include-internal"
-                "--include-tests"
-                "--all" ])))
-
-        (
-          "api",
-          Accepts.withValues(
-            [ "--module" ],
-            Accepts.freeText(
-              0,
-              [ "--types"
-                "--include-deprecated"
-                "--include-internal"
-                "--include-tests"
-                "--all" ])))
-
+      [ ("signatures", signatures)
+        ("sigs", signatures)
+        ("api", signatures)
         ("stdlib", Accepts.nothing())
         ("lib", Accepts.nothing())
         ("for-ai", Accepts.freeText(0, []))

@@ -144,7 +144,8 @@ let renderModule(
       LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageType.PackageType>>,
   fns: List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageFn.PackageFn>>,
   impls:
-    List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.TraitImpl.TraitImpl>>)
+    List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.TraitImpl.TraitImpl>>,
+  withExamples: Bool)
   : String =
   let header = $"## {trimRoot(rootName, modKey)}"
   let typeLines =
@@ -155,7 +156,16 @@ let renderModule(
   let fnLines =
     fns
     |> Stdlib.List.sortBy(fun i -> i.location.name)
-    |> Stdlib.List.map(fun i -> $"{i.location.name}{formatFn(ctx, i.entity)}")
+    |> Stdlib.List.map(fun i ->
+      let examples =
+        if withExamples then
+          Examples.parse(i.entity.description)
+          |> Stdlib.List.map(fun ex -> "\n    " + Examples.render(ex))
+          |> Stdlib.String.join("")
+        else
+          ""
+
+      $"{i.location.name}{formatFn(ctx, i.entity)}{examples}")
 
   let body = Stdlib.List.concat(typeLines, fnLines) |> Stdlib.String.join("\n")
   let listing =
@@ -210,6 +220,7 @@ type ParsedArgs =
     deprecated: Query.Deprecated
     internal: Query.Internal
     testModules: Query.TestModules
+    examples: Bool
     filters: List<String>
     all: Bool
     parseErrors: List<FlagParser.ParseError> }
@@ -222,6 +233,7 @@ val argSpec =
           ("--include-deprecated", [])
           ("--include-internal", [])
           ("--include-tests", [])
+          ("--examples", [])
           ("--all", []) ]
       valueFlags = [ ("--module", []) ] }
 
@@ -240,6 +252,7 @@ let parseArgs(args: List<String>): ParsedArgs =
       deprecated = Query.Deprecated.showIf(FlagParser.hasFlag(p, "--include-deprecated"))
       internal = Query.Internal.showIf(FlagParser.hasFlag(p, "--include-internal"))
       testModules = Query.TestModules.showIf(FlagParser.hasFlag(p, "--include-tests"))
+      examples = FlagParser.hasFlag(p, "--examples")
       filters = p.positionals
       all = FlagParser.hasFlag(p, "--all")
       parseErrors = p.errors }
@@ -252,6 +265,7 @@ let executeFiltered(
   deprecated: Query.Deprecated,
   internal: Query.Internal,
   testModules: Query.TestModules,
+  withExamples: Bool,
   filterText: Option<String>)
   : AppState =
   let rootName = Stdlib.String.join(rootPath, ".")
@@ -377,7 +391,7 @@ let executeFiltered(
         | Some(v) -> v
         | None -> []
 
-      renderModule(ctx, rootName, key, ts, fs, is))
+      renderModule(ctx, rootName, key, ts, fs, is, withExamples))
 
   let totalFns = Stdlib.List.length(plainFns)
   let totalMethods =
@@ -513,6 +527,7 @@ let execute(state: AppState, args: List<String>): AppState =
         parsed.deprecated,
         parsed.internal,
         parsed.testModules,
+        parsed.examples,
         filter)
 
     let finalState =
@@ -533,7 +548,7 @@ let execute(state: AppState, args: List<String>): AppState =
 
 
 let help(_state: AppState): String =
-  [ "Usage: docs signatures [filter...] [--types] [--module <path>] [--all] [--include-deprecated] [--include-internal] [--include-tests]"
+  [ "Usage: docs signatures [filter...] [--types] [--module <path>] [--all] [--include-deprecated] [--include-internal] [--include-tests] [--examples]"
     ""
     "Token-tight dump of stdlib functions with full type signatures."
     "Designed for AI agents needing an API map for a specific module or task."
@@ -549,6 +564,7 @@ let help(_state: AppState): String =
     "  --include-deprecated   Include deprecated items hidden by default"
     "  --include-internal     Include internal helpers (names starting with __)"
     "  --include-tests        Include test helpers (what lives in Tests modules)"
+    "  --examples             Under each fn, its doc comment's examples: input → what eval prints"
     ""
     "Examples:"
     "  docs signatures                                # cheap overview"
@@ -556,6 +572,7 @@ let help(_state: AppState): String =
     "  docs signatures Stdlib.String Stdlib.List      # two modules, one call"
     "  docs signatures --module Stdlib.Http  # one module"
     "  docs signatures --module Stdlib.Option --types"
+    "  docs signatures Int64.parse --examples"
     "  docs signatures --all                          # everything (heavy)"
     ""
     "Output: per-module sections, one signature per line."
@@ -567,7 +584,12 @@ let complete(_state: AppState, args: List<String>): List<Completion.CompletionIt
   match Stdlib.List.last(args) with
   | Some(last) ->
     if Stdlib.String.startsWith(last, "--") then
-      [ "--types", "--module", "--include-deprecated", "--include-internal", "--include-tests" ]
+      [ "--types"
+        "--module"
+        "--include-deprecated"
+        "--include-internal"
+        "--include-tests"
+        "--examples" ]
       |> Stdlib.List.filter(fun f -> Stdlib.String.startsWith(f, last))
       |> Stdlib.List.map(Completion.simple)
     else

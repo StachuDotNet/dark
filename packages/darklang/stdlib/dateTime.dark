@@ -249,6 +249,12 @@ impl Display for ParseError =
 /// where {{Z}} can also be an offset from UTC such as {{+02:00}} or {{-05:30}}, or a plain
 /// {{YYYY-MM-DD}} date as midnight UTC. The result is in UTC. Returns {{Error InvalidDate}}
 /// for an impossible calendar date, or {{Error InvalidFormat}} for other rejected input.
+///
+/// Examples:
+///   Stdlib.DateTime.parse("2026-01-02") → Ok(<DateTime: 2026-01-02T00:00:00Z>)
+///   Stdlib.DateTime.parse("2026-01-02T03:04:05+02:00") → Ok(<DateTime: 2026-01-02T01:04:05Z>)
+///   Stdlib.DateTime.parse("2026-02-30") → Error(Stdlib.DateTime.ParseError.InvalidDate)
+///   Stdlib.DateTime.parse("02/01/2026") → Error(Stdlib.DateTime.ParseError.InvalidFormat)
 let parse(s: String): Result<DateTime, ParseError> =
   Builtin.dateTimeParse(s)
 
@@ -284,7 +290,12 @@ let toStringISO8601BasicDate(date: DateTime): String =
   __basicDate(date)
 
 
-/// Returns the current time
+/// Returns the current time, in UTC. It shows as ISO 8601, with milliseconds unless they are 0.
+///
+/// Examples:
+///   Stdlib.display(Stdlib.DateTime.fromSeconds(0)) → 1970-01-01T00:00:00Z
+///   Stdlib.display(Stdlib.DateTime.fromMilliseconds(1500)) → 1970-01-01T00:00:01.500Z
+///   Stdlib.DateTime.format(Stdlib.DateTime.fromSeconds(0), "%Y-%m-%d") → Ok("1970-01-01")
 let now(): DateTime =
   __now()
 
@@ -679,7 +690,11 @@ let __formatChars(
 /// {{%H}} hour {{00}}-{{23}}, {{%M}} minute {{00}}-{{59}}, {{%S}} second {{00}}-{{59}},
 /// {{%f}} milliseconds {{000}}-{{999}} (truncated, not rounded), {{%%}} a literal {{%}}.
 /// Any other {{%}} sequence, or a lone {{%}} at the end, is an {{Error}}.
-/// For example, {{format(d, "%Y-%m-%d %H:%M:%S.%f")}} gives {{Ok("2019-07-28 22:42:36.500")}}.
+///
+/// Examples:
+///   Stdlib.DateTime.format(Stdlib.DateTime.fromSeconds(0), "%Y-%m-%d %H:%M:%S") → Ok("1970-01-01 00:00:00")
+///   Stdlib.DateTime.format(Stdlib.DateTime.fromMilliseconds(1500), "%H:%M:%S.%f") → Ok("00:00:01.500")
+///   Stdlib.DateTime.format(Stdlib.DateTime.fromSeconds(0), "yyyy-MM-dd") |> Stdlib.Result.isOk → false
 let format(date: DateTime, pattern: String): Result<String, String> =
   // `HH:mm:ss` has no directive, so it would come back unchanged: refuse it instead
   let foreign = [ "yyyy", "YYYY", "HH", "hh", "mm", "ss", "dd", "MM" ]

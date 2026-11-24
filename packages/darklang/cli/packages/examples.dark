@@ -1,0 +1,24 @@
+module Darklang.Cli.Packages.Examples
+
+/// One line of a doc comment's `Examples:` block: an expression, and what `eval` prints for it.
+type Example =
+  { input: String
+    output: String }
+
+
+/// The `Examples:` block of a doc comment: the `input → output` lines after a line reading
+/// `Examples:`, up to the next blank line. A line splits at its first arrow.
+let parse(description: String): List<Example> =
+  description
+  |> Stdlib.String.splitOnNewline
+  |> Stdlib.List.dropWhile(fun line -> Stdlib.String.trim(line) != "Examples:")
+  |> Stdlib.List.drop(1)
+  |> Stdlib.List.takeWhile(fun line -> Stdlib.String.trim(line) != "")
+  |> Stdlib.List.filterMap(fun line ->
+    Stdlib.String.splitFirst(Stdlib.String.trim(line), " → ")
+    |> Stdlib.Option.map(fun((input, output)) ->
+      Example { input = Stdlib.String.trim(input), output = Stdlib.String.trim(output) }))
+
+
+let render(example: Example): String =
+  $"{example.input} → {example.output}"
