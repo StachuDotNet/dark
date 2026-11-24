@@ -176,72 +176,86 @@ let keywordKind(word: String): TokenKind =
 
 
 /// The operator at <param i>, longest first: its length and token.
-let operatorAt(src: Source, i: Int64): Option<(Int64 * TokenKind)> =
-  let c = at(src, i)
-  let c1 = at(src, i + 1)
-  let two = fun(k) -> Stdlib.Option.Option.Some((2, k))
-  let one = fun(k) -> Stdlib.Option.Option.Some((1, k))
+let operatorAt(src: Source, i: Int64, c: UInt32, c1: UInt32): Option<(Int64 * TokenKind)> =
   if c == cDot && c1 == cDot && at(src, i + 2) == cDot then Stdlib.Option.Option.Some((3, TokenKind.TDotDotDot))
-  else if c == cStar && c1 == cStar then two(TokenKind.TStarStar)
-  else if c == cMinus && c1 == cGt then two(TokenKind.TArrow)
-  else if c == cEquals && c1 == cEquals then two(TokenKind.TEqEq)
-  else if c == 33u32 && c1 == cEquals then two(TokenKind.TNeq)
-  else if c == 60u32 && c1 == 60u32 then two(TokenKind.TShl)
-  else if c == 60u32 && c1 == cEquals then two(TokenKind.TLte)
-  else if c == cGt && c1 == cGt then two(TokenKind.TShr)
-  else if c == cGt && c1 == cEquals then two(TokenKind.TGte)
-  else if c == 38u32 && c1 == 38u32 then two(TokenKind.TAnd)
-  else if c == 124u32 && c1 == 124u32 then two(TokenKind.TOr)
-  else if c == 124u32 && c1 == cGt then two(TokenKind.TPipe)
+  else if c == cStar && c1 == cStar then Stdlib.Option.Option.Some((2, TokenKind.TStarStar))
+  else if c == cMinus && c1 == cGt then Stdlib.Option.Option.Some((2, TokenKind.TArrow))
+  else if c == cEquals && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TEqEq))
+  else if c == 33u32 && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TNeq))
+  else if c == 60u32 && c1 == 60u32 then Stdlib.Option.Option.Some((2, TokenKind.TShl))
+  else if c == 60u32 && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TLte))
+  else if c == cGt && c1 == cGt then Stdlib.Option.Option.Some((2, TokenKind.TShr))
+  else if c == cGt && c1 == cEquals then Stdlib.Option.Option.Some((2, TokenKind.TGte))
+  else if c == 38u32 && c1 == 38u32 then Stdlib.Option.Option.Some((2, TokenKind.TAnd))
+  else if c == 124u32 && c1 == 124u32 then Stdlib.Option.Option.Some((2, TokenKind.TOr))
+  else if c == 124u32 && c1 == cGt then Stdlib.Option.Option.Some((2, TokenKind.TPipe))
   else
     match Stdlib.UInt32.toInt64(c) with
-    | 43 -> one(TokenKind.TPlus)
-    | 45 -> one(TokenKind.TMinus)
-    | 42 -> one(TokenKind.TStar)
-    | 47 -> one(TokenKind.TSlash)
-    | 40 -> one(TokenKind.TLParen)
-    | 41 -> one(TokenKind.TRParen)
-    | 123 -> one(TokenKind.TLBrace)
-    | 125 -> one(TokenKind.TRBrace)
-    | 91 -> one(TokenKind.TLBracket)
-    | 93 -> one(TokenKind.TRBracket)
-    | 58 -> one(TokenKind.TColon)
-    | 44 -> one(TokenKind.TComma)
-    | 59 -> one(TokenKind.TSemicolon)
-    | 46 -> one(TokenKind.TDot)
-    | 61 -> one(TokenKind.TEquals)
-    | 63 -> one(TokenKind.TQuestion)
-    | 33 -> one(TokenKind.TNot)
-    | 60 -> one(TokenKind.TLt)
-    | 62 -> one(TokenKind.TGt)
-    | 38 -> one(TokenKind.TBitAnd)
-    | 94 -> one(TokenKind.TBitXor)
-    | 126 -> one(TokenKind.TBitNot)
-    | 37 -> one(TokenKind.TPercent)
-    | 124 -> one(TokenKind.TBar)
+    | 43 -> Stdlib.Option.Option.Some((1, TokenKind.TPlus))
+    | 45 -> Stdlib.Option.Option.Some((1, TokenKind.TMinus))
+    | 42 -> Stdlib.Option.Option.Some((1, TokenKind.TStar))
+    | 47 -> Stdlib.Option.Option.Some((1, TokenKind.TSlash))
+    | 40 -> Stdlib.Option.Option.Some((1, TokenKind.TLParen))
+    | 41 -> Stdlib.Option.Option.Some((1, TokenKind.TRParen))
+    | 123 -> Stdlib.Option.Option.Some((1, TokenKind.TLBrace))
+    | 125 -> Stdlib.Option.Option.Some((1, TokenKind.TRBrace))
+    | 91 -> Stdlib.Option.Option.Some((1, TokenKind.TLBracket))
+    | 93 -> Stdlib.Option.Option.Some((1, TokenKind.TRBracket))
+    | 58 -> Stdlib.Option.Option.Some((1, TokenKind.TColon))
+    | 44 -> Stdlib.Option.Option.Some((1, TokenKind.TComma))
+    | 59 -> Stdlib.Option.Option.Some((1, TokenKind.TSemicolon))
+    | 46 -> Stdlib.Option.Option.Some((1, TokenKind.TDot))
+    | 61 -> Stdlib.Option.Option.Some((1, TokenKind.TEquals))
+    | 63 -> Stdlib.Option.Option.Some((1, TokenKind.TQuestion))
+    | 33 -> Stdlib.Option.Option.Some((1, TokenKind.TNot))
+    | 60 -> Stdlib.Option.Option.Some((1, TokenKind.TLt))
+    | 62 -> Stdlib.Option.Option.Some((1, TokenKind.TGt))
+    | 38 -> Stdlib.Option.Option.Some((1, TokenKind.TBitAnd))
+    | 94 -> Stdlib.Option.Option.Some((1, TokenKind.TBitXor))
+    | 126 -> Stdlib.Option.Option.Some((1, TokenKind.TBitNot))
+    | 37 -> Stdlib.Option.Option.Some((1, TokenKind.TPercent))
+    | 124 -> Stdlib.Option.Option.Some((1, TokenKind.TBar))
     | _ -> Stdlib.Option.Option.None
 
 
 // --- the source, as codepoints ---
 
 type Source =
-  { cps: List<UInt32>
+  { text: String
+    cps: List<UInt32>
     length: Int64
-    /// the Chars, when each is one codepoint, so text can be cut from them directly
-    chars: Option<List<Char>>
+    /// whether each character is one codepoint, so text can be cut from the string directly
+    simple: Bool
     /// whether a codepoint takes two UTF-16 units, so a column isn't just a count
-    astral: Bool }
+    astral: Bool
+    /// where each line ends: the index of its line break, or the length for the last
+    lineEnds: List<Int64> }
 
 
 let source(text: String): Source =
   let cps = Stdlib.String.toCodepoints(text)
   let length = Stdlib.List.length(cps)
-  let chars = Stdlib.String.toList(text)
+  let lineLengths = Stdlib.List.map(Stdlib.String.split(text, "\n"), fun line -> Stdlib.String.codepointLength(line))
   Source
-    { cps = cps
+    { text = text
+      cps = cps
       length = length
-      chars = if Stdlib.List.length(chars) == length then Stdlib.Option.Option.Some(chars) else Stdlib.Option.Option.None
-      astral = Stdlib.List.any(cps, fun c -> c > 65535u32) }
+      simple = Stdlib.String.length(text) == length
+      astral = Stdlib.List.any(cps, fun c -> c > 65535u32)
+      lineEnds = lineEndsFrom(lineLengths, 0, []) }
+
+
+let lineEndsFrom(lengths: List<Int64>, start: Int64, endsRev: List<Int64>): List<Int64> =
+  match lengths with
+  | [ n, ...rest ] -> lineEndsFrom(rest, start + n + 1, [ start + n, ...endsRev ])
+  | [] -> Stdlib.List.reverse(endsRev)
+
+
+/// The end of line <param row>, found without walking it: comments run to the end of a line.
+let lineEndOnRow(src: Source, row: Int64): Int64 =
+  match Builtin.listGetAt(src.lineEnds, row) with
+  | Some(e) -> e
+  | None -> src.length
 
 
 /// The codepoint at <param i>, or 0 past the end.
@@ -311,9 +325,13 @@ let isTypeVarChar(c: UInt32): Bool =
 
 /// The text of codepoints [<param from>, <param to>).
 let text(src: Source, from: Int64, to: Int64): String =
-  match src.chars with
-  | Some(chars) -> Stdlib.String.fromList(Builtin.listTake(Builtin.listDrop(chars, from), to - from))
-  | None ->
+  if src.simple then
+    match Builtin.stringSlice(src.text, from, to) with
+    | Some(t) -> t
+    | None ->
+      let a = minI(maxI(0, from), src.length)
+      Builtin.stringSlice(src.text, a, minI(maxI(a, to), src.length)) |> Stdlib.Option.withDefault("")
+  else
     src.cps
     |> Stdlib.List.drop(from)
     |> Stdlib.List.take(to - from)
@@ -328,52 +346,84 @@ let startsWith(src: Source, i: Int64, s: String): Bool =
 
 /// Where <param pos> moves to over codepoints [<param from>, <param to>).
 let advance(src: Source, pos: Point, from: Int64, to: Int64): Point =
-  if from >= to then
-    pos
-  else
-    let c = at(src, from)
-    let next =
-      if c == nl then
-        Point { row = pos.row + 1, column = 0 }
-      else if c > 65535u32 then
-        Point { row = pos.row, column = pos.column + 2 }
-      else
-        Point { row = pos.row, column = pos.column + 1 }
+  if from >= to then pos
+  else advanceIn(Builtin.listDrop(src.cps, from), pos.row, pos.column, to - from)
 
-    advance(src, next, from + 1, to)
+
+// The scanners below walk the list from a position rather than index it: a step is then one
+// pattern match, not a call and a lookup per character.
+let advanceIn(rest: List<UInt32>, row: Int64, column: Int64, count: Int64): Point =
+  if count <= 0 then
+    Point { row = row, column = column }
+  else
+    match rest with
+    | [ c, ...tail ] ->
+      if c == 10u32 then advanceIn(tail, row + 1, 0, count - 1)
+      else if c > 65535u32 then advanceIn(tail, row, column + 2, count - 1)
+      else advanceIn(tail, row, column + 1, count - 1)
+    | [] -> Point { row = row, column = column + count }
 
 
 // --- scanners: each returns the index just past what it scanned ---
 
 let scanWhile(src: Source, i: Int64, keep: UInt32 -> Bool): Int64 =
-  if i < src.length && keep(at(src, i)) then scanWhile(src, i + 1, keep) else i
+  scanWhileIn(Builtin.listDrop(src.cps, i), i, keep)
+
+
+let scanWhileIn(rest: List<UInt32>, i: Int64, keep: UInt32 -> Bool): Int64 =
+  match rest with
+  | [ c, ...tail ] -> if keep(c) then scanWhileIn(tail, i + 1, keep) else i
+  | [] -> i
+
+
+let digitsEnd(src: Source, i: Int64): Int64 =
+  digitsEndIn(Builtin.listDrop(src.cps, i), i)
+
+
+let digitsEndIn(rest: List<UInt32>, i: Int64): Int64 =
+  match rest with
+  | [ c, ...tail ] -> if c >= 48u32 && c <= 57u32 then digitsEndIn(tail, i + 1) else i
+  | [] -> i
 
 
 /// Past the identifier characters from <param i>. The hot loop of lexing, so ASCII is
 /// tested inline.
 let identEnd(src: Source, i: Int64): Int64 =
-  let c = at(src, i)
-  if (c >= 97u32 && c <= 122u32) || (c >= 65u32 && c <= 90u32) || (c >= 48u32 && c <= 57u32) || c == 95u32 || c == 39u32 then
-    identEnd(src, i + 1)
-  else if c >= 128u32 && i < src.length && Stdlib.Codepoint.isAlphanumeric(c) then
-    identEnd(src, i + 1)
-  else
-    i
+  identEndIn(Builtin.listDrop(src.cps, i), i)
+
+
+let identEndIn(rest: List<UInt32>, i: Int64): Int64 =
+  match rest with
+  | [ c, ...tail ] ->
+    if (c >= 97u32 && c <= 122u32) || (c >= 65u32 && c <= 90u32) || (c >= 48u32 && c <= 57u32) || c == 95u32 || c == 39u32 then
+      identEndIn(tail, i + 1)
+    else if c >= 128u32 && Stdlib.Codepoint.isAlphanumeric(c) then
+      identEndIn(tail, i + 1)
+    else
+      i
+  | [] -> i
 
 
 let lineEnd(src: Source, i: Int64): Int64 =
-  scanWhile(src, i, fun c -> c != nl)
+  lineEndIn(Builtin.listDrop(src.cps, i), i)
+
+
+let lineEndIn(rest: List<UInt32>, i: Int64): Int64 =
+  match rest with
+  | [ c, ...tail ] -> if c == 10u32 then i else lineEndIn(tail, i + 1)
+  | [] -> i
 
 
 /// Past the closing <param close> at or after <param i>, skipping `\` escapes.
 let scanQuoted(src: Source, i: Int64, close: UInt32): Option<Int64> =
-  if i >= src.length then
-    Stdlib.Option.Option.None
-  else
-    let c = at(src, i)
-    if c == backslash && i + 1 < src.length then scanQuoted(src, i + 2, close)
-    else if c == close then Stdlib.Option.Option.Some(i + 1)
-    else scanQuoted(src, i + 1, close)
+  scanQuotedIn(Builtin.listDrop(src.cps, i), i, close)
+
+
+let scanQuotedIn(rest: List<UInt32>, i: Int64, close: UInt32): Option<Int64> =
+  match rest with
+  | [ 92u32, _, ...tail ] -> scanQuotedIn(tail, i + 2, close)
+  | [ c, ...tail ] -> if c == close then Stdlib.Option.Option.Some(i + 1) else scanQuotedIn(tail, i + 1, close)
+  | [] -> Stdlib.Option.Option.None
 
 
 let skipQuoted(src: Source, i: Int64, close: UInt32): Int64 =
@@ -661,10 +711,10 @@ let foreignSuffix(body: String, suffix: String, fraction: Bool, exponent: Bool):
 
 /// The token for a number from <param i> to <param endIndex>, and its problem if any.
 let numberToken(src: Source, i: Int64): (TokenKind * Int64 * Option<Problem>) =
-  let digitEnd = scanWhile(src, i + 1, isDigit)
+  let digitEnd = digitsEnd(src, i + 1)
   let hasFraction =
     digitEnd + 1 < src.length && at(src, digitEnd) == cDot && isDigit(at(src, digitEnd + 1))
-  let fractionEnd = if hasFraction then scanWhile(src, digitEnd + 1, isDigit) else digitEnd
+  let fractionEnd = if hasFraction then digitsEnd(src, digitEnd + 1) else digitEnd
   let signIndex = fractionEnd + 1
   let digitsIndex =
     if signIndex < src.length && (at(src, signIndex) == cPlus || at(src, signIndex) == cMinus) then
@@ -676,7 +726,7 @@ let numberToken(src: Source, i: Int64): (TokenKind * Int64 * Option<Problem>) =
        && (at(src, fractionEnd) == cLowerE || at(src, fractionEnd) == cUpperE)
        && digitsIndex < src.length
        && isDigit(at(src, digitsIndex)) then
-      scanWhile(src, digitsIndex, isDigit)
+      digitsEnd(src, digitsIndex)
     else
       fractionEnd
   let hasExponent = exponentEnd > fractionEnd
@@ -816,25 +866,26 @@ let lastRange(st: State): Range =
 
 
 /// Past the spaces, tabs and line breaks from <param i>, and the position there.
-let skipSpaces(src: Source, i: Int64, row: Int64, column: Int64): (Int64 * Point) =
-  let c = at(src, i)
-  if i >= src.length then (i, Point { row = row, column = column })
-  else if c == nl then skipSpaces(src, i + 1, row + 1, 0)
-  else if c == 32u32 || c == 9u32 || c == 13u32 then skipSpaces(src, i + 1, row, column + 1)
-  else (i, Point { row = row, column = column })
+let skipSpacesIn(rest: List<UInt32>, i: Int64, row: Int64, column: Int64): (Int64 * Point) =
+  match rest with
+  | [ c, ...tail ] ->
+    if c == 10u32 then skipSpacesIn(tail, i + 1, row + 1, 0)
+    else if c == 32u32 || c == 9u32 || c == 13u32 then skipSpacesIn(tail, i + 1, row, column + 1)
+    else (i, Point { row = row, column = column })
+  | [] -> (i, Point { row = row, column = column })
 
 
 let skipTrivia(src: Source, st: State): State =
   let i = st.index
-  if i >= src.length then
-    st
-  else
-    let c = at(src, i)
-    if c == 32u32 || c == 9u32 || c == 13u32 || c == nl then
-      let (e, pos) = skipSpaces(src, i, st.pos.row, st.pos.column)
+  let rest = Builtin.listDrop(src.cps, i)
+  match rest with
+  | [] -> st
+  | [ c, ... ] ->
+    if c == 32u32 || c == 9u32 || c == 13u32 || c == 10u32 then
+      let (e, pos) = skipSpacesIn(rest, i, st.pos.row, st.pos.column)
       skipTrivia(src, { st with index = e, pos = pos })
     else if c == cSlash && at(src, i + 1) == cSlash then
-      let e = lineEnd(src, i)
+      let e = lineEndOnRow(src, st.pos.row)
       let isDoc = at(src, i + 2) == cSlash && Stdlib.Bool.not(at(src, i + 3) == cSlash)
       let endPos = sameLineEnd(src, st.pos, i, e)
       let trivia =
@@ -905,8 +956,12 @@ let go(src: Source, st0: State): State =
 
 
 let step(src: Source, st: State, i: Int64): State =
-  let c = at(src, i)
-  if c == cEquals && at(src, i + 1) == cGt then
+  let (c, c1) =
+    match Builtin.listDrop(src.cps, i) with
+    | [ a, b, ... ] -> (a, b)
+    | [ a ] -> (a, 0u32)
+    | [] -> (0u32, 0u32)
+  if c == cEquals && c1 == cGt then
     // `=>` lexes as `=` then `>`, for the parser to refuse
     emit(src, st, TokenKind.TEquals, i + 1)
   else if c == backtick then
@@ -951,7 +1006,7 @@ let step(src: Source, st: State, i: Int64): State =
       let e = lineEnd(src, i + 1)
       emitBad(src, st, TokenKind.TStringLit(unescape(src, i + 1, e)), e, Problem.UnterminatedString)
   else if c == apostrophe then
-    if inTypeContext(st) && i + 1 < src.length && (isLetter(at(src, i + 1)) || at(src, i + 1) == underscore) then
+    if inTypeContext(st) && i + 1 < src.length && (isLetter(c1) || c1 == underscore) then
       let varEnd = scanWhile(src, i + 1, isTypeVarChar)
       let gEnd = graphemeEnd(src, i + 1)
       if (varEnd < src.length && at(src, varEnd) == apostrophe)
@@ -959,7 +1014,7 @@ let step(src: Source, st: State, i: Int64): State =
         charLiteral(src, st, i + 1)
       else
         emitInLine(src, st, TokenKind.TIdent(text(src, i + 1, varEnd)), varEnd)
-    else if i + 1 < src.length && at(src, i + 1) == backslash then
+    else if i + 1 < src.length && c1 == backslash then
       charLiteral(src, st, i + 1)
     else
       let contentEnd = if i + 1 < src.length then graphemeEnd(src, i + 1) else i + 1
@@ -968,7 +1023,7 @@ let step(src: Source, st: State, i: Int64): State =
       else
         let e = minI(src.length, maxI(i + 1, contentEnd))
         emitBad(src, st, TokenKind.TCharLit(unescape(src, i + 1, e)), e, Problem.UnterminatedChar)
-  else if c == cDollar && at(src, i + 1) == quote then
+  else if c == cDollar && c1 == quote then
     match interpEnd(src, i) with
     | Some(e) -> emit(src, st, TokenKind.TInterpString, e)
     | None ->
@@ -985,15 +1040,15 @@ let step(src: Source, st: State, i: Int64): State =
       emitBad(src, st, TokenKind.TInterpString, e, p)
   else
     let refused =
-      if c == 58u32 && at(src, i + 1) == 58u32 then Stdlib.Option.Option.Some("::")
+      if c == 58u32 && c1 == 58u32 then Stdlib.Option.Option.Some("::")
       else if c == 64u32 then Stdlib.Option.Option.Some("@")
-      else if c == cPlus && at(src, i + 1) == cPlus then Stdlib.Option.Option.Some("++")
+      else if c == cPlus && c1 == cPlus then Stdlib.Option.Option.Some("++")
       else Stdlib.Option.Option.None
     match refused with
     | Some(s) ->
       emitBad(src, st, TokenKind.TPlus, i + Stdlib.String.length(s), Problem.RefusedOperator(s))
     | None ->
-      match operatorAt(src, i) with
+      match operatorAt(src, i, c, c1) with
       | Some((length, kind)) -> emitInLine(src, st, kind, i + length)
       | None ->
         let endPos = advance(src, st.pos, i, i + 1)
