@@ -29,7 +29,8 @@ let time(args: List<String>): Int64 =
     let reps = repsOf(args)
     let times = Stdlib.List.map(Stdlib.List.range(1, reps), fun _ -> timeOnce(kind, src)) |> Stdlib.List.sort
     let median = Stdlib.List.getAt(times, reps / 2) |> Stdlib.Option.withDefault(0)
-    Stdlib.printLine($"median {median}ms of {times}")
+    let all = Stdlib.String.join(Stdlib.List.map(times, fun t -> Builtin.int64ToString(t)), ", ")
+    Stdlib.printLine($"median {median}ms of [{all}]")
     0
   | Error(_) -> 1
 
@@ -41,3 +42,23 @@ let tree(args: List<String>): Int64 =
     Stdlib.printLine($"{Dark.parse(kindOf(args), src)}")
     0
   | Error(_) -> 1
+
+
+/// `[script]`: what stdin parses to, as lines of plain text: the declarations and top-level
+/// expressions counted, each diagnostic's position and message, and each declaration's range.
+/// Only Strings and Int64s are printed, so a compiled parser prints the same lines.
+let summary(args: List<String>): Int64 =
+  match Stdlib.Cli.Stdin.readAll() with
+  | Ok(src) ->
+    let (parsed, diagnostics) = Dark.parse(kindOf(args), src)
+    (match parsed with
+     | Some(SourceFile(f)) ->
+       Stdlib.printLine($"declarations {Stdlib.List.length(f.declarations)}, expressions {Stdlib.List.length(f.exprsToEval)}, file {rangeText(f.range)}")
+     | None -> Stdlib.printLine("no tree"))
+    Stdlib.List.iter(diagnostics, fun((r, message)) -> Stdlib.printLine($"{rangeText(r)} {message}"))
+    0
+  | Error(_) -> 1
+
+
+let rangeText(r: LanguageTools.Parser.Range): String =
+  $"{r.start.row}:{r.start.column}-{r.end_.row}:{r.end_.column}"
