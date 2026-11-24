@@ -268,6 +268,29 @@ let getDeprecationSetsFor (branchId : PT.BranchId) : DeprecationSets =
         |> Set.map Hash
       names = names }
 
+/// Where each of <param names> is declared under `packages/`, as the last load recorded it:
+/// (name, file, line, last line, the first line's text), in file and line order. A name saved
+/// only in the store has none.
+let sourceLines
+  (names : List<string>)
+  : List<string * string * int64 * int64 * string> =
+  if List.isEmpty names then
+    []
+  else
+    Sql.query
+      """
+      SELECT name, file, line, end_line, text FROM package_source_lines
+      WHERE name IN (SELECT value FROM json_each(@names))
+      ORDER BY file, line
+      """
+    |> Sql.parameters [ "names", Sql.string (jsonStrings names) ]
+    |> Sql.executeRows (fun read ->
+      (read.string "name",
+       read.string "file",
+       read.int64 "line",
+       read.int64 "end_line",
+       read.string "text"))
+
 /// How many items call each of <param hashes>, for ranking search results by use. A caller
 /// counts when some name holds it now and it is not a test or in a `Tests` module, so old
 /// versions and test fixtures do not count. Hashes nothing calls are left out.

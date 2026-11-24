@@ -1,0 +1,87 @@
+module Darklang.Cli.Packages.Where
+
+// `--where`: where items are declared in the `.dark` files under `packages/`, as `file:line: text`
+// lines the way `grep -n` prints them, so an editor or an agent can jump there. Loading
+// `packages/` records each item's lines in the store, so finding them reads no file.
+
+/// One declaration: its full name, its file, its first and last line (from 1), and the text of
+/// its first line.
+type Spot =
+  { name: String
+    file: String
+    line: Int64
+    endLine: Int64
+    text: String }
+
+
+/// Where each of <param names> is declared, in file and line order. A name saved only in the
+/// store has no spot.
+let find(names: List<String>): List<Spot> =
+  Builtin.pmSourceLines(names)
+  |> Stdlib.List.map(fun((name, file, line, endLine, text)) ->
+    Spot { name = name, file = file, line = line, endLine = endLine, text = text })
+
+
+let lineAt(file: String, line: Int64, text: String): String =
+  $"{file}:{Stdlib.display(line)}: {Stdlib.String.trim(text)}"
+
+
+/// <param spot>'s first line, as `file:line: text`.
+let show(spot: Spot): String =
+  lineAt(spot.file, spot.line, spot.text)
+
+
+/// Whether <param line> has <param word> as a whole identifier, not inside a longer one.
+let hasWord(line: String, word: String): Bool =
+  line
+  |> Stdlib.String.map(fun c -> if Stdlib.Char.isAlphanumeric(c) || c == '_' then c else ' ')
+  |> Stdlib.String.split(" ")
+  |> Stdlib.List.contains(word)
+
+
+/// The lines of <param spot> that name <param word>, out of <param fileLines> (its file's
+/// lines), or its first line when none does.
+let linesNaming(spot: Spot, fileLines: List<String>, word: String): List<String> =
+  let hits =
+    fileLines
+    |> Stdlib.List.drop(spot.line - 1)
+    |> Stdlib.List.take(spot.endLine - spot.line + 1)
+    |> Stdlib.List.indexedMap(fun(i, line) -> (i, line))
+    |> Stdlib.List.filter(fun((_, line)) -> hasWord(line, word))
+    |> Stdlib.List.map(fun((i, line)) -> lineAt(spot.file, spot.line + i, line))
+
+  if Stdlib.List.isEmpty(hits) then [ show(spot) ] else hits
+
+
+/// Each line of <param spots> that names <param word>, reading each of their files once.
+let usesOf(spots: List<Spot>, word: String): List<String> =
+  spots
+  |> Stdlib.List.map(fun s -> s.file)
+  |> Stdlib.List.unique
+  |> Stdlib.List.map(fun file ->
+    let fileLines =
+      match Stdlib.Cli.File.readText(file) with
+      | Ok(text) -> Stdlib.String.splitOnNewline(text)
+      | Error(_) -> []
+
+    spots
+    |> Stdlib.List.filter(fun s -> s.file == file)
+    |> Stdlib.List.map(fun s -> linesNaming(s, fileLines, word))
+    |> Stdlib.List.flatten)
+  |> Stdlib.List.flatten
+
+
+/// The names in <param names> that no spot is for.
+let missing(names: List<String>, spots: List<Spot>): List<String> =
+  let found = spots |> Stdlib.List.map(fun s -> s.name)
+  names |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(found, n)))
+
+
+/// Say on stderr, in one line, which of <param names> have no line under `packages/`.
+let noteMissing(names: List<String>): Unit =
+  match names with
+  | [] -> ()
+  | _ ->
+    let list = Stdlib.String.join(names, ", ")
+    Stdlib.printErrorLine(
+      $"Not declared in a .dark file under packages/ (saved only in the store): {list}")

@@ -1369,6 +1369,37 @@ let fns (pm : PT.PackageManager) : List<BuiltInFn> =
       deprecated = NotDeprecated }
 
 
+    { name = fn "pmSourceLines" 0
+      typeParams = []
+      parameters = [ Param.make "names" (TList TString) "full dotted names" ]
+      returnType = TList(TTuple(TString, TString, [ TInt64; TInt64; TString ]))
+      description =
+        "Where each of <param names> is declared under `packages/`, as the last load "
+        + "recorded it: (name, file, line, last line, the first line's text), lines "
+        + "counting from 1. A name saved only in the store has none."
+      fn =
+        (function
+        | _, _, _, [| DList(_, Items(names)) |] ->
+          names
+          |> List.choose (function
+            | DString s -> Some s
+            | _ -> None)
+          |> LibDB.Queries.sourceLines
+          |> List.map (fun (name, file, line, endLine, text) ->
+            DTuple(
+              DString name,
+              DString file,
+              [ DInt64 line; DInt64 endLine; DString text ]
+            ))
+          |> Dval.list (
+            KTTuple(VT.string, VT.string, [ VT.int64; VT.int64; VT.string ])
+          )
+        | _ -> incorrectArgs ())
+      previewable = Impure
+      callEffects = set [ Effect.PackageRead ]
+      deprecated = NotDeprecated }
+
+
     { name = fn "pmCallerCounts" 0
       typeParams = []
       parameters =

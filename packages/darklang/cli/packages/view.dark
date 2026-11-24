@@ -578,6 +578,8 @@ type ViewMode =
   | Ast
   /// The register-machine instructions the function actually runs.
   | Instructions
+  /// The `file:line` it is declared at under `packages/`.
+  | Where
 
 
 let modeName(mode: ViewMode): String =
@@ -586,6 +588,7 @@ let modeName(mode: ViewMode): String =
   | Raw -> "--raw"
   | Ast -> "--ast"
   | Instructions -> "--instructions"
+  | Where -> "--where"
 
 
 // TODO: neither `--raw` nor `--include-tests` has earned its place, and both should be
@@ -621,6 +624,7 @@ let parseArgs(args: List<String>): Result<(List<String> * ViewMode * Bool), Stri
       | "--ast" -> Result.Ok(ViewMode.Ast)
       | "--instructions" -> Result.Ok(ViewMode.Instructions)
       | "--instrs" -> Result.Ok(ViewMode.Instructions)
+      | "--where" -> Result.Ok(ViewMode.Where)
       | other -> Result.Error($"unknown option `{other}`"))
 
   match modeResult with
@@ -849,6 +853,28 @@ let viewOne(
       | Error(e) ->
         printErr(e)
         { state with exitCode = 1 }
+    | Where ->
+      let path =
+        match location with
+        | Module(path) -> path
+        | Type(l) -> Stdlib.List.append(modulePathOf(location), l.name)
+        | Value(l) -> Stdlib.List.append(modulePathOf(location), l.name)
+        | Function(l) -> Stdlib.List.append(modulePathOf(location), l.name)
+        | Trait(l) -> Stdlib.List.append(modulePathOf(location), l.name)
+        | Impl(l) -> Stdlib.List.append(modulePathOf(location), l.name)
+        | Test(l) -> Stdlib.List.append(modulePathOf(location), l.name)
+
+      let name = Stdlib.String.join(path, ".")
+      match location, Where.find([ name ]) with
+      | Impl(_), _ ->
+        printErr("--where places functions, types, values, traits, tests and modules, not impls")
+        { state with exitCode = 1 }
+      | _, [] ->
+        Where.noteMissing([ name ])
+        { state with exitCode = 1 }
+      | _, spots ->
+        spots |> Stdlib.List.iter(fun s -> Stdlib.printLine(Where.show(s)))
+        state
     | Source ->
       viewEntity(branchId, location, Tests.showIf(includeTests))
       // Show the trace hint only for the human-readable source view.
@@ -874,6 +900,7 @@ let execute(state: AppState, args: List<String>): AppState =
     let viewNamed(acc: AppState, p: String): AppState =
       match mode with
       | Raw -> Stdlib.printLine($"// {p}")
+      | Where -> ()
       | _ -> Stdlib.printLine(Stdlib.Cli.UI.Colors.boldText($"# {p}"))
 
       viewOne(acc, Option.Some(p), mode, includeTests, $"Cannot view {p}")
@@ -884,7 +911,7 @@ let execute(state: AppState, args: List<String>): AppState =
     | [first, ...rest] ->
       rest
       |> Stdlib.List.fold(viewNamed(state, first), fun(acc, p) ->
-        Stdlib.printLine("")
+        if mode != ViewMode.Where then Stdlib.printLine("") else ()
         viewNamed(acc, p))
 
 
@@ -893,7 +920,7 @@ let complete(state: AppState, args: List<String>): List<Completion.CompletionIte
   // Complete the path as before, and offer the view flags once something is typed. Flags are filtered
   // out of the path completion so `view List.last --a` completes the flag, not a package path.
   let flagCompletions(partial: String): List<Completion.CompletionItem> =
-    [ "--raw", "--ast", "--instructions", "--include-tests" ]
+    [ "--raw", "--ast", "--instructions", "--where", "--include-tests" ]
     |> Stdlib.List.filter(fun name -> Stdlib.String.startsWith(name, partial))
     |> Stdlib.List.map(fun name -> Completion.simple(name))
 
@@ -907,7 +934,7 @@ let complete(state: AppState, args: List<String>): List<Completion.CompletionIte
 
 
 let help(_state: AppState): String =
-  [ "Usage: view [path...] [--include-tests] [--raw | --ast | --instructions]"
+  [ "Usage: view [path...] [--include-tests] [--raw | --ast | --instructions | --where]"
     "View a function, type, value, trait, implementation, test or module."
     ""
     "With path: View the specified item with syntax highlighting."
@@ -920,6 +947,8 @@ let help(_state: AppState): String =
     "                    item and writing it back is a pipe. For a module, every"
     "                    declaration directly in it (not its submodules), as one"
     "                    file `dark module` reads back."
+    "  --where           The file and line it is declared at under packages/, as"
+    "                    `file:line: text`, the way grep prints a match."
     ""
     "Options (functions only):"
     "  --include-tests   Also list the tests that call the function, each with"
@@ -936,6 +965,7 @@ let help(_state: AppState): String =
     "  view Option                     - View the Option type"
     "  view Stdlib.List                - View contents of Stdlib.List module"
     "  view List.head --raw            - Print just the declaration"
+    "  view List.head --where          - Where List.head is in packages/"
     "  view Me.Example --raw > ex.dark - Save a module as a file `dark module` reads"
     "  view Float64.add --include-tests  - Float64.add and the tests that call it"
     "  view List.last --ast            - View List.last as a syntax tree"

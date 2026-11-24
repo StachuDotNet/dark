@@ -194,6 +194,43 @@ let showTransitiveDependents(
     true
 
 
+/// `deps usedby --where`: each line of each user that names the item, as `file:line: text`, the
+/// way grep prints it. A user under `--deep` that doesn't name it shows its first line.
+let showDependentsWhere(
+  branchId: Uuid,
+  targetLoc: LanguageTools.ProgramTypes.PackageLocation,
+  targetKind: LanguageTools.ProgramTypes.ItemKind,
+  entityName: String,
+  deep: Bool)
+  : Bool =
+  let users =
+    if deep then
+      getTransitiveDependents(branchId, targetLoc, targetKind)
+      |> Stdlib.Result.map(fun items -> items |> Stdlib.List.map(fun((loc, _)) -> loc))
+    else
+      SCM.Deps.dependents(SCM.PackageOps.currentBranch(), [ (targetLoc, targetKind) ])
+      |> Stdlib.Result.map(fun found -> found |> Stdlib.List.map(fun((_, loc, _)) -> loc))
+      |> Stdlib.Result.mapError(fun e -> $"{e}")
+
+  match users with
+  | Error(e) ->
+    printErr($"Couldn't read the dependents of {entityName}: {e}")
+    false
+  | Ok([]) ->
+    Stdlib.printErrorLine($"No dependents found for {entityName}")
+    true
+  | Ok(locs) ->
+    let names =
+      locs
+      |> Stdlib.List.map(fqnOf)
+      |> Stdlib.List.unique
+
+    let spots = Packages.Where.find(names)
+    Packages.Where.usesOf(spots, targetLoc.name) |> Stdlib.printLines
+    Packages.Where.noteMissing(Packages.Where.missing(names, spots))
+    true
+
+
 /// Display dependencies (what this entity uses).
 ///
 /// Read off the EDGE, not looked up from the hash. The edge records the name the reference was resolved
@@ -389,13 +426,15 @@ let answerOf(
 
 
 let execute(state: AppState, args: List<String>): AppState =
-  // Flags: --deep (transitive), --all (don't cap the listing), --json
+  // Flags: --deep (transitive), --all (don't cap the listing), --where (file:line), --json
   let args = args |> Stdlib.List.filter(fun a -> a != "--json")
   let deep = Stdlib.List.contains(args, "--deep")
+  let whereFlag = Stdlib.List.contains(args, "--where")
   let all = Stdlib.List.contains(args, Listing.allFlag)
   let cap = Listing.shouldCap(all)
   let filteredArgs =
-    args |> Stdlib.List.filter(fun arg -> arg != "--deep" && arg != Listing.allFlag)
+    args
+    |> Stdlib.List.filter(fun arg -> arg != "--deep" && arg != "--where" && arg != Listing.allFlag)
 
   let branchId = state.currentBranchId
 
@@ -425,7 +464,10 @@ let execute(state: AppState, args: List<String>): AppState =
   let unknownFlags = filteredArgs |> Stdlib.List.filter(fun a -> Stdlib.String.startsWith(a, "--"))
   if Stdlib.Bool.not(Stdlib.List.isEmpty(unknownFlags)) then
     let f = Stdlib.String.join(unknownFlags, " ")
-    printErr($"deps doesn't understand {f}. The flags are --deep and --json.")
+    printErr($"deps doesn't understand {f}. The flags are --deep, --where and --json.")
+    failed(state)
+  else if whereFlag && Stdlib.Bool.not(Stdlib.List.head(filteredArgs) == Option.Some("usedby")) then
+    printErr("--where goes with `deps usedby`.")
     failed(state)
   else
     match filteredArgs with
@@ -438,7 +480,8 @@ let execute(state: AppState, args: List<String>): AppState =
         ""
         "Options:"
         "  --deep              - Show transitive dependents (everything that could break)"
-        "  --all               - Show every row; listings are capped at 20 otherwise" ]
+        "  --all               - Show every row; listings are capped at 20 otherwise"
+        "  --where             - With usedby: each line that uses it, as file:line: text" ]
       |> Stdlib.List.iter(fun l -> Stdlib.printErrorLine(l))
 
       failed(state)
@@ -469,7 +512,10 @@ let execute(state: AppState, args: List<String>): AppState =
           else
             showDependents(loc, entityType, name, cap)
 
-        answer(pretty, result, Direction.UsedBy)
+        if whereFlag then
+          exitWith(state, showDependentsWhere(branchId, loc, entityType, name, deep))
+        else
+          answer(pretty, result, Direction.UsedBy)
     | [pathArg] ->
       // Default to showing both uses and usedby
       match resolvePath(branchId, state.packageData.currentLocation, pathArg) with
@@ -527,7 +573,7 @@ let complete(state: AppState, args: List<String>): List<Completion.CompletionIte
 
 
 let help(_state: AppState): String =
-  [ "Usage: deps [subcommand] <path> [--deep] [--all]"
+  [ "Usage: deps [subcommand] <path> [--deep] [--all] [--where]"
     "Show dependencies and dependents of a fn, type, value, trait or impl."
     ""
     "Subcommands:"
@@ -537,6 +583,8 @@ let help(_state: AppState): String =
     "Options:"
     "  --deep         - Show transitive dependents (everything that could break)"
     "  --all          - Show every row; listings are capped at 20 otherwise"
+    "  --where        - With usedby: each line under packages/ that uses the item,"
+    "                   as file:line: text, the way grep prints a match"
     "  --json         - The same answer, typed"
     ""
     "Without subcommand, shows both uses and usedby."
@@ -545,5 +593,6 @@ let help(_state: AppState): String =
     "  deps Stdlib.List.map              - Show all deps for List.map"
     "  deps uses Stdlib.List.map         - Show what List.map uses"
     "  deps usedby Stdlib.List.map       - Show what uses List.map"
+    "  deps usedby List.map --where      - Each line in packages/ that calls List.map"
     "  deps usedby Stdlib.Option --deep  - Show everything that could break if Option changes" ]
   |> Stdlib.String.join("\n")

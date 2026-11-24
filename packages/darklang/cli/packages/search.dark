@@ -939,6 +939,7 @@ type ParsedArgs =
     internal: Query.Internal
     includeTests: Bool
     asJson: Bool
+    showWhere: Bool
     mode: DisplayMode
     parseErrors: List<FlagParser.ParseError> }
 
@@ -960,7 +961,8 @@ val argSpec =
           ("--include-deprecated", [])
           ("--include-internal", [])
           ("--include-tests", [])
-          ("--json", []) ]
+          ("--json", [])
+          ("--where", []) ]
       valueFlags = [ ("--limit", []) ] }
 
 
@@ -1002,11 +1004,12 @@ let parseArgs(args: List<String>): ParsedArgs =
       internal = Query.Internal.showIf(FlagParser.hasFlag(p, "--include-internal"))
       includeTests = FlagParser.hasFlag(p, "--include-tests")
       asJson = FlagParser.hasFlag(p, "--json")
+      showWhere = FlagParser.hasFlag(p, "--where")
       parseErrors = p.errors }
 
 
 val usage =
-  "Usage: search <query> [--batch] [--limit N] [--type] [--fn] [--val] [--trait] [--impl] [--test] [--exact] [--shallow] [--with-docs] [--brief] [--include-deprecated] [--include-internal] [--include-tests]"
+  "Usage: search <query> [--batch] [--limit N] [--type] [--fn] [--val] [--trait] [--impl] [--test] [--exact] [--shallow] [--with-docs] [--brief] [--include-deprecated] [--include-internal] [--include-tests] [--where]"
 
 
 // The --json rendering. Typed results for the command an agent runs most; the signatures are the
@@ -1649,6 +1652,37 @@ let executeQuery(state: AppState, args: List<String>): AppState =
                   impls = Stdlib.List.take(results.impls, resultCap)
                   tests = Stdlib.List.take(results.tests, resultCap)
                   submodules = Stdlib.List.take(results.submodules, resultCap) }))
+        else if parsed.showWhere && totalResults > 0 then
+          let typedShown =
+            match typeQuery(searchText) with
+            | Some(_) -> Stdlib.List.take(typed, resultCap)
+            | None -> []
+
+          let names =
+            Stdlib.List.flatten(
+              [ typedShown |> Stdlib.List.map(fullPathOf)
+                Stdlib.List.take(results.fns, resultCap) |> Stdlib.List.map(fullPathOf)
+                Stdlib.List.take(results.types, resultCap) |> Stdlib.List.map(fullPathOf)
+                Stdlib.List.take(results.values, resultCap) |> Stdlib.List.map(fullPathOf)
+                Stdlib.List.take(results.traits, resultCap) |> Stdlib.List.map(fullPathOf)
+                Stdlib.List.take(results.tests, resultCap) |> Stdlib.List.map(fullPathOf) ])
+            |> Stdlib.List.unique
+
+          let spots = Where.find(names)
+          // in the order search ranked them, not file order
+          names
+          |> Stdlib.List.iter(fun name ->
+            spots
+            |> Stdlib.List.filter(fun s -> s.name == name)
+            |> Stdlib.List.iter(fun s -> Stdlib.printLine(Where.show(s))))
+
+          Where.noteMissing(Where.missing(names, spots))
+          if Stdlib.Bool.not(Stdlib.List.isEmpty(results.impls)) then
+            Stdlib.printErrorLine(
+              Stdlib.Cli.UI.Colors.hint(
+                "  (--where leaves out impls; search without it lists them)"))
+          else
+            ()
         else if totalResults == 0 then
           Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText($"No results found for: {queryText}"))
           printHiddenModulesHint()
@@ -1862,7 +1896,11 @@ let execute(state: AppState, args: List<String>): AppState =
         let _ = executeQuery(state, queryArgs)
         ())
 
-      if parsed.mode == DisplayMode.Detailed && Stdlib.Bool.not(parsed.withDocs) then
+      if
+        parsed.mode == DisplayMode.Detailed
+        && Stdlib.Bool.not(parsed.withDocs)
+        && Stdlib.Bool.not(parsed.showWhere)
+      then
         Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint("  (add --with-docs to show doc comments)"))
       else
         ()
@@ -1894,6 +1932,8 @@ let help(state: AppState): String =
     "                         a qualified query searches inside the module it names"
     "  --brief                Print matching items without section headings"
     "  --with-docs            Also show doc comments"
+    "  --where                Each function, type, value, trait and test found, as"
+    "                         file:line: text under packages/, the way grep prints it"
     "  --include-deprecated   Include items deprecated with no live callers"
     "  --include-internal     Include internal helpers (names starting with __)"
     "  --json                 The results, typed, for an agent"
@@ -1944,7 +1984,8 @@ let complete(_state: AppState, args: List<String>): List<Completion.CompletionIt
         "--with-docs"
         "--include-deprecated"
         "--include-internal"
-        "--include-tests" ]
+        "--include-tests"
+        "--where" ]
       |> Stdlib.List.filter(fun flag -> Stdlib.String.startsWith(flag, lastArg))
       |> Stdlib.List.map(Completion.simple)
     else

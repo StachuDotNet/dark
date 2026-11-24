@@ -63,8 +63,89 @@ let private fingerprint () : string =
   let all = String.concat "\n" rows
   $"{List.length rows}:{sha256 all}"
 
+/// Each declaration in <param text> but impls: (full name, first line, last line, first line's
+/// text), lines counted from 1.
+let private declaredLines (text : string) : List<string * int * int * string> =
+  let lines = text.Split('\n')
+  let rec walk (prefix : List<string>) (decls : List<WT.Declaration>) =
+    decls
+    |> List.collect (fun d ->
+      let one (name : string) (r : WT.Range) =
+        [ (String.concat "." (prefix @ [ name ]),
+           r.start.row + 1,
+           r.end_.row + 1,
+           lines[r.start.row].Trim()) ]
+      match d with
+      | WT.DFunction f -> one f.name.name f.range
+      | WT.DValue v -> one v.name.name v.range
+      | WT.DType t -> one t.name.name t.range
+      | WT.DTest t -> one t.name.name t.range
+      | WT.DTrait t -> one t.name.name t.range
+      | WT.DModule m ->
+        let name = snd m.name
+        one name m.range
+        @ walk (prefix @ List.ofArray (name.Split('.'))) m.declarations
+      | _ -> [])
+  match LibParser.Parser.parseFor LibParser.Validation.Package text with
+  | Error _ -> []
+  | Ok validated ->
+    walk
+      []
+      (LibParser.Validation.ValidatedSourceFile.toWrittenTypes validated)
+        .declarations
+
+/// Bring `package_source_lines` in step with <param files>: a file whose text changed gets its
+/// rows rewritten, and a file that is gone loses them.
+let private writeSourceLines (files : List<string * string>) : unit =
+  let known =
+    Sql.query "SELECT DISTINCT file, file_sha FROM package_source_lines"
+    |> Sql.executeRows (fun read -> (read.string "file", read.string "file_sha"))
+    |> Map.ofList
+  let current =
+    files
+    |> List.map (fun (file, text) ->
+      (System.IO.Path.GetRelativePath(root (), file), text))
+  let currentFiles = current |> List.map fst |> Set.ofList
+  let gone =
+    known
+    |> Map.toList
+    |> List.map fst
+    |> List.filter (fun f -> not (Set.contains f currentFiles))
+  let changed =
+    current
+    |> List.choose (fun (file, text) ->
+      let sha = sha256 text
+      if Map.tryFind file known = Some sha then None else Some(file, text, sha))
+  let deletes =
+    (gone @ (changed |> List.map (fun (f, _, _) -> f)))
+    |> List.map (fun f -> [ "file", Sql.string f ])
+  let inserts =
+    changed
+    |> Array.ofList
+    |> Array.Parallel.map (fun (file, text, sha) -> (file, sha, declaredLines text))
+    |> List.ofArray
+    |> List.collect (fun (file, sha, declared) ->
+      declared
+      |> List.map (fun (name, line, endLine, first) ->
+        [ "name", Sql.string name
+          "file", Sql.string file
+          "line", Sql.int line
+          "endLine", Sql.int endLine
+          "text", Sql.string first
+          "sha", Sql.string sha ]))
+  let statements =
+    [ if not (List.isEmpty deletes) then
+        "DELETE FROM package_source_lines WHERE file = @file", deletes
+      if not (List.isEmpty inserts) then
+        "INSERT OR IGNORE INTO package_source_lines (name, file, line, end_line, text, file_sha)
+         VALUES (@name, @file, @line, @endLine, @text, @sha)",
+        inserts ]
+  if not (List.isEmpty statements) then
+    Sql.executeTransactionSync statements |> ignore<List<int>>
+
 /// Say what the store now holds: <param files> (`LoadPackagesFromDisk.files`) and its ops.
 let writeRecord (files : List<string * string>) : unit =
+  writeSourceLines files
   let fingerprint = fingerprint ()
   let path = recordPath ()
   do

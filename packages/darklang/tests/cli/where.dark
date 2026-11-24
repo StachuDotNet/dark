@@ -1,0 +1,73 @@
+module Darklang.Cli.Tests.Where
+
+// `--where` reads the lines a load from `packages/` recorded, and a user's own lines from its file.
+
+test aLoadedItemHasItsLine =
+  match Cli.Packages.Where.find([ "Darklang.Stdlib.List.map" ]) with
+  | [spot] ->
+    Stdlib.Test.all(
+      [ spot.file |> Stdlib.Test.equal("packages/darklang/stdlib/list.dark")
+
+        Stdlib.String.startsWith(spot.text, "let map(")
+        |> Stdlib.Test.equal(true)
+
+        spot.line <= spot.endLine |> Stdlib.Test.equal(true) ])
+  | other -> Stdlib.Test.fail($"expected one spot, got {other}")
+
+
+test aModuleHasALinePerFile =
+  Cli.Packages.Where.find([ "Darklang.SCM.PackageOps" ])
+  |> Stdlib.List.map(fun s -> (s.line, s.text))
+  |> Stdlib.List.unique
+  |> Stdlib.Test.equal([ (1, "module Darklang.SCM.PackageOps") ])
+
+
+test aNestedModuleItemHasItsFullName =
+  Cli.Packages.Where.find([ "Darklang.Cli.Packages.View.ViewMode" ])
+  |> Stdlib.List.map(fun s -> s.file)
+  |> Stdlib.Test.equal([ "packages/darklang/cli/packages/view.dark" ])
+
+
+val twice =
+  Cli.Packages.Where.Spot
+    { name = "Tests.Where.twice"
+      file = "top.dark"
+      line = 2
+      endLine = 3
+      text = "let twice(s: Shape): Int64 =" }
+
+
+val fileLines =
+  [ "module Tests.Where"
+    "let twice(s: Shape): Int64 ="
+    "  Tests.Where.area(s) + area(s)"
+    "let area(s: Shape): Int64 = 0" ]
+
+
+test linesNamingAreTheUses =
+  Cli.Packages.Where.linesNaming(twice, fileLines, "area")
+  |> Stdlib.Test.equal([ "top.dark:3: Tests.Where.area(s) + area(s)" ])
+
+
+test linesNamingFallsBackToTheFirstLine =
+  Cli.Packages.Where.linesNaming(twice, fileLines, "nothing")
+  |> Stdlib.Test.equal([ "top.dark:2: let twice(s: Shape): Int64 =" ])
+
+
+test hasWordIsWholeIdentifiers =
+  Stdlib.Test.all(
+    [ Cli.Packages.Where.hasWord("List.map(xs, f)", "map")
+      |> Stdlib.Test.equal(true)
+
+      Cli.Packages.Where.hasWord("Result.mapError(r, f)", "map")
+      |> Stdlib.Test.equal(false)
+
+      Cli.Packages.Where.hasWord("let map_2 = 1", "map")
+      |> Stdlib.Test.equal(false) ])
+
+
+test missingIsWhatNoSpotIsFor =
+  Cli.Packages.Where.missing(
+    [ "Tests.Where.twice", "Me.Only.inStore" ],
+    [ twice ])
+  |> Stdlib.Test.equal([ "Me.Only.inStore" ])

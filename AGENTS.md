@@ -21,6 +21,7 @@ from the clone's root. In-container paths: `/home/dark/app` is the clone.
     scripts/dev/build                     build what changed, by content; blocks, nonzero on failure
     scripts/dev/status                    did it work, is one running, is the tree ahead of it
     ./scripts/run-cli <args>              the dev CLI, e.g. ./scripts/run-cli eval '1 + 1'
+    ./scripts/run-cli view X --where      X's file:line, before grep; also deps usedby/search --where
 
     scripts/dev/build                     reload packages: any .dark change reloads the whole set
     scripts/build/reload-packages         the reload alone, e.g. after truncating package-ref-hashes.txt

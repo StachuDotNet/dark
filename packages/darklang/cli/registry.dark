@@ -71,7 +71,9 @@ module Registry =
 
 
   let acceptsView(): Accepts.Accepts =
-    Accepts.freeText(0, [ "--raw", "--ast", "--instructions", "--instrs", "--include-tests" ])
+    Accepts.freeText(
+      0,
+      [ "--raw", "--ast", "--instructions", "--instrs", "--where", "--include-tests" ])
 
 
   let acceptsTree(): Accepts.Accepts =
@@ -101,6 +103,7 @@ module Registry =
           "--brief"
           "--include-deprecated"
           "--include-internal"
+          "--where"
           "--json" ]))
 
 
@@ -123,7 +126,7 @@ module Registry =
 
   let acceptsDeps(): Accepts.Accepts =
     Accepts.everywhere(
-      [ "--json", "--deep", "--all" ],
+      [ "--json", "--deep", "--all", "--where" ],
       [],
       Accepts.subcommands(
         [ ("uses", Accepts.between(1, 1, [])), ("usedby", Accepts.between(1, 1, [])) ],
