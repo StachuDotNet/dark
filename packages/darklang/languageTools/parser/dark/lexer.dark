@@ -325,18 +325,11 @@ let isTypeVarChar(c: UInt32): Bool =
 
 /// The text of codepoints [<param from>, <param to>).
 let text(src: Source, from: Int64, to: Int64): String =
-  if src.simple then
-    match Builtin.stringSlice(src.text, from, to) with
-    | Some(t) -> t
-    | None ->
-      let a = minI(maxI(0, from), src.length)
-      Builtin.stringSlice(src.text, a, minI(maxI(a, to), src.length)) |> Stdlib.Option.withDefault("")
-  else
-    src.cps
-    |> Stdlib.List.drop(from)
-    |> Stdlib.List.take(to - from)
-    |> Stdlib.List.filterMap(fun c -> Stdlib.Char.fromCodepoint(c))
-    |> Stdlib.String.fromList
+  src.cps
+  |> Stdlib.List.drop(from)
+  |> Stdlib.List.take(to - from)
+  |> Stdlib.List.filterMap(fun c -> Stdlib.Char.fromCodepoint(c))
+  |> Stdlib.String.fromList
 
 
 let startsWith(src: Source, i: Int64, s: String): Bool =
@@ -1173,4 +1166,4 @@ let stripDelims(raw: String, lead: String, close: String): String =
   let a = if Stdlib.String.startsWith(raw, lead) then Stdlib.String.length(lead) else 0
   let n = Stdlib.String.length(raw)
   let b = if n > a && Stdlib.String.endsWith(raw, close) then n - Stdlib.String.length(close) else n
-  if b > a then Stdlib.String.slice(raw, a, b) |> Stdlib.Result.withDefault("") else ""
+  if b > a then Stdlib.String.dropFirst(Stdlib.String.first(raw, b), a) else ""

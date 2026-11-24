@@ -62,3 +62,33 @@ let summary(args: List<String>): Int64 =
 
 let rangeText(r: LanguageTools.Parser.Range): String =
   $"{r.start.row}:{r.start.column}-{r.end_.row}:{r.end_.column}"
+
+
+let lexOnce(src: String): Int64 =
+  let t0 = Stdlib.DateTime.now()
+  let _ = Lexer.lex(src)
+  Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), t0)
+
+
+/// `<reps>`: lex stdin <reps> times; the median ms and the token count.
+let lexTime(args: List<String>): Int64 =
+  match Stdlib.Cli.Stdin.readAll() with
+  | Ok(src) ->
+    let reps = repsOf(args)
+    let times = Stdlib.List.map(Stdlib.List.range(1, reps), fun _ -> lexOnce(src)) |> Stdlib.List.sort
+    let median = Stdlib.List.getAt(times, reps / 2) |> Stdlib.Option.withDefault(0)
+    let all = Stdlib.String.join(Stdlib.List.map(times, fun t -> Builtin.int64ToString(t)), ", ")
+    let tokens = (Lexer.lex(src)).tokens
+    Stdlib.printLine($"median {median}ms of [{all}], {Stdlib.List.length(tokens)} tokens")
+    0
+  | Error(_) -> 1
+
+
+/// The tokens of stdin, one per line: kind tag, range and text.
+let tokens(_args: List<String>): Int64 =
+  match Stdlib.Cli.Stdin.readAll() with
+  | Ok(src) ->
+    Stdlib.List.iter((Lexer.lex(src)).tokens, fun t ->
+      Stdlib.printLine($"{rangeText(t.range)} {Builtin.int64ToString(Stdlib.String.length(t.text))} {t.text}"))
+    0
+  | Error(_) -> 1
