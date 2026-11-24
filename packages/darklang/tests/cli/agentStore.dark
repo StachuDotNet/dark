@@ -218,3 +218,35 @@ test anAttemptThatIsNotDoneStartsAgainOnAFreshBranch =
           generic,
           "now no tool named define_module",
           "and says which result changed") ]))
+
+
+test mergeLandsOnlyTheKeptAttempt = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/attempts.replay"
+  let _ = Stdlib.Cli.File.writeText(path, twoAttempts)
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "agent"
+        "-p"
+        "halve a number"
+        "--replay"
+        path
+        "--checks"
+        "0"
+        "--attempts"
+        "2"
+        "--merge" ])
+
+  let (_k, kept) = Instance.ran(i, [ "eval", "Me.Halve.half(8)" ])
+
+  let (_d, dropped) = Instance.ran(i, [ "eval", "Me.Half.half(8)" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the second attempt answers")
+      Instance.says(
+        out,
+        "merged agent-a2 into main",
+        "the kept attempt is merged")
+
+      Instance.says(kept, "4", "its work is on main")
+
+      Instance.says(dropped, "not found", "the abandoned attempt's is not") ]))

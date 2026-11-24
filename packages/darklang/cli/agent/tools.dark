@@ -505,8 +505,12 @@ let save(ctx: Context, statement: String -> String, source: String): (Context * 
     (ctx2, output)
 
 
+/// The lines come as `command`, the name shell-style tools use, so transcript readers that look for
+/// commands find them; `batch` is still read.
 let darkBatch(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
-  needing(ctx, input, "batch", fun text -> batch(ctx, text))
+  match getText(input, "command") with
+  | Some(text) -> batch(ctx, text)
+  | None -> needing(ctx, input, "batch", fun text -> batch(ctx, text))
 
 
 /// One block statement: `<command> -` with <param body> indented under it.
@@ -692,7 +696,7 @@ let all(): List<Tool> =
           spec(
             "dark",
             "Run a batch of lines in this session's Dark repl, on the session's branch. One statement per line: a CLI command (fn, module, view, search, typecheck, test run, status, nav, ...), `let x = <expr>`, `watch <expr>`, or a Dark expression. Indented lines continue the line above; a command ending in `-` takes its indented lines as stdin. Answers one numbered reply per statement, stops at the first failure, then reports the typecheck of every module written and watched values.",
-            [ param("batch", "string", "the lines") ])
+            [ param("command", "string", "the lines") ])
         effects =
           [ LanguageTools.Permissions.Effect.PackageRead
             LanguageTools.Permissions.Effect.PackageWrite ]

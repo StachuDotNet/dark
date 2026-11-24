@@ -64,7 +64,9 @@ type Options =
     /// attempts, each on a fresh branch, until one passes the done-check
     attempts: Int64
     /// run an earlier session's model turns again, against today's code and tools
-    rerun: Option<String> }
+    rerun: Option<String>
+    /// at the end, merge the kept session's branch into the branch `dark` started on
+    merge: Bool }
 
 
 type Run =
@@ -462,6 +464,7 @@ let parseArgs(args: List<String>, o: Options): Result<Options, String> =
     | Ok(v) when v > 0 && v <= 8 -> parseArgs(rest, { o with attempts = v })
     | _ -> Result.Error($"--attempts takes a number from 1 to 8, not {n}")
   | ["--rerun", id, ...rest] -> parseArgs(rest, { o with rerun = Option.Some(id) })
+  | ["--merge", ...rest] -> parseArgs(rest, { o with merge = true })
   | ["--allow", names, ...rest] ->
     let wanted = Stdlib.String.split(names, ",") |> Stdlib.List.map(fun n -> Stdlib.String.trim(n))
     let expanded =
@@ -506,7 +509,8 @@ let defaultOptions(): Options =
       compactAt = 120000
       showPrompt = false
       attempts = 1
-      rerun = Option.None }
+      rerun = Option.None
+      merge = false }
 
 
 /// The session to run in: a resumed one, a fork of one, or a new one on its own new branch.
@@ -938,6 +942,7 @@ let runWith(state: AppState, o: Options): AppState =
 
     let (finished, usage, turns) = attempts(state, o, run)
     let run = finished
+    let _ = if o.merge then mergeKept(state, finished) else ()
     let ending =
       finished.ending
       |> Stdlib.Option.withDefault(Agent.Ending.Failed("the run stopped without an answer"))
@@ -998,6 +1003,34 @@ let runWith(state: AppState, o: Options): AppState =
             ms))
 
     { state with exitCode = if isError then 1 else 0 }
+
+
+/// Commit the kept session's draft on its branch, and merge the branch into the one `dark`
+/// started on.
+let mergeKept(state: AppState, run: Run): Unit =
+  let branch = branchOfRun(run)
+  let (_s, _r, committed) =
+    Repls.Batch.run(
+      run.ctx.app,
+      run.ctx.repl,
+      $"commit \"agent session {run.session.id}\" -y",
+      Repls.Batch.OnFailure.Stop)
+
+  let (after, out) =
+    Workbench.captureOutputAnd(fun () ->
+      Registry.executeCommand(
+        "merge",
+        { state with exitCode = 0 },
+        [ branch, "-y", "--allow-type-errors" ]))
+
+  let said =
+    if after.exitCode == 0 then
+      $"merged {branch} into {Repls.branchText(state.currentBranchId)}"
+    else
+      $"could not merge {branch}: {Stdlib.String.trim(Repls.Batch.stripAnsi(out))}"
+
+  let _ = Repls.Batch.count(committed, "error")
+  Stdlib.printErrorLine(said)
 
 
 /// How far a finished attempt is from done: 0 when the done-check passes, else the number of
@@ -1126,7 +1159,7 @@ let accepts(): Accepts.Accepts =
       "--compact-at"
       "--attempts"
       "--rerun" ],
-    Accepts.freeText(0, [ "-p", "--print", "--continue", "--list", "--show-prompt" ]))
+    Accepts.freeText(0, [ "-p", "--print", "--continue", "--list", "--show-prompt", "--merge" ]))
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
@@ -1161,6 +1194,8 @@ let help(_state: AppState): String =
     "  --show-prompt              print everything sent to the model before the conversation, and stop"
     "  --attempts <n>             if an attempt is not done (the done-check), start again on a fresh branch,"
     "                             told what went wrong, up to n in all; the closest to done is kept"
+    "  --merge                    at the end, commit the kept session's branch and merge it into the branch"
+    "                             dark started on, type errors and all, so its work is where a run looks"
     "  --rerun <id>               run session <id>'s model turns again on a new branch, against today's code"
     "                             and tools, and say which tool results changed"
     "  --base-url <url>           the Messages API's address (default https://api.anthropic.com)"
