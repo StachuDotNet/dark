@@ -55,10 +55,13 @@ module HandleCommand =
     // The first fill makes the checker and trait implementations available. The second
     // stores bodies with resolved trait calls. Initialize refs before BOTH fills: storing
     // a function also lowers it, which needs the identities in that fill's source ops.
-    let fill (commitBaseline : bool) (ops : List<PackageOp>) : unit =
-      LibDB.PackageRefsGenerator.initializeFromOps ops
+    let fill (commitBaseline : bool) (filled : List<PackageOp>) : unit =
+      LibDB.PackageRefsGenerator.initializeFromOps filled
       LibDB.Purge.purge ()
-      let _ = LibDB.Inserts.insertAndApplyOps ops
+      let _ =
+        LibDB.Inserts.insertAndApplyOps (
+          filled @ LibDB.Docs.forSharedContent ops filled
+        )
       if commitBaseline then
         // The .dark files are the shipped baseline, not your draft. Commit them, or
         // every `dark status` would open on the whole package tree as uncommitted

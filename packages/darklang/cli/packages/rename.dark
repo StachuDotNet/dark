@@ -3,14 +3,40 @@ module Darklang.Cli.Packages.Rename
 // A rename changes bindings and the current branch's reference names atomically.
 // Reference names are metadata; content hashes remain unchanged.
 
-/// Prepare one atomic rename, including its current callers' reference names.
+/// Prepare one atomic rename, including its current callers' reference names, and the docs the old
+/// name says: docs belong to a name, so the new name says them too.
 let ops(
   branchId: Uuid,
   oldLocation: LanguageTools.ProgramTypes.PackageLocation,
   newLocation: LanguageTools.ProgramTypes.PackageLocation,
   reference: LanguageTools.ProgramTypes.Reference)
   : List<LanguageTools.ProgramTypes.PackageOp> =
-  SCM.PackageOps.prepareRename(branchId, oldLocation, newLocation, reference)
+  let kind = LanguageTools.ProgramTypes.Reference.kind(reference)
+  let hash = LanguageTools.ProgramTypes.Reference.hash(reference)
+  let found = currentDocs(branchId, newLocation, kind, hash)
+  let docs =
+    currentDocs(branchId, oldLocation, kind, hash)
+    |> Stdlib.List.filterMap(fun((part, text)) ->
+      match docAt(found, part) with
+      | Some(current) when current != text ->
+        let previous =
+          if current == "" then
+            Option.None
+          else
+            Option.Some(LanguageTools.ProgramTypes.hashOfText(current))
+
+        Option.Some(
+          LanguageTools.ProgramTypes.PackageOp.UpdateDoc(
+            newLocation,
+            part,
+            text,
+            previous,
+            Option.None))
+      | _ -> Option.None)
+
+  Stdlib.List.concat(
+    SCM.PackageOps.prepareRename(branchId, oldLocation, newLocation, reference),
+    docs)
 
 
 /// What lives at <param location> right now, as the reference a rename rebinds. `None` when the

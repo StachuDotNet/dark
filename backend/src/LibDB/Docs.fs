@@ -267,6 +267,89 @@ module Test =
 
 
 // ---------------------
+// Declarations that share content
+// ---------------------
+
+/// Every doc part <param op> declares, with its text. Empty for an op that declares no item.
+let ofDeclaration (op : PT.PackageOp) : List<PT.DocPart * string> =
+  match op with
+  | PT.PackageOp.AddFn fn ->
+    (PT.WholeItem, fn.description)
+    :: (fn.parameters
+        |> NEList.toList
+        |> List.mapi (fun i p ->
+          [ PT.Parameter i, p.description; PT.ParameterName i, p.name ])
+        |> List.concat)
+  | PT.PackageOp.AddType t ->
+    let nested =
+      match t.declaration.definition with
+      | PT.TypeDeclaration.Record fields ->
+        fields
+        |> NEList.toList
+        |> List.map (fun f -> PT.RecordField f.name, f.description)
+      | PT.TypeDeclaration.Enum cases ->
+        cases
+        |> NEList.toList
+        |> List.map (fun c -> PT.EnumCase c.name, c.description)
+      | PT.TypeDeclaration.Alias _ -> []
+    (PT.WholeItem, t.description) :: nested
+  | PT.PackageOp.AddValue v -> [ PT.WholeItem, v.description ]
+  | PT.PackageOp.AddTrait t ->
+    (PT.WholeItem, t.description)
+    :: (t.methods
+        |> NEList.toList
+        |> List.map (fun m -> PT.RecordField m.name, m.description))
+  | PT.PackageOp.AddTraitImpl i -> [ PT.WholeItem, i.description ]
+  | PT.PackageOp.AddTest test -> [ PT.WholeItem, test.description ]
+  | _ -> []
+
+/// The `UpdateDoc`s that let each name in <param stored> say what its declaration in <param
+/// declared> says.
+///
+/// Declarations with the same content are one stored item, with one set of docs, so a name whose
+/// own differ states them. <param declared> is the ops as parsed: what <param stored> carries for a
+/// name can be another name's words, once a step has swapped in the item by its hash.
+let forSharedContent
+  (declared : List<PT.PackageOp>)
+  (stored : List<PT.PackageOp>)
+  : List<PT.PackageOp> =
+  let bindings (ops : List<PT.PackageOp>) =
+    ops
+    |> List.pairwise
+    |> List.choose (fun (declaration, binding) ->
+      PT.tryDeclarationBinding (declaration, binding)
+      |> Option.map (fun (location, target) ->
+        location, target, ofDeclaration declaration))
+
+  let own =
+    declared
+    |> bindings
+    |> List.map (fun (location, _, docs) -> location, docs)
+    |> Map.ofList
+
+  let held = stored |> bindings
+
+  let first =
+    held
+    |> List.rev
+    |> List.map (fun (_, target, docs) -> target, docs)
+    |> Map.ofList
+
+  held
+  |> List.collect (fun (location, target, docs) ->
+    let declaredDocs = Map.tryFind location own |> Option.defaultValue docs
+    let storedDocs = Map.tryFind target first |> Option.defaultValue []
+    declaredDocs
+    |> List.choose (fun (part, text) ->
+      match List.tryFind (fun (p, _) -> p = part) storedDocs with
+      | Some(_, storedText) when storedText <> text ->
+        let previous =
+          if storedText = "" then None else Some(Hashing.hashText storedText)
+        Some(PT.PackageOp.UpdateDoc(location, part, text, previous, None))
+      | _ -> None))
+
+
+// ---------------------
 // What a location says of its own
 // ---------------------
 

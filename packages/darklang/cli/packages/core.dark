@@ -257,12 +257,16 @@ let docAt(
 ///
 /// One op per changed PART, each naming the text it replaces. Naming it is what lets the far side
 /// tell an edit made on top of its own words from one made without ever seeing them.
+///
+/// <param heldBefore>: the name held <param hash> before this save. Only then does leaving a doc out
+/// keep what is there. Otherwise what is there is another name's, and the empty doc is stated too.
 let updateDocsThatChanged(
   branchId: Uuid,
   location: LanguageTools.ProgramTypes.PackageLocation,
   kind: LanguageTools.ProgramTypes.ItemKind,
   hash: LanguageTools.ProgramTypes.Hash,
-  ops: List<LanguageTools.ProgramTypes.PackageOp>)
+  ops: List<LanguageTools.ProgramTypes.PackageOp>,
+  heldBefore: Bool)
   : Bool =
   let current = currentDocs(branchId, location, kind, hash)
   let written = authoredDocs(ops)
@@ -278,7 +282,7 @@ let updateDocsThatChanged(
           Option.None
         // Silence is not a statement that the existing words are wrong. Clearing a doc is sayable
         // (the op takes an empty text), just not by omitting one.
-        else if text == "" then
+        else if text == "" && heldBefore then
           Option.None
         else
           let previous =
@@ -363,7 +367,8 @@ let commitAuthored(
     // Decided here rather than before the save, because this is where the stabilized hash is
     // finally known: the one in hand until now is the parser's placeholder.
     let movedVersion = Stdlib.Bool.not(Stdlib.List.contains(previousHashes, boundHash))
-    let docsChanged = updateDocsThatChanged(branchId, location, kind, boundHash, ops)
+    let heldBefore = Stdlib.List.head(previousHashes) == Option.Some(boundHash)
+    let docsChanged = updateDocsThatChanged(branchId, location, kind, boundHash, ops, heldBefore)
     let docOnly = isUpdate && Stdlib.Bool.not(movedVersion) && docsChanged
     let sameAs =
       if isUpdate && Stdlib.Bool.not(movedVersion) then

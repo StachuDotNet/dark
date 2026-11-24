@@ -1,0 +1,109 @@
+/// A doc comment belongs to the name it is written on, even when another name has the same body.
+module Darklang.Cli.Tests.DocsPerName
+
+/// The first name for this body.
+let sharedFirst(n: Int64): Int64 =
+  n * 7919 + 3
+
+
+/// The second name for the same body.
+let sharedSecond(m: Int64): Int64 =
+  m * 7919 + 3
+
+
+let save(
+  i: Instance.T,
+  modulePath: String,
+  file: String,
+  source: String)
+  : String =
+  let path = Instance.home(i) + "/" + file
+  let _ = Stdlib.Cli.File.writeAtomic(path, source) |> Builtin.unwrap
+  let (_, out) = Instance.ran(i, [ "module", modulePath, path ])
+  out
+
+
+/// What `view` shows, without the styling that splits a signature into pieces.
+let view(i: Instance.T, name: String): String =
+  Stdlib.Cli.Tui.Text.stripSgr(Instance.said(i, [ "view", name ]))
+
+
+let documented(i: Instance.T): String =
+  save(
+    i,
+    "/Me.Doc",
+    "doc.dark",
+    "/// Scales it.\nlet scale(n: Int64): Int64 =\n  n * 7907 + 1")
+
+
+test aSaveDoesNotCopyAnotherNamesDoc = Instance.withInstance(fun i ->
+  let _ = documented(i)
+  let out =
+    save(i, "/Me.Bare", "bare.dark", "let bare(x: Int64): Int64 = x * 7907 + 1")
+
+  let bare = view(i, "Me.Bare.bare")
+  let scale = view(i, "Me.Doc.scale")
+  Stdlib.Test.all(
+    [ Instance.doesNotSay(out, "doc comment", "nothing was updated")
+      Instance.doesNotSay(out, "Scales it", "the save shows its own text")
+      Instance.doesNotSay(bare, "Scales it", "the new name has no doc")
+      Instance.says(bare, "(x: Int64)", "and its own parameter name")
+      Instance.says(scale, "Scales it", "the documented name keeps its doc")
+      Instance.says(scale, "(n: Int64)", "and its parameter name") ]))
+
+
+test aSingleSaveDoesNotCopyAnotherNamesDoc = Instance.withInstance(fun i ->
+  let _ = documented(i)
+  let _ =
+    Instance.ran(i, [ "fn", "/Me.One.one", "(y: Int64): Int64 = y * 7907 + 1" ])
+
+  let one = view(i, "Me.One.one")
+  Instance.doesNotSay(one, "Scales it", "the new name has no doc"))
+
+
+test eachNameKeepsItsOwnWords = Instance.withInstance(fun i ->
+  let _ = documented(i)
+  let _ =
+    save(
+      i,
+      "/Me.Other",
+      "other.dark",
+      "/// Its own words.\nlet other(x: Int64): Int64 = x * 7907 + 1")
+
+  let other = view(i, "Me.Other.other")
+  let scale = view(i, "Me.Doc.scale")
+  Stdlib.Test.all(
+    [ Instance.says(other, "Its own words", "the second name")
+      Instance.says(scale, "Scales it", "the first name") ]))
+
+
+test renamesAndMovesKeepTheDoc = Instance.withInstance(fun i ->
+  let _ = documented(i)
+  let _ =
+    save(i, "/Me.Bare", "bare.dark", "let bare(x: Int64): Int64 = x * 7907 + 1")
+
+  let _ = Instance.ran(i, [ "rename", "Me.Bare.bare", "Me.Bare.renamed" ])
+  let renamed = view(i, "Me.Bare.renamed")
+  let _ = Instance.ran(i, [ "rename", "Me.Doc.scale", "Me.Moved.scale" ])
+  let moved = view(i, "Me.Moved.scale")
+  Stdlib.Test.all(
+    [ Instance.doesNotSay(
+        renamed,
+        "Scales it",
+        "a renamed bare name stays bare")
+
+      Instance.says(renamed, "(x: Int64)", "with its parameter name")
+      Instance.says(moved, "Scales it", "a moved name keeps its doc") ]))
+
+
+test aReloadKeepsEachNamesDoc = Instance.withInstance(fun i ->
+  let first = view(i, "Darklang.Cli.Tests.DocsPerName.sharedFirst")
+  let second = view(i, "Darklang.Cli.Tests.DocsPerName.sharedSecond")
+  Stdlib.Test.all(
+    [ Instance.says(first, "The first name", "the first name's doc")
+      Instance.says(first, "(n: Int64)", "the first name's parameter name")
+      Instance.says(second, "The second name", "the second name's doc")
+      Instance.says(
+        second,
+        "(m: Int64)",
+        "the second name's parameter name") ]))

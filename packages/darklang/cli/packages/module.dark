@@ -59,7 +59,14 @@ let duplicateDeclarationNames(
 /// `dark fn` says it (`updateDocsThatChanged`). Per item, because a module is one batch and
 /// `updateDocsThatChanged` reads every doc in the ops it is given: an item's words are compared with
 /// that item's own declaration, never with another's.
-let landDocEdits(branchId: Uuid, ops: List<LanguageTools.ProgramTypes.PackageOp>): Int64 =
+///
+/// A name that is new, or moved to another version, states its docs too, but that is not counted:
+/// the save already says it defined or updated the name.
+let landDocEdits(
+  branchId: Uuid,
+  ops: List<LanguageTools.ProgramTypes.PackageOp>,
+  updates: List<Propagate.UpdatedItem>)
+  : Int64 =
   // The Add for the item a SetName binds: they carry the same placeholder hash before the save.
   let addFor(h: LanguageTools.ProgramTypes.Hash): Option<LanguageTools.ProgramTypes.PackageOp> =
     ops
@@ -80,17 +87,23 @@ let landDocEdits(branchId: Uuid, ops: List<LanguageTools.ProgramTypes.PackageOp>
       | Some(add) ->
         match Rename.referenceAt(branchId, location) with
         | Some(bound) ->
-          if
+          let boundHash = LanguageTools.ProgramTypes.Reference.hash(bound)
+          let previous =
+            updates
+            |> Stdlib.List.findFirst(fun item -> item.location == location)
+            |> Stdlib.Option.andThen(fun item -> Stdlib.List.head(item.previous))
+
+          let heldBefore = previous == Option.Some(boundHash)
+          let changed =
             updateDocsThatChanged(
               branchId,
               location,
               LanguageTools.ProgramTypes.Reference.kind(reference),
-              LanguageTools.ProgramTypes.Reference.hash(bound),
-              [ add ])
-          then
-            Option.Some(location.name)
-          else
-            Option.None
+              boundHash,
+              [ add ],
+              heldBefore)
+
+          if changed && heldBefore then Option.Some(location.name) else Option.None
         | None -> Option.None
       | None -> Option.None
     | _ -> Option.None)
@@ -223,7 +236,7 @@ let save(state: AppState, modulePath: String, source: String, mode: SaveMode): A
               else
                 state
 
-            let docsUpdated = landDocEdits(branchId, ops)
+            let docsUpdated = landDocEdits(branchId, ops, updates)
             let deprecationNotes =
               previouslyDeprecated
               |> Stdlib.List.filterMap(fun((location, kind, hash)) ->
