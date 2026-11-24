@@ -107,3 +107,17 @@ it builds from is `~/code/dark/bench-loop` (make it with `~/code/dark/new-clone 
   out like the measure set. `try-seed.sh <bin-label> <seed> [cmds]` sets a seed up in a throwaway store.
 - Round `r10x.sh`: x116-measure vs xmain-measure (3, interleaved), xmain-new (held-out-2, 3), xpy-measure (1),
   xmain-tune (1). Binary `bins/m1123` is main d60c99c85d.
+
+## Hidden checks (Nov 23)
+- `node grade.mjs <label> [--only task-n,...] [--force]` runs `checks/<task>.mjs` against each attempt's own store
+  (`run.json` runtime.root: `.darklang` there, and its `dark`) and appends `results/<label>.grades.jsonl`:
+  `{ task, n, graded, pass, passed, total, checks: [{ name, ok, got }] }`. `summary.mjs` then shows
+  "pass k/n" per task and "hidden checks passed" in the totals.
+- Checks exist for the measure set and held-out-2 (16 tasks). The entry point comes from the transcript: the
+  last function run without a Dark error (its arguments are reused for servers, with the port and absolute
+  paths swapped), the last `serve`d router, and the modules saved. No agent sees `checks/`.
+- vending-machine grades only its tests (the stock file's shape is the agent's choice); test-strutil skips the
+  mutation check; job-queue skips the 30 s timeout.
+- **Grade before deleting `.batch-tools`**: the stores live there. Rounds before Nov 23 deleted them, so they
+  can't be re-scored; tonight's x116 arm re-runs v0.0.116 with grading instead.
+- Python attempts are not graded yet.

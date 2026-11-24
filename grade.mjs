@@ -1,0 +1,122 @@
+// usage: node grade.mjs <label> [--only task-n,...] [--force]
+// Hidden checks: runs what an attempt saved against inputs and expected outputs no agent sees
+// (checks/<task>.mjs), using the attempt's own store. Rows go to results/<label>.grades.jsonl, one per
+// attempt: { task, n, graded, pass, passed, total, checks: [{ name, ok, got }] }.
+// The entry point comes from the transcript: the function the agent last ran without a Dark error
+// (or served), and the modules it saved. Any agent that writes stream-json and uses `dark run`/`serve`
+// or saves with `module` is graded the same way.
+import { readFileSync, existsSync, appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync, spawn } from 'node:child_process';
+import path from 'node:path';
+
+const B = new URL('.', import.meta.url).pathname;
+const args = process.argv.slice(2);
+const opt = (k, d) => { const i = args.indexOf(k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
+const only = opt('--only', null)?.split(',');
+const force = args.includes('--force') ? (args.splice(args.indexOf('--force'), 1), true) : false;
+const label = args[0];
+// --force regrades; readers (summary.mjs) take the last row per attempt
+const outFile = `${B}/results/${label}.grades.jsonl`;
+const done = new Set(!force && existsSync(outFile) ? readFileSync(outFile, 'utf8').trim().split('\n').filter(Boolean).map(l => { const r = JSON.parse(l); return `${r.task}-${r.n}`; }) : []);
+const rows = readFileSync(`${B}/results/${label}.jsonl`, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
+
+const DARK_ERR = /error\[(?:LEX|PARSE)|Parse error|Not found: |not found\. Did you mean|is unresolved|Type check failed|permission denied|No script file or function named|Uncaught exception|Encountered a Runtime Error/;
+const NAME = String.raw`([A-Z]\w*(?:\.\w+)+)`;
+
+function entryFrom(transcript) {
+  const tools = new Map(); const runs = [], serves = [], modules = new Set(); let final = '', lastArgs = [];
+  for (const line of transcript.split('\n')) {
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    if (e.type === 'assistant') for (const c of e.message?.content || []) if (c.type === 'tool_use') tools.set(c.id, c);
+    if (e.type === 'user' && Array.isArray(e.message?.content)) for (const c of e.message.content) if (c.type === 'tool_result') {
+      const tu = tools.get(c.tool_use_id); const cmd = tu?.input?.command; if (typeof cmd !== 'string') continue;
+      const t = typeof c.content === 'string' ? c.content : (c.content || []).map(x => x.text || '').join('\n');
+      const ok = !DARK_ERR.test(t);
+      for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:module|fn)\s+/?` + NAME, 'g'))) modules.add(m[1].replace(/\.Tests$/, ''));
+      if (!ok) continue;
+      for (const m of cmd.matchAll(new RegExp(String.raw`(?<!test )\brun\s+(?:--?[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s-]\S*))?\s+)*` + NAME + String.raw`([^\n;&|>]*)`, 'g'))) if (!/^Stdlib\.|^Darklang\./.test(m[1]) && /\.[a-z]\w*$/.test(m[1])) { runs.push(m[1]); lastArgs = m[2].trim().split(/\s+/).filter(Boolean); }
+      for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:serve|http-server)\s+` + NAME, 'g'))) serves.push(m[1]);
+    }
+    if (e.type === 'result' && !final) final = String(e.result || '');
+  }
+  for (const m of final.matchAll(new RegExp(String.raw`(?<!test )\brun\s+(?:--?[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s-]\S*))?\s+)*` + NAME, 'g'))) if (/\.[a-z]\w*$/.test(m[1])) runs.push(m[1]);
+  for (const m of final.matchAll(new RegExp(String.raw`\bserve\s+` + NAME, 'g'))) serves.push(m[1]);
+  const count = xs => { const c = {}; xs.forEach((x, i) => c[x] = (c[x] || 0) + 1 + i / 1000); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); };
+  return { main: runs.at(-1) || null, mainArgs: lastArgs, mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final };
+}
+
+function ctxFor(row, runRoot, entry) {
+  // the attempt's own copy of the binary, else the label's wrapper
+  const D = existsSync(path.join(runRoot, 'dark')) ? path.join(runRoot, 'dark') : `${B}/bins/${row.label}/dark`;
+  const env = { ...process.env, DARK_CONFIG_RUNDIR: path.join(runRoot, '.darklang'), DOTNET_BUNDLE_EXTRACT_BASE_DIR: path.join(runRoot, 'dotnet'), NO_PROXY: '127.0.0.1,localhost' };
+  const tmp = mkdtempSync('/home/stachu/code/bench-loop-ws/grade-');
+  const dark = (argv, o = {}) => {
+    const r = spawnSync(D, argv, { cwd: o.cwd || tmp, input: o.stdin ?? '', env: { ...env, ...(o.env || {}) }, timeout: o.timeout || 60000, maxBuffer: 64 << 20 });
+    return { code: r.status, out: String(r.stdout || ''), err: String(r.stderr || ''), timedOut: !!r.error };
+  };
+  const allow = (extra = []) => ['--allow', [`file read ${tmp}`, `file write ${tmp}`, ...extra].join('; ')];
+  const ctx = {
+    tmp, entry, dark, final: entry.final,
+    write: (name, content) => { writeFileSync(path.join(tmp, name), content); return path.join(tmp, name); },
+    // run the agent's main (or another function) with args, as `dark run` would
+    run: (argv, o = {}) => dark(['run', ...allow(o.allow), o.fn || entry.main, ...argv], o),
+    eval: (expr, o = {}) => dark(['eval', expr], o),
+    // counts from the summary line, which every release prints (`--json` is newer)
+    test: (filter) => { const r = dark(['test', 'run', filter], { timeout: 300000 }); const m = (r.out + r.err).match(/(\d+) tests?[^\n]*?: (\d+) passed, (\d+) failed/); return m ? { tests: +m[1], passed: +m[2], failed: +m[3], code: r.code } : { passed: 0, failed: 0, code: r.code, raw: (r.out + r.err).slice(-200) }; },
+    source: (name) => dark(['view', name, '--raw']).out,
+    // the user's declarations `let f(...): T` in the saved modules
+    fns: () => entry.modules.flatMap(m => [...ctx.source(m).matchAll(/^\s*let (\w+)\(([^)]*)\)\s*:\s*([^=]+)=/gm)].map(x => ({ module: m, name: `${m}.${x[1]}`, short: x[1], params: x[2].trim(), ret: x[3].trim() }))),
+    owner: () => (entry.main || entry.router || entry.modules[0] || 'Me.X').split('.').slice(0, 2).join('.'),
+    async serve(port, extraAllow = []) {
+      let p;
+      if (entry.router) {
+        dark(['permissions', 'allow', 'http-server', '127.0.0.1', String(port)]);
+        p = spawn(D, ['serve', entry.router, '--port', String(port)], { cwd: tmp, env, stdio: 'ignore' });
+      } else {
+        // the agent's own last arguments, with its port swapped for ours
+        // and its absolute paths moved into the grading folder
+        const a = entry.mainArgs.map(x => x.replace(/^["']|["']$/g, '')).map(x => /^\d{4,5}$/.test(x) ? String(port) : x.startsWith('/') || x.startsWith('$') ? path.join(tmp, path.basename(x)) : x.replace(/:\d{4,5}$/, `:${port}`));
+        const argv = a.some(x => x.includes(String(port))) ? a : [...a, String(port)];
+        p = spawn(D, ['run', ...allow([`http-server 127.0.0.1 ${port}`, ...extraAllow]), entry.main, ...argv], { cwd: tmp, env, stdio: 'ignore' });
+      }
+      for (let i = 0; i < 60; i++) { try { await fetch(`http://127.0.0.1:${port}/`); return { stop: () => p.kill('SIGKILL') }; } catch { await new Promise(r => setTimeout(r, 500)); } }
+      p.kill('SIGKILL'); return null;
+    },
+    async http(port, method, p, body, headers = {}) {
+      try { const r = await fetch(`http://127.0.0.1:${port}${p}`, { method, body, headers }); return { status: r.status, text: await r.text() }; } catch (e) { return { status: 0, text: String(e) }; }
+    },
+    cleanup: () => rmSync(tmp, { recursive: true, force: true }),
+  };
+  return ctx;
+}
+
+const results = [];
+for (const row of rows) {
+  const key = `${row.task}-${row.n}`;
+  if ((only && !only.includes(key) && !only.includes(row.task)) || done.has(key)) continue;
+  const g = { label, task: row.task, n: row.n, graded: false, pass: null, passed: 0, total: 0, checks: [] };
+  const checkFile = `${B}/checks/${row.task}.mjs`;
+  const runJson = `${B}/results/${label}/${key}/run.json`;
+  const transcript = `${B}/results/${label}/${key}/agent-0.jsonl`;
+  if (!existsSync(checkFile)) g.why = 'no hidden check for this task';
+  else if ((row.language || 'Dark') !== 'Dark') g.why = 'not a Dark attempt';
+  else if (!existsSync(runJson) || !existsSync(transcript)) g.why = 'no transcript';
+  else {
+    const root = JSON.parse(readFileSync(runJson, 'utf8')).runtime?.root;
+    if (!root || !existsSync(path.join(root, '.darklang'))) g.why = 'store not kept';
+    else {
+      const entry = entryFrom(readFileSync(transcript, 'utf8'));
+      const ctx = ctxFor(row, root, entry);
+      try {
+        const check = (await import(checkFile)).default;
+        g.checks = (await check(ctx)).map(c => ({ name: c.name, ok: !!c.ok, got: c.ok ? undefined : String(c.got ?? '').slice(0, 200) }));
+        g.graded = true; g.entry = { main: entry.main, router: entry.router };
+        g.passed = g.checks.filter(c => c.ok).length; g.total = g.checks.length; g.pass = g.passed === g.total && g.total > 0;
+      } catch (e) { g.why = `check crashed: ${String(e.message).slice(0, 200)}`; }
+      ctx.cleanup();
+    }
+  }
+  appendFileSync(outFile, JSON.stringify(g) + '\n');
+  results.push(g);
+  console.log(`${key.padEnd(22)} ${g.graded ? (g.pass ? 'PASS' : 'FAIL') : '----'} ${g.graded ? `${g.passed}/${g.total}` : g.why}${g.graded && !g.pass ? '  ' + g.checks.filter(c => !c.ok).map(c => c.name).join(', ') : ''}`);
+}
