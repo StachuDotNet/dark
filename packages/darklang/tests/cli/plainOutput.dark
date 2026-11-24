@@ -48,7 +48,7 @@ let atTerminal(i: Instance.T, args: List<String>): (Int64 * String) =
   (out.exitCode, Stdlib.String.replaceAll(out.stdout, "\r\n", "\n"))
 
 
-/// One run of every command that answers through `Output`.
+/// Runs that answer through `Output` with something to show, on the store `authored` makes.
 val answering: List<List<String>> =
   [ [ "ls", "Tests.Plain" ]
     [ "tree", "Tests.Plain" ]
@@ -75,47 +75,6 @@ val decoration: List<String> =
     "├"
     "└"
     "⚠" ]
-
-
-test everyAnswerInThreeModes = Instance.withInstance(fun i ->
-  let _ = authored(i)
-  let commands = Cli.Registry.allCommands()
-  answering
-  |> Stdlib.List.map(fun args ->
-    let line = Stdlib.String.join(args, " ")
-    let name = Stdlib.List.head(args) |> Stdlib.Option.withDefault("")
-    let takesJson =
-      commands
-      |> Stdlib.List.any(fun cmd ->
-        let accepts = cmd.accepts
-        cmd.name == name
-        && Stdlib.List.contains(CommandHelp.Help.flagsOf(accepts()), "--json"))
-
-    let (prettyCode, _) = atTerminal(i, args)
-    let (plainCode, plain) = atTerminal(i, Stdlib.List.append(args, "--plain"))
-    let (pipedCode, pipedOut, _) = piped(i, args)
-    let (jsonCode, json, _) =
-      Instance.streams(i, Stdlib.List.append(args, "--json"))
-
-    let parsed =
-      match Stdlib.Json.parse<Stdlib.AltJson.Json>(json) with
-      | Ok(_) -> Stdlib.Test.Result.Pass
-      | Error(_) -> Stdlib.Test.fail($"{line} --json: not JSON: {json}")
-
-    Stdlib.Test.all(
-      Stdlib.List.flatten(
-        [ [ takesJson |> Stdlib.Test.equal(true)
-            Instance.exitedWith(prettyCode, 0, $"{line} at a terminal")
-            Instance.exitedWith(plainCode, 0, $"{line} --plain")
-            Instance.exitedWith(pipedCode, 0, $"{line} piped")
-            Instance.exitedWith(jsonCode, 0, $"{line} --json")
-            parsed
-            Stdlib.String.trim(plain) |> Stdlib.Test.equal(pipedOut) ]
-
-          decoration
-          |> Stdlib.List.map(fun d ->
-            Instance.doesNotSay(plain, d, $"{line} --plain")) ])))
-  |> Stdlib.Test.all)
 
 
 test lsAndTreePrintRows = Instance.withInstance(fun i ->
@@ -167,3 +126,122 @@ test theFlagsGoAnywhere = Instance.withInstance(fun i ->
         pretty.stdout,
         "On branch main",
         "--pretty over DARK_OUTPUT=plain") ]))
+
+
+/// Every (sub)command that declares `--json`, read from the registry, as the words that run it:
+/// bare, or with a word that names nothing when it needs one, so it refuses. `traces follow` never
+/// ends, and a bare `test run` runs every test (`JsonShapes.testRunAnswersWithEveryTest` runs it).
+let declaringJson(): List<List<String>> =
+  let swept = CommandSweeps.swept()
+  let run(words: List<String>, s: Cli.Accepts.Shape): List<List<String>> =
+    let line = Stdlib.String.join(words, " ")
+    if
+      Stdlib.List.contains(s.flags, "--json")
+      && line != "traces follow"
+      && line != "test run"
+    then
+      if s.atLeast > 0 then
+        [ Stdlib.List.append(words, "zzz-no-such-thing-zzz") ]
+      else
+        [ words ]
+    else
+      []
+
+  Cli.Registry.allCommands()
+  |> Stdlib.List.filter(fun c -> Stdlib.List.contains(swept, c.name))
+  |> Stdlib.List.map(fun c ->
+    let accepts = c.accepts
+    match accepts() with
+    | Takes(s) -> run([ c.name ], s)
+    | Subcommands(named, s) ->
+      named
+      |> Stdlib.List.map(fun((sub, a)) ->
+        match a with
+        | Takes(t) -> run([ c.name, sub ], t)
+        | Subcommands(_, t) -> run([ c.name, sub ], t))
+      |> Stdlib.List.prepend(run([ c.name ], s))
+      |> Stdlib.List.flatten)
+  |> Stdlib.List.flatten
+
+
+/// What still prints its pretty view under `--plain`, because it doesn't answer through `Output`.
+val plainIsPretty = [ "constraints", "conflicts walk", "ps" ]
+
+
+/// Every command that declares `--json`, in all three modes, so one is covered the day it declares
+/// the flag. `--json` prints one JSON value or nothing; plain has no decoration, answers whenever
+/// JSON does, and is what a pipe gets; no mode prints a runtime error; and the `answering` runs
+/// answer in every mode, at a terminal too.
+test everyJsonCommandInThreeModes = Instance.withInstance(fun i ->
+  let _ = authored(i)
+  let commands = Stdlib.List.concat(answering, declaringJson())
+  let failures =
+    commands
+    |> Stdlib.List.map(fun args ->
+      let mustAnswer = Stdlib.List.contains(answering, args)
+      let (jsonCode, json, jsonErr) =
+        Instance.streams(i, Stdlib.List.append(args, "--json"))
+
+      let (plainCode, plain, plainErr) =
+        Instance.streams(i, Stdlib.List.append(args, "--plain"))
+
+      let (prettyCode, pretty, prettyErr) =
+        Instance.streams(i, Stdlib.List.append(args, "--pretty"))
+
+      let answered =
+        if mustAnswer then
+          let (terminalCode, _) = atTerminal(i, args)
+          let (pipedCode, pipedOut, _) = piped(i, args)
+          [ if plain == pipedOut then
+              ""
+            else
+              $"piped printed {pipedOut}, not {plain}" ]
+          |> Stdlib.List.append(
+            if
+              [ jsonCode, plainCode, prettyCode, terminalCode, pipedCode ]
+              == [ 0, 0, 0, 0, 0 ]
+            then
+              ""
+            else
+              "did not exit 0 in every mode")
+        else
+          []
+
+      let jsonProblems =
+        match json, Stdlib.AltJson.parse(json) with
+        | ("", _) | (_, Ok(_)) -> []
+        | _ -> [ $"--json is not one JSON value: {json}" ]
+
+      let decorated =
+        Stdlib.List.contains(plainIsPretty, Stdlib.String.join(args, " "))
+
+      let plainProblems =
+        decoration
+        |> Stdlib.List.filter(fun d ->
+          Stdlib.Bool.not(decorated) && Stdlib.String.contains(plain, d))
+        |> Stdlib.List.map(fun d -> $"--plain printed {d}")
+        |> Stdlib.List.append(
+          if jsonCode == 0 && plainCode != 0 then
+            $"--plain exited 1: {plainErr}"
+          else
+            "")
+        |> Stdlib.List.filter(fun p -> p != "")
+
+      let crashes =
+        [ json + jsonErr, plain + plainErr, pretty + prettyErr ]
+        |> Stdlib.List.filterMap(CommandSweeps.runtimeFailure)
+
+      Stdlib.List.flatten([ jsonProblems, plainProblems, answered, crashes ])
+      |> Stdlib.List.filter(fun p -> p != "")
+      |> Stdlib.List.map(fun p ->
+        $"  dark {Stdlib.String.join(args, " ")}: {p}"))
+    |> Stdlib.List.flatten
+
+  Stdlib.Test.all(
+    [ Stdlib.Test.expect(
+        Stdlib.List.length(commands) > 20,
+        "the registry was read")
+
+      CommandSweeps.noFailures(
+        "commands that do not answer in all three modes",
+        failures) ]))

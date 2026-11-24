@@ -300,13 +300,6 @@ let callJson(branchId: Uuid, call: Darklang.Tracing.FnCall): CallJson =
       process = call.processId |> Stdlib.Option.map(fun p -> Stdlib.display(p)) }
 
 
-/// A list of traces, as JSON. Every listing verb prints through this.
-let printTracesJson(branchId: Uuid, traces: List<Tracing.Trace>): Bool =
-  printJson(
-    Stdlib.Json.checkedSerialize<List<TraceJson>>(
-      traces |> Stdlib.List.map(fun r -> traceJson(branchId, r))))
-
-
 /// One run and its log, as JSON.
 let printInspectJson(branchId: Uuid, prefix: String): Bool =
   match find(prefix) with

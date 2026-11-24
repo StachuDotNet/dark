@@ -390,38 +390,31 @@ let execute(state: AppState, args: List<String>): AppState =
       refuse(state, "`traces find --inspect` opens the newest matching run")
     else
       match args with
-      | [] ->
-        if wantsJson then
-          executeListJson(state, 50)
-        else
-          printMatches("", Tracing.Store.list(50))
-          state
-      | ["list"] -> if wantsJson then executeListJson(state, 20) else executeList(state, 20)
+      | [] -> answerTraces(state, "", Tracing.Store.list(50))
+      | ["list"] -> executeList(state, 20)
       | ["list", "--fn"] -> refuse(state, "Usage: traces list --fn <name> [limit] [--json]")
       | ["list", "--route"] ->
         refuse(state, "Usage: traces list --route <substring> [limit] [--json]")
       | ["list", limitStr] ->
         match Stdlib.Int64.parse(limitStr) with
-        | Ok(limit) ->
-          if wantsJson then executeListJson(state, limit) else executeList(state, limit)
+        | Ok(limit) -> executeList(state, limit)
         | Error(_) -> refuse(state, parsePositionalErr(limitStr, "limit"))
-      | ["list", "--fn", fnName] -> executeListByFn(state, fnName, 20, wantsJson)
+      | ["list", "--fn", fnName] -> executeListByFn(state, fnName, 20)
       | ["list", "--fn", fnName, limitStr] ->
         match Stdlib.Int64.parse(limitStr) with
-        | Ok(limit) -> executeListByFn(state, fnName, limit, wantsJson)
+        | Ok(limit) -> executeListByFn(state, fnName, limit)
         | Error(_) -> refuse(state, parsePositionalErr(limitStr, "limit"))
-      | ["list", "--route", route] -> executeListByRoute(state, route, 20, wantsJson)
+      | ["list", "--route", route] -> executeListByRoute(state, route, 20)
       | ["list", "--route", route, limitStr] ->
         match Stdlib.Int64.parse(limitStr) with
-        | Ok(limit) -> executeListByRoute(state, route, limit, wantsJson)
+        | Ok(limit) -> executeListByRoute(state, route, limit)
         | Error(_) -> refuse(state, parsePositionalErr(limitStr, "limit"))
       | ["follow"] -> executeFollow(state, Option.None, wantsJson)
       | ["follow", "--route", route] -> executeFollow(state, Option.Some(route), wantsJson)
-      | ["stats"] -> if wantsJson then executeStatsJson(state, 100) else executeStats(state, 100)
+      | ["stats"] -> executeStats(state, 100)
       | ["stats", limitStr] ->
         match Stdlib.Int64.parse(limitStr) with
-        | Ok(limit) ->
-          if wantsJson then executeStatsJson(state, limit) else executeStats(state, limit)
+        | Ok(limit) -> executeStats(state, limit)
         | Error(_) -> refuse(state, parsePositionalErr(limitStr, "limit"))
       | ["tail"] -> executeTail(state, Option.None, 1)
       // Flag-without-arg case must precede the `[ "tail", nStr ]` arm
@@ -439,47 +432,24 @@ let execute(state: AppState, args: List<String>): AppState =
       | ["find", pattern] ->
         if wantsFindInspect then
           executeFindInspect(state, pattern)
-        else if wantsJson then
-          executeFindJson(state, pattern, 20)
         else
           executeFind(state, pattern, 20)
       | ["find", pattern, limitStr] ->
         match Stdlib.Int64.parse(limitStr) with
-        | Ok(limit) ->
-          if wantsJson then
-            executeFindJson(state, pattern, limit)
-          else
-            executeFind(state, pattern, limit)
+        | Ok(limit) -> executeFind(state, pattern, limit)
         | Error(_) -> refuse(state, parsePositionalErr(limitStr, "limit"))
       // `--all` is not stripped from `args` the way the other flags are, because `delete --all`
       // needs it, so these arms name it rather than reading it out of the list.
       | ["fns"] | ["fns", "--all"] ->
-        let showAll = Stdlib.List.contains(args, "--all")
-        if wantsJson then
-          executeFnCountsJson(state, 100, showAll)
-        else
-          executeFnCounts(state, 100, showAll)
+        executeFnCounts(state, 100, Stdlib.List.contains(args, "--all"))
       | ["fns", limitStr] | ["fns", limitStr, "--all"] ->
         match Stdlib.Int64.parse(limitStr) with
-        | Ok(limit) ->
-          let showAll = Stdlib.List.contains(args, "--all")
-          if wantsJson then
-            executeFnCountsJson(state, limit, showAll)
-          else
-            executeFnCounts(state, limit, showAll)
+        | Ok(limit) -> executeFnCounts(state, limit, Stdlib.List.contains(args, "--all"))
         | Error(_) -> refuse(state, parsePositionalErr(limitStr, "limit"))
-      | ["hotspots"] ->
-        if wantsJson then
-          executeHotspotsJson(state, 100)
-        else
-          executeHotspots(state, 100)
+      | ["hotspots"] -> executeHotspots(state, 100)
       | ["hotspots", limitStr] ->
         match Stdlib.Int64.parse(limitStr) with
-        | Ok(limit) ->
-          if wantsJson then
-            executeHotspotsJson(state, limit)
-          else
-            executeHotspots(state, limit)
+        | Ok(limit) -> executeHotspots(state, limit)
         | Error(_) -> refuse(state, parsePositionalErr(limitStr, "limit"))
       // `view` is `show` by another name, and people reach for both. An alias costs one arm.
       | ["view", ...] -> execute(state, Stdlib.List.prepend(Stdlib.List.drop(rawArgs, 1), "show"))
@@ -500,44 +470,38 @@ let execute(state: AppState, args: List<String>): AppState =
         let on = Tracing.Store.enabled()
         let text = if on then "on" else "off"
         let stored = Tracing.Store.storedSetting()
-        if wantsJson then
-          // The one thing an empty `--json` listing cannot say for itself. A person reading an
-          // empty table gets the reason under it; something parsing `[]` gets nothing, and has to
-          // be able to ask whether the store is empty or the recording is off.
-          let recordingKey = jsonStr("recording")
-          let storedKey = jsonStr("stored")
-          let storedValue =
+        Output.answer(
+          state,
+          (fun () ->
+            Stdlib.printLine($"recording: {text}")
+            // Where that answer came from, since three things can decide it and only one of them is
+            // visible in the store.
             match stored with
-            | Some(true) -> jsonStr("on")
-            | Some(false) -> jsonStr("off")
-            | None -> "null"
+            | Some(s) when s == on -> ()
+            | Some(s) ->
+              Stdlib.printLine(
+                Stdlib.Cli.UI.Colors.dimText(
+                  "  for this command only; the stored setting is " + (if s then "on" else "off")))
+            | None ->
+              Stdlib.printLine(
+                Stdlib.Cli.UI.Colors.dimText(
+                  "  nothing is stored for this instance, so this is the environment's default"))
 
-          let onText = Stdlib.display(on)
-          Stdlib.printLine($"{{{recordingKey}: {onText}, {storedKey}: {storedValue}}}")
-        else
-          Stdlib.printLine($"recording: {text}")
-          // Where that answer came from, since three things can decide it and only one of them is
-          // visible in the store.
-          match stored with
-          | Some(s) when s == on -> ()
-          | Some(s) ->
-            Stdlib.printLine(
+            Stdlib.printErrorLine(
               Stdlib.Cli.UI.Colors.dimText(
-                "  for this command only; the stored setting is " + (if s then "on" else "off")))
-          | None ->
-            Stdlib.printLine(
+                "  dark traces record on | off   change it, for this instance"))
+
+            Stdlib.printErrorLine(
               Stdlib.Cli.UI.Colors.dimText(
-                "  nothing is stored for this instance, so this is the environment's default"))
+                "  dark --trace <command>        record one command without changing the setting"))
 
-          Stdlib.printErrorLine(
-            Stdlib.Cli.UI.Colors.dimText(
-              "  dark traces record on | off   change it, for this instance"))
-
-          Stdlib.printErrorLine(
-            Stdlib.Cli.UI.Colors.dimText(
-              "  dark --trace <command>        record one command without changing the setting"))
-
-        state
+            state),
+          // The one thing an empty `--json` listing cannot say for itself: whether the store is
+          // empty or the recording is off.
+          fun () ->
+            Recording
+              { recording = on
+                stored = stored |> Stdlib.Option.map(fun s -> if s then "on" else "off") })
       | ["record", value] ->
         if value == "on" || value == "off" then
           let on = value == "on"
@@ -763,25 +727,36 @@ let execute(state: AppState, args: List<String>): AppState =
 val limitTooSmall = "a limit is a number of traces, so it has to be 1 or more"
 
 
+/// Whether traces are recorded, and what this instance has stored about it.
+type Recording =
+  { recording: Bool
+    stored: Option<String> }
+
+
+/// A listing of traces: the table for a person, and for a program the traces, plain as one a
+/// line with its whole id first. <param nothing> is as for <fn printMatches>.
+let answerTraces(state: AppState, nothing: String, rows: List<TraceSummary>): AppState =
+  let pretty = fun () ->
+    printMatches(nothing, rows)
+    state
+
+  let traces = fun () ->
+    rows |> Stdlib.List.map(fun r -> TraceVerbs.traceJson(state.currentBranchId, r))
+
+  let line(t: TraceVerbs.TraceJson): String =
+    $"{t.id}  {t.status}  {t.entry}  {Text.oneLineAt(40, t.input)}"
+
+  Output.answerWithRows(state, pretty, traces, fun ts -> Stdlib.List.map(ts, line))
+
+
 let executeList(state: AppState, limit: Int64): AppState =
   if limit < 1 then
     refuse(state, limitTooSmall)
   else
-    printMatches("", Tracing.Store.list(limit))
-    state
+    answerTraces(state, "", Tracing.Store.list(limit))
 
 
-/// `traces list --json [N]` — same data as `traces list` but emitted as a
-/// JSON array of `{traceId, handler, timestamp}` objects, no headers or
-/// footers. Designed for piping into jq / scripts. Empty store prints `[]`.
-let executeListJson(state: AppState, limit: Int64): AppState =
-  if limit < 1 then
-    refuse(state, limitTooSmall)
-  else
-    exitWith(state, TraceVerbs.printTracesJson(state.currentBranchId, Tracing.Store.list(limit)))
-
-
-let executeListByFn(state: AppState, typed: String, limit: Int64, jsonMode: Bool): AppState =
+let executeListByFn(state: AppState, typed: String, limit: Int64): AppState =
   if Stdlib.String.trim(typed) == "" then
     refuse(state, "--fn takes a function name, or part of one")
   else if limit < 1 then
@@ -790,33 +765,27 @@ let executeListByFn(state: AppState, typed: String, limit: Int64, jsonMode: Bool
     // A no-op on a PARTIAL name, which this verb also takes: nothing resolves it, so
     // it is handed on as typed and the substring match does its job.
     let fnName = TraceVerbs.canonicalFnName(state.currentBranchId, typed)
-    let rows = Tracing.Store.listByFn(fnName, limit)
-    if jsonMode then
-      exitWith(state, TraceVerbs.printTracesJson(state.currentBranchId, rows))
-    else
+    match Tracing.Store.listByFn(fnName, limit) with
+    | [] when state.output == Output.Mode.Pretty ->
       // `--fn` searches the effect LOG, and the log holds only the impure calls, so
       // a pure function is never in it. "No kept trace went through it" is the OTHER
       // question's answer and was simply wrong here: `traces calls` is the verb that
       // asks it, and if it has an answer this says so rather than leaving a person
       // with a flat no.
-      match rows with
+      Stdlib.printErrorLine($"no kept trace made an effectful call matching {fnName}")
+      match Tracing.Store.wentThroughNamed(state.currentBranchId, fnName, 1) with
       | [] ->
-        Stdlib.printErrorLine($"no kept trace made an effectful call matching {fnName}")
-        match Tracing.Store.wentThroughNamed(state.currentBranchId, fnName, 1) with
-        | [] ->
-          TraceVerbs.whyEmpty("run something that calls it")
-          |> Stdlib.List.iter(fun line -> Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText(line)))
-        | _ ->
-          Stdlib.printErrorLine(
-            Stdlib.Cli.UI.Colors.dimText(
-              "  traces DID go through it, and it made no impure calls of its own:"))
-
-          Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText($"  dark traces calls {fnName}"))
-
-        state
+        TraceVerbs.whyEmpty("run something that calls it")
+        |> Stdlib.List.iter(fun line -> Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText(line)))
       | _ ->
-        printMatches("", rows)
-        state
+        Stdlib.printErrorLine(
+          Stdlib.Cli.UI.Colors.dimText(
+            "  traces DID go through it, and it made no impure calls of its own:"))
+
+        Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText($"  dark traces calls {fnName}"))
+
+      state
+    | rows -> answerTraces(state, "", rows)
 
 
 /// The rows of <param all> that `traces fns` shows: the bundled library only with <param showAll>.
@@ -844,57 +813,54 @@ let isGone(name: String): Bool =
 ///
 /// The bundled library is hidden by default. `Stdlib.List.map` is in almost every run, and
 /// saying so buries the handful of names that are actually yours.
-let executeFnCounts(state: AppState, traceLimit: Int64, showAll: Bool): AppState =
-  if traceLimit < 1 then
-    refuse(state, limitTooSmall)
-  else
-    let all = Tracing.Store.fnCounts(traceLimit)
-    let rows = fnCountRows(all, showAll)
-    let hidden = Stdlib.List.length(all) - Stdlib.List.length(rows)
-    let display(name: String): String =
-      if isGone(name) then $"(gone) {Stdlib.String.first(name, 8)}" else name
+let printFnCounts(state: AppState, traceLimit: Int64, showAll: Bool): AppState =
+  let all = Tracing.Store.fnCounts(traceLimit)
+  let rows = fnCountRows(all, showAll)
+  let hidden = Stdlib.List.length(all) - Stdlib.List.length(rows)
+  let display(name: String): String =
+    if isGone(name) then $"(gone) {Stdlib.String.first(name, 8)}" else name
 
-    match rows with
-    | [] ->
-      if Stdlib.List.length(all) > 0 then
-        Stdlib.printErrorLine("every function recent runs went through is from the bundled library")
-        Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText("  dark traces fns --all    show them"))
-      else
-        Stdlib.printErrorLine("no runs have been kept yet")
-        TraceVerbs.whyEmpty("run something")
-        |> Stdlib.List.iter(fun line -> Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText(line)))
+  match rows with
+  | [] ->
+    if Stdlib.List.length(all) > 0 then
+      Stdlib.printErrorLine("every function recent runs went through is from the bundled library")
+      Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText("  dark traces fns --all    show them"))
+    else
+      Stdlib.printErrorLine("no runs have been kept yet")
+      TraceVerbs.whyEmpty("run something")
+      |> Stdlib.List.iter(fun line -> Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText(line)))
 
-      state
-    | _ ->
-      let width =
-        rows
-        |> Stdlib.List.map(fun row -> Stdlib.String.length(display(Stdlib.Tuple2.first(row))))
-        |> Stdlib.List.fold(2, fun(acc, n) -> if n > acc then n else acc)
-
-      Stdlib.printLine(
-        $"functions the last {Stdlib.display(traceLimit)} runs went through, most first:")
-
-      Stdlib.printLine("")
+    state
+  | _ ->
+    let width =
       rows
-      |> Stdlib.List.iter(fun row ->
-        let (name, runs) = row
-        let padded = Stdlib.Text.padEndToWidth(display(name), width)
-        let n = Stdlib.display(runs)
-        let word = if runs == 1 then "run" else "runs"
-        Stdlib.printLine($"  {padded}  {n} {word}"))
+      |> Stdlib.List.map(fun row -> Stdlib.String.length(display(Stdlib.Tuple2.first(row))))
+      |> Stdlib.List.fold(2, fun(acc, n) -> if n > acc then n else acc)
 
-      Stdlib.printErrorLine("")
+    Stdlib.printLine(
+      $"functions the last {Stdlib.display(traceLimit)} runs went through, most first:")
 
+    Stdlib.printLine("")
+    rows
+    |> Stdlib.List.iter(fun row ->
+      let (name, runs) = row
+      let padded = Stdlib.Text.padEndToWidth(display(name), width)
+      let n = Stdlib.display(runs)
+      let word = if runs == 1 then "run" else "runs"
+      Stdlib.printLine($"  {padded}  {n} {word}"))
+
+    Stdlib.printErrorLine("")
+
+    Stdlib.printErrorLine(
+      Stdlib.Cli.UI.Colors.dimText(
+        "  dark traces show <fn>    the code, with the newest run's values beside it"))
+
+    if hidden > 0 then
       Stdlib.printErrorLine(
         Stdlib.Cli.UI.Colors.dimText(
-          "  dark traces show <fn>    the code, with the newest run's values beside it"))
+          $"  dark traces fns --all    with the {Stdlib.display(hidden)} from the bundled library"))
 
-      if hidden > 0 then
-        Stdlib.printErrorLine(
-          Stdlib.Cli.UI.Colors.dimText(
-            $"  dark traces fns --all    with the {Stdlib.display(hidden)} from the bundled library"))
-
-      state
+    state
 
 
 /// `traces fns --json` -- the same answer for an agent.
@@ -907,86 +873,67 @@ type FnRunsJson =
     gone: Bool }
 
 
-let executeFnCountsJson(state: AppState, traceLimit: Int64, showAll: Bool): AppState =
+let executeFnCounts(state: AppState, traceLimit: Int64, showAll: Bool): AppState =
   if traceLimit < 1 then
     refuse(state, limitTooSmall)
   else
-    let rows =
+    Output.answer(state, (fun () -> printFnCounts(state, traceLimit, showAll)), fun () ->
       fnCountRows(Tracing.Store.fnCounts(traceLimit), showAll)
-      |> Stdlib.List.map(fun row ->
-        let (name, runs) = row
-        FnRunsJson { fn = name, runs = runs, gone = isGone(name) })
+      |> Stdlib.List.map(fun((name, runs)) ->
+        FnRunsJson { fn = name, runs = runs, gone = isGone(name) }))
 
-    exitWith(state, printJson(Stdlib.Json.checkedSerialize<List<FnRunsJson>>(rows)))
+
+/// One logged call's time across recent traces, as `traces hotspots` totals it.
+type Hotspot =
+  { name: String
+    count: Int64
+    totalMs: Int64
+    maxMs: Int64 }
+
+
+let executeHotspots(state: AppState, traceLimit: Int64): AppState =
+  if traceLimit < 1 then
+    refuse(state, limitTooSmall)
+  else
+    Output.answer(state, (fun () -> printHotspots(state, traceLimit)), fun () ->
+      Tracing.Store.hotspots(traceLimit)
+      |> Stdlib.List.map(fun((name, count, total, max)) ->
+        Hotspot { name = name, count = count, totalMs = total, maxMs = max }))
 
 
 /// `traces hotspots [limit]`: across the last <limit> traces (default 100), the time spent
 /// in each logged call: count, total ms, max ms, sorted by total. Only impure calls are
 /// logged, so every name it prints is a builtin.
-let executeHotspots(state: AppState, traceLimit: Int64): AppState =
-  if traceLimit < 1 then
-    refuse(state, limitTooSmall)
-  else
-    let rows = Tracing.Store.hotspots(traceLimit)
-    match rows with
-    | [] ->
-      Stdlib.printErrorLine($"No fn-call data in the last {Stdlib.display(traceLimit)} traces.")
-      state
-    | _ ->
-      let fnCount = Stdlib.List.length(rows)
-      let fnWord = if fnCount == 1 then "fn" else "fns"
-      Stdlib.printLine(
-        $"Hotspots (last {Stdlib.display(traceLimit)} traces, top {Stdlib.display(fnCount)} {fnWord} by total ms):")
+let printHotspots(state: AppState, traceLimit: Int64): AppState =
+  let rows = Tracing.Store.hotspots(traceLimit)
+  match rows with
+  | [] ->
+    Stdlib.printErrorLine($"No fn-call data in the last {Stdlib.display(traceLimit)} traces.")
+    state
+  | _ ->
+    let fnCount = Stdlib.List.length(rows)
+    let fnWord = if fnCount == 1 then "fn" else "fns"
+    Stdlib.printLine(
+      $"Hotspots (last {Stdlib.display(traceLimit)} traces, top {Stdlib.display(fnCount)} {fnWord} by total ms):")
 
-      Stdlib.printLine("")
+    Stdlib.printLine("")
 
-      Stdlib.printLine("   total ms    max ms  count  fn")
+    Stdlib.printLine("   total ms    max ms  count  fn")
 
-      Stdlib.printLine("  ---------  --------  -----  -------------------------")
-      Stdlib.List.iter(rows, fun row ->
-        let (name, count, total, max) = row
-        let totalStr = padNum(total, 9)
-        let maxStr = padNum(max, 8)
-        let countStr = padNum(count, 5)
-        Stdlib.printLine($"  {totalStr}  {maxStr}  {countStr}  {name}"))
+    Stdlib.printLine("  ---------  --------  -----  -------------------------")
+    Stdlib.List.iter(rows, fun row ->
+      let (name, count, total, max) = row
+      let totalStr = padNum(total, 9)
+      let maxStr = padNum(max, 8)
+      let countStr = padNum(count, 5)
+      Stdlib.printLine($"  {totalStr}  {maxStr}  {countStr}  {name}"))
 
-      state
-
-
-/// `traces hotspots --json [limit]` — same data as a JSON array of
-/// `{name, count, totalMs, maxMs}` objects, no headers/footers, for
-/// piping. Empty store prints `[]`.
-let executeHotspotsJson(state: AppState, traceLimit: Int64): AppState =
-  if traceLimit < 1 then
-    refuse(state, limitTooSmall)
-  else
-    printTotalsJson("name", Tracing.Store.hotspots(traceLimit))
     state
 
 
 /// Right-align a number in a field of `width` chars.
 let padNum(n: Int64, width: Int64): String =
   Tracing.Format.padNum(n, width)
-
-
-let jsonEscape(s: String): String =
-  Tracing.Format.jsonEscape(s)
-
-
-/// Print `(key, count, totalMs, maxMs)` rows as a JSON array of
-/// `{<key>, count, totalMs, maxMs}` objects.
-let printTotalsJson(key: String, rows: List<(String * Int64 * Int64 * Int64)>): Unit =
-  let body =
-    rows
-    |> Stdlib.List.map(fun row ->
-      let (name, count, total, max) = row
-      $"{{\"{key}\":\"{jsonEscape(name)}\""
-      + $",\"count\":{Stdlib.display(count)}"
-      + $",\"totalMs\":{Stdlib.display(total)}"
-      + $",\"maxMs\":{Stdlib.display(max)}}}")
-    |> Stdlib.String.join(",")
-
-  Stdlib.printLine($"[{body}]")
 
 
 val findTakesPattern = "find takes something to look for: part of an id, or of what was run"
@@ -1002,21 +949,7 @@ let executeFind(state: AppState, pattern: String, limit: Int64): AppState =
   else if limit < 1 then
     refuse(state, limitTooSmall)
   else
-    printMatches($"no kept trace matches {pattern}", Tracing.Store.find(pattern, limit))
-    state
-
-
-/// `traces find <pattern> --json [limit]` — same data as `traces find`
-/// but as a JSON array of `{traceId, handler, timestamp}` objects, no
-/// banner. Designed for piping into jq / scripts.
-let executeFindJson(state: AppState, pattern: String, limit: Int64): AppState =
-  if pattern == "" then
-    refuse(state, findTakesPattern)
-  else if limit < 1 then
-    refuse(state, limitTooSmall)
-  else
-    let rows = Tracing.Store.find(pattern, limit)
-    exitWith(state, TraceVerbs.printTracesJson(state.currentBranchId, rows))
+    answerTraces(state, $"no kept trace matches {pattern}", Tracing.Store.find(pattern, limit))
 
 
 /// `traces find <pattern> --inspect` -- search-then-drill in one step: the newest matching run,
@@ -1095,56 +1028,60 @@ let executeTail(state: AppState, routeFilter: Option<String>, n: Int64): AppStat
 /// trace count, total ms (sum of every fn-call duration in each trace),
 /// max single-call ms. Pairs with `traces hotspots` (per-fn aggregate)
 /// for "which routes are heavy?" vs "which fns are heavy?".
+let printStats(state: AppState, limit: Int64): AppState =
+  let rows = Tracing.Store.statsByHandler(limit)
+  match rows with
+  | [] ->
+    printEmptyStateHint()
+    state
+  | _ ->
+    Stdlib.printLine($"per entry, over the last {Stdlib.display(limit)} traces:")
+    Stdlib.printLine("")
+    // The same table widget every other listing uses, so the columns line up with them and
+    // a wide entry does not push the numbers off the screen.
+    Stdlib.Cli.UI.Table.print(
+      [ "entry", "traces", "total ms", "max ms" ],
+      rows
+      |> Stdlib.List.map(fun row ->
+        let (entry, count, total, max) = row
+        [ Text.oneLineAt(40, entry)
+          Stdlib.display(count)
+          Stdlib.display(total)
+          Stdlib.display(max) ]))
+
+    Stdlib.printLine("")
+    // The route hint only makes sense with served requests in the result; an eval-only store
+    // gets no help from `--route`. A served entry is `<METHOD> <path>`, so a `/` is the tell.
+    let hasHttp =
+      rows
+      |> Stdlib.List.any(fun row ->
+        let (entry, _, _, _) = row
+        Stdlib.String.contains(entry, "/"))
+
+    if hasHttp then
+      Stdlib.printErrorLine(
+        Stdlib.Cli.UI.Colors.dimText(
+          "  dark traces list --route <path>   only the requests matching it"))
+
+    state
+
+
+/// One entry point's runs across recent traces, as `traces stats` totals them.
+type EntryStats =
+  { handler: String
+    count: Int64
+    totalMs: Int64
+    maxMs: Int64 }
+
+
 let executeStats(state: AppState, limit: Int64): AppState =
   if limit < 1 then
     refuse(state, limitTooSmall)
   else
-    let rows = Tracing.Store.statsByHandler(limit)
-    match rows with
-    | [] ->
-      printEmptyStateHint()
-      state
-    | _ ->
-      Stdlib.printLine($"per entry, over the last {Stdlib.display(limit)} traces:")
-      Stdlib.printLine("")
-      // The same table widget every other listing uses, so the columns line up with them and
-      // a wide entry does not push the numbers off the screen.
-      Stdlib.Cli.UI.Table.print(
-        [ "entry", "traces", "total ms", "max ms" ],
-        rows
-        |> Stdlib.List.map(fun row ->
-          let (entry, count, total, max) = row
-          [ Text.oneLineAt(40, entry)
-            Stdlib.display(count)
-            Stdlib.display(total)
-            Stdlib.display(max) ]))
-
-      Stdlib.printLine("")
-      // The route hint only makes sense with served requests in the result; an eval-only store
-      // gets no help from `--route`. A served entry is `<METHOD> <path>`, so a `/` is the tell.
-      let hasHttp =
-        rows
-        |> Stdlib.List.any(fun row ->
-          let (entry, _, _, _) = row
-          Stdlib.String.contains(entry, "/"))
-
-      if hasHttp then
-        Stdlib.printErrorLine(
-          Stdlib.Cli.UI.Colors.dimText(
-            "  dark traces list --route <path>   only the requests matching it"))
-
-      state
-
-
-/// `traces stats --json [limit]` — same data as a JSON array of
-/// `{handler, count, totalMs, maxMs}` objects, no headers/footers,
-/// for piping. Empty store prints `[]`.
-let executeStatsJson(state: AppState, limit: Int64): AppState =
-  if limit < 1 then
-    refuse(state, limitTooSmall)
-  else
-    printTotalsJson("handler", Tracing.Store.statsByHandler(limit))
-    state
+    Output.answer(state, (fun () -> printStats(state, limit)), fun () ->
+      Tracing.Store.statsByHandler(limit)
+      |> Stdlib.List.map(fun((handler, count, total, max)) ->
+        EntryStats { handler = handler, count = count, totalMs = total, maxMs = max }))
 
 
 /// One iteration of the follow loop: pull recent rows, find newer
@@ -1228,7 +1165,7 @@ let executeFollow(state: AppState, routeFilter: Option<String>, jsonMode: Bool):
 /// Filter recent traces by a substring of the trace's `handler` field
 /// (which for HTTP traces is `"<METHOD> <path>"` like `"GET /hello"`).
 /// Substring match makes both `"/hello"` and `"GET"` work.
-let executeListByRoute(state: AppState, route: String, limit: Int64, jsonMode: Bool): AppState =
+let executeListByRoute(state: AppState, route: String, limit: Int64): AppState =
   if Stdlib.String.trim(route) == "" then
     refuse(state, "--route takes part of a path or a method, like /orders or GET")
   else if limit < 1 then
@@ -1246,11 +1183,7 @@ let executeListByRoute(state: AppState, route: String, limit: Int64, jsonMode: B
         Stdlib.String.contains(Stdlib.String.toUppercase(row.entry), routeUpper))
       |> Stdlib.List.take(limit)
 
-    if jsonMode then
-      exitWith(state, TraceVerbs.printTracesJson(state.currentBranchId, matching))
-    else
-      printMatches($"no kept trace served a request matching {route}", matching)
-      state
+    answerTraces(state, $"no kept trace served a request matching {route}", matching)
 
 
 /// A listing of traces: the one table, and the one line saying what to type next. <param nothing>

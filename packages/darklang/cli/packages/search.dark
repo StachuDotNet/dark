@@ -851,7 +851,6 @@ type ParsedArgs =
     deprecated: Query.Deprecated
     internal: Query.Internal
     includeTests: Bool
-    asJson: Bool
     mode: DisplayMode
     parseErrors: List<FlagParser.ParseError> }
 
@@ -914,7 +913,6 @@ let parseArgs(args: List<String>): ParsedArgs =
       deprecated = Query.Deprecated.showIf(FlagParser.hasFlag(p, "--include-deprecated"))
       internal = Query.Internal.showIf(FlagParser.hasFlag(p, "--include-internal"))
       includeTests = FlagParser.hasFlag(p, "--include-tests")
-      asJson = FlagParser.hasFlag(p, "--json")
       parseErrors = p.errors }
 
 
@@ -922,12 +920,37 @@ val usage =
   "Usage: search <query> [--batch] [--limit N] [--type] [--fn] [--val] [--trait] [--impl] [--test] [--exact] [--shallow] [--with-docs] [--brief] [--include-deprecated] [--include-internal] [--include-tests]"
 
 
-// The --json rendering. Typed results for the command an agent runs most; the signatures are the
-// same rendering the human view shows, minus color. `alsoSearched` is the synonym queries that ran
-// too; `wordCounts` and `didYouMean` are what the human view hints when nothing matched, and are
-// empty otherwise. The sections come in `order`, each ranked and capped the way the text view
-// shows them.
-let jsonOutput(
+/// One result, as a program gets it. `signature` is what the text view prints beside a fn or an
+/// impl, and "" for the rest.
+type Hit =
+  { name: String
+    kind: String
+    signature: String }
+
+
+type WordCount =
+  { word: String
+    count: Int64 }
+
+
+type NearNames =
+  { word: String
+    names: List<String> }
+
+
+/// What a search answers a program: the sections in `order`, each ranked and capped the way the
+/// text view shows them. `alsoSearched` is the synonym queries that ran too; `wordCounts`,
+/// `didYouMean` and `relaxed` are what the text view hints when nothing matched.
+type Answer =
+  { query: String
+    results: List<Hit>
+    alsoSearched: List<String>
+    wordCounts: List<WordCount>
+    didYouMean: List<NearNames>
+    relaxed: Option<FallbackSuggestions> }
+
+
+let answer(
   branchId: Uuid,
   queryText: String,
   alsoSearched: List<String>,
@@ -936,126 +959,53 @@ let jsonOutput(
   typed:
     List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageFn.PackageFn>>,
   results: LanguageTools.ProgramTypes.Search.SearchResults)
-  : String =
-  let fnRow(
+  : Answer =
+  let hit(kind: String, name: String): Hit = Hit { name = name, kind = kind, signature = "" }
+  let fnHit(
     item: LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageFn.PackageFn>)
-    : Stdlib.AltJson.Json =
+    : Hit =
+    Hit
+      { name = fullPathOf(item)
+        kind = "fn"
+        signature = Signatures.formatFn(contextFor(branchId, item), item.entity) }
+
+  let implHit(
+    item:
+      LanguageTools.ProgramTypes.LocatedItem<
+        LanguageTools.ProgramTypes.PackageTraitImpl.PackageTraitImpl>)
+    : Hit =
     let ctx = contextFor(branchId, item)
-    Stdlib.AltJson.Json.Object(
-      [ ("name", Stdlib.AltJson.Json.String(fullPathOf(item)))
-        ("kind", Stdlib.AltJson.Json.String("fn"))
-        ("signature", Stdlib.AltJson.Json.String(Signatures.formatFn(ctx, item.entity))) ])
+    Hit
+      { name = fullPathOf(item)
+        kind = "impl"
+        signature =
+          $"impl {PrettyPrinter.ProgramTypes.NameResolution.traitName(ctx, item.entity.trait_)} for {PrettyPrinter.ProgramTypes.typeReference(ctx, item.entity.self)}" }
 
-  let fnRows = results.fns |> Stdlib.List.map(fnRow)
+  let sections =
+    order
+    |> Stdlib.List.map(fun tag ->
+      match tag with
+      | "function" -> results.fns |> Stdlib.List.map(fnHit)
+      | "type" -> results.types |> Stdlib.List.map(fun i -> hit("type", fullPathOf(i)))
+      | "value" -> results.values |> Stdlib.List.map(fun i -> hit("value", fullPathOf(i)))
+      | "trait" -> results.traits |> Stdlib.List.map(fun i -> hit("trait", fullPathOf(i)))
+      | "impl" -> results.impls |> Stdlib.List.map(implHit)
+      | "test" -> results.tests |> Stdlib.List.map(fun i -> hit("test", fullPathOf(i)))
+      | "module" ->
+        results.submodules
+        |> Stdlib.List.map(fun path -> hit("module", Stdlib.String.join(path, ".")))
+      | _ -> [])
 
-  let typeRows =
-    results.types
-    |> Stdlib.List.map(fun item ->
-      Stdlib.AltJson.Json.Object(
-        [ ("name", Stdlib.AltJson.Json.String(fullPathOf(item)))
-          ("kind", Stdlib.AltJson.Json.String("type"))
-          ("signature", Stdlib.AltJson.Json.String("")) ]))
-
-  let valueRows =
-    results.values
-    |> Stdlib.List.map(fun item ->
-      Stdlib.AltJson.Json.Object(
-        [ ("name", Stdlib.AltJson.Json.String(fullPathOf(item)))
-          ("kind", Stdlib.AltJson.Json.String("value"))
-          ("signature", Stdlib.AltJson.Json.String("")) ]))
-
-  let traitRows =
-    results.traits
-    |> Stdlib.List.map(fun item ->
-      Stdlib.AltJson.Json.Object(
-        [ ("name", Stdlib.AltJson.Json.String(fullPathOf(item)))
-          ("kind", Stdlib.AltJson.Json.String("trait"))
-          ("signature", Stdlib.AltJson.Json.String("")) ]))
-
-  let implRows =
-    results.impls
-    |> Stdlib.List.map(fun item ->
-      let ctx = contextFor(branchId, item)
-      Stdlib.AltJson.Json.Object(
-        [ ("name", Stdlib.AltJson.Json.String(fullPathOf(item)))
-          ("kind", Stdlib.AltJson.Json.String("impl"))
-          (
-            "signature",
-            Stdlib.AltJson.Json.String(
-              $"impl {PrettyPrinter.ProgramTypes.NameResolution.traitName(ctx, item.entity.trait_)} for {PrettyPrinter.ProgramTypes.typeReference(ctx, item.entity.self)}")) ]))
-
-  let testRows =
-    results.tests
-    |> Stdlib.List.map(fun item ->
-      Stdlib.AltJson.Json.Object(
-        [ ("name", Stdlib.AltJson.Json.String(fullPathOf(item)))
-          ("kind", Stdlib.AltJson.Json.String("test"))
-          ("signature", Stdlib.AltJson.Json.String("")) ]))
-
-  let moduleRows =
-    results.submodules
-    |> Stdlib.List.map(fun modulePath ->
-      Stdlib.AltJson.Json.Object(
-        [ ("name", Stdlib.AltJson.Json.String(Stdlib.String.join(modulePath, ".")))
-          ("kind", Stdlib.AltJson.Json.String("module"))
-          ("signature", Stdlib.AltJson.Json.String("")) ]))
-
-  let wordCountRows =
-    found.wordCounts
-    |> Stdlib.List.map(fun((word, n)) ->
-      Stdlib.AltJson.Json.Object(
-        [ ("word", Stdlib.AltJson.Json.String(word)), ("count", Stdlib.AltJson.Json.Integer(n)) ]))
-
-  let didYouMeanRows =
-    found.didYouMean
-    |> Stdlib.List.map(fun((word, names)) ->
-      Stdlib.AltJson.Json.Object(
-        [ ("word", Stdlib.AltJson.Json.String(word))
-          (
-            "names",
-            Stdlib.AltJson.Json.Array(
-              names |> Stdlib.List.map(fun n -> Stdlib.AltJson.Json.String(n)))) ]))
-
-  let fallbackFields =
-    match found.fallback with
-    | None -> []
-    | Some(matches) ->
-      let names = matches.names |> Stdlib.List.map(fun name -> Stdlib.AltJson.Json.String(name))
-      [ (
-          "relaxed",
-          Stdlib.AltJson.Json.Object(
-            [ ("dropped", Stdlib.AltJson.Json.String(matches.dropped))
-              ("names", Stdlib.AltJson.Json.Array(names)) ])) ]
-
-  let fields =
-    [ ("query", Stdlib.AltJson.Json.String(queryText))
-      (
-        "results",
-        Stdlib.AltJson.Json.Array(
-          Stdlib.List.flatten(
-            Stdlib.List.prepend(
-              order
-              |> Stdlib.List.map(fun tag ->
-                match tag with
-                | "function" -> fnRows
-                | "type" -> typeRows
-                | "value" -> valueRows
-                | "trait" -> traitRows
-                | "impl" -> implRows
-                | "test" -> testRows
-                | "module" -> moduleRows
-                | _ -> []),
-              typed |> Stdlib.List.map(fnRow)))))
-
-      (
-        "alsoSearched",
-        Stdlib.AltJson.Json.Array(
-          alsoSearched |> Stdlib.List.map(fun q -> Stdlib.AltJson.Json.String(q))))
-
-      ("wordCounts", Stdlib.AltJson.Json.Array(wordCountRows))
-      ("didYouMean", Stdlib.AltJson.Json.Array(didYouMeanRows)) ]
-
-  Stdlib.AltJson.format(Stdlib.AltJson.Json.Object(Stdlib.List.concat(fields, fallbackFields)))
+  Answer
+    { query = queryText
+      results = Stdlib.List.flatten(Stdlib.List.prepend(sections, typed |> Stdlib.List.map(fnHit)))
+      alsoSearched = alsoSearched
+      wordCounts =
+        found.wordCounts |> Stdlib.List.map(fun((word, n)) -> WordCount { word = word, count = n })
+      didYouMean =
+        found.didYouMean
+        |> Stdlib.List.map(fun((word, names)) -> NearNames { word = word, names = names })
+      relaxed = found.fallback }
 
 
 // Execute one query. `execute` below fans batch arguments out through this
@@ -1400,7 +1350,7 @@ let executeQuery(state: AppState, args: List<String>): AppState =
             (results.submodules, [])
 
         let hiddenDeprecatedModules =
-          Stdlib.Bool.not(parsed.asJson)
+          state.output == Output.Mode.Pretty
           && Stdlib.List.any(hiddenModules, fun path ->
             Query.moduleHasVisibleItems(
               state.currentBranchId,
@@ -1523,14 +1473,190 @@ let executeQuery(state: AppState, args: List<String>): AppState =
             | Some(_) -> { nothingToTry with fallback = fallback }
             | None -> nothingFound(state.currentBranchId, query)
 
-        if parsed.asJson then
-          let shownTyped =
-            match typeQuery(searchText) with
-            | Some(_) -> Stdlib.List.take(typed, resultCap)
-            | None -> []
+        Output.answerWithRows(
+          state,
+          (fun () ->
+            if totalResults == 0 then
+              Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText($"No results found for: {queryText}"))
+              printHiddenModulesHint()
+              operatorHint(state.currentBranchId, rawQueryText)
+              hiddenTestsHint(hiddenTests)
+              hiddenHelpersHint(hiddenHelpers)
+              nothingFoundLines(found)
+              |> Stdlib.List.iter(fun line -> Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint(line)))
 
-          Stdlib.printLine(
-            jsonOutput(
+              Stdlib.printErrorLine("")
+            else
+              if parsed.mode == DisplayMode.Detailed then
+                Stdlib.printLine(Stdlib.Cli.UI.Colors.boldText($"Search results for: {queryText}"))
+
+              printHiddenModulesHint()
+              match aliasKeyword with
+              | Some(kw) ->
+                Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint($"  ({rawQueryText} is {kw})"))
+              | None -> ()
+
+              operatorHint(state.currentBranchId, rawQueryText)
+              match alsoSearched with
+              | [] -> ()
+              | qs ->
+                let shown =
+                  qs
+                  |> Stdlib.List.map(fun q -> $"`{q}`")
+                  |> Stdlib.String.join(", ")
+
+                Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint($"  (also searched {shown})"))
+
+              if parsed.mode == DisplayMode.Detailed then Stdlib.printLine("")
+              match typeQuery(searchText) with
+              | Some((source, target)) when Stdlib.Bool.not(Stdlib.List.isEmpty(typed)) ->
+                if parsed.mode == DisplayMode.Detailed then
+                  Stdlib.printLine(
+                    $"{Glyphs.forKind("fn")} Functions from {typeLabel(source)} to {typeLabel(target)}:")
+
+                let shownTyped = Stdlib.List.take(typed, resultCap)
+                shownTyped
+                |> Stdlib.List.iter(fun item ->
+                  let ctx = contextFor(state.currentBranchId, item)
+                  let sigBody = Signatures.formatFn(ctx, item.entity)
+                  let line = $"{fullPathOf(item)} {Stdlib.Cli.UI.Colors.dimText(sigBody)}"
+                  Stdlib.printLine(withOptionalDoc(parsed.withDocs, line, item.entity.description)))
+
+                if parsed.mode == DisplayMode.Detailed then
+                  overflowNote(Stdlib.List.length(typed), Stdlib.List.length(shownTyped))
+                  Stdlib.printLine("")
+              | _ -> ()
+
+              let named =
+                Stdlib.List.flatten(
+                  [ results.types |> Stdlib.List.map(fun i -> i.location)
+                    results.values |> Stdlib.List.map(fun i -> i.location)
+                    results.fns |> Stdlib.List.map(fun i -> i.location)
+                    results.traits |> Stdlib.List.map(fun i -> i.location)
+                    results.impls |> Stdlib.List.map(fun i -> i.location)
+                    results.tests |> Stdlib.List.map(fun i -> i.location) ])
+
+              if
+                typed == [] && submodulesCount == 0 && named != [] && onlyDocMatches(ranker, named)
+              then
+                let hint =
+                  if hiddenDeprecatedModules then
+                    $"  (the results below mention `{queryText}` in their docs)"
+                  else
+                    $"  (no name matches `{queryText}`; these mention it in their docs)"
+
+                Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint(hint))
+              else
+                ()
+
+              order
+              |> Stdlib.List.iter(fun tag ->
+                match tag with
+                | "function" ->
+                  renderSection(parsed.mode, "function", resultCap, results.fns, fun item ->
+                    let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
+                    let ctx = contextFor(state.currentBranchId, item)
+                    let sigBody = Signatures.formatFn(ctx, item.entity)
+                    let badge =
+                      Stdlib.Cli.UI.Colors.dimText(
+                        Permissions.Command.requirementBadge(item.entity.hash))
+
+                    let line =
+                      $"{fullPathOf(item)} {Stdlib.Cli.UI.Colors.dimText(sigBody)}{mark} {badge}"
+
+                    withOptionalDoc(parsed.withDocs, line, item.entity.description))
+                | "value" ->
+                  renderSection(parsed.mode, "value", resultCap, results.values, fun item ->
+                    let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
+                    withOptionalDoc(
+                      parsed.withDocs,
+                      $"{fullPathOf(item)}{mark}",
+                      item.entity.description))
+                | "type" ->
+                  renderSection(parsed.mode, "type", resultCap, results.types, fun item ->
+                    let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
+                    let ctx = contextFor(state.currentBranchId, item)
+                    let defn = Signatures.formatType(ctx, fullPathOf(item), item.entity)
+                    withOptionalDoc(parsed.withDocs, $"{defn}{mark}", item.entity.description))
+                | "trait" ->
+                  renderSection(parsed.mode, "trait", resultCap, results.traits, fun item ->
+                    let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
+                    withOptionalDoc(
+                      parsed.withDocs,
+                      $"{fullPathOf(item)}{mark}",
+                      item.entity.description))
+                | "impl" ->
+                  renderSection(parsed.mode, "impl", resultCap, results.impls, fun item ->
+                    let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
+                    let ctx = contextFor(state.currentBranchId, item)
+                    // The call first, as it is written (`a % b`, `Stdlib.display(v)`): the impl's own
+                    // path is never where a call goes, so it comes after.
+                    let header =
+                      $"impl {PrettyPrinter.ProgramTypes.NameResolution.traitName(ctx, item.entity.trait_)} for {PrettyPrinter.ProgramTypes.typeReference(ctx, item.entity.self)}, at {fullPathOf(item)}"
+
+                    let line =
+                      match Impls.callExamples(state.currentBranchId, ctx, item.entity) with
+                      | [] -> $"{fullPathOf(item)} {Stdlib.Cli.UI.Colors.dimText(header)}{mark}"
+                      | calls ->
+                        $"{Stdlib.String.join(calls, ", ")}  {Stdlib.Cli.UI.Colors.dimText(header)}{mark}"
+
+                    withOptionalDoc(parsed.withDocs, line, item.entity.description))
+                | "test" ->
+                  renderSection(parsed.mode, "test", resultCap, results.tests, fun item ->
+                    let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
+                    withOptionalDoc(
+                      parsed.withDocs,
+                      $"{fullPathOf(item)}{mark}",
+                      item.entity.description))
+                | "module" ->
+                  if Stdlib.Bool.not(Stdlib.List.isEmpty(results.submodules)) then
+                    if parsed.mode == DisplayMode.Detailed then
+                      Stdlib.printLine(Display.getSectionHeader("module"))
+
+                    let sortedMods = results.submodules
+                    let shownMods = Stdlib.List.take(sortedMods, resultCap)
+                    shownMods
+                    |> Stdlib.List.iter(fun modulePath ->
+                      let moduleStr = Stdlib.String.join(modulePath, ".")
+                      let mark =
+                        if
+                          parsed.deprecated == Query.Deprecated.Show
+                          && Stdlib.Bool.not(
+                            Query.moduleHasActiveItems(state.currentBranchId, modulePath, depSets))
+                        then
+                          " (deprecated)"
+                        else
+                          ""
+
+                      Stdlib.printLine(moduleStr + mark))
+
+                    if parsed.mode == DisplayMode.Detailed then
+                      overflowNote(Stdlib.List.length(sortedMods), Stdlib.List.length(shownMods))
+                      Stdlib.printLine("")
+                  else
+                    ()
+                | _ -> ())
+
+              hiddenTestsHint(hiddenTests)
+              hiddenHelpersHint(hiddenHelpers)
+              if
+                parsed.mode == DisplayMode.Detailed
+                && Stdlib.Bool.not(parsed.withDocs)
+                && Stdlib.Bool.not(parsed.batch)
+              then
+                Stdlib.printErrorLine(
+                  Stdlib.Cli.UI.Colors.hint("  (add --with-docs to show doc comments)"))
+              else
+                ()
+
+            state),
+          (fun () ->
+            let shownTyped =
+              match typeQuery(searchText) with
+              | Some(_) -> Stdlib.List.take(typed, resultCap)
+              | None -> []
+
+            answer(
               state.currentBranchId,
               queryText,
               alsoSearched,
@@ -1544,181 +1670,9 @@ let executeQuery(state: AppState, args: List<String>): AppState =
                   traits = Stdlib.List.take(results.traits, resultCap)
                   impls = Stdlib.List.take(results.impls, resultCap)
                   tests = Stdlib.List.take(results.tests, resultCap)
-                  submodules = Stdlib.List.take(results.submodules, resultCap) }))
-        else if totalResults == 0 then
-          Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText($"No results found for: {queryText}"))
-          printHiddenModulesHint()
-          operatorHint(state.currentBranchId, rawQueryText)
-          hiddenTestsHint(hiddenTests)
-          hiddenHelpersHint(hiddenHelpers)
-          nothingFoundLines(found)
-          |> Stdlib.List.iter(fun line -> Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint(line)))
-
-          Stdlib.printErrorLine("")
-        else
-          if parsed.mode == DisplayMode.Detailed then
-            Stdlib.printLine(Stdlib.Cli.UI.Colors.boldText($"Search results for: {queryText}"))
-
-          printHiddenModulesHint()
-          match aliasKeyword with
-          | Some(kw) ->
-            Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint($"  ({rawQueryText} is {kw})"))
-          | None -> ()
-
-          operatorHint(state.currentBranchId, rawQueryText)
-          match alsoSearched with
-          | [] -> ()
-          | qs ->
-            let shown =
-              qs
-              |> Stdlib.List.map(fun q -> $"`{q}`")
-              |> Stdlib.String.join(", ")
-
-            Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint($"  (also searched {shown})"))
-
-          if parsed.mode == DisplayMode.Detailed then Stdlib.printLine("")
-          match typeQuery(searchText) with
-          | Some((source, target)) when Stdlib.Bool.not(Stdlib.List.isEmpty(typed)) ->
-            if parsed.mode == DisplayMode.Detailed then
-              Stdlib.printLine(
-                $"{Glyphs.forKind("fn")} Functions from {typeLabel(source)} to {typeLabel(target)}:")
-
-            let shownTyped = Stdlib.List.take(typed, resultCap)
-            shownTyped
-            |> Stdlib.List.iter(fun item ->
-              let ctx = contextFor(state.currentBranchId, item)
-              let sigBody = Signatures.formatFn(ctx, item.entity)
-              let line = $"{fullPathOf(item)} {Stdlib.Cli.UI.Colors.dimText(sigBody)}"
-              Stdlib.printLine(withOptionalDoc(parsed.withDocs, line, item.entity.description)))
-
-            if parsed.mode == DisplayMode.Detailed then
-              overflowNote(Stdlib.List.length(typed), Stdlib.List.length(shownTyped))
-              Stdlib.printLine("")
-          | _ -> ()
-
-          let named =
-            Stdlib.List.flatten(
-              [ results.types |> Stdlib.List.map(fun i -> i.location)
-                results.values |> Stdlib.List.map(fun i -> i.location)
-                results.fns |> Stdlib.List.map(fun i -> i.location)
-                results.traits |> Stdlib.List.map(fun i -> i.location)
-                results.impls |> Stdlib.List.map(fun i -> i.location)
-                results.tests |> Stdlib.List.map(fun i -> i.location) ])
-
-          if
-            typed == [] && submodulesCount == 0 && named != [] && onlyDocMatches(ranker, named)
-          then
-            let hint =
-              if hiddenDeprecatedModules then
-                $"  (the results below mention `{queryText}` in their docs)"
-              else
-                $"  (no name matches `{queryText}`; these mention it in their docs)"
-
-            Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint(hint))
-          else
-            ()
-
-          order
-          |> Stdlib.List.iter(fun tag ->
-            match tag with
-            | "function" ->
-              renderSection(parsed.mode, "function", resultCap, results.fns, fun item ->
-                let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
-                let ctx = contextFor(state.currentBranchId, item)
-                let sigBody = Signatures.formatFn(ctx, item.entity)
-                let badge =
-                  Stdlib.Cli.UI.Colors.dimText(
-                    Permissions.Command.requirementBadge(item.entity.hash))
-
-                let line =
-                  $"{fullPathOf(item)} {Stdlib.Cli.UI.Colors.dimText(sigBody)}{mark} {badge}"
-
-                withOptionalDoc(parsed.withDocs, line, item.entity.description))
-            | "value" ->
-              renderSection(parsed.mode, "value", resultCap, results.values, fun item ->
-                let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
-                withOptionalDoc(
-                  parsed.withDocs,
-                  $"{fullPathOf(item)}{mark}",
-                  item.entity.description))
-            | "type" ->
-              renderSection(parsed.mode, "type", resultCap, results.types, fun item ->
-                let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
-                let ctx = contextFor(state.currentBranchId, item)
-                let defn = Signatures.formatType(ctx, fullPathOf(item), item.entity)
-                withOptionalDoc(parsed.withDocs, $"{defn}{mark}", item.entity.description))
-            | "trait" ->
-              renderSection(parsed.mode, "trait", resultCap, results.traits, fun item ->
-                let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
-                withOptionalDoc(
-                  parsed.withDocs,
-                  $"{fullPathOf(item)}{mark}",
-                  item.entity.description))
-            | "impl" ->
-              renderSection(parsed.mode, "impl", resultCap, results.impls, fun item ->
-                let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
-                let ctx = contextFor(state.currentBranchId, item)
-                // The call first, as it is written (`a % b`, `Stdlib.display(v)`): the impl's own
-                // path is never where a call goes, so it comes after.
-                let header =
-                  $"impl {PrettyPrinter.ProgramTypes.NameResolution.traitName(ctx, item.entity.trait_)} for {PrettyPrinter.ProgramTypes.typeReference(ctx, item.entity.self)}, at {fullPathOf(item)}"
-
-                let line =
-                  match Impls.callExamples(state.currentBranchId, ctx, item.entity) with
-                  | [] -> $"{fullPathOf(item)} {Stdlib.Cli.UI.Colors.dimText(header)}{mark}"
-                  | calls ->
-                    $"{Stdlib.String.join(calls, ", ")}  {Stdlib.Cli.UI.Colors.dimText(header)}{mark}"
-
-                withOptionalDoc(parsed.withDocs, line, item.entity.description))
-            | "test" ->
-              renderSection(parsed.mode, "test", resultCap, results.tests, fun item ->
-                let mark = Query.deprecationMarkerAt(depSets, item.location, item.entity.hash)
-                withOptionalDoc(
-                  parsed.withDocs,
-                  $"{fullPathOf(item)}{mark}",
-                  item.entity.description))
-            | "module" ->
-              if Stdlib.Bool.not(Stdlib.List.isEmpty(results.submodules)) then
-                if parsed.mode == DisplayMode.Detailed then
-                  Stdlib.printLine(Display.getSectionHeader("module"))
-
-                let sortedMods = results.submodules
-                let shownMods = Stdlib.List.take(sortedMods, resultCap)
-                shownMods
-                |> Stdlib.List.iter(fun modulePath ->
-                  let moduleStr = Stdlib.String.join(modulePath, ".")
-                  let mark =
-                    if
-                      parsed.deprecated == Query.Deprecated.Show
-                      && Stdlib.Bool.not(
-                        Query.moduleHasActiveItems(state.currentBranchId, modulePath, depSets))
-                    then
-                      " (deprecated)"
-                    else
-                      ""
-
-                  Stdlib.printLine(moduleStr + mark))
-
-                if parsed.mode == DisplayMode.Detailed then
-                  overflowNote(Stdlib.List.length(sortedMods), Stdlib.List.length(shownMods))
-                  Stdlib.printLine("")
-              else
-                ()
-            | _ -> ())
-
-          hiddenTestsHint(hiddenTests)
-          hiddenHelpersHint(hiddenHelpers)
-          if
-            parsed.mode == DisplayMode.Detailed
-            && Stdlib.Bool.not(parsed.withDocs)
-            && Stdlib.Bool.not(parsed.batch)
-          then
-            Stdlib.printErrorLine(
-              Stdlib.Cli.UI.Colors.hint("  (add --with-docs to show doc comments)"))
-          else
-            ()
-
-        state
+                  submodules = Stdlib.List.take(results.submodules, resultCap) })),
+          // One result a line: what `grep` and an agent want, with the hints left to the text.
+          fun a -> Output.rows<List<Hit>>(a.results))
 
 
 let execute(state: AppState, args: List<String>): AppState =

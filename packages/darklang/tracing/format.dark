@@ -23,15 +23,6 @@ let padNum(n: Int64, width: Int64): String =
   Stdlib.Text.padStartToWidth(Stdlib.display(n), width)
 
 
-/// Escape a string for embedding in JSON. Handles backslash and double-
-/// quote — the only characters that appear in trace handler/fn names
-/// (URL paths, dotted package names, builtin identifiers).
-let jsonEscape(s: String): String =
-  s
-  |> Stdlib.String.replaceAll("\\", "\\\\")
-  |> Stdlib.String.replaceAll("\"", "\\\"")
-
-
 /// How much of a value an agent gets by default, in characters.
 ///
 /// Far larger than the sixty characters a line of the page gets, because an agent reading a

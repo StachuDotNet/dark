@@ -127,6 +127,22 @@ test statsHidesTheRouteHintForEvalOnly = withTraces(fun i ->
         "no route hint for eval-only") ]))
 
 
+/// A `run` entry is named after its file, and a file name can hold a tab.
+test statsJsonEscapesAnEntry = withTraces(fun i ->
+  let path = $"{Instance.home(i)}/tab\there.dark"
+  let _ = Stdlib.Cli.File.writeText(path, "Stdlib.printLine(\"fine\")\n")
+  let ran = step(i, [ "run", path ])
+  let parsed =
+    match Instance.run(i, [ "traces", "stats", "--json" ]) with
+    | Error(e) -> Stdlib.Test.fail(e)
+    | Ok(out) ->
+      match Stdlib.AltJson.parse(Stdlib.String.trim(out.stdout)) with
+      | Ok(_) -> Instance.says(out.stdout, "tab\\there", "the tab, escaped")
+      | Error(_) -> Stdlib.Test.fail($"not JSON: {out.stdout}")
+
+  Stdlib.Test.all([ ran, parsed ]))
+
+
 test findSearchesContentAndAnswers = withTraces(fun i ->
   let ran =
     Stdlib.Test.all(

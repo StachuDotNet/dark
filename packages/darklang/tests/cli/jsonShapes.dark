@@ -1,13 +1,6 @@
-/// The `--json` outputs, as a CONTRACT rather than as whatever the renderer happens to emit.
-///
-/// Part of `Darklang.Cli.Tests`. These are the agent-facing surface: `dark status --json` is
-/// what something reads to decide what to do next, and it has no eyes to notice that a field
-/// was renamed or that an empty listing stopped being an empty array and became an absent key.
-///
-/// Three claims per command, and the third is the one that breaks agents: it parses, its
-/// documented keys are all there, and they are STILL there when the thing it lists is empty.
-/// The key sets are golden on purpose. Renaming a field is allowed; doing it without
-/// noticing is what this stops.
+/// What the `--json` answers say. That every command declaring `--json` prints one JSON value is
+/// `PlainOutput.everyJsonCommandInThreeModes`; an answer through `Output` has its keys by
+/// construction, so the key sets here are for the commands that build their JSON themselves.
 ///
 /// Each test drives its own `Instance`, so nothing here sees another test's writes.
 module Darklang.Cli.Tests.JsonShapes
@@ -60,19 +53,6 @@ let hasKeys(
     |> Stdlib.Test.equal(Stdlib.List.sort(expected))
   | _ ->
     Stdlib.Test.fail($"expected an object, got {Stdlib.AltJson.format(json)}")
-
-
-/// The keys of `search --json`. The hint keys are there, empty, when something matched.
-val searchKeys =
-  [ "query", "results", "alsoSearched", "wordCounts", "didYouMean" ]
-
-
-/// A list that answers `{}` or `null` when it is empty is the same break as a missing key.
-let isArray(json: Stdlib.AltJson.Json): Stdlib.Test.Result =
-  match json with
-  | Array(_) -> Stdlib.Test.Result.Pass
-  | _ ->
-    Stdlib.Test.fail($"expected an array, got {Stdlib.AltJson.format(json)}")
 
 
 let fieldIsArray(json: Stdlib.AltJson.Json, name: String): Stdlib.Test.Result =
@@ -173,57 +153,13 @@ let refuses(
 
 // ─── the tests ──────────────────────────────────────────────────────────────
 
-/// On a store where nothing has happened, every collection is empty and every key still
-/// has to be there. A caller reading `.changed` gets `[]` on a clean tree, not a missing key
-/// it has to guard. `findings: []` means "nothing is wrong" only beside an empty `blocked`.
-test emptyAnswersKeepTheirShape = Instance.withInstance(fun i ->
+/// The hints the text view prints when nothing matched, as data.
+test searchHintsAreData = Instance.withInstance(fun i ->
   Stdlib.Test.all(
     [ check(
         i,
-        [ "status", "--json" ],
-        [ (fun j ->
-             hasKeys(
-               j,
-               [ "branch"
-                 "changed"
-                 "conflicts"
-                 "constraints"
-                 "draftOps"
-                 "propagates"
-                 "removed" ]))
-
-          (fun j -> fieldIsArray(j, "changed"))
-          (fun j -> fieldIsArray(j, "conflicts"))
-          (fun j -> fieldIsArray(j, "propagates"))
-          (fun j -> fieldIsArray(j, "removed")) ])
-
-      check(
-        i,
-        [ "conflicts", "--json" ],
-        [ (fun j -> hasKeys(j, [ "conflicts", "pending" ])) ])
-
-      check(
-        i,
-        [ "constraints", "--json" ],
-        [ (fun j -> hasKeys(j, [ "findings", "blocked" ]))
-          (fun j -> fieldIsArray(j, "blocked")) ])
-
-      // Where a renderer is most tempted to print "no results" and nothing else.
-      check(
-        i,
-        [ "search", "zzz-nothing-matches-this", "--json" ],
-        [ (fun j -> hasKeys(j, searchKeys))
-          (fun j -> fieldIsArray(j, "results"))
-          (fun j -> fieldIsArray(j, "alsoSearched"))
-          (fun j -> fieldIsArray(j, "wordCounts"))
-          (fun j -> fieldIsArray(j, "didYouMean")) ])
-
-      // The hints the human view prints when nothing matched, as data.
-      check(
-        i,
         [ "search", "lentgh", "--json" ],
-        [ (fun j -> rowsHaveKeys(field(j, "didYouMean"), [ "names", "word" ]))
-          (fun j ->
+        [ (fun j ->
              isTrue(
                Stdlib.Bool.not(
                  Stdlib.List.isEmpty(rows(field(j, "didYouMean")))),
@@ -232,8 +168,7 @@ test emptyAnswersKeepTheirShape = Instance.withInstance(fun i ->
       check(
         i,
         [ "search", "length", "zzzq", "--json" ],
-        [ (fun j -> rowsHaveKeys(field(j, "wordCounts"), [ "count", "word" ]))
-          (fun j ->
+        [ (fun j ->
              isTrue(
                Stdlib.List.length(rows(field(j, "wordCounts"))) == 2,
                "counts each word")) ])
@@ -247,18 +182,14 @@ test emptyAnswersKeepTheirShape = Instance.withInstance(fun i ->
                Stdlib.AltJson.Json.Array(
                  [ Stdlib.AltJson.Json.String("length string") ]))) ])
 
-      check(i, [ "traces", "list", "--json" ], [ isArray ])
       // A command with no JSON form has to SAY so, rather than print prose for a caller
       // to parse as a payload. `ops` takes no flags at all.
       refuses(i, [ "ops", "--json" ], "does not take `--json`") ]))
 
 
-/// A draft, reviewed, committed and then read back: each answer describes the change rather
-/// than merely having its keys, which is easy to satisfy by accident.
-///
-/// `commit --json` with no `-y` is the documented DRY review, so it must not commit and its
-/// answer must be data. `deps` on a leaf with one caller: `dependencies` is the empty ARRAY.
-test aDraftThroughCommitKeepsItsShape =
+/// A draft, reviewed, committed and then read back. `commit --json` with no `-y` is the
+/// documented DRY review, so it must not commit.
+test aDryCommitLeavesTheDraft =
   Instance.withInstance(fun i ->
     Stdlib.Test.all(
       [ step(i, [ "fn", "Tests.JsonDeps.leaf", "() : Int64 = 7202" ])
@@ -273,37 +204,12 @@ test aDraftThroughCommitKeepsItsShape =
           i,
           [ "status", "--json" ],
           [ (fun j ->
-               rowsHaveKeys(
-                 field(j, "changed"),
-                 [ "change"
-                   "followed"
-                   "hash"
-                   "kind"
-                   "name"
-                   "newEffects" ]))
-
-            (fun j ->
                isTrue(int(j, "draftOps") > 0, "counts the draft's ops")) ])
 
         check(
           i,
           [ "commit", "--json" ],
           [ (fun j ->
-               hasKeys(
-                 j,
-                 [ "branch"
-                   "changed"
-                   "commit"
-                   "committed"
-                   "conflicts"
-                   "dependentsRepointed"
-                   "message"
-                   "opsCommitted"
-                   "propagates"
-                   "refused"
-                   "removed" ]))
-
-            (fun j ->
                field(j, "committed")
                |> Stdlib.Test.equal(Stdlib.AltJson.Json.Bool(false))) ])
 
@@ -319,23 +225,11 @@ test aDraftThroughCommitKeepsItsShape =
         check(
           i,
           [ "deps", "Tests.JsonDeps.leaf", "--json" ],
-          [ (fun j -> hasKeys(j, [ "dependencies", "dependents", "item" ]))
-            (fun j -> fieldIsArray(j, "dependencies"))
-            (fun j ->
+          [ (fun j ->
                isTrue(
                  Stdlib.Bool.not(
                    Stdlib.List.isEmpty(rows(field(j, "dependents")))),
-                 "lists the caller")) ])
-
-        check(
-          i,
-          [ "commits", "--json" ],
-          [ isArray, (fun j -> rowsHaveKeys(j, [ "hash", "message", "ops" ])) ])
-
-        check(
-          i,
-          [ "search", "Tests.JsonDeps", "--json" ],
-          [ (fun j -> hasKeys(j, searchKeys)) ]) ]))
+                 "lists the caller")) ]) ]))
 
 
 /// A name saved twice and never committed is still `new`, not `updated`.
@@ -350,31 +244,6 @@ test aNameSavedTwiceIsStillNew = Instance.withInstance(fun i ->
              rows(field(j, "changed"))
              |> Stdlib.List.map(fun r -> field(r, "change"))
              |> Stdlib.Test.equal([ Stdlib.AltJson.Json.String("new") ])) ]) ]))
-
-
-/// `branches` is a listing of rows; `diff` against a branch that has done nothing is still
-/// a listing, answering `[]`.
-test branchListingsAreArrays =
-  Instance.withInstance(fun i ->
-    Stdlib.Test.all(
-      [ step(i, [ "switch", "-c", "jsonbr" ])
-        step(i, [ "switch", "main" ])
-        check(
-          i,
-          [ "branches", "--json" ],
-          [ isArray
-            (fun j ->
-               rowsHaveKeys(
-                 j,
-                 [ "current"
-                   "id"
-                   "merged"
-                   "name"
-                   "ops"
-                   "parent"
-                   "parentName" ])) ])
-
-        check(i, [ "diff", "jsonbr", "--json" ], [ isArray ]) ]))
 
 
 /// Every declaration under a module, counted by the search rather than by the checker.
@@ -819,33 +688,6 @@ test testRunAnswersWithEveryTest = Instance.withInstance(fun i ->
         [ "test", "run", "--json", "Tests.JsonRunNothing" ],
         [ (fun j -> hasKeys(j, runKeys))
           (fun j -> fieldIsArray(j, "tests")) ]) ]))
-
-
-/// Bare `traces --json` is the listing bare `traces` prints, as JSON. A new instance has no
-/// traces, so the eval's is the only row.
-test bareTracesAnswersInJson = Instance.withInstance(fun i ->
-  Stdlib.Test.all(
-    [ step(i, [ "eval", "1 + 1" ])
-      check(
-        i,
-        [ "traces", "--json" ],
-        [ (fun j ->
-             rowsHaveKeys(
-               j,
-               [ "id"
-                 "entry"
-                 "input"
-                 "answered"
-                 "status"
-                 "pinned"
-                 "durationMs"
-                 "created"
-                 "updated" ]))
-
-          (fun j ->
-             rows(j)
-             |> Stdlib.List.map(fun row -> string(row, "input"))
-             |> Stdlib.Test.equal([ "1 + 1" ])) ]) ]))
 
 
 /// `ps --json` says what a process runs and how it stands in the table's words, not in the
