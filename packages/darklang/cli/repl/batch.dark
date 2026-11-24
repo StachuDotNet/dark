@@ -3,6 +3,49 @@
 /// directly.
 module Darklang.Cli.Repls.Batch
 
+/// A batch's statements: a line, and the indented lines under it. As the workbench's
+/// `Repl.splitStatements`, except that a blank line stays inside an indented block when the
+/// block goes on below it, so a module body with blank lines between declarations is one
+/// statement.
+let splitStatements(text: String): List<String> =
+  let lines = Stdlib.String.split(text, "\n")
+  let isBlank = fun l -> Stdlib.String.trim(l) == ""
+  let isIndented = fun l ->
+    Stdlib.Bool.not(isBlank(l))
+    && (Stdlib.String.startsWith(l, " ") || Stdlib.String.startsWith(l, "\t"))
+
+  // for each line, whether the next line that isn't blank is indented
+  let (_, indentedNext) =
+    lines
+    |> Stdlib.List.reverse
+    |> Stdlib.List.fold((false, []), fun(acc, l) ->
+      let (nextIndented, out) = acc
+      let here = if isBlank(l) then nextIndented else isIndented(l)
+      (here, Stdlib.List.prepend(out, nextIndented)))
+
+  let (acc, current) =
+    Stdlib.List.zipShortest(lines, indentedNext)
+    |> Stdlib.List.fold(([], ""), fun(state_, pair) ->
+      let (acc, current) = state_
+      let (line, nextIndented) = pair
+      if isBlank(line) then
+        if current == "" then
+          (acc, "")
+        else if nextIndented then
+          (acc, current + "\n")
+        else
+          (Stdlib.List.append(acc, current), "")
+      else if isIndented(line) && current != "" then
+        (acc, current + "\n" + line)
+      else if current == "" then
+        (acc, line)
+      else
+        (Stdlib.List.append(acc, current), line))
+
+  let all = if current == "" then acc else Stdlib.List.append(acc, current)
+  all |> Stdlib.List.filter(fun s -> Stdlib.String.trim(s) != "")
+
+
 type Statement =
   | Bind(name: String, rhs: String)
   | Command(name: String, args: List<String>, stdin: Option<String>)
@@ -459,7 +502,7 @@ let run(
   let startBranch = branchOf(r)
   let _ = SCM.PackageOps.selectBranch(startBranch)
   let state = enter(state, r)
-  let statements = Repl.splitStatements(text)
+  let statements = splitStatements(text)
   let (endState, endRecord, replies, _failed, touched) =
     statements
     |> Stdlib.List.indexedMap(fun(i, s) -> (i + 1, s))

@@ -152,7 +152,7 @@ let runTarget(statement: String): Option<String> =
 
 /// One line per `run` in <param text>: what the function may do, before it does it.
 let beforeRuns(ctx: Tools.Context, text: String): List<String> =
-  Repl.splitStatements(text)
+  Repls.Batch.splitStatements(text)
   |> Stdlib.List.filterMap(fun st -> runTarget(st))
   |> Stdlib.List.filterMap(fun name ->
     match fnHash(ctx, name) with

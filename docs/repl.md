@@ -46,7 +46,7 @@ from main's last commit, and `fork` says so.
 ## Lines
 
 A line that starts in column 0 starts a statement. A line that starts with a space or tab
-continues the statement above it. A blank line ends the statement. Each statement is one of:
+continues the statement above it. A blank line ends the statement, unless the lines after it are still indented: a module body may have blank lines between its declarations. Each statement is one of:
 
 - `let <name> = <expression>`: a binding, in scope for every later statement and batch.
 - A CLI command, the same words you would type after `dark` (`fn`, `module`, `view`, `search`,

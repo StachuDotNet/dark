@@ -150,3 +150,15 @@ test runTargetSkipsFlags =
     Cli.Agent.Store.runTarget("view Me.A.main") ]
   |> Stdlib.Test.equal(
     [ Option.Some("Me.A.main"), Option.Some("Me.A.main"), Option.None ])
+
+
+test aBlankLineInsideABlockKeepsTheBlock =
+  [ Cli.Repls.Batch.splitStatements(
+      "module /Me.A -\n  let f() = 1\n\n  test t = f() |> Stdlib.Test.equal(1)\nMe.A.f()")
+
+    Cli.Repls.Batch.splitStatements("1 + 1\n\n2") ]
+  |> Stdlib.Test.equal(
+    [ [ "module /Me.A -\n  let f() = 1\n\n  test t = f() |> Stdlib.Test.equal(1)"
+        "Me.A.f()" ]
+
+      [ "1 + 1", "2" ] ])

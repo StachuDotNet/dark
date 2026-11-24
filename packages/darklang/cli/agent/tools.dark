@@ -403,7 +403,7 @@ let ruleEffect(rule: String): Option<LanguageTools.Permissions.Effect> =
 /// Why a batch may not run in this session, or None. A grant in the batch (`run --allow ...`)
 /// must be one the session itself has: code the agent writes gets no more than the agent.
 let batchRefusal(ctx: Context, text: String): Option<String> =
-  let statements = Repl.splitStatements(text)
+  let statements = Repls.Batch.splitStatements(text)
   let words =
     statements
     |> Stdlib.List.map(fun st ->

@@ -49,3 +49,16 @@ test theDarkFormsExist =
     Stdlib.display(Stdlib.Int64.fromInt32(2s32))
     Stdlib.Base16.encode(Stdlib.Utf8.encode("a")) ]
   |> Stdlib.Test.equal([ "1", "1.5", "a", "1", "2", "61" ])
+
+
+test testsNamedWithAString =
+  [ Agent.Fixes.rewrite(
+      "test \"square of 4\" = square(4) |> Stdlib.Test.equal(16)")
+
+    Agent.Fixes.rewrite("  test \"Adds two\" =\n    f()")
+
+    Agent.Fixes.rewrite("let s = \"test \\\"x\\\" = 1\"") ]
+  |> Stdlib.Test.equal(
+    [ "test squareOf4 = square(4) |> Stdlib.Test.equal(16)"
+      "  test addsTwo =\n    f()"
+      "let s = \"test \\\"x\\\" = 1\"" ])

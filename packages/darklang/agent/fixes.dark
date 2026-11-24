@@ -127,8 +127,51 @@ let step(chars: List<Char>, s: Scan, i: Int64, c: Char): Scan =
       { s with code = s.code + ch }
 
 
+/// `square of 4` as a name: `squareOf4`.
+let camelName(words: String): String =
+  let parts =
+    Stdlib.String.split(words, " ")
+    |> Stdlib.List.map(fun w ->
+      Stdlib.String.toList(w)
+      |> Stdlib.List.filter(fun c -> isIdent(c))
+      |> Stdlib.String.fromList)
+    |> Stdlib.List.filter(fun w -> w != "")
+
+  match parts with
+  | [] -> "unnamed"
+  | [first, ...rest] ->
+    let tail =
+      rest
+      |> Stdlib.List.map(fun w ->
+        Stdlib.String.toUppercase(Stdlib.String.first(w, 1)) + Stdlib.String.dropFirst(w, 1))
+
+    let name =
+      Stdlib.String.toLowercase(Stdlib.String.first(first, 1)) + Stdlib.String.dropFirst(first, 1)
+
+    name + Stdlib.String.join(tail, "")
+
+
+/// A test named with a string, as other languages' test frameworks do: `test "adds two" =`
+/// becomes `test addsTwo =`.
+let quotedTestName(line: String): String =
+  let body = Stdlib.String.trimStart(line)
+  let indent = Stdlib.String.first(line, Stdlib.String.length(line) - Stdlib.String.length(body))
+  if Stdlib.String.startsWith(body, "test \"") then
+    match Stdlib.String.split(Stdlib.String.dropFirst(body, 6), "\"") with
+    | [words, rest] when Stdlib.String.startsWith(Stdlib.String.trimStart(rest), "=") ->
+      $"{indent}test {camelName(words)} {Stdlib.String.trimStart(rest)}"
+    | _ -> line
+  else
+    line
+
+
 /// <param source> with every slip this table knows rewritten.
 let rewrite(source: String): String =
+  let source =
+    Stdlib.String.split(source, "\n")
+    |> Stdlib.List.map(fun l -> quotedTestName(l))
+    |> Stdlib.String.join("\n")
+
   let chars = Stdlib.String.toList(source)
   let start = Scan { mode = Mode.Code, escaped = false, open = [], out = [], code = "" }
   let finished =
