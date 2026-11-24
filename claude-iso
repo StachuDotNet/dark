@@ -2,10 +2,11 @@
 # claude with a fresh HOME and config dir: no user CLAUDE.md, memory, settings, MCP servers or plugins.
 # The login is copied in from the newest of the user's file and cred/latest.json. A session that
 # refreshes it (the refresh token rotates) leaves the new one in cred/latest.json for the next.
-B=/home/stachu/code/dark/bench-loop.bench
+B=${CLAUDE_ISO_BENCH:-/home/stachu/code/dark/bench-loop.bench}
+CLAUDE=${CLAUDE_ISO_BIN:-/home/stachu/.local/bin/claude}
 mkdir -p /tmp/bench-loop-cfg "$B/cred"; chmod 700 "$B/cred"
 exp() { node -e 'try{console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).claudeAiOauth.expiresAt)}catch{console.log(0)}' "$1"; }
-newest() { src=/home/stachu/.claude/.credentials.json; [ "$(exp "$B/cred/latest.json")" -gt "$(exp $src)" ] && src="$B/cred/latest.json"; echo "$src"; }
+newest() { src=${CLAUDE_ISO_USER_CRED:-/home/stachu/.claude/.credentials.json}; [ "$(exp "$B/cred/latest.json")" -gt "$(exp $src)" ] && src="$B/cred/latest.json"; echo "$src"; }
 d=$(mktemp -d /tmp/bench-loop-cfg/h-XXXXXX)
 mkdir -p "$d/.claude"
 # a login close to expiry is refreshed once, under the lock, so parallel sessions don't each
@@ -14,11 +15,12 @@ mkdir -p "$d/.claude"
   flock 9
   cp "$(newest)" "$d/.claude/.credentials.json"; chmod 600 "$d/.claude/.credentials.json"
   if [ "$(exp "$d/.claude/.credentials.json")" -lt $(( ($(date +%s) + 900) * 1000 )) ]; then
-    HOME="$d" CLAUDE_CONFIG_DIR="$d/.claude" /home/stachu/.local/bin/claude --strict-mcp-config -p "Reply OK" --model claude-haiku-4-5 > /dev/null 2>&1
+    # stdin is the task prompt for the real session below; this refresh must not read it
+    HOME="$d" CLAUDE_CONFIG_DIR="$d/.claude" "$CLAUDE" --strict-mcp-config -p "Reply OK" --model claude-haiku-4-5 < /dev/null > /dev/null 2>&1
     cp "$d/.claude/.credentials.json" "$B/cred/latest.json.new" && chmod 600 "$B/cred/latest.json.new" && mv "$B/cred/latest.json.new" "$B/cred/latest.json"
   fi
 ) 9> "$B/cred/.lock"
-HOME="$d" CLAUDE_CONFIG_DIR="$d/.claude" PATH="$B/sbin:$PATH" /home/stachu/.local/bin/claude --strict-mcp-config "$@"
+HOME="$d" CLAUDE_CONFIG_DIR="$d/.claude" PATH="$B/sbin:$PATH" "$CLAUDE" --strict-mcp-config "$@"
 code=$?
 (
   flock 9
