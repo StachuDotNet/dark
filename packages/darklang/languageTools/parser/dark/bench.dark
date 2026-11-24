@@ -1,0 +1,43 @@
+/// Entry points for timing the parser from outside, interpreted (`dark run`) or compiled
+/// (`dark compile`). Each reads the source on stdin, so a compiled one needs no file access.
+module Darklang.LanguageTools.Parser.Dark.Bench
+
+let kindOf(args: List<String>): LanguageTools.Parser.FileKind =
+  if Stdlib.List.contains(args, "script") then
+    LanguageTools.Parser.FileKind.Script
+  else
+    LanguageTools.Parser.FileKind.Package
+
+
+let repsOf(args: List<String>): Int64 =
+  match Stdlib.List.filterMap(args, fun a -> Stdlib.Int64.parse(a) |> Stdlib.Result.toOption) with
+  | [ n, ... ] -> n
+  | [] -> 7
+
+
+let timeOnce(kind: LanguageTools.Parser.FileKind, src: String): Int64 =
+  let t0 = Stdlib.DateTime.now()
+  let _ = Dark.parse(kind, src)
+  Stdlib.DateTime.subtractMs(Stdlib.DateTime.now(), t0)
+
+
+/// `<reps> [script]`: parse stdin <reps> times and print each parse's ms, sorted, and the median.
+let time(args: List<String>): Int64 =
+  match Stdlib.Cli.Stdin.readAll() with
+  | Ok(src) ->
+    let kind = kindOf(args)
+    let reps = repsOf(args)
+    let times = Stdlib.List.map(Stdlib.List.range(1, reps), fun _ -> timeOnce(kind, src)) |> Stdlib.List.sort
+    let median = Stdlib.List.getAt(times, reps / 2) |> Stdlib.Option.withDefault(0)
+    Stdlib.printLine($"median {median}ms of {times}")
+    0
+  | Error(_) -> 1
+
+
+/// `[script]`: the tree and diagnostics for stdin, printed.
+let tree(args: List<String>): Int64 =
+  match Stdlib.Cli.Stdin.readAll() with
+  | Ok(src) ->
+    Stdlib.printLine($"{Dark.parse(kindOf(args), src)}")
+    0
+  | Error(_) -> 1
