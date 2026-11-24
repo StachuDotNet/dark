@@ -900,7 +900,7 @@ module Registry =
 
       (
         "delete",
-        "Deprecate items with a live-dependents check",
+        "Remove draft items; deprecate committed ones",
         [],
         acceptsDelete,
         Packages.Delete.execute,

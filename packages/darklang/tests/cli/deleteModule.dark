@@ -32,18 +32,21 @@ test deleteModuleTakesEverything = Instance.withInstance(fun i ->
         "Will deprecate",
         "confirmed delete prints just the result")
 
-      Instance.says(out, "Deleted 3 items in Me.Scratch", "names the count")
+      Instance.says(
+        out,
+        "Removed 3 items in Me.Scratch, never committed:",
+        "names the count")
 
       Instance.says(
         out,
         "  Me.Scratch.make",
         "lists declarations in the result")
 
-      Instance.exitedWith(againCode, 1, "nothing left to deprecate")
+      Instance.exitedWith(againCode, 1, "nothing left")
       Instance.says(
         again,
-        "All items in Me.Scratch are already deprecated.",
-        "explains the repeat")
+        "No item or module named Me.Scratch was found.",
+        "the removed items are gone")
 
       Instance.doesNotSay(again, "Usage:", "a repeat delete is valid syntax")
       Instance.exitedWith(missingCode, 1, "name is missing")
@@ -138,10 +141,7 @@ test deleteWithDependentsRefusesOnce = Instance.withInstance(fun i ->
         "names the flag that works")
 
       Instance.exitedWith(forcedCode, 0, "--force gets through")
-      Instance.says(
-        forced,
-        "Deleted Me.Held.leaf (still callable).",
-        "says it was deleted") ]))
+      Instance.says(forced, "Removed Me.Held.leaf.", "says it was removed") ]))
 
 
 test deleteModuleRefusesAnOwner = Instance.withInstance(fun i ->
@@ -183,7 +183,11 @@ test deleteModuleListsEveryItem = Instance.withInstance(fun i ->
 
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "dry run")
-      Instance.says(out, "Would deprecate 12 items in Me.Big:\n", "the count")
+      Instance.says(
+        out,
+        "Would remove 12 items in Me.Big, never committed:\n",
+        "the count")
+
       Stdlib.Test.equal(Stdlib.List.length(named), 12) ]))
 
 
@@ -209,7 +213,7 @@ test deleteModuleTakesSubmodulesAndHonoursDryRun =
       [ Instance.exitedWith(dryCode, 0, "dry run")
         Instance.says(
           dry,
-          "Would deprecate 2 items in Me.Outer:",
+          "Would remove 2 items in Me.Outer, never committed:",
           "counts the submodule's item")
 
         Instance.says(dry, "  Me.Outer.Inner.deep", "names it")
@@ -224,6 +228,7 @@ test deprecatedModuleDiscoveryAndResave = Instance.withInstance(fun i ->
   let source = "let main(): Int64 = 0\n"
   let _ = Stdlib.Cli.File.writeAtomic(path, source) |> Builtin.unwrap
   let _ = Instance.ran(i, [ "module", "/Me.DeleteRepro", path ])
+  let _ = Instance.ran(i, [ "commit", "fixture", "-y" ])
   let before = Instance.said(i, [ "search", "DeleteRepro" ])
 
   let deletion = Instance.said(i, [ "delete", "Me.DeleteRepro", "--yes" ])
@@ -361,7 +366,7 @@ test deletesRelativeToCurrentModule = Instance.withInstance(fun i ->
     [ Instance.exitedWith(code, 0, "the command evaluates")
       Instance.says(
         out,
-        "Would deprecate 1 item in Me.RelativeDelete.Nested",
+        "Would remove 1 item in Me.RelativeDelete.Nested",
         "resolves the module")
 
       Instance.says(
@@ -388,6 +393,8 @@ test deletePreservesExecutionBlock = Instance.withInstance(fun i ->
   let _ =
     Instance.ran(i, [ "fn", "/Me.Blocked.alias", "(): Int64 = 0 + 137 - 137" ])
 
+  let _ = Instance.ran(i, [ "commit", "fixture", "-y" ])
+
   let (aliasDeleteCode, aliasDelete) =
     Instance.ran(i, [ "delete", "Me.Blocked.alias", "--yes" ])
 
@@ -413,3 +420,64 @@ test deletePreservesExecutionBlock = Instance.withInstance(fun i ->
         aliasRun,
         "--allow-harmful",
         "reports the block on the alias") ]))
+
+
+test deleteRemovesWhatWasNeverCommitted = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "fn", "Me.Probe.bad", "(): Int64 = \"x\"" ])
+  let _ = Instance.ran(i, [ "fn", "Me.Probe.good", "(): Int64 = 8231" ])
+  let (code, out) = Instance.ran(i, [ "delete", "Me.Probe.bad", "-y" ])
+  let (viewCode, _) = Instance.ran(i, [ "view", "Me.Probe.bad" ])
+  let (commitCode, committed) = Instance.ran(i, [ "commit", "probe", "-y" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "removed")
+      Instance.says(
+        out,
+        "Removed Me.Probe.bad. It was never committed",
+        "says so")
+
+      Instance.exitedWith(viewCode, 1, "the name is gone")
+      Instance.exitedWith(commitCode, 0, committed) ]))
+
+
+test deleteModuleRemovesNewItemsAndDeprecatesCommittedOnes =
+  Instance.withInstance(fun i ->
+    let _ = Instance.ran(i, [ "fn", "Me.Mixed.old", "(): Int64 = 8232" ])
+    let _ = Instance.ran(i, [ "commit", "old", "-y" ])
+    let _ = Instance.ran(i, [ "fn", "Me.Mixed.fresh", "(): Int64 = 8233" ])
+    let (code, out) = Instance.ran(i, [ "delete", "Me.Mixed", "-y" ])
+    let (againCode, again) = Instance.ran(i, [ "delete", "Me.Mixed", "-y" ])
+    Stdlib.Test.all(
+      [ Instance.exitedWith(code, 0, "deleted")
+        Instance.says(
+          out,
+          "Removed 1 item in Me.Mixed, never committed:\n  Me.Mixed.fresh",
+          "removed")
+
+        Instance.says(
+          out,
+          "Deleted 1 item in Me.Mixed:\n  Me.Mixed.old",
+          "deprecated")
+
+        Instance.says(out, "history keeps them", "says why")
+        Instance.exitedWith(againCode, 1, "nothing left")
+        Instance.says(
+          again,
+          "All items in Me.Mixed are already deprecated.",
+          "explains the repeat") ]))
+
+
+test commitLeavesOutWhatTheDraftAddedAndDeprecated =
+  Instance.withInstance(fun i ->
+    let _ = Instance.ran(i, [ "fn", "Me.Born.bad", "(): Int64 = \"x\"" ])
+    let _ = Instance.ran(i, [ "fn", "Me.Born.good", "(): Int64 = 8234" ])
+    let _ = Instance.ran(i, [ "deprecate", "Me.Born.bad", "-y" ])
+    let (code, out) = Instance.ran(i, [ "commit", "born", "-y" ])
+    let (viewCode, _) = Instance.ran(i, [ "view", "Me.Born.bad" ])
+    Stdlib.Test.all(
+      [ Instance.exitedWith(code, 0, out)
+        Instance.says(
+          out,
+          "left out Me.Born.bad: added and deprecated in this draft.",
+          "says so")
+
+        Instance.exitedWith(viewCode, 1, "it was not committed") ]))

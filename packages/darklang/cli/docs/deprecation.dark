@@ -24,8 +24,10 @@ By default, a deprecated item can still be used by name. Use
 `--replacement` to point to a replacement of the same kind. Use
 `--block-execution` to block calls to a function. Choose at most one.
 
-`delete` deprecates items and requires `--ignore-dependents` when there
-are live dependents.
+`delete` removes an item that was never committed. A committed item is
+deprecated instead, since history keeps it. Either way it requires
+`--ignore-dependents` when there are live dependents. `commit` leaves out
+items added and deprecated in the same draft.
 
 ## Options
 
@@ -43,9 +45,11 @@ are live dependents.
 `deprecate --json` and `delete --json` print one object:
 
   { "deprecated": "Acme.oldThing", "itemType": "fn", "kind": "deprecated",
-    "replacement": "", "message": "", "names": ["Acme.oldThing"], "dryRun": false }
+    "replacement": "", "message": "", "names": ["Acme.oldThing"], "removed": [],
+    "dryRun": false }
 
-`names` lists the declarations affected. A module delete reports
+`names` lists the declarations deprecated, and `removed` the ones `delete` took
+out of the draft (`"kind": "removed"` when that is all of them). A module delete reports
 `"itemType": "module"` and lists each declaration in the batch. An execution
 block lists every name holding the code. Without
 --yes (or --force) nothing is written and `dryRun` is true. A refusal (not found,

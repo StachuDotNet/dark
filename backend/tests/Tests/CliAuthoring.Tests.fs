@@ -611,7 +611,7 @@ let traitsAreAuthoredListedAndDisambiguated =
           shows
             state
             [ "delete"; "Tests.Tr.Point.Describe"; "-y" ]
-            "Deleted Tests.Tr.Point.Describe."
+            "Removed Tests.Tr.Point.Describe."
             "delete infers the impl kind"
         do! discardAll state
       })

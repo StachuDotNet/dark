@@ -286,7 +286,8 @@ let harmfulAt(
 
 /// What `deprecate --json` and `delete --json` print. `dryRun` is true when nothing was written: `--dry-run`,
 /// or `--json` without `--yes`, since there is nobody to ask. `names` is every name the deprecation reaches:
-/// the target alone, or for harmful every name holding the same code.
+/// the target alone, or for harmful every name holding the same code. `removed` is what `delete` took
+/// out of the draft instead, since it was never committed.
 type DeprecateJson =
   { deprecated: String
     itemType: String
@@ -294,6 +295,7 @@ type DeprecateJson =
     replacement: String
     message: String
     names: List<String>
+    removed: List<String>
     dryRun: Bool }
 
 
@@ -409,6 +411,7 @@ let executeWithVerb(state: AppState, args: List<String>, verb: String): AppState
                   names =
                     marked
                     |> Stdlib.List.map(PrettyPrinter.ProgramTypes.PackageLocation.packageLocation)
+                  removed = []
                   dryRun = dryRun })
 
           // Under --dry-run the preview is the answer, so it goes to stdout. Otherwise it is what the
@@ -426,6 +429,8 @@ let executeWithVerb(state: AppState, args: List<String>, verb: String): AppState
             match deprecationKind, parsed.replacement with
             | WithReplacement(_), Some(r) -> preview($"    Use {fullPathOf(r)} instead.")
             | Harmful, _ -> preview("    Calls will fail unless --allow-harmful is set.")
+            | _ when verb == "delete" ->
+              preview("    It is committed, and history keeps it, so it stays usable by name.")
             | _ -> preview("    Deprecated items can still be used by name.")
 
             if parsed.reason != "" then preview($"    reason: {parsed.reason}")

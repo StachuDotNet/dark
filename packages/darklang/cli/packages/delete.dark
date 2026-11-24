@@ -1,7 +1,8 @@
 module Darklang.Cli.Packages.Delete
 
-// Deleting an item uses plain deprecation after checking for live dependents.
-// Deleting a module deprecates its declarations in one batch.
+// Deleting an item that was never committed removes it from the draft. A committed item is
+// deprecated instead, after checking for live dependents: history keeps it.
+// Deleting a module does both for its declarations in one batch.
 
 type ParsedArgs =
   { itemType: Option<String>
@@ -63,6 +64,119 @@ let dependentsOverride(parsed: ParsedArgs): String =
     "`--ignore-dependents` / `--force`"
   else
     "`--force`"
+
+
+type Item = (LanguageTools.ProgramTypes.PackageLocation * LanguageTools.ProgramTypes.Reference)
+
+
+/// Of <param locations>, the ones that exist only in the draft, so `delete` can remove them. A
+/// committed item renamed in the draft is still committed. A name marked harmful stays: the block is
+/// on its code, and outlives the name.
+let draftOnly(
+  branchId: Uuid,
+  locations: List<LanguageTools.ProgramTypes.PackageLocation>)
+  : List<LanguageTools.ProgramTypes.PackageLocation> =
+  let committed =
+    SCM.PackageOps.committedBindingsOn(
+      branchId,
+      locations |> Stdlib.List.map(fun l -> (l.owner, Stdlib.String.join(l.modules, "."), l.name)))
+    |> Stdlib.List.map(fun b -> SCM.Conflicts.bindingKey(b.owner, b.modules, b.name))
+
+  let kept =
+    SCM.PackageOps.draftEntriesFor(branchId)
+    |> Stdlib.List.filterMap(fun entry ->
+      match entry.op with
+      | Rename(_, location, _, _, _) -> Option.Some(location)
+      | Deprecate(location, _, Harmful, _, _) -> Option.Some(location)
+      | _ -> Option.None)
+
+  locations
+  |> Stdlib.List.filter(fun l ->
+    let key = SCM.Conflicts.bindingKey(l.owner, Stdlib.String.join(l.modules, "."), l.name)
+    Stdlib.Bool.not(Stdlib.List.contains(committed, key) || Stdlib.List.contains(kept, l)))
+
+
+/// Take never-committed items out of the draft: their names, their deprecations, and their
+/// content unless something else still uses it.
+let removeFromDraft(branchId: Uuid, items: List<Item>): Result<Unit, String> =
+  let locations = items |> Stdlib.List.map(Stdlib.Tuple2.first)
+  let draft = SCM.PackageOps.draftEntriesFor(branchId)
+  let deprecations =
+    draft
+    |> Stdlib.List.filterMap(fun entry ->
+      match entry.op with
+      | Deprecate(location, _, _, _, _) when Stdlib.List.contains(locations, location) ->
+        Option.Some(entry.id)
+      | _ -> Option.None)
+
+  let bound =
+    draft
+    |> Stdlib.List.map(fun entry -> LanguageTools.ProgramTypes.PackageOp.bindingOps(entry.op))
+    |> Stdlib.List.flatten
+    |> Stdlib.List.filterMap(fun op ->
+      match op with
+      | SetName(location, target, _) when Stdlib.List.contains(locations, location) ->
+        Option.Some(
+          LanguageTools.ProgramTypes.hashToString(
+            LanguageTools.ProgramTypes.Reference.hash(target)))
+      | _ -> Option.None)
+
+  let usedElsewhere =
+    SCM.Deps.dependentsFor(
+      branchId,
+      items
+      |> Stdlib.List.map(fun((location, reference)) ->
+        (location, LanguageTools.ProgramTypes.Reference.kind(reference))))
+    |> Stdlib.List.any(fun((_, location, _)) ->
+      Stdlib.Bool.not(Stdlib.List.contains(locations, location)))
+
+  let discarded =
+    locations
+    |> Stdlib.List.fold(Result.Ok(0), fun(acc, location) ->
+      match acc with
+      | Ok(_) -> SCM.PackageOps.discardOn(branchId, SCM.Actions.DiscardWhat.Name(location))
+      | Error(e) -> Result.Error(e))
+
+  match discarded with
+  | Error(e) -> Result.Error(e)
+  | Ok(_) ->
+    let stillBound = SCM.PackageOps.draftBindingsFor(branchId) |> Stdlib.List.map(fun b -> b.hash)
+    let orphaned =
+      bound |> Stdlib.List.filter(fun h -> Stdlib.Bool.not(Stdlib.List.contains(stillBound, h)))
+
+    let content =
+      if usedElsewhere then
+        []
+      else
+        draft
+        |> Stdlib.List.filterMap(fun entry -> SCM.PartialCommit.contentIdIfWanted(orphaned, entry))
+
+    SCM.PackageOps.dropBranchOps(branchId, Stdlib.List.concat(deprecations, content))
+    |> Stdlib.Result.map(fun _ -> ())
+
+
+/// Items added and deprecated in the same draft: there is nothing of them for history to keep.
+let bornDeprecated(branchId: Uuid): List<Item> =
+  let deprecated =
+    SCM.PackageOps.draftEntriesFor(branchId)
+    |> Stdlib.List.filterMap(fun entry ->
+      match entry.op with
+      | Deprecate(location, target, _, _, _) -> Option.Some((location, target))
+      | _ -> Option.None)
+    |> Stdlib.List.uniqueBy(Stdlib.Tuple2.first)
+
+  match deprecated with
+  | [] -> []
+  | _ ->
+    let sets = Query.loadDeprecationSets(branchId)
+    let fresh = draftOnly(branchId, deprecated |> Stdlib.List.map(Stdlib.Tuple2.first))
+    deprecated
+    |> Stdlib.List.filter(fun((location, target)) ->
+      Stdlib.List.contains(fresh, location)
+      && Query.isDeprecatedAtLocation(
+        sets,
+        location,
+        LanguageTools.ProgramTypes.Reference.hash(target)))
 
 
 /// Forward the shared options to `deprecate`.
@@ -137,7 +251,8 @@ let deleteItem(
     | Some((targetLoc, reference)) ->
       let sets = Query.loadDeprecationSets(branchId)
       let hash = LanguageTools.ProgramTypes.Reference.hash(reference)
-      if Query.isDeprecatedAtLocation(sets, targetLoc, hash) then
+      let removing = draftOnly(branchId, [ targetLoc ]) != []
+      if Stdlib.Bool.not(removing) && Query.isDeprecatedAtLocation(sets, targetLoc, hash) then
         let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(targetLoc)
         printErr($"{name} is already deprecated.")
         failed(state)
@@ -151,8 +266,63 @@ let deleteItem(
             $"Use `deprecate` to give them time to migrate, or pass {dependentsOverride(parsed)}.")
 
           failed(state)
+        else if removing then
+          removeItem(state, itemTypeStr, (targetLoc, reference), parsed)
         else
           Deprecate.executeWithVerb(state, toDeprecateArgs(parsed, itemTypeStr, target), "delete")
+
+
+/// Remove a never-committed item from the draft, with the same preview, prompt and JSON as a
+/// deprecation.
+let removeItem(state: AppState, itemTypeStr: String, item: Item, parsed: ParsedArgs): AppState =
+  let (location, _) = item
+  let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location)
+  let dryRun = parsed.dryRun || parsed.json && Stdlib.Bool.not(parsed.autoConfirm)
+  let report = fun dryRun ->
+    Deprecate.printReport(
+      state,
+      Deprecate.DeprecateJson
+        { deprecated = name
+          itemType = itemTypeStr
+          kind = "removed"
+          replacement = ""
+          message = parsed.reason
+          names = []
+          removed = [ name ]
+          dryRun = dryRun })
+
+  if Stdlib.Bool.not(parsed.json) then
+    if dryRun then
+      Stdlib.printLine($"  Would remove {itemTypeStr} {name}: it was never committed.")
+    else if Stdlib.Bool.not(parsed.autoConfirm) then
+      Stdlib.printErrorLine($"  Will remove {itemTypeStr} {name}: it was never committed.")
+
+  if dryRun then
+    if parsed.json then
+      report(true)
+    else
+      Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.hint("(dry-run, no op emitted)"))
+      state
+  else if
+    Prompt.confirmExplicit(
+      Confirm.assumeIf(parsed.autoConfirm),
+      Stdlib.Cli.UI.Colors.warning("Proceed? (y/n): "))
+  then
+    match removeFromDraft(state.currentBranchId, [ item ]) with
+    | Ok(_) when parsed.json -> report(false)
+    | Ok(_) ->
+      printOk(removedMessage(name))
+      state
+    | Error(e) ->
+      printErr($"Delete failed: {e}")
+      failed(state)
+  else
+    if Stdlib.Cli.UI.Prompt.canAsk() then
+      Stderr.line("Delete cancelled.")
+    else
+      printErr(Prompt.refuseWithoutTerminal("Delete", $"dark delete {name}"))
+
+    failed(state)
 
 
 /// Collect the bound declarations in a module and its descendants.
@@ -228,18 +398,29 @@ let deleteModule(state: AppState, name: String, parsed: ParsedArgs): AppState =
     | [] -> notFound()
     | items ->
       let sets = Query.loadDeprecationSets(branchId)
-      let pending =
-        items
+      let fresh = draftOnly(branchId, items |> Stdlib.List.map(Stdlib.Tuple2.first))
+      let (toRemove, committed) =
+        items |> Stdlib.List.partition(fun((location, _)) -> Stdlib.List.contains(fresh, location))
+
+      let toDeprecate =
+        committed
         |> Stdlib.List.filter(fun((location, reference)) ->
           let hash = LanguageTools.ProgramTypes.Reference.hash(reference)
           Stdlib.Bool.not(Query.isDeprecatedAtLocation(sets, location, hash)))
 
-      match pending with
-      | [] ->
+      match toRemove, toDeprecate with
+      | [], [] ->
         printErr($"All items in {shown} are already deprecated.")
         failed(state)
       | _ ->
-        deleteModuleItems(state, shown, Stdlib.List.prepend(modules, owner), pending, sets, parsed)
+        deleteModuleItems(
+          state,
+          shown,
+          Stdlib.List.prepend(modules, owner),
+          toRemove,
+          toDeprecate,
+          sets,
+          parsed)
   | Some([owner]) when moduleExists(branchId, [ owner ]) ->
     printErr($"Won't delete all of {owner} at once; delete one module: delete {owner}.<module>")
     failed(state)
@@ -250,7 +431,8 @@ let deleteModuleItems(
   state: AppState,
   shown: String,
   path: List<String>,
-  items: List<(LanguageTools.ProgramTypes.PackageLocation * LanguageTools.ProgramTypes.Reference)>,
+  toRemove: List<Item>,
+  toDeprecate: List<Item>,
   sets: Query.DeprecationSets,
   parsed: ParsedArgs)
   : AppState =
@@ -259,7 +441,7 @@ let deleteModuleItems(
   let outside =
     SCM.Deps.dependentsFor(
       SCM.PackageOps.currentBranch(),
-      items
+      Stdlib.List.concat(toRemove, toDeprecate)
       |> Stdlib.List.map(fun((location, reference)) ->
         (location, LanguageTools.ProgramTypes.Reference.kind(reference))))
     |> Stdlib.List.filter(fun((hash, location, _)) ->
@@ -269,19 +451,19 @@ let deleteModuleItems(
       PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location))
     |> Stdlib.List.unique
 
-  let total = Stdlib.List.length(items)
-  let count = Text.plural(total, "item")
   if Stdlib.Bool.not(Stdlib.List.isEmpty(outside)) && Stdlib.Bool.not(parsed.ignoreDependents) then
     printErr($"Used from outside {shown}: " + Stdlib.String.join(outside, ", "))
     Stdlib.printErrorLine($"Pass {dependentsOverride(parsed)} to delete it anyway.")
     failed(state)
   else
-    let names =
+    let namesOf = fun items ->
       items
       |> Stdlib.List.map(fun((location, _)) ->
         PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location))
       |> Stdlib.List.sortBy(fun name -> name)
 
+    let removed = namesOf(toRemove)
+    let deprecated = namesOf(toDeprecate)
     let dryRun = parsed.dryRun || parsed.json && Stdlib.Bool.not(parsed.autoConfirm)
     let reportJson(): AppState =
       Deprecate.printReport(
@@ -289,22 +471,32 @@ let deleteModuleItems(
         Deprecate.DeprecateJson
           { deprecated = shown
             itemType = "module"
-            kind = "deprecated"
+            kind = if deprecated == [] then "removed" else "deprecated"
             replacement = ""
             message = parsed.reason
-            names = names
+            names = deprecated
+            removed = removed
             dryRun = dryRun })
 
-    let printItems(printLine: String -> Unit, action: String): Unit =
-      printLine($"{action} {count} in {shown}:")
-      names |> Stdlib.List.iter(fun name -> printLine($"  {name}"))
-      printLine("They can still be used by name.")
+    let printItems(printLine: String -> Unit, removeWord: String, deprecateWord: String): Unit =
+      if removed != [] then
+        printLine(
+          $"{removeWord} {Text.plural(Stdlib.List.length(removed), "item")} in {shown}, never committed:")
+
+        removed |> Stdlib.List.iter(fun name -> printLine($"  {name}"))
+
+      if deprecated != [] then
+        printLine(
+          $"{deprecateWord} {Text.plural(Stdlib.List.length(deprecated), "item")} in {shown}:")
+
+        deprecated |> Stdlib.List.iter(fun name -> printLine($"  {name}"))
+        printLine("They are committed, so history keeps them; they can still be used by name.")
 
     if Stdlib.Bool.not(parsed.json) then
       if dryRun then
-        printItems(Stdlib.printLine, "Would deprecate")
+        printItems(Stdlib.printLine, "Would remove", "Would deprecate")
       else if Stdlib.Bool.not(parsed.autoConfirm) then
-        printItems(Stdlib.printErrorLine, "Will deprecate")
+        printItems(Stdlib.printErrorLine, "Will remove", "Will deprecate")
 
     if dryRun then
       if parsed.json then
@@ -318,7 +510,7 @@ let deleteModuleItems(
         Stdlib.Cli.UI.Colors.warning("Proceed? (y/n): "))
     then
       let ops =
-        items
+        toDeprecate
         |> Stdlib.List.map(fun((location, reference)) ->
           LanguageTools.ProgramTypes.PackageOp.Deprecate(
             location,
@@ -327,15 +519,32 @@ let deleteModuleItems(
             parsed.reason,
             Option.None))
 
-      match SCM.PackageOps.add(branchId, ops) with
+      let written =
+        match removeFromDraft(branchId, toRemove) with
+        | Ok(_) when ops == [] -> Result.Ok()
+        | Ok(_) -> SCM.PackageOps.add(branchId, ops) |> Stdlib.Result.map(fun _ -> ())
+        | Error(e) -> Result.Error(e)
+
+      match written with
       | Ok(_) when parsed.json -> reportJson()
       | Ok(_) ->
-        match parsed.autoConfirm, names, items with
-        | true, [name], [(_, reference)] ->
+        match parsed.autoConfirm, removed, toDeprecate with
+        | true, [], [(location, reference)] ->
+          let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location)
           let kind = LanguageTools.ProgramTypes.Reference.kind(reference)
           printOk(Deprecate.deletedItemMessage(name, kind))
-        | true, _, _ -> printItems(Stdlib.printLine, "Deleted")
-        | false, _, _ -> printOk($"Deleted {count} in {shown}")
+        | true, [name], [] -> printOk(removedMessage(name))
+        | true, _, _ -> printItems(Stdlib.printLine, "Removed", "Deleted")
+        | false, _, _ ->
+          let parts =
+            [ (removed, "Removed"), (deprecated, "deleted") ]
+            |> Stdlib.List.filterMap(fun((names, word)) ->
+              if names == [] then
+                Option.None
+              else
+                Option.Some($"{word} {Text.plural(Stdlib.List.length(names), "item")}"))
+
+          printOk($"""{Stdlib.String.join(parts, ", ")} in {shown}""")
 
         state
       | Error(e) ->
@@ -350,8 +559,16 @@ let deleteModuleItems(
       failed(state)
 
 
+let removedMessage(name: String): String =
+  $"Removed {name}. It was never committed, so nothing keeps it."
+
+
 let help(_state: AppState): String =
-  [ "Deprecate items. They remain usable by name."
+  [ "Remove items; committed ones stay in history."
+    ""
+    "An item that was never committed is removed outright. A committed item"
+    "stays in history: it is deprecated, still usable by name, and `undeprecate`"
+    "brings it back."
     ""
     "Usage: delete <fn|type|value|trait|impl|test> <name-or-hash> [options]"
     "       delete <module> [options]    - everything in it and the modules under it"

@@ -676,10 +676,35 @@ let execute(state: AppState, args: List<String>): AppState =
   // commits history.
   if refuseUnknownFlags(args) then
     { state with exitCode = 1 }
-  else if ScmJson.wantsJson(args) then
-    executeJson(state, args)
   else
-    executePretty(state, args)
+    // `commit --json` without `-y` is a dry review, so it changes nothing.
+    let dryReview =
+      ScmJson.wantsJson(args) && Stdlib.Bool.not((parseArgs(ScmJson.stripJson(args))).autoConfirm)
+
+    match if dryReview then Result.Ok() else leaveOutBornDeprecated() with
+    | Error(e) ->
+      printErr($"couldn't leave out what this draft added and deprecated: {e}")
+      { state with exitCode = 1 }
+    | Ok(_) ->
+      if ScmJson.wantsJson(args) then
+        executeJson(state, args)
+      else
+        executePretty(state, args)
+
+
+/// Items added and deprecated in this same draft have nothing for history to keep, so they leave the
+/// draft instead of being committed (or refusing the commit over their errors).
+let leaveOutBornDeprecated(): Result<Unit, String> =
+  let branchId = SCM.PackageOps.currentBranch()
+  match Packages.Delete.bornDeprecated(branchId) with
+  | [] -> Result.Ok()
+  | items ->
+    Packages.Delete.removeFromDraft(branchId, items)
+    |> Stdlib.Result.map(fun _ ->
+      items
+      |> Stdlib.List.iter(fun((location, _)) ->
+        let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(location)
+        Stderr.line($"  left out {name}: added and deprecated in this draft.")))
 
 
 let help(_state: AppState): String =
