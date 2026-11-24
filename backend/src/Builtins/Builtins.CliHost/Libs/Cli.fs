@@ -757,6 +757,12 @@ module ReplayStop =
     | InputNoLongerParses
     | MissingHandler
     | HostFailure of string
+    | NeedsRead of string * List<Dval>
+    | WritesDifferently of string * List<Dval>
+    | Truncated
+
+  let private dvals (args : List<Dval>) : Dval =
+    Dval.list (RT2DT.Dval.knownType ()) (List.map RT2DT.Dval.toDT args)
 
   let toDT (stop : ReplayStop) : Dval =
     let typeName = fqTypeName ()
@@ -768,6 +774,10 @@ module ReplayStop =
       | InputNoLongerParses -> "InputNoLongerParses", []
       | MissingHandler -> "MissingHandler", []
       | HostFailure message -> "HostFailure", [ DString message ]
+      | NeedsRead(name, args) -> "NeedsRead", [ DString name; dvals args ]
+      | WritesDifferently(name, args) ->
+        "WritesDifferently", [ DString name; dvals args ]
+      | Truncated -> "Truncated", []
     DEnum(typeName, typeName, [], caseName, fields)
 
 
@@ -2151,6 +2161,182 @@ let fns () : List<BuiltInFn> =
       previewable = Impure
       // Reading a recorded run, and running pure code over it: the effects it would have made
       // are answered from the log, never performed.
+      callEffects = set [ LibExecution.Effects.Effect.TraceRead ]
+      deprecated = NotDeprecated }
+
+
+    { name = fn "cliDiffTrace" 0
+      typeParams = []
+      parameters =
+        [ Param.make
+            "accountID"
+            (TypeReference.option TUuid)
+            "the account whose approvals apply"
+          Param.make "branchId" TUuid "the branch to resolve names against"
+          Param.make "traceID" TString "the run to replay"
+          Param.make
+            "handler"
+            (TypeReference.option TString)
+            "for a served request, the hash of the handler to apply; None applies the recorded one" ]
+      returnType =
+        let printed = TList(TTuple(TString, TString, []))
+        let dval =
+          TypeReference.option (TCustomType(NR.ok (RT2DT.Dval.typeName ()), []))
+        TTuple(
+          printed,
+          printed,
+          [ dval
+            dval
+            TBool
+            TList TString
+            TypeReference.option (ReplayStop.typeRef ()) ]
+        )
+      description =
+        "Replay a recorded run with the code as it is now, for `traces diff`: reads answered "
+        + "from the log, prints noted rather than performed, writes served only when the run "
+        + "made the same one. Nothing is performed and nothing is recorded.\n\n"
+        + "Comes back with what the run printed, as (stream, text), and what the replay "
+        + "printed; what each answered, and whether the answers are the same value; one "
+        + "entry per value the replay made up (\"clock\", \"uuid\", \"random\"); and why it "
+        + "stopped, if it did.\n\n"
+        + "A served request's recorded answer went through the server's middleware, which a "
+        + "replay does not run, so its old side is the recorded handler replayed the same way."
+      fn =
+        (function
+        | exeState,
+          callerVM,
+          _,
+          [| accountIDDval; DUuid branchId; DString traceID; handler |] ->
+          task {
+            let printedKt =
+              KTTuple(ValueType.Known KTString, ValueType.Known KTString, [])
+            let printedList (rows : List<string * string>) =
+              rows
+              |> List.map (fun (stream, text) ->
+                DTuple(DString stream, DString text, []))
+              |> Dval.list printedKt
+            let dvalKt = RT2DT.Dval.knownType ()
+            let stopKt = KTCustomType(ReplayStop.fqTypeName (), [])
+            let stored (dv : Dval) =
+              LibSerialization.Binary.Serialization.RT.Dval.serialize
+                "trace.diff"
+                (Tracing.asStored dv)
+            // Bytes with their contents, so the printed value shows what is in them.
+            let shown (dv : Dval) =
+              let loaded dv =
+                match dv with
+                | DBytes(Persistent(hash, _)) ->
+                  LibDB.RuntimeTypes.Bytes.get hash
+                  |> Option.map LibExecution.Bytes.newEphemeral
+                | _ -> None
+              RT2DT.Dval.toDT (RT.Dval.rewriteWith loaded dv)
+            let answer
+              (was : List<string * string>)
+              (now : List<string * string>)
+              (wasValue : Option<Dval>)
+              (nowValue : Option<Dval>)
+              (madeUp : List<string>)
+              (problem : Option<ReplayStop.ReplayStop>)
+              =
+              let option value =
+                match value with
+                | Some dv -> Dval.optionSome dvalKt (shown dv)
+                | None -> Dval.optionNone dvalKt
+              let same =
+                match wasValue, nowValue with
+                | Some a, Some b -> stored a = stored b
+                | None, None -> true
+                | _ -> false
+              DTuple(
+                printedList was,
+                printedList now,
+                [ option wasValue
+                  option nowValue
+                  DBool same
+                  Dval.list KTString (List.map DString madeUp)
+                  (match problem with
+                   | Some stop -> Dval.optionSome stopKt (ReplayStop.toDT stop)
+                   | None -> Dval.optionNone stopKt) ]
+              )
+            let nothing stop = answer [] [] None None [] (Some stop)
+            match System.Guid.TryParse traceID with
+            | false, _ -> return nothing ReplayStop.InvalidId
+            | true, id ->
+              match LibDB.Traces.get id with
+              | None -> return nothing ReplayStop.TraceNotFound
+              | Some run ->
+                let rows = LibDB.Traces.viewLog id
+                if LibDB.Traces.isTruncated id then
+                  return
+                    answer
+                      (Tracing.recordedPrinted rows)
+                      []
+                      run.result
+                      None
+                      []
+                      (Some ReplayStop.Truncated)
+                else
+                  let exeState =
+                    { exeState with
+                        accountID = C2DT.Option.fromDT D.uuid accountIDDval }
+                  let replay (run : LibDB.Traces.Trace) =
+                    task {
+                      let tracer, notes = Tracing.createDiffTracer rows
+                      // made-up values come out the same on every replay of this run
+                      let exeState =
+                        { exeState with
+                            random = LibExecution.HostRandom.seeded 0L (string id) }
+                      let! replayed =
+                        replayRun
+                          exeState
+                          callerVM.activeAccess
+                          (PT.BranchId.Id branchId)
+                          run
+                          tracer
+                      let problem =
+                        match Seq.tryHead notes.stopped with
+                        | Some(Tracing.NeedsRead(name, args)) ->
+                          Some(ReplayStop.NeedsRead(name, args))
+                        | Some(Tracing.WritesDifferently(name, args)) ->
+                          Some(ReplayStop.WritesDifferently(name, args))
+                        | None ->
+                          match replayed with
+                          | Ok _ -> None
+                          | Error stop -> Some stop
+                      let! value =
+                        task {
+                          match replayed, problem with
+                          | Ok dv, None ->
+                            do! Pending.allFinished [ dv ]
+                            return Pending.finished dv |> ValueOption.toOption
+                          | _ -> return None
+                        }
+                      return
+                        List.ofSeq notes.printed,
+                        value,
+                        List.ofSeq notes.madeUp,
+                        problem
+                    }
+                  let! was, wasValue =
+                    match C2DT.Option.fromDT D.string handler with
+                    | Some _ ->
+                      task {
+                        let! printed, value, _, _ = replay run
+                        return printed, value
+                      }
+                    | None ->
+                      Task.FromResult(Tracing.recordedPrinted rows, run.result)
+                  let run =
+                    match C2DT.Option.fromDT D.string handler with
+                    | Some hash -> { run with entryHash = Some hash }
+                    | None -> run
+                  let! now, nowValue, madeUp, problem = replay run
+                  return answer was now wasValue nowValue madeUp problem
+          }
+          |> LibExecution.Pending.ofTask
+        | _ -> incorrectArgs ())
+      previewable = Impure
+      // Like a view: the run's effects are answered from its log, never performed.
       callEffects = set [ LibExecution.Effects.Effect.TraceRead ]
       deprecated = NotDeprecated }
 

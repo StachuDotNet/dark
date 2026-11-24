@@ -49,10 +49,18 @@ let applyFile(
   ModuleCommand.readAndSaveEdit(state, moduleArgFor(loc), path)
 
 
-/// After an edit lands: the runs that went through this function, if any. A replay recomputes
-/// every pure value from the code as it is now, so this is the moment they are most useful.
+/// After an edit lands: how the recorded runs through this function answer with the new code,
+/// within `trace.diffBudgetMs`. Nothing when no recorded run went through it.
 let printTraceHint(state: AppState, location: PackageLocation): Unit =
-  View.printTraceHintWith(state.currentBranchId, location, " for the new code's values")
+  match location with
+  | Function(loc) ->
+    let name = PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(loc)
+    match TraceDiff.saveLine(state, name) with
+    | Some(line) ->
+      Stdlib.printErrorLine("")
+      Stdlib.printErrorLine(Stdlib.Cli.UI.Colors.dimText(line))
+    | None -> ()
+  | _ -> ()
 
 
 /// Apply patch blocks in the apply_patch format: bare `@@` separators,

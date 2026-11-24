@@ -707,6 +707,16 @@ let viewLog (id : System.Guid) : List<string * byte[] * RT.Dval> =
       None)
 
 
+/// Whether a run's log was cut short at the event cap: it ends with a marker row then.
+let isTruncated (id : System.Guid) : bool =
+  Sql.query
+    "SELECT COUNT(*) AS n FROM trace_fn_calls
+     WHERE trace_id = @t AND ord < 0 AND fn_hash LIKE 'trace truncated%'"
+  |> Sql.parameters [ "t", Sql.uuid id ]
+  |> Sql.executeRow (fun read -> read.int64 "n")
+  |> fun n -> n > 0L
+
+
 /// A resume armed for the next run the CLI host starts. `dark traces resume <id>` arms it, then
 /// runs that run's input through the ordinary `eval` or `run` path, and the host's script runner
 /// takes it in place of a fresh tracer (`Builtins.CliHost.Libs.Cli.execute`). One shot: taken by

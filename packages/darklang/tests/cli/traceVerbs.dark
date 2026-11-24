@@ -774,8 +774,8 @@ test viewAndEditPointAtTheRunsThatWentThrough = Traces.withTraces(fun i ->
 
       Instance.says(
         edited,
-        "dark traces show Tests.Prev.doubled for the new code's values",
-        "edit points at the run too") ]))
+        "1 recorded run went through this; 1 answers differently now: dark traces diff Tests.Prev.doubled",
+        "edit says how the run answers now") ]))
 
 
 /// Two names for one function find the same runs, because content addressing makes

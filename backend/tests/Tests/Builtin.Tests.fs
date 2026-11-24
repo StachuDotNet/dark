@@ -775,7 +775,10 @@ let private raisesWithoutRaise : Map<string, string> =
       "dictFilter"
       "stringJoin" ]
     "the guest's errors come back in the Result",
-    [ "cliParseAndExecuteScript"; "cliViewTrace"; "cliEvaluateExpression" ]
+    [ "cliParseAndExecuteScript"
+      "cliViewTrace"
+      "cliDiffTrace"
+      "cliEvaluateExpression" ]
     "the error comes back in the Result", [ "jsonParse"; "jsonCheckedSerialize" ]
     "a permission refusal, which the permission effects describe",
     [ "pmPolicyNormalizeRule"

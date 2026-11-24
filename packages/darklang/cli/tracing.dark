@@ -684,6 +684,9 @@ let execute(state: AppState, args: List<String>): AppState =
                 LiveView.Host.Updates.Live) with
         | Ok(_) -> state
         | Error(e) -> refuse(state, e)
+      | ["diff", fnName] -> TraceDiff.execute(state, fnName, Option.None, wantsJson)
+      | ["diff", fnName, run] -> TraceDiff.execute(state, fnName, Option.Some(run), wantsJson)
+      | ["diff"] -> refuse(state, "Usage: traces diff <fn> [<trace>] [--json]")
       | ["show", fnName] -> executeShow(state, fnName, Option.None, iteration, wantsJson, wantsFull)
       | ["show", fnName, run] ->
         executeShow(state, fnName, Option.Some(run), iteration, wantsJson, wantsFull)
@@ -1771,6 +1774,7 @@ let complete(_state: AppState, args: List<String>): List<Completion.CompletionIt
       Completion.simple("--slow-ms")
       Completion.simple("--all")
       Completion.simple("--json") ]
+  | ["diff", _] -> [ Completion.simple("--json") ]
   | ["show", _] ->
     [ Completion.simple("--watch"), Completion.simple("--json"), Completion.simple("--iteration") ]
   // After a value-taking flag, the next token is a user-supplied
@@ -1803,6 +1807,9 @@ let help(_state: AppState): String =
     "  show <fn> --iteration map:2,fold:2  several loops at once"
     "  show <fn> --json              the same for an agent, `--iteration` included"
     "  show <fn> --json --full       ... with no cap on a value's length"
+    "  diff <fn> [<trace>]           replay every trace that went through it with the code as"
+    "                                it is now, and say which answer or print differently."
+    "                                Performs nothing; `--json` for an agent"
     "  calls <fn>                    the traces that went through one function, newest first,"
     "                                with how many times each called it and the time spent in it"
     ""

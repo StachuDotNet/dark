@@ -1779,6 +1779,51 @@ let private callReadsOnly (fn : BuiltInFn) (args : Dval[]) : bool =
                | _ -> false)
             | _ -> false))
 
+/// The effects that change something outside the run. A call with none of them is a read.
+let private changesTheWorld : Set<Effects.Effect> =
+  set
+    [ Effects.Effect.Http
+      Effects.Effect.HttpServer
+      Effects.Effect.FileWrite
+      Effects.Effect.EnvWrite
+      Effects.Effect.Process
+      Effects.Effect.PackageWrite
+      Effects.Effect.TraceWrite
+      Effects.Effect.Native
+      Effects.Effect.Stdout ]
+
+/// What a replay of changed code makes of this call (`Tracing.CallKind`). A uuid v7 reads the
+/// clock too, but what differs between two of them is the random part. An `open` is declared
+/// as both read and write, so its flags decide: read-only, without O_CREAT or O_TRUNC, is a read.
+let private callKind (fn : BuiltInFn) (args : Dval[]) : Tracing.CallKind =
+  let effects = Set.difference fn.callEffects Effects.informationOnly
+  let within (allowed : List<Effects.Effect>) =
+    Set.isSubset effects (Set.ofList allowed)
+  let opensToRead () =
+    fn.name.name = "syscallOpen"
+    && args.Length > 1
+    && (match args[1] with
+        | DInt64 flags -> flags &&& 0x243L = 0L
+        | _ -> false)
+  if Set.contains Effects.Effect.Random effects then
+    Tracing.CallKind.Random
+  else
+    match fn.returnType with
+    | TUnit when
+      within
+        [ Effects.Effect.Stdout; Effects.Effect.TraceWrite; Effects.Effect.Clock ]
+      ->
+      Tracing.CallKind.Output
+    | _ when effects = Set.singleton Effects.Effect.Clock -> Tracing.CallKind.Clock
+    | _ when
+      callReadsOnly fn args
+      || Set.isEmpty (Set.intersect effects changesTheWorld)
+      || opensToRead ()
+      ->
+      Tracing.CallKind.Read
+    | _ -> Tracing.CallKind.Write
+
+
 /// `callReadsOnly` for a call still in its context. The list is only built for the builtins
 /// whose arguments decide it.
 let private contextReadsOnly (fn : BuiltInFn) (ctx : ApplyContext) : bool =
@@ -1875,7 +1920,7 @@ let private invokeBuiltinAuthorized
   let viewed =
     match exeState.tracing.viewEffect with
     | Some lookup when not plainPure && isLogged fn ->
-      match lookup fn.name.name allArgs with
+      match lookup (callKind fn allArgs) fn.name.name allArgs with
       | ValueSome step -> ValueSome step
       | ValueNone ->
         RTE.UncaughtException(

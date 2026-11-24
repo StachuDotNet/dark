@@ -1,0 +1,455 @@
+/// `dark traces diff`: every recorded run that went through a function, replayed with the code as
+/// it is now, and how each one comes out against what it did when it ran.
+///
+/// The replay performs nothing (`Tracing.Store.diffRun`). What is compared, in order: whether it
+/// fails, what it answered, and what it printed.
+module Darklang.Cli.TraceDiff
+
+/// One way a replay came out different from the run.
+type Change =
+  { /// "answer", "error", "stdout" or "stderr".
+    kind: String
+    /// The printed line, counting from 1; 0 for an answer or an error.
+    line: Int64
+    /// None for a line that was not printed on that side.
+    was: Option<String>
+    now: Option<String> }
+
+
+type Outcome =
+  | Same
+  | Changed(List<Change>)
+  /// The replay could not go on, and why.
+  | Stopped(String)
+  | WritesDifferently(String)
+  | InputNoLongerFits(String)
+  /// The run, or its log, never finished, so there is nothing whole to compare with.
+  | Incomplete(String)
+
+
+type Checked =
+  { trace: Tracing.Trace
+    outcome: Outcome
+    /// One per value the replay made up: "clock", "uuid" or "random".
+    madeUp: List<String> }
+
+
+/// The runs that went through <param fnName>, newest first.
+let candidates(branchId: Uuid, fnName: String): List<Tracing.Trace> =
+  Tracing.Store.wentThroughNamed(branchId, fnName, 1000)
+
+
+/// For a served request: its handler as the branch names it now. The recorded hash is the old
+/// code, so the replay looks the handler up by the name the run knew it by.
+let handlerFor(branchId: Uuid, trace: Tracing.Trace): Option<String> =
+  if trace.servedRequest then
+    trace.entryHash
+    |> Stdlib.Option.andThen(fun recorded ->
+      Tracing.Store.fnsWithHashes(trace.id)
+      |> Stdlib.List.findFirst(fun pair -> Stdlib.Tuple2.second(pair) == recorded)
+      |> Stdlib.Option.map(fun pair ->
+        Tracing.Store.hashNamed(branchId, Stdlib.Tuple2.first(pair))))
+    |> Stdlib.Option.andThen(fun hash -> if hash == "" then Option.None else Option.Some(hash))
+  else
+    Option.None
+
+
+/// What one stream printed, line by line.
+let linesOf(printed: List<(String * String)>, stream: String): List<String> =
+  let text =
+    printed
+    |> Stdlib.List.filterMap(fun p ->
+      let (s, t) = p
+      if s == stream then Option.Some(t) else Option.None)
+    |> Stdlib.String.join("")
+
+  if text == "" then
+    []
+  else
+    let lines = Stdlib.String.split(text, "\n")
+    if Stdlib.String.endsWith(text, "\n") then
+      Stdlib.List.dropLast(lines)
+    else
+      lines
+
+
+/// The lines that differ between <param was> and <param now>, counting from <param line>.
+let lineChanges(stream: String, line: Int64, was: List<String>, now: List<String>): List<Change> =
+  match was, now with
+  | [], [] -> []
+  | _ ->
+    let before = Stdlib.List.head(was)
+    let after = Stdlib.List.head(now)
+    let rest = lineChanges(stream, line + 1, Stdlib.List.drop(was, 1), Stdlib.List.drop(now, 1))
+    if before == after then
+      rest
+    else
+      Stdlib.List.prepend(rest, Change { kind = stream, line = line, was = before, now = after })
+
+
+let printedChanges(replayed: Tracing.Store.Replayed): List<Change> =
+  [ "stdout", "stderr" ]
+  |> Stdlib.List.map(fun stream ->
+    lineChanges(
+      stream,
+      1,
+      linesOf(replayed.wasPrinted, stream),
+      linesOf(replayed.nowPrinted, stream)))
+  |> Stdlib.List.flatten
+
+
+let valueText(branchId: Uuid, dv: LanguageTools.RuntimeTypes.Dval): String =
+  Tracing.Format.compactDvalTo(branchId, 0, dv)
+
+
+let outcomeOf(branchId: Uuid, trace: Tracing.Trace, replayed: Tracing.Store.Replayed): Outcome =
+  let changedOrSame(changes: List<Change>): Outcome =
+    if Stdlib.List.isEmpty(changes) then Outcome.Same else Outcome.Changed(changes)
+
+  let recorded = replayed.wasAnswer |> Stdlib.Option.map(fun dv -> valueText(branchId, dv))
+  let failedBefore = replayed.wasAnswer == Option.None
+  let message(stop: Tracing.ReplayStop): String =
+    Stdlib.Tuple2.first(Tracing.Format.replayStop(branchId, stop))
+
+  match replayed.problem with
+  | Some(stop) ->
+    match stop with
+    | Truncated -> Outcome.Incomplete("the log was cut short at the event cap")
+    | NeedsRead(_, _) -> Outcome.Stopped(message(stop))
+    | WritesDifferently(_, _) -> Outcome.WritesDifferently(message(stop))
+    | InputNoLongerParses -> Outcome.InputNoLongerFits(message(stop))
+    | Raised(_) ->
+      if Tracing.ReplayStop.isDrift(stop) then
+        Outcome.Stopped(message(stop))
+      else if failedBefore then
+        changedOrSame(printedChanges(replayed))
+      else
+        let raised =
+          Change { kind = "error", line = 0, was = recorded, now = Option.Some(message(stop)) }
+
+        Outcome.Changed(Stdlib.List.prepend(printedChanges(replayed), raised))
+    | _ -> Outcome.Stopped(message(stop))
+  | None ->
+    let now = replayed.answer |> Stdlib.Option.map(fun dv -> valueText(branchId, dv))
+    let answerChanges =
+      if failedBefore then
+        [ Change { kind = "error", line = 0, was = Option.None, now = now } ]
+      else if replayed.answerSame then
+        []
+      else
+        [ Change { kind = "answer", line = 0, was = recorded, now = now } ]
+
+    changedOrSame(Stdlib.List.flatten([ answerChanges, printedChanges(replayed) ]))
+
+
+/// Replay one run with the code on <param branchId> and compare it with what it did.
+let check(accountID: Option<Uuid>, branchId: Uuid, trace: Tracing.Trace): Checked =
+  match trace.status with
+  | Running | Suspended | Lost ->
+    Checked { trace = trace, outcome = Outcome.Incomplete("the run did not finish"), madeUp = [] }
+  | Done | Failed ->
+    let replayed = Tracing.Store.diffRun(accountID, branchId, trace.id, handlerFor(branchId, trace))
+    Checked
+      { trace = trace, outcome = outcomeOf(branchId, trace, replayed), madeUp = replayed.madeUp }
+
+
+let isIncomplete(c: Checked): Bool =
+  match c.outcome with
+  | Incomplete(_) -> true
+  | _ -> false
+
+
+let answersDifferently(c: Checked): Bool =
+  match c.outcome with
+  | Changed(_) | WritesDifferently(_) -> true
+  | _ -> false
+
+
+let couldNotReplay(c: Checked): Bool =
+  match c.outcome with
+  | Stopped(_) | InputNoLongerFits(_) -> true
+  | _ -> false
+
+
+// ─── the save line ──────────────────────────────────────────────────────────
+
+/// How long the line after a save may spend replaying: `trace.diffBudgetMs`, 300 by default.
+let budgetMs(): Int64 =
+  LanguageTools.LocalStore.configGet("trace.diffBudgetMs")
+  |> Stdlib.Option.andThen(fun v -> Stdlib.Int64.parse(v) |> Stdlib.Result.toOption)
+  |> Stdlib.Option.withDefault(300)
+
+
+/// Check <param runs> in order until they run out or <param deadline> passes. The newest first,
+/// so what is left unchecked is the oldest.
+let checkUntil(
+  accountID: Option<Uuid>,
+  branchId: Uuid,
+  runs: List<Tracing.Trace>,
+  deadline: Int64,
+  acc: List<Checked>)
+  : List<Checked> =
+  match runs with
+  | [] -> Stdlib.List.reverse(acc)
+  | [run, ...rest] ->
+    if Stdlib.DateTime.__monotonicMilliseconds() >= deadline then
+      Stdlib.List.reverse(acc)
+    else
+      checkUntil(
+        accountID,
+        branchId,
+        rest,
+        deadline,
+        Stdlib.List.prepend(acc, check(accountID, branchId, run)))
+
+
+/// The line after a save: how the recorded runs through <param fnName> answer now. Silent when
+/// none went through it, and when recording is off.
+let saveLine(state: AppState, fnName: String): Option<String> =
+  let branchId = state.currentBranchId
+  if Stdlib.Bool.not(Tracing.Store.enabled()) then
+    Option.None
+  else
+    match candidates(branchId, fnName) with
+    | [] -> Option.None
+    | runs ->
+      // the failed ones first: a fix is most likely to change those
+      let (failed, rest) = runs |> Stdlib.List.partition(fun t -> t.status == Tracing.Status.Failed)
+      let started = Stdlib.DateTime.__monotonicMilliseconds()
+      let budget = budgetMs()
+      let checked =
+        checkUntil(
+          state.accountID,
+          branchId,
+          Stdlib.List.flatten([ failed, rest ]),
+          started + budget,
+          [])
+        |> Stdlib.List.filter(fun c -> Stdlib.Bool.not(isIncomplete(c)))
+
+      let total =
+        runs
+        |> Stdlib.List.filter(fun t ->
+          t.status == Tracing.Status.Done || t.status == Tracing.Status.Failed)
+        |> Stdlib.List.length
+
+      let n = Stdlib.List.length(checked)
+      let differ =
+        checked
+        |> Stdlib.List.filter(answersDifferently)
+        |> Stdlib.List.length
+
+      let stopped =
+        checked
+        |> Stdlib.List.filter(couldNotReplay)
+        |> Stdlib.List.length
+
+      let command = $"dark traces diff {fnName}"
+      let stoppedText =
+        if stopped == 0 then
+          ""
+        else
+          $", {Stdlib.display(stopped)} could not be replayed"
+
+      if total == 0 then
+        Option.None
+      else if n < total then
+        let differText = if differ == 0 then "none differs" else $"{Stdlib.display(differ)} differ"
+        Option.Some(
+          $"{Text.plural(total, "recorded run")} went through this; checked {Stdlib.display(n)} in {Stdlib.display(budget)} ms, {differText} so far{stoppedText}: {command}")
+      else if differ == 0 && stopped == 0 then
+        Option.Some($"{Text.plural(total, "recorded run")} went through this; all answer the same")
+      else
+        let verb = if differ == 1 then "answers" else "answer"
+        Option.Some(
+          $"{Text.plural(total, "recorded run")} went through this; {Stdlib.display(differ)} {verb} differently now{stoppedText}: {command}")
+
+
+// ─── the page ───────────────────────────────────────────────────────────────
+
+let label(outcome: Outcome): String =
+  match outcome with
+  | Same -> "same"
+  | Changed(_) -> "changed"
+  | Stopped(_) -> "stopped"
+  | WritesDifferently(_) -> "writes differently"
+  | InputNoLongerFits(_) -> "input no longer fits"
+  | Incomplete(_) -> "incomplete"
+
+
+let entryText(trace: Tracing.Trace): String =
+  match trace.scriptOrEvalInput with
+  | Some(Eval(source, _)) -> $"eval {Text.oneLineAt(50, source)}"
+  | _ -> trace.entry
+
+
+let shown(side: Option<String>): String =
+  match side with
+  | Some(text) -> Stdlib.inspect(text)
+  | None -> "(no line)"
+
+
+let changeLine(c: Change): String =
+  match c.kind with
+  | "answer" ->
+    $"  answer   was {Stdlib.Option.withDefault(c.was, "")}   now {Stdlib.Option.withDefault(c.now, "")}"
+  | "error" ->
+    match c.was with
+    | None -> $"  no longer fails: now answers {Stdlib.Option.withDefault(c.now, "")}"
+    | Some(was) -> $"  was {was}   now raises: {Stdlib.Option.withDefault(c.now, "")}"
+  | "stdout" -> $"  printed line {Stdlib.display(c.line)}   was {shown(c.was)}   now {shown(c.now)}"
+  | stream -> $"  {stream} line {Stdlib.display(c.line)}   was {shown(c.was)}   now {shown(c.now)}"
+
+
+let madeUpText(madeUp: List<String>): String =
+  match madeUp with
+  | [] -> ""
+  | _ ->
+    let n = Stdlib.List.length(madeUp)
+    let noun = if n == 1 then "made-up value" else "made-up values"
+    $"  (uses {Stdlib.display(n)} {noun}: {Stdlib.String.join(Stdlib.List.unique(madeUp), ", ")})"
+
+
+let printRun(c: Checked): Unit =
+  let head =
+    $"{Stdlib.Text.padEndToWidth(label(c.outcome), 7)}  {Text.shortIdText(c.trace.id)}  {TraceVerbs.whenText(c.trace.created)}  {entryText(c.trace)}{madeUpText(c.madeUp)}"
+
+  Stdlib.printLine(head)
+  match c.outcome with
+  | Changed(changes) ->
+    changes
+    |> Stdlib.List.take(3)
+    |> Stdlib.List.iter(fun ch -> Stdlib.printLine(changeLine(ch)))
+
+    let more = Stdlib.List.length(changes) - 3
+    if more > 0 then
+      Stdlib.printLine(
+        Stdlib.Cli.UI.Colors.dimText($"  and {Stdlib.display(more)} more: --json lists every one"))
+    else
+      ()
+  | Stopped(why) | WritesDifferently(why) | InputNoLongerFits(why) | Incomplete(why) ->
+    Stdlib.printLine($"  {why}")
+  | Same -> ()
+
+
+let printSame(same: List<Checked>): Unit =
+  match same with
+  | [] -> ()
+  | _ ->
+    let ids = same |> Stdlib.List.map(fun c -> Text.shortIdText(c.trace.id))
+    let listed =
+      if Stdlib.List.length(ids) > 6 then
+        Stdlib.String.join(Stdlib.List.take(ids, 5), ", ") + ", ..."
+      else
+        Stdlib.String.join(ids, ", ")
+
+    Stdlib.printLine($"same     {Text.plural(Stdlib.List.length(same), "run")} ({listed})")
+
+
+// ─── --json ─────────────────────────────────────────────────────────────────
+
+type RunJson =
+  { trace: String
+    entry: String
+    /// same, changed, stopped, writes differently, input no longer fits, incomplete.
+    outcome: String
+    madeUp: List<String>
+    changes: List<Change>
+    /// Why it stopped or is incomplete.
+    reason: Option<String> }
+
+
+type DiffJson =
+  { fn: String
+    branch: String
+    /// The runs replayed to the end or to where they stopped.
+    checked: Int64
+    /// The runs with nothing whole to replay.
+    notChecked: Int64
+    runs: List<RunJson> }
+
+
+let runJson(c: Checked): RunJson =
+  RunJson
+    { trace = c.trace.id
+      entry = entryText(c.trace)
+      outcome = label(c.outcome)
+      madeUp = c.madeUp
+      changes =
+        match c.outcome with
+        | Changed(changes) -> changes
+        | _ -> []
+      reason =
+        match c.outcome with
+        | Stopped(why) | WritesDifferently(why) | InputNoLongerFits(why) | Incomplete(why) ->
+          Option.Some(why)
+        | _ -> Option.None }
+
+
+// ─── the command ────────────────────────────────────────────────────────────
+
+/// `traces diff <fn> [<trace>]`.
+let execute(state: AppState, typed: String, onlyTrace: Option<String>, wantsJson: Bool): AppState =
+  let branchId = state.currentBranchId
+  let fnName = TraceVerbs.canonicalFnName(branchId, typed)
+  let exists = Tracing.Store.hashNamed(branchId, fnName) != ""
+  let runs =
+    match onlyTrace with
+    | None -> Result.Ok(candidates(branchId, fnName))
+    | Some(prefix) -> TraceVerbs.find(prefix) |> Stdlib.Result.map(fun t -> [ t ])
+
+  match runs with
+  | Error(e) ->
+    printErr(e)
+    failed(state)
+  | Ok([]) ->
+    if exists then
+      Stdlib.printErrorLine($"no recorded run went through {fnName}")
+      Tracing.printRecordingOffHint()
+      if wantsJson then
+        let ok =
+          printJson(
+            Stdlib.Json.checkedSerialize<DiffJson>(
+              DiffJson
+                { fn = fnName
+                  branch = SCM.PackageOps.branchName(branchId)
+                  checked = 0
+                  notChecked = 0
+                  runs = [] }))
+
+        exitWith(state, ok)
+      else
+        state
+    else
+      printErr($"no function named {typed}, and no recorded run went through one")
+      failed(state)
+  | Ok(runs) ->
+    let checked = runs |> Stdlib.List.map(fun t -> check(state.accountID, branchId, t))
+    let (incomplete, whole) = checked |> Stdlib.List.partition(isIncomplete)
+    let branch = SCM.PackageOps.branchName(branchId)
+    if wantsJson then
+      let ok =
+        printJson(
+          Stdlib.Json.checkedSerialize<DiffJson>(
+            DiffJson
+              { fn = fnName
+                branch = branch
+                checked = Stdlib.List.length(whole)
+                notChecked = Stdlib.List.length(incomplete)
+                runs = checked |> Stdlib.List.map(runJson) }))
+
+      exitWith(state, ok)
+    else
+      Stdlib.printLine(
+        $"{Text.plural(Stdlib.List.length(whole), "recorded run")} went through {fnName}, replayed with the code on branch {branch}")
+
+      Stdlib.printLine("")
+      let (same, different) =
+        checked
+        |> Stdlib.List.partition(fun c ->
+          match c.outcome with
+          | Same -> true
+          | _ -> false)
+
+      different |> Stdlib.List.iter(printRun)
+      printSame(same)
+      state

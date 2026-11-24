@@ -75,6 +75,7 @@ let settings : List<string> =
     "trace.record"
     "trace.keep"
     "trace.maxMb"
+    "trace.diffBudgetMs"
     "instance.name" ]
 
 /// The settings that open HTTP's network guard or decide what traces record. They are the
@@ -111,7 +112,8 @@ let check
       "exec.maxBytes"
       "exec.spreadMinChunk"
       "trace.keep"
-      "trace.maxMb" ]
+      "trace.maxMb"
+      "trace.diffBudgetMs" ]
   let onOff =
     [ "trace.record"
       "http.loopback"

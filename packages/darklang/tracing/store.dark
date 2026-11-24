@@ -259,6 +259,45 @@ let viewTrace(
   (values, problem)
 
 
+/// A recorded run replayed with the code as it is now (`diffRun`).
+type Replayed =
+  { /// What the run printed, as (stream, text): "stdout" or "stderr".
+    wasPrinted: List<(String * String)>
+    nowPrinted: List<(String * String)>
+    /// What the run answered; None when it failed.
+    wasAnswer: Option<LanguageTools.RuntimeTypes.Dval>
+    /// What the replay answered; None when it failed or stopped.
+    answer: Option<LanguageTools.RuntimeTypes.Dval>
+    /// Whether the two answers are the same value, bytes compared by content.
+    answerSame: Bool
+    /// One per value the replay made up past the log: "clock", "uuid" or "random".
+    madeUp: List<String>
+    problem: Option<ReplayStop> }
+
+
+/// Replay a recorded run with the code on <param branchId>, performing nothing: reads come from
+/// the log, prints are compared rather than made, and a write is served only when the run made
+/// the same one. <param handler> is the hash to apply for a served request; None applies the
+/// one that served it.
+let diffRun(
+  accountID: Option<Uuid>,
+  branchId: Uuid,
+  traceID: String,
+  handler: Option<String>)
+  : Replayed =
+  let (wasPrinted, nowPrinted, wasAnswer, answer, answerSame, madeUp, problem) =
+    Builtin.cliDiffTrace(accountID, branchId, traceID, handler)
+
+  Replayed
+    { wasPrinted = wasPrinted
+      nowPrinted = nowPrinted
+      wasAnswer = wasAnswer
+      answer = answer
+      answerSame = answerSame
+      madeUp = madeUp
+      problem = problem }
+
+
 /// Expand a trace-ID prefix to the full ID, or say why it can't be.
 ///
 /// What was typed is matched as plain text, quotes and wildcards included. The store hands

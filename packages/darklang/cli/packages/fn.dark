@@ -107,7 +107,7 @@ let createFnInline(
         // the short form is parsed behind `let <name> `, so a column on its first line is off by that
         let wrapped = fnSource(location.name, definition)
         let shift = Stdlib.String.length(wrapped) - Stdlib.String.length(definition)
-        Option.Some(
+        let saved =
           saveAuthored(
             state,
             location,
@@ -165,7 +165,14 @@ let createFnInline(
                       LanguageTools.ProgramTypes.Reference.PackageFn(packageFn.hash),
                       Option.None) ]
 
-                Option.Some((ops, packageFn.hash, unresolvedNames))))
+                Option.Some((ops, packageFn.hash, unresolvedNames)))
+
+        if saved.exitCode == 0 then
+          Edit.printTraceHint(saved, PackageLocation.Function(location))
+        else
+          ()
+
+        Option.Some(saved)
       | _ -> Option.None)
 
 

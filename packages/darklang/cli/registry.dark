@@ -351,6 +351,7 @@ module Registry =
           ("unpin", Accepts.between(1, 1, []))
           ("calls", Accepts.between(1, 1, []))
           ("show", Accepts.between(1, 2, [ "--watch" ]))
+          ("diff", Accepts.between(1, 2, []))
           ("values", Accepts.text(0))
           ("rerun", Accepts.between(1, 1, []))
           ("delete", Accepts.withValues([ "--keep", "--before" ], Accepts.upTo(1, [ "--all" ]))) ],

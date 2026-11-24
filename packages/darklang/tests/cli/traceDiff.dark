@@ -1,0 +1,293 @@
+/// `dark traces diff` and the line after a save: recorded runs replayed with changed code.
+///
+/// Part of `Darklang.Cli.Tests`. Each test has its own `Instance` with recording on
+/// (`Traces.withTraces`).
+module Darklang.Cli.Tests.TraceDiff
+
+let define(i: Instance.T, name: String, body: String): Stdlib.Test.Result =
+  Traces.step(i, [ "fn", name, body ])
+
+
+val shippingBody = "(sub: Int64): Int64 = if sub > 5000 then 0 else 599"
+
+
+/// Prints its shipping line, so a change to shipping changes what it prints.
+val receiptBody =
+  "(sub: Int64): Int64 =\n  let s = Tests.Diff.shipping(sub)\n  Stdlib.printLine($\"Shipping: {Stdlib.display(s)}\")\n  sub + s"
+
+
+/// The receipt and its shipping, and one run of the receipt for each subtotal.
+let receipts(i: Instance.T, subtotals: List<Int64>): Stdlib.Test.Result =
+  let defined =
+    [ define(i, "Tests.Diff.shipping", shippingBody)
+      define(i, "Tests.Diff.receipt", receiptBody) ]
+
+  let ran =
+    subtotals
+    |> Stdlib.List.map(fun sub ->
+      Traces.step(i, [ "eval", $"Tests.Diff.receipt({Stdlib.display(sub)})" ]))
+
+  Stdlib.Test.all(Stdlib.List.flatten([ defined, ran ]))
+
+
+test unchangedCodeAnswersTheSame = Traces.withTraces(fun i ->
+  let ran = receipts(i, [ 100, 6000 ])
+  let out = Instance.said(i, [ "traces", "diff", "Tests.Diff.receipt" ])
+  Stdlib.Test.all(
+    [ ran
+      Instance.says(
+        out,
+        "2 recorded runs went through Tests.Diff.receipt, replayed with the code on branch main",
+        "the header counts the runs")
+
+      Instance.says(out, "same     2 runs (", "both come out as they did")
+      Instance.doesNotSay(out, "changed", "nothing changed") ]))
+
+
+/// What a run printed is compared line by line: a different line is a change, not a stop.
+test aChangedPrintIsAChange = Traces.withTraces(fun i ->
+  let ran = receipts(i, [ 5450 ])
+  let fixedIt =
+    define(
+      i,
+      "Tests.Diff.shipping",
+      "(sub: Int64): Int64 = if sub > 6000 then 0 else 599")
+
+  let out = Instance.said(i, [ "traces", "diff", "Tests.Diff.receipt" ])
+  Stdlib.Test.all(
+    [ ran
+      fixedIt
+      Instance.says(out, "changed  ", "the run is a change")
+
+      Instance.says(
+        out,
+        "printed line 1   was \"Shipping: 0\"   now \"Shipping: 599\"",
+        "the printed line, old beside new")
+
+      Instance.says(out, "answer   was 5450   now 6049", "and the answer")
+      Instance.doesNotSay(out, "stopped", "printing never stops a replay") ]))
+
+
+test jsonHasEveryChange = Traces.withTraces(fun i ->
+  let ran = receipts(i, [ 5450 ])
+  let fixedIt =
+    define(
+      i,
+      "Tests.Diff.shipping",
+      "(sub: Int64): Int64 = if sub > 6000 then 0 else 599")
+
+  let out =
+    Instance.output(i, [ "traces", "diff", "Tests.Diff.receipt", "--json" ])
+
+  let parses =
+    match Stdlib.AltJson.parse(Stdlib.String.trim(out)) with
+    | Ok(_) -> Stdlib.Test.Result.Pass
+    | Error(_) -> Stdlib.Test.fail($"not JSON: {out}")
+
+  Stdlib.Test.all(
+    [ ran
+      fixedIt
+      parses
+      Instance.says(out, "\"fn\":\"Tests.Diff.receipt\"", "names the function")
+
+      Instance.says(
+        out,
+        "\"checked\":1,\"notChecked\":0",
+        "counts what it checked")
+
+      Instance.says(out, "\"outcome\":\"changed\"", "the run changed")
+
+      Instance.says(
+        out,
+        "{\"kind\":\"stdout\",\"line\":1,\"was\":\"Shipping: 0\",\"now\":\"Shipping: 599\"}",
+        "the printed line")
+
+      Instance.says(
+        out,
+        "{\"kind\":\"answer\",\"line\":0,\"was\":\"5450\",\"now\":\"6049\"}",
+        "the answer") ]))
+
+
+/// A read the old code never made has no answer in the log, so the replay stops there and
+/// says which read, rather than performing it or making the contents up.
+test aNewReadStopsAndSaysWhich = Traces.withTraces(fun i ->
+  let path = Instance.home(i) + "/rates.txt"
+  let setUp =
+    Stdlib.Test.all(
+      [ Traces.step(i, [ "permissions", "allow", "file-read" ])
+        define(
+          i,
+          "Tests.Diff.rate",
+          "(n: Int64): Int64 =\n  let m = n * 3\n  m + 1")
+
+        Traces.step(i, [ "eval", "Tests.Diff.rate(2)" ]) ])
+
+  let readsNow =
+    define(
+      i,
+      "Tests.Diff.rate",
+      $"(n: Int64): Int64 =\n  let _ = Stdlib.Cli.File.readText(\"{path}\")\n  let m = n * 3\n  m + 1")
+
+  let out = Instance.said(i, [ "traces", "diff", "Tests.Diff.rate" ])
+  Stdlib.Test.all(
+    [ setUp
+      readsNow
+      Instance.says(out, "stopped  ", "the run stops")
+
+      Instance.says(
+        out,
+        "needs a read the log lacks: ",
+        "and says it is a read it lacks")
+
+      Instance.says(out, path, "naming what it would read") ]))
+
+
+/// A write the run did not make is neither served nor performed.
+test aWriteTheRunDidNotMakeIsNotPerformed = Traces.withTraces(fun i ->
+  let mark(suffix: String): String =
+    $"(v: String): Stdlib.Result.Result<Unit, String> = Darklang.LanguageTools.LocalStore.configSet(\"test.diff.probe\", v{suffix})"
+
+  let setUp =
+    Stdlib.Test.all(
+      [ Traces.step(i, [ "permissions", "allow", "package-write" ])
+        define(i, "Tests.Diff.mark", mark(""))
+        Traces.step(i, [ "eval", "Tests.Diff.mark(\"recorded\")" ])
+        define(i, "Tests.Diff.mark", mark(" + \"!\"")) ])
+
+  let out = Instance.said(i, [ "traces", "diff", "Tests.Diff.mark" ])
+
+  let now =
+    Instance.said(
+      i,
+      [ "eval"
+        "Darklang.LanguageTools.LocalStore.configGet(\"test.diff.probe\")" ])
+
+  Stdlib.Test.all(
+    [ setUp
+      Instance.says(
+        out,
+        "writes differently  ",
+        "a different write is its own outcome")
+
+      Instance.says(out, "recorded!", "naming the write")
+
+      Instance.says(now, "Some(\"recorded\")", "and it was not performed") ]))
+
+
+/// Past the log, a uuid is made up by a generator seeded by the run, labelled, and the same on
+/// every replay.
+test madeUpValuesAreLabelledAndStable = Traces.withTraces(fun i ->
+  let setUp =
+    Stdlib.Test.all(
+      [ define(
+          i,
+          "Tests.Diff.ids",
+          "(n: Int64): String = Stdlib.display(Stdlib.Uuid.generate())")
+
+        Traces.step(i, [ "eval", "Tests.Diff.ids(1)" ])
+        define(
+          i,
+          "Tests.Diff.ids",
+          "(n: Int64): String =\n  let _ = Stdlib.Uuid.generate()\n  Stdlib.display(Stdlib.Uuid.generate())") ])
+
+  let page = Instance.said(i, [ "traces", "diff", "Tests.Diff.ids" ])
+  let first =
+    Instance.output(i, [ "traces", "diff", "Tests.Diff.ids", "--json" ])
+
+  let second =
+    Instance.output(i, [ "traces", "diff", "Tests.Diff.ids", "--json" ])
+
+  Stdlib.Test.all(
+    [ setUp
+      Instance.says(page, "(uses 1 made-up value: uuid)", "the page labels it")
+      Instance.says(first, "\"madeUp\":[\"uuid\"]", "and so does --json")
+      first |> Stdlib.Test.equal(second) ]))
+
+
+/// After `dark fn` saves, one line says how the recorded runs through it answer now.
+test aSaveSaysHowTheRunsAnswerNow = Traces.withTraces(fun i ->
+  let ran = receipts(i, [ 5450, 100 ])
+  let refactored =
+    Instance.said(
+      i,
+      [ "fn"
+        "Tests.Diff.shipping"
+        "(sub: Int64): Int64 = if sub <= 5000 then 599 else 0" ])
+
+  let fixedIt =
+    Instance.said(
+      i,
+      [ "fn"
+        "Tests.Diff.shipping"
+        "(sub: Int64): Int64 = if sub > 6000 then 0 else 599" ])
+
+  let unrun =
+    Instance.said(i, [ "fn", "Tests.Diff.unrun", "(n: Int64): Int64 = n * 7" ])
+
+  Stdlib.Test.all(
+    [ ran
+      Instance.says(
+        refactored,
+        "2 recorded runs went through this; all answer the same",
+        "a refactor that changes nothing says so")
+
+      Instance.says(
+        fixedIt,
+        "2 recorded runs went through this; 1 answers differently now: dark traces diff Tests.Diff.shipping",
+        "a fix says how many it changed")
+
+      Instance.doesNotSay(
+        unrun,
+        "recorded run",
+        "nothing is said when no run went through it") ]))
+
+
+test theSaveLineKeepsToItsBudget = Traces.withTraces(fun i ->
+  let ran = receipts(i, [ 5450 ])
+  let budget = Traces.step(i, [ "config", "set", "trace.diffBudgetMs", "0" ])
+  let out =
+    Instance.said(
+      i,
+      [ "fn"
+        "Tests.Diff.shipping"
+        "(sub: Int64): Int64 = if sub > 6000 then 0 else 599" ])
+
+  Stdlib.Test.all(
+    [ ran
+      budget
+      Instance.says(
+        out,
+        "1 recorded run went through this; checked 0 in 0 ms, none differs so far: dark traces diff Tests.Diff.shipping",
+        "it says what it did not get to") ]))
+
+
+/// A served request replays the handler the branch names now, not the recorded hash: an edit
+/// to what the handler calls shows up in its answer.
+test aServedRequestReplaysTheHandlerByName = Traces.withTraces(fun i ->
+  let setUp =
+    Stdlib.Test.all(
+      [ define(i, "Tests.Diff.body", "(n: Int64): String = \"old answer\"")
+
+        define(
+          i,
+          "Tests.Diff.router",
+          "(request: Stdlib.Http.Request): Stdlib.Http.Response =\n  Stdlib.Http.responseWithText(200, Tests.Diff.body(1))") ])
+
+  let served =
+    Traces.inShell(
+      i,
+      "port=$((20000 + RANDOM % 9000)); dark serve Tests.Diff.router --port $port > $err 2>&1 & pid=$!; for n in $(seq 1 100); do curl -s http://127.0.0.1:$port/hi && break; sleep 0.2; done; kill $pid; wait $pid")
+
+  let before = Instance.said(i, [ "traces", "diff", "Tests.Diff.router" ])
+  let edited =
+    define(i, "Tests.Diff.body", "(n: Int64): String = \"a new answer\"")
+
+  let out = Instance.said(i, [ "traces", "diff", "Tests.Diff.router" ])
+  Stdlib.Test.all(
+    [ setUp
+      Instance.says(served, "old answer", "the request was served")
+      // neither side runs the server's middleware, so unchanged code answers the same
+      Instance.says(before, "same     1 run", "unchanged, it answers the same")
+      edited
+      Instance.says(out, "changed  ", "the request answers differently")
+      Instance.says(out, "GET /hi", "naming the request") ]))

@@ -185,6 +185,12 @@ type ReplayStop =
   | InputNoLongerParses
   | MissingHandler
   | HostFailure(String)
+  /// Changed code asked for a read the run never made, so the log has no answer for it.
+  | NeedsRead(String, List<LanguageTools.RuntimeTypes.Dval>)
+  /// Changed code made a write the run did not make.
+  | WritesDifferently(String, List<LanguageTools.RuntimeTypes.Dval>)
+  /// The log was cut short at the event cap, so the run cannot be replayed to its end.
+  | Truncated
 
 
 module ReplayStop =
@@ -212,4 +218,7 @@ module ReplayStop =
       // because deprecating something is a deliberate act someone takes after it has run.
       | DeprecatedItemHalted(_) -> true
       | _ -> false
+    | NeedsRead(_, _) -> false
+    | WritesDifferently(_, _) -> false
+    | Truncated -> false
     | _ -> true

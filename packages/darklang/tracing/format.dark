@@ -90,6 +90,16 @@ let compactDval(branchId: Uuid, dv: LanguageTools.RuntimeTypes.Dval): String =
   compactDvalTo(branchId, defaultValueBudget, dv)
 
 
+/// A logged call as one line: `fileRead("rates.json")`.
+let callText(branchId: Uuid, fnName: String, args: List<LanguageTools.RuntimeTypes.Dval>): String =
+  let shown =
+    args
+    |> Stdlib.List.map(fun a -> compactDval(branchId, a))
+    |> Stdlib.String.join(", ")
+
+  $"{fnName}({shown})"
+
+
 /// What to tell a person about a replay that stopped, as (what happened, what to do about it).
 ///
 /// The second half is the point. "The view stopped here: <error>" told a reader nothing they
@@ -106,6 +116,11 @@ let replayStop(branchId: Uuid, stop: ReplayStop): (String * Option<String>) =
   | MissingHandler ->
     ("this run has no source to replay and no handler recorded against it", Option.None)
   | HostFailure(message) -> (message, Option.None)
+  | NeedsRead(fnName, args) ->
+    ($"needs a read the log lacks: {callText(branchId, fnName, args)}", Option.None)
+  | WritesDifferently(fnName, args) ->
+    ($"writes what the run did not: {callText(branchId, fnName, args)}", Option.None)
+  | Truncated -> ("the log was cut short, so the run cannot be replayed to its end", Option.None)
   | Raised(err) ->
     let rendered = PrettyPrinter.RuntimeTypes.RuntimeError.toString(branchId, err)
     if ReplayStop.isDrift(stop) then

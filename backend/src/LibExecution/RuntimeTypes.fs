@@ -5197,6 +5197,17 @@ module Tracing =
     | PerformWith of Dval[]
     | Diverged of message : string
 
+  /// What an impure call is to a replay of changed code (`traces diff`), which answers each
+  /// kind differently: a read from the log, output by comparing what it was given.
+  type CallKind =
+    /// An input from the world: a file, a GET, stdin.
+    | Read
+    | Clock
+    | Random
+    /// Its result carries nothing, so what it was given is what it did: printing, sleeping.
+    | Output
+    | Write
+
   /// How much a host lets its runs record, worked out once at startup and handed to every
   /// tracer it makes (`LibDB.Tracing`). 0 on any of them is no cap.
   type Caps =
@@ -5277,7 +5288,7 @@ module Tracing =
       ///
       /// The arguments arrive as the array the interpreter already has, so an ordinary run
       /// pays one null test here and allocates nothing.
-      viewEffect : Option<string -> Dval[] -> ReplayStep voption>
+      viewEffect : Option<CallKind -> string -> Dval[] -> ReplayStep voption>
       /// The same trace, seen from another process. A recorder keeps one call stack per
       /// process and stamps every event with the process id and a sequence number across
       /// the whole trace, so two processes stepping on two threads write one log whose

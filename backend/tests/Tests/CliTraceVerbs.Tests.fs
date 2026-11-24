@@ -1406,13 +1406,13 @@ let private viewMatchesUnsavedBytes =
         (System.Collections.Generic.Dictionary())
         []
     let lookup = tracer.executionTracing.viewEffect |> Option.get
-    match lookup "read" [| nested |] with
+    match lookup RT.Tracing.CallKind.Read "read" [| nested |] with
     | ValueSome(RT.Tracing.ReplayStep.Serve value) ->
       Expect.equal value (RT.DInt64 42L) "the recorded answer is served"
     | other -> failtest $"expected the recorded answer, got {other}"
     let different =
       RT.DTuple(RT.DUnit, LibExecution.Bytes.newEphemeral [| 4uy |], [])
-    match lookup "read" [| different |] with
+    match lookup RT.Tracing.CallKind.Read "read" [| different |] with
     | ValueNone -> ()
     | other -> failtest $"different bytes must not match, got {other}"
   }

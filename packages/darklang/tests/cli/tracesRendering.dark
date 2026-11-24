@@ -413,7 +413,16 @@ module ReplayReasons =
           Tracing.ReplayStop.MissingHandler,
           "this run has no source to replay and no handler recorded against it")
 
-        (Tracing.ReplayStop.HostFailure("host error"), "host error") ]
+        (Tracing.ReplayStop.HostFailure("host error"), "host error")
+        (
+          Tracing.ReplayStop.NeedsRead(
+            "fileRead",
+            [ LanguageTools.RuntimeTypes.Dval.DString("rates.json") ]),
+          "needs a read the log lacks: fileRead(\"rates.json\")")
+
+        (
+          Tracing.ReplayStop.Truncated,
+          "the log was cut short, so the run cannot be replayed to its end") ]
 
     cases
     |> Stdlib.List.map(fun((reason, expected)) ->

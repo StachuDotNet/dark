@@ -1604,6 +1604,31 @@ let siteKeyOf (ep : RT.ExecutionPoint) : int64 =
   | RT.ExecutionPoint.Function name -> int64 (hash name)
 
 
+/// The key a view answers a recorded call by: its name and its arguments as the recorder wrote
+/// them.
+let private recordedKey (name : string) (argsBytes : byte[]) : string =
+  name + "\u0000" + System.Convert.ToBase64String argsBytes
+
+/// <param dv> with its unsaved Bytes as the store refers to them, by hash, so it compares with a
+/// recorded value by content. Nothing is written to the store.
+let asStored (dv : RT.Dval) : RT.Dval =
+  let savedBytes dv =
+    match dv with
+    | RT.DBytes(RT.Ephemeral eph) ->
+      Some(RT.DBytes(RT.Persistent(eph.ContentHash, int64 eph.count)))
+    | _ -> None
+  RT.Dval.rewriteWith savedBytes dv
+
+/// `recordedKey` for a call being made now: the same shape the recorder wrote, one `DList` blob
+/// of the arguments.
+let private liveKey (name : string) (args : RT.Dval[]) : string =
+  let args =
+    RT.DList(LibExecution.ValueType.unknownTODO, RT.Items(List.ofArray args))
+  recordedKey
+    name
+    (BinarySer.RT.Dval.serialize "trace_fn_calls.args" (asStored args))
+
+
 let createViewTracer
   (rows : List<string * byte[] * RT.Dval>)
   (collected :
@@ -1632,7 +1657,7 @@ let createViewTracer
     System.Collections.Generic.Dictionary<string, System.Collections.Generic.Queue<RT.Dval>>()
   let lastAnswer = System.Collections.Generic.Dictionary<string, RT.Dval>()
   for (name, argsBytes, result) in rows do
-    let key = name + "\u0000" + System.Convert.ToBase64String argsBytes
+    let key = recordedKey name argsBytes
     let q =
       match Lookup.tryFindV key answers with
       | ValueSome q -> q
@@ -1646,7 +1671,11 @@ let createViewTracer
   // The queues are consumed, so two processes of a viewed run must not race on them.
   let answersGate = obj ()
 
-  let lookup (name : string) (args : RT.Dval[]) : RT.Tracing.ReplayStep voption =
+  let lookup
+    (_ : RT.Tracing.CallKind)
+    (name : string)
+    (args : RT.Dval[])
+    : RT.Tracing.ReplayStep voption =
     // A race is waited out for real: the processes it waits on are viewed too.
     if
       Set.contains name Redact.performAgain
@@ -1659,19 +1688,7 @@ let createViewTracer
       // and nothing it does reaches the world either.
       ValueSome RT.Tracing.ReplayStep.PerformOnce
     else
-      // The same shape the recorder wrote: one `DList` blob of the arguments.
-      // Match unsaved Bytes by their hash, as recording does. Only the lookup key changes;
-      // the live arguments keep their bytes, and viewing writes nothing to the store.
-      let args =
-        RT.DList(LibExecution.ValueType.unknownTODO, RT.Items(List.ofArray args))
-      let savedBytes dv =
-        match dv with
-        | RT.DBytes(RT.Ephemeral eph) ->
-          Some(RT.DBytes(RT.Persistent(eph.ContentHash, int64 eph.count)))
-        | _ -> None
-      let keyArgs = RT.Dval.rewriteWith savedBytes args
-      let argsBytes = BinarySer.RT.Dval.serialize "trace_fn_calls.args" keyArgs
-      let key = name + "\u0000" + System.Convert.ToBase64String argsBytes
+      let key = liveKey name args
       lock answersGate (fun () ->
         match Lookup.tryFindV key answers with
         | ValueSome q when q.Count > 0 ->
@@ -1851,3 +1868,121 @@ let createViewTracer
     storeTraceResults = fun _ -> ()
     flushSoFar = fun from -> from
     executionTracing = viewTracing () }
+
+
+/// Where a diff replay stopped: at a read the log has no answer for, or at a write the run did
+/// not make.
+type DiffStop =
+  | NeedsRead of name : string * args : List<RT.Dval>
+  | WritesDifferently of name : string * args : List<RT.Dval>
+
+/// What a diff replay did besides answer (`createDiffTracer`).
+type DiffNotes =
+  {
+    /// What it printed, as (stream, text), in order.
+    printed : ResizeArray<string * string>
+    /// One per value it had to make up: "clock", "uuid" or "random".
+    madeUp : ResizeArray<string>
+    stopped : ResizeArray<DiffStop>
+  }
+
+/// What a call of a print builtin printed, as (stream, text).
+let printedBy (name : string) (args : List<RT.Dval>) : Option<string * string> =
+  match name, args with
+  | "printLine", [ RT.DString s ] -> Some("stdout", s + "\n")
+  | "print", [ RT.DString s ] -> Some("stdout", s)
+  | "printErrorLine", [ RT.DString s ] -> Some("stderr", s + "\n")
+  | "printError", [ RT.DString s ] -> Some("stderr", s)
+  | _ -> None
+
+
+/// A tracer for `traces diff`: a run replayed with changed code, nothing performed, each call
+/// answered by what it is (`RT.Tracing.CallKind`).
+///
+/// A read is answered by (name, arguments) like a view, and one the log lacks stops the run. A
+/// print is never performed; what it was given is noted, to compare with what the run printed.
+/// A write is served only when the run made the same one. Past the log, a clock read gets the
+/// last time recorded and a random one is made by the replay's seeded generator, and either is
+/// noted as made up, so a value repeated or invented is never passed off as recorded.
+let createDiffTracer (rows : List<string * byte[] * RT.Dval>) : T * DiffNotes =
+  let notes =
+    { printed = ResizeArray(); madeUp = ResizeArray(); stopped = ResizeArray() }
+  let answers =
+    System.Collections.Generic.Dictionary<string, System.Collections.Generic.Queue<RT.Dval>>()
+  let lastAnswer = System.Collections.Generic.Dictionary<string, RT.Dval>()
+  for (name, argsBytes, result) in rows do
+    let key = recordedKey name argsBytes
+    match Lookup.tryFindV key answers with
+    | ValueSome q -> q.Enqueue result
+    | ValueNone ->
+      let q = System.Collections.Generic.Queue<RT.Dval>()
+      q.Enqueue result
+      answers[key] <- q
+    lastAnswer[key] <- result
+  let gate = obj ()
+
+  let lookup
+    (kind : RT.Tracing.CallKind)
+    (name : string)
+    (args : RT.Dval[])
+    : RT.Tracing.ReplayStep voption =
+    if
+      Set.contains name Redact.performAgain
+      || name = "execAwaitWithin"
+      || name = "execSelect"
+    then
+      ValueSome RT.Tracing.ReplayStep.PerformOnce
+    else
+      match kind with
+      | RT.Tracing.CallKind.Output ->
+        printedBy name (List.ofArray args)
+        |> Option.iter (fun p -> lock gate (fun () -> notes.printed.Add p))
+        ValueSome(RT.Tracing.ReplayStep.Serve RT.DUnit)
+      | _ ->
+        let key = liveKey name args
+        lock gate (fun () ->
+          match Lookup.tryFindV key answers with
+          | ValueSome q when q.Count > 0 ->
+            ValueSome(RT.Tracing.ReplayStep.Serve(q.Dequeue()))
+          | _ ->
+            let stop (s : DiffStop) =
+              notes.stopped.Add s
+              ValueNone
+            match kind, Lookup.tryFindV key lastAnswer with
+            | RT.Tracing.CallKind.Random, _ ->
+              notes.madeUp.Add(if name.StartsWith "uuid" then "uuid" else "random")
+              ValueSome RT.Tracing.ReplayStep.PerformOnce
+            | RT.Tracing.CallKind.Clock, ValueSome last ->
+              notes.madeUp.Add "clock"
+              ValueSome(RT.Tracing.ReplayStep.Serve last)
+            | RT.Tracing.CallKind.Read, ValueSome last ->
+              ValueSome(RT.Tracing.ReplayStep.Serve last)
+            | RT.Tracing.CallKind.Write, _ ->
+              stop (WritesDifferently(name, List.ofArray args))
+            | _ -> stop (NeedsRead(name, List.ofArray args)))
+
+  let rec diffTracing () : RT.Tracing.Tracing =
+    { Exe.noTracing with
+        viewEffect = Some lookup
+        forProcess = fun _ -> diffTracing () }
+
+  ({ enabled = false
+     storeTraceResults = fun _ -> ()
+     flushSoFar = fun from -> from
+     executionTracing = diffTracing () },
+   notes)
+
+
+/// What a recorded run printed, from its log, as `printedBy` reads it.
+let recordedPrinted
+  (rows : List<string * byte[] * RT.Dval>)
+  : List<string * string> =
+  let printing = set [ "printLine"; "print"; "printErrorLine"; "printError" ]
+  rows
+  |> List.choose (fun (name, argsBytes, _) ->
+    if Set.contains name printing then
+      match BinarySer.RT.Dval.deserialize "trace_fn_calls.args" argsBytes with
+      | RT.DList(_, RT.Items args) -> printedBy name args
+      | _ -> None
+    else
+      None)
