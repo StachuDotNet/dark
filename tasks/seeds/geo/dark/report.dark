@@ -1,0 +1,15 @@
+// One line per shape, then the total area.
+
+let describe(s: Bench.Geo.Shapes.Shape): String =
+  let a = Bench.Geo.Shapes.area(s)
+  match s with
+  | Rectangle(r) ->
+    let kind = if Bench.Geo.Shapes.isSquare(r) then "square" else "rectangle"
+    $"{kind} {r.w}x{r.h}: {a}"
+  | Circle(radius) -> $"circle r={radius}: {a}"
+
+let totalArea(shapes: List<Bench.Geo.Shapes.Shape>): Float64 =
+  Stdlib.List.fold(shapes, 0.0, fun (acc, s) -> acc + Bench.Geo.Shapes.area(s))
+
+let lines(shapes: List<Bench.Geo.Shapes.Shape>): List<String> =
+  [ ...Stdlib.List.map(shapes, fun s -> describe(s)), $"total: {totalArea(shapes)}" ]

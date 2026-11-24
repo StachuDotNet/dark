@@ -1,0 +1,75 @@
+// Invoice library: prices an order and formats a receipt. All money is in whole cents.
+
+type Item = { sku: String, qty: Int64, price_cents: Int64 }
+
+type Order = { region: String, code: String, items: List<Item> }
+
+val freeShippingFrom = 5000
+
+val shippingFee = 599
+
+val defaultTaxBasisPoints = 500
+
+let parseOrder(text: String): Stdlib.Result.Result<Order, String> =
+  match Stdlib.Json.parse<Order>(text) with
+  | Ok(order) -> Ok(order)
+  | Error(_) -> Error("not a valid order")
+
+let lineTotal(item: Item): Int64 = item.qty * item.price_cents
+
+let subtotal(items: List<Item>): Int64 =
+  Stdlib.List.fold(items, 0, fun(acc, i) -> acc + lineTotal(i))
+
+let discount(code: String, amount: Int64): Stdlib.Result.Result<Int64, String> =
+  match code with
+  | "" -> Ok(0)
+  | "SAVE10" -> Ok(amount / 10)
+  | "FLAT5" -> Ok(Stdlib.min(500, amount))
+  | other -> Error(other)
+
+let shipping(amountAfterDiscount: Int64): Int64 =
+  if amountAfterDiscount >= freeShippingFrom then 0 else shippingFee
+
+let taxRate(region: String): Int64 =
+  match region with
+  | "CA" -> 800
+  | "NY" -> 900
+  | "OR" -> 0
+  | _ -> defaultTaxBasisPoints
+
+let tax(region: String, amount: Int64): Int64 =
+  (amount * taxRate(region) + 5000) / 10000
+
+let twoDigits(n: Int64): String =
+  Stdlib.String.padStart(Stdlib.display(n), '0', 2)
+
+let formatCents(cents: Int64): String =
+  let sign = if cents < 0 then "-" else ""
+  let c = if cents < 0 then 0 - cents else cents
+  sign + Stdlib.display(c / 100) + "." + twoDigits(c % 100)
+
+let formatRate(bp: Int64): String =
+  Stdlib.display(bp / 100) + "." + twoDigits(bp % 100) + "%"
+
+let itemLine(i: Item): String =
+  i.sku + " x" + Stdlib.display(i.qty) + " @ " + formatCents(i.price_cents) + " = " + formatCents(lineTotal(i))
+
+let receipt(order: Order): Stdlib.Result.Result<List<String>, String> =
+  let sub = subtotal(order.items)
+  match discount(order.code, sub) with
+  | Error(code) -> Error(code)
+  | Ok(off) ->
+    let after = sub - off
+    let ship = shipping(after)
+    let t = tax(order.region, after)
+    let total = after + ship + t
+    let discountLines =
+      if order.code == "" then [] else [ "Discount (" + order.code + "): " + formatCents(0 - off) ]
+    Ok(
+      [ ...Stdlib.List.map(order.items, fun i -> itemLine(i)),
+        "Subtotal: " + formatCents(sub),
+        ...discountLines,
+        "Shipping: " + formatCents(ship),
+        "Tax (" + order.region + " " + formatRate(taxRate(order.region)) + "): " + formatCents(t),
+        "Total: " + formatCents(total) ]
+    )

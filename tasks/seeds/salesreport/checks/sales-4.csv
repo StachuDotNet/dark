@@ -1,0 +1,7 @@
+date,region,product,units,unit_price
+2025-12-31,Central,Bolt,100,0.05
+2026-01-01, Central ,Nut,100,0.04
+2026-1-02,Central,Nut,5,0.04
+2026-01-02,Zeta,"Bolt",0,0.05
+2026-01-03,Alpha,Washer,100,0.10
+2026-01-04,Alpha,"a,b,c",1,1

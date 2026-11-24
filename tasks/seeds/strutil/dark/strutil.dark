@@ -1,0 +1,54 @@
+// Small text helpers. See README.md for what each one promises.
+
+val smallWords = [ "a", "an", "and", "of", "the" ]
+
+let words(s: String): List<String> =
+  let (done, current) =
+    Stdlib.List.fold(Stdlib.String.toList(s), ([], ""), fun(acc, c) ->
+      let (ws, cur) = acc
+      if Stdlib.Char.isWhitespace(c) then
+        (if cur == "" then (ws, "") else ([ ...ws, cur ], ""))
+      else
+        (ws, cur + Stdlib.String.fromChar(c)))
+  if current == "" then done else [ ...done, current ]
+
+let slugify(s: String): String =
+  let (out, _) =
+    Stdlib.List.fold(Stdlib.String.toList(Stdlib.String.toLowercase(s)), ("", false), fun(acc, c) ->
+      let (o, pendingDash) = acc
+      if Stdlib.Char.isASCII(c) && Stdlib.Char.isAlphanumeric(c) then
+        let sep = if pendingDash && o != "" then "-" else ""
+        (o + sep + Stdlib.String.fromChar(c), false)
+      else
+        (o, true))
+  out
+
+let truncate(s: String, n: Int64): String =
+  if Stdlib.String.length(s) < n then
+    s
+  else
+    Stdlib.String.first(s, n - 1) + "…"
+
+let wrap(s: String, width: Int64): List<String> =
+  let (lines, current) =
+    Stdlib.List.fold(words(s), ([], ""), fun(acc, w) ->
+      let (ls, cur) = acc
+      if cur == "" then
+        (ls, w)
+      else if Stdlib.String.length(cur) + 1 + Stdlib.String.length(w) <= width then
+        (ls, cur + " " + w)
+      else
+        ([ ...ls, cur ], w))
+  if current == "" then lines else [ ...lines, current ]
+
+let capitalise(w: String): String =
+  Stdlib.String.toUppercase(Stdlib.String.first(w, 1)) + Stdlib.String.dropFirst(w, 1)
+
+let titleCase(s: String): String =
+  words(s)
+  |> Stdlib.List.indexedMap(fun(i, w) ->
+    let lw = Stdlib.String.toLowercase(w)
+    if i > 0 && Stdlib.List.contains(smallWords, lw) then lw else capitalise(lw))
+  |> Stdlib.String.join(" ")
+
+let countWords(s: String): Int64 = Stdlib.List.length(words(s))

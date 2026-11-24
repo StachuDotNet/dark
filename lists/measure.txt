@@ -1,0 +1,11 @@
+checksum-cli
+job-queue
+json-to-csv
+log-analyzer
+roman-numerals
+test-strutil
+tic-tac-toe
+weather-now
+line-diff
+recurring-events
+vending-machine

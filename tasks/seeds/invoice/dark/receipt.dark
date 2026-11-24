@@ -1,0 +1,28 @@
+// Command line: dark run receipt.dark ORDER.json
+// Uses the package module Bench.Invoice from this instance's package store.
+
+let main(argv: List<String>): Int64 =
+  match argv with
+  | [ path ] ->
+    match Stdlib.Cli.File.readText(path) with
+    | Error(_) ->
+      Stdlib.printErrorLine("Cannot read " + path)
+      1
+    | Ok(text) ->
+      match Bench.Invoice.parseOrder(text) with
+      | Error(_) ->
+        Stdlib.printErrorLine(path + " is not a valid order")
+        1
+      | Ok(order) ->
+        match Bench.Invoice.receipt(order) with
+        | Error(code) ->
+          Stdlib.printErrorLine("Unknown discount code: " + code)
+          2
+        | Ok(lines) ->
+          Stdlib.List.iter(lines, fun l -> Stdlib.printLine(l))
+          0
+  | _ ->
+    Stdlib.printErrorLine("Usage: receipt ORDER.json")
+    2
+
+main(args)

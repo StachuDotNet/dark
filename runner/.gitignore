@@ -1,0 +1,9 @@
+results/
+.cache/
+node_modules/
+.DS_Store
+.dashboard-uploads/
+.env
+.env.*
+!.env.example
+*.log

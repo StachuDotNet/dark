@@ -1,0 +1,12 @@
+// geo SHAPE ...: prints the report. A shape is WxH or circle:R.
+
+let main(args: List<String>): Int64 =
+  let parsed = Stdlib.List.map(args, fun a -> Bench.Geo.Shapes.parse(a))
+  match Stdlib.List.findFirst(parsed, fun p -> Stdlib.Result.isError(p)) with
+  | Some(Error(e)) ->
+    Stdlib.printErrorLine(e)
+    1
+  | _ ->
+    let shapes = Stdlib.List.filterMap(parsed, fun p -> Stdlib.Result.toOption(p))
+    Stdlib.List.iter(Bench.Geo.Report.lines(shapes), fun l -> Stdlib.printLine(l))
+    0

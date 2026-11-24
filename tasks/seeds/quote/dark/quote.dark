@@ -1,0 +1,55 @@
+// Order quotes. See README.md for the pricing rules.
+
+type Line = { sku: String, qty: Int64, unitCents: Int64 }
+
+val freeShippingFrom = 5000
+val shippingCents = 500
+
+let parseLine(text: String): Result<Line, String> =
+  match Stdlib.String.split(text, ":") with
+  | [ sku, qty, unit ] ->
+    match (Stdlib.Int64.parse(qty), Stdlib.Int64.parse(unit)) with
+    | (Ok(q), Ok(u)) ->
+      if sku == "" || q < 1 || u < 0 then
+        Error($"bad line: {text}")
+      else
+        Ok(Line { sku = sku, qty = q, unitCents = u })
+    | _ -> Error($"bad line: {text}")
+  | _ -> Error($"bad line: {text}")
+
+let bulkPrice(line: Line): Int64 =
+  let full = line.qty * line.unitCents
+  if line.qty > 10 then full - full / 10 else full
+
+let subtotal(lines: List<Line>): Int64 =
+  Stdlib.List.fold(lines, 0, fun (acc, l) -> acc + bulkPrice(l))
+
+let shipping(sub: Int64): Int64 =
+  if sub >= freeShippingFrom then 0 else shippingCents
+
+let total(lines: List<Line>): Int64 =
+  let sub = subtotal(lines)
+  sub + shipping(sub)
+
+let parseAll(args: List<String>): Result<List<Line>, String> =
+  Stdlib.List.fold(args, Ok([]), fun (acc, a) ->
+    match acc with
+    | Error(e) -> Error(e)
+    | Ok(ls) ->
+      match parseLine(a) with
+      | Ok(l) -> Ok([ ...ls, l ])
+      | Error(e) -> Error(e))
+
+let main(args: List<String>): Int64 =
+  match args with
+  | [] ->
+    Stdlib.printErrorLine("usage: quote SKU:QTY:UNIT_CENTS ...")
+    2
+  | _ ->
+    match parseAll(args) with
+    | Ok(lines) ->
+      Stdlib.printLine($"{total(lines)}")
+      0
+    | Error(e) ->
+      Stdlib.printErrorLine(e)
+      1

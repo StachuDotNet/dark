@@ -1,0 +1,10 @@
+date,region,product,units,unit_price
+2026-03-01,West,"Widget, large",7,12
+2026-03-02,West,"Widget, large",5,12.00
+2026-03-09,East,"The ""Best"" Mug",12,8.75
+2026-04-11,South,Gadget,two,19.99
+2026-04-12,South,Gadget,2
+2026-04-13,South,Gadget,2,19.999
+2026-04-14,East,Mug,12,8.75
+
+2026-04-30,East,"Widget, large",1,12.5

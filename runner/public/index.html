@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Language benchmark</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<div class="app">
+
+<aside class="sidebar">
+  <div class="brand"><span class="logo" aria-hidden="true">B</span><div><strong>Language benchmark</strong><small>Host machine · CLI sessions</small></div></div>
+
+  <div class="configs">
+    <div class="configs-head"><h2>Configurations</h2><button id="newConfig" class="ghost small" title="New configuration from defaults">+ New</button></div>
+    <ul id="configList" class="config-list"></ul>
+  </div>
+
+  <form id="editor" class="editor" autocomplete="off">
+    <label class="name-field">Name this configuration<input data-bind="name" placeholder="Enter a name"></label>
+
+    <details class="section" data-section="agents" open>
+      <summary><span class="section-title">Agents</span><span class="section-meta" data-meta="agents"></span></summary>
+      <div class="section-body">
+        <div class="toggle-card" data-agent="codex">
+          <label class="toggle"><input type="checkbox" data-bind="agents.codex.enabled"><span>Codex</span></label>
+          <div class="toggle-body">
+            <label>Executable<input data-bind="agents.codex.path" class="mono"></label>
+            <label>Model<select data-model-agent="codex"></select></label>
+            <label data-custom-model-agent="codex" hidden>Custom model<input data-bind="agents.codex.model" placeholder="Enter the exact model name"></label>
+          </div>
+        </div>
+        <div class="toggle-card" data-agent="claude">
+          <label class="toggle"><input type="checkbox" data-bind="agents.claude.enabled"><span>Claude</span></label>
+          <div class="toggle-body">
+            <label>Executable<input data-bind="agents.claude.path" class="mono"></label>
+            <label>Model<select data-model-agent="claude"></select></label>
+            <label data-custom-model-agent="claude" hidden>Custom model<input data-bind="agents.claude.model" placeholder="Enter the exact model name"></label>
+          </div>
+        </div>
+        <p class="hint">Choose a model or use Custom model to enter an exact name. Codex options come from its local model cache. Claude options are pinned model IDs, so a CLI update can't silently switch the model.</p>
+      </div>
+    </details>
+
+    <details class="section" data-section="languages" open>
+      <summary><span class="section-title">Languages</span><span class="section-meta" data-meta="languages"></span></summary>
+      <div class="section-body">
+        <div class="toggle-card" data-language="Dark">
+          <label class="toggle"><input type="checkbox" data-bind="languages.Dark"><span>Dark</span></label>
+          <div class="toggle-body">
+            <label>Executable<input data-bind="darkPath" class="mono"></label>
+            <label>Build type (optional)<select data-bind="darkBuild"><option value="">Not specified</option><option>release</option><option>standalone development</option><option>unknown</option></select></label>
+            <label>Documentation or setup guidance (optional)<textarea data-bind="documentation.Dark" rows="4" placeholder="Add documentation if you want to supply it to the agent."></textarea></label>
+          </div>
+        </div>
+        <div class="toggle-card" data-language="Python">
+          <label class="toggle"><input type="checkbox" data-bind="languages.Python"><span>Python</span></label>
+        </div>
+        <div class="toggle-card" data-language="TypeScript">
+          <label class="toggle"><input type="checkbox" data-bind="languages.TypeScript"><span>TypeScript</span></label>
+        </div>
+      </div>
+    </details>
+
+    <details class="section" data-section="task">
+      <summary><span class="section-title">Tasks</span><span class="section-meta" data-meta="task"></span></summary>
+      <div class="section-body">
+        <div class="row spread"><p id="taskCount" class="hint"></p><button id="addTask" class="ghost small" type="button">+ Add task</button></div>
+        <div id="taskList"></div>
+      </div>
+    </details>
+
+    <details class="section" data-section="limits">
+      <summary><span class="section-title">Limits</span><span class="section-meta" data-meta="limits"></span></summary>
+      <div class="section-body">
+        <div class="limit-fields">
+          <label>Runs per task<input data-bind="repetitions" type="number" min="1" max="100"></label>
+          <label>Time limit per run (minutes)<input data-bind="minutes" type="number" min="0.01" max="1440" step="0.01"></label>
+        </div>
+        <p class="hint">Ready environments only; installation is not measured. Attempts run sequentially in shuffled order.</p>
+      </div>
+    </details>
+
+    <details class="section" data-section="environment">
+      <summary><span class="section-title">Output &amp; environment</span><span class="section-meta" data-meta="environment"></span></summary>
+      <div class="section-body">
+        <label>Output folder<input data-bind="outputFolder" class="mono"></label>
+      </div>
+    </details>
+  </form>
+
+  <div class="sidebar-foot">
+    <p id="estimate" class="estimate"></p>
+    <ul id="issues" class="issues"></ul>
+    <div class="actions">
+      <button id="preflight" class="secondary" type="button">Check environment</button>
+      <button id="review" type="button">Review &amp; run</button>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div><h1>Runs</h1><p class="muted">Queue several configurations; they run one after another so timings stay comparable.</p></div>
+    <span id="engine" class="pill">Idle</span>
+  </header>
+
+  <nav id="batchList" class="batch-list" aria-label="Batches"></nav>
+
+  <section id="empty" class="empty">
+    <div class="empty-art" aria-hidden="true"><span class="tag lang-Dark">Dark</span><span class="tag lang-Python">Python</span><span class="tag lang-TypeScript">TypeScript</span></div>
+    <h2>Start with a small run</h2>
+    <p>On the left, choose one agent you have logged in to. Enable Python, turn off the other languages, and select only FizzBuzz under Tasks. Set Runs per task to 1.</p>
+    <p>Click <strong>Check environment</strong>, then <strong>Review &amp; run</strong>. Read the prompt and click <strong>Start batch</strong> when you are ready. Opening this page does not use agent quota.</p>
+    <p>When it finishes, open the attempt to read the transcript and check the code. Then add more languages or tasks for a comparison.</p>
+  </section>
+
+  <div id="batchView" hidden>
+    <section class="card batch-head">
+      <div class="batch-title">
+        <div><h2 id="batchName"></h2><p id="batchSub" class="muted"></p></div>
+        <div class="row">
+          <button id="copyConfig" class="ghost small" title="Copy this batch's configuration into a new sidebar configuration">Edit as new config</button>
+          <button id="deleteBatch" class="danger small" hidden>Delete batch</button>
+          <button id="cancel" class="danger small" hidden>Cancel</button>
+        </div>
+      </div>
+      <p id="batchProgress" class="progress-text"></p>
+      <p id="batchError" class="error-text" hidden></p>
+    </section>
+
+    <section class="card" id="summaryCard">
+      <div class="card-head"><h3>Comparison</h3><span class="muted small-text">Dark compared with other languages · median usage for the same agent and model</span></div>
+      <div class="table-wrap"><table class="summary-table">
+        <thead><tr><th>Task</th><th>Input</th><th>Output</th><th>Cost</th><th>Time</th></tr></thead>
+        <tbody id="summary"></tbody>
+      </table></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h3>Attempts</h3><span class="muted small-text">Fastest to slowest · click for details</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Task</th><th>Agent / model</th><th>Language</th><th>Status</th><th class="num">Input</th><th class="num">Output</th><th class="num">Calls</th><th class="num">Prompts</th><th class="num">Cost $</th><th class="num">Time</th></tr></thead>
+        <tbody id="runs"></tbody>
+      </table></div>
+    </section>
+
+    <section class="card" id="totalsCard">
+      <div class="card-head"><h3>Summary</h3></div>
+      <div id="byLanguage" class="by-language"></div>
+      <div id="batchFolder" class="folder"></div>
+    </section>
+
+    <div class="two-col">
+      <section class="card">
+        <div class="card-head"><h3>Agent activity</h3><span class="muted small-text">Live during a run; recent activity reloads from saved logs afterward</span></div>
+        <div id="events" class="activity-feed" aria-live="polite"></div>
+        <label>Record a human response or manual intervention<textarea id="note" rows="2"></textarea></label>
+        <div class="row spread"><p class="hint">Recorded, <strong>not</strong> sent to the agent.</p><button id="record" class="secondary small">Record note</button></div>
+      </section>
+      <section class="card report-card">
+        <div class="card-head"><h3>Dark report</h3></div>
+        <p class="muted report-intro">A separate session reads the saved evidence and lists the main issues, repeated attempts, missing functions or packages, and likely time sinks in simple bullets. It has a 15-minute limit. Its usage and time stay separate from the benchmark. It uses the selected agent’s normal settings and permissions.</p>
+        <label class="report-agent">Analysis agent<select id="analysisAgent"></select></label>
+        <details><summary>Instructions for the analysis session</summary><pre id="analysisInstructions"></pre></details>
+        <div class="report-actions"><button id="analyze">Create Dark report</button><span id="viewReports" class="view-reports"></span></div>
+        <div id="analysisStatus" class="report-status"></div>
+      </section>
+    </div>
+
+    <details class="card config-snapshot"><summary>Configuration snapshot</summary><pre id="batchConfig"></pre></details>
+  </div>
+
+  <footer class="muted">Missing measurements appear as —. Cached input is included in input totals. Reasoning, when exposed, is a detail of output rather than an extra total. Failures keep their usage. Only reported cost is shown.</footer>
+</main>
+</div>
+
+<dialog id="reviewDialog" class="modal">
+  <form method="dialog">
+    <h2>Review configuration</h2>
+    <p id="reviewLead" class="muted"></p>
+    <div id="reviewMatrix" class="matrix"></div>
+    <dl id="reviewFacts" class="facts"></dl>
+    <h3>Exact instructions sent to the agent</h3>
+    <div id="reviewPrompts"></div>
+    <details><summary>CLI launch settings</summary><pre id="reviewCli"></pre></details>
+    <details><summary>Exact configuration (JSON)</summary><pre id="reviewJson"></pre></details>
+    <div class="actions end">
+      <button value="cancel" class="secondary">Back</button>
+      <button id="confirmStart" value="start">Start batch</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="runDialog" class="drawer">
+  <form method="dialog">
+    <div class="drawer-head"><h2 id="runTitle"></h2><button class="ghost small" aria-label="Close">Close</button></div>
+    <div id="runBody"></div>
+  </form>
+</dialog>
+
+<dialog id="codeDialog" class="modal report-modal">
+  <form method="dialog">
+    <div class="drawer-head"><h2 id="codeTitle">Final code</h2><button class="ghost small" aria-label="Close code">Close</button></div>
+    <p id="codePath" class="muted"></p>
+    <label>Project file<select id="codeFile"></select></label>
+    <pre id="codeText"></pre>
+    <p class="hint">Read-only view of the saved project folder. Known credentials are redacted. Hidden files, dependency folders, links, binary files and large files are omitted.</p>
+    <details><summary>Files omitted from preview</summary><ul id="codeSkipped"></ul></details>
+    <h3>Run the program</h3>
+    <p class="hint">Runs in a sandbox on this machine, in a fresh copy of the project, so the saved project is never changed. The program cannot read your home folder, can write only to its copy and gets none of your environment variables; network is on. Dark uses this attempt’s own binary and package store as <code>$DARK</code>. Limit 60 seconds. Results are saved with the batch but are not part of the frozen benchmark results.</p>
+    <label>Command<input id="tryCommand" class="mono" spellcheck="false" autocomplete="off"></label>
+    <label>Standard input (optional)<textarea id="tryInput" class="mono" rows="2" spellcheck="false"></textarea></label>
+    <div class="try-actions"><button type="button" id="tryRun" class="secondary">Run</button><span id="tryStatus" class="muted"></span></div>
+    <div id="tryResults"></div>
+  </form>
+</dialog>
+
+<dialog id="reportDialog" class="modal report-modal">
+  <form method="dialog">
+    <div class="drawer-head"><h2 id="reportTitle">Dark analysis report</h2><button class="ghost small" aria-label="Close report">Close</button></div>
+    <p id="reportMeta" class="muted"></p>
+    <div id="reportText" class="analysis-report"></div>
+  </form>
+</dialog>
+
+<dialog id="preflightDialog" class="modal">
+  <form method="dialog">
+    <h2>Environment check</h2>
+    <div id="preflightBody"></div>
+    <div class="actions end"><button value="close">Close</button></div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" hidden></div>
+<script type="module" src="/app.js"></script>
+</body></html>

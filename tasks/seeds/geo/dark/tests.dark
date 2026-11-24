@@ -1,0 +1,15 @@
+test rectangleArea =
+  Bench.Geo.Shapes.area(Bench.Geo.Shapes.Shape.Rectangle(Bench.Geo.Shapes.Rect { w = 3, h = 4 }))
+  |> Stdlib.Test.equal(12.0)
+
+test squareIsSquare =
+  Bench.Geo.Shapes.isSquare(Bench.Geo.Shapes.Rect { w = 2, h = 2 })
+  |> Stdlib.Test.equal(true)
+
+test describeRectangle =
+  Bench.Geo.Report.describe(Bench.Geo.Shapes.Shape.Rectangle(Bench.Geo.Shapes.Rect { w = 2, h = 5 }))
+  |> Stdlib.Test.equal("rectangle 2x5: 10.0")
+
+test totalOfTwo =
+  Bench.Geo.Report.totalArea([ Bench.Geo.Shapes.Shape.Rectangle(Bench.Geo.Shapes.Rect { w = 1, h = 1 }), Bench.Geo.Shapes.Shape.Rectangle(Bench.Geo.Shapes.Rect { w = 2, h = 3 }) ])
+  |> Stdlib.Test.equal(7.0)

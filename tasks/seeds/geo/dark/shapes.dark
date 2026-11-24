@@ -1,0 +1,29 @@
+// Shapes and their areas.
+
+type Rect = { w: Int64, h: Int64 }
+
+type Shape =
+  | Rectangle(Rect)
+  | Circle(Int64)
+
+let area(s: Shape): Float64 =
+  match s with
+  | Rectangle(r) -> Stdlib.Int64.toFloat64(r.w * r.h)
+  | Circle(radius) -> 3.14159 * Stdlib.Int64.toFloat64(radius * radius)
+
+let isSquare(r: Rect): Bool = r.w == r.h
+
+let parse(text: String): Result<Shape, String> =
+  match Stdlib.String.split(text, ":") with
+  | [ "circle", r ] ->
+    match Stdlib.Int64.parse(r) with
+    | Ok(n) -> Ok(Shape.Circle(n))
+    | Error(_) -> Error($"bad radius: {r}")
+  | [ dims ] ->
+    match Stdlib.String.split(dims, "x") with
+    | [ a, b ] ->
+      match (Stdlib.Int64.parse(a), Stdlib.Int64.parse(b)) with
+      | (Ok(w), Ok(h)) -> Ok(Shape.Rectangle(Rect { w = w, h = h }))
+      | _ -> Error($"bad rectangle: {text}")
+    | _ -> Error($"bad shape: {text}")
+  | _ -> Error($"bad shape: {text}")

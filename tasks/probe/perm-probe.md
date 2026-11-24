@@ -1,0 +1,1 @@
+Run exactly these two shell commands with the Dark executable given below, one Bash call each, and then reply with their full output and nothing else: first `<dark> permissions allow file read /tmp`, then `<dark> permissions`. Do not do anything else.
