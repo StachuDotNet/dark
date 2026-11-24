@@ -69,7 +69,7 @@ async function inspect(config, signal, runtime) {
   while (true) { try { parent = await realpath(parent); break; } catch { const next = path.dirname(parent); if (next === parent) throw Error('Cannot resolve workspace root.'); parent = next; } }
   for (let current = parent; ; current = path.dirname(current)) {
     try { await access(path.join(current, '.git')); throw Error('Workspaces must be outside a Git checkout.'); } catch (e) { if (e.message.startsWith('Workspaces')) throw e; }
-    for (const file of ['AGENTS.md', 'CLAUDE.md']) { try { await access(path.join(current, file)); throw Error(`Workspace ancestor contains ${file}: ${current}`); } catch (e) { if (e.message.startsWith('Workspace ancestor')) throw e; } }
+    for (const file of ['AGENTS.md', 'CLAUDE.md', 'CLAUDE.local.md', '.claude']) { try { await access(path.join(current, file)); throw Error(`Workspace ancestor contains ${file}: ${current}`); } catch (e) { if (e.message.startsWith('Workspace ancestor')) throw e; } }
     if (path.dirname(current) === current) break;
   }
   const probes = [];

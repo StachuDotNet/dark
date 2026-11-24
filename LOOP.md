@@ -122,3 +122,12 @@ it builds from is `~/code/dark/bench-loop` (make it with `~/code/dark/new-clone 
 - **Grade before deleting `.batch-tools`**: the stores live there. Rounds before Nov 23 deleted them, so they
   can't be re-scored; tonight's x116 arm re-runs v0.0.116 with grading instead.
 - Python attempts are not graded yet.
+
+## Isolation (Nov 24)
+- Workspaces live in `/var/tmp/bench-loop-ws` (`BENCH_WS` overrides). Claude Code loads CLAUDE.md,
+  `.claude/CLAUDE.md`, skills and commands from every folder above its workspace. From round 4 (Nov 18)
+  to Nov 24 the workspaces sat under `/home/stachu`, so every session loaded `~/.claude/CLAUDE.md` and
+  `~/.claude/skills`: about 6,500 more tokens of opening context per turn, and some sessions read the
+  user's notes. Affected: r4base-*, x116/xmain/xpy/xmain-new/xmain-tune/xpy-tune, ab3-*.
+- `attempt.mjs` refuses a workspace with agent setup above it, and so does the runner's preflight;
+  `node tests/isolation.mjs` checks both.

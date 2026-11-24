@@ -10,7 +10,7 @@ B=$(cd "$(dirname "$0")" && pwd)
 bin=$(realpath "$1"); label=$2; list=$3; attempts=${4:-1}
 [ -x "$bin" ] || { echo "not executable: $bin"; exit 1; }
 if [ -f "$list" ]; then tasks=$(grep -v '^\s*#' "$list" | grep .); elif [ -f "$B/lists/$list.txt" ]; then tasks=$(grep -v '^\s*#' "$B/lists/$list.txt" | grep .); else tasks=$(tr , '\n' <<<"$list"); fi
-mkdir -p "$B/bins/$label" "$B/results/$label" /home/stachu/code/bench-loop-ws
+mkdir -p "$B/bins/$label" "$B/results/$label" "${BENCH_WS:-/var/tmp/bench-loop-ws}"
 if [ "$bin" != "$B/bins/$label/darklang" ]; then
   cp "$bin" "$B/bins/$label/darklang.new" && mv "$B/bins/$label/darklang.new" "$B/bins/$label/darklang"
   [ -f "$bin.mode" ] && cp "$bin.mode" "$B/bins/$label/darklang.mode"
@@ -19,7 +19,7 @@ cat > "$B/bins/$label/dark" <<W
 #!/bin/sh
 # give each Dark call the attempt's private store folder as its HOME
 case "\${DARK_CONFIG_RUNDIR:-}" in
-  /home/stachu/code/bench-loop-ws/*/.darklang) ;;
+  */bench-loop-ws/.batch-tools/*/.darklang) ;;
   *) echo "bench wrapper: DARK_CONFIG_RUNDIR is '\${DARK_CONFIG_RUNDIR:-}', not a bench store; refusing" >&2; exit 97 ;;
 esac
 HOME="\${DARK_CONFIG_RUNDIR%/.darklang}" exec $B/bins/$label/darklang "\$@"

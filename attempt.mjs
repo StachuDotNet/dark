@@ -11,12 +11,16 @@ import { preflight } from './runner/src/config.js';
 import { instructionsFor } from './runner/src/instructions.js';
 import { runAgent } from './runner/src/adapters.js';
 import { metrics, tokens } from './metrics.mjs';
+import { setupAbove } from './isolation.mjs';
 
 const B = path.dirname(new URL(import.meta.url).pathname);
 const [label, taskName, n] = process.argv.slice(2);
 const model = process.env.MODEL || 'claude-opus-5-5';
 const language = process.env.BENCH_LANG || 'Dark'; // Python: the same task and runner, for a floor to compare with
-const WS = '/home/stachu/code/bench-loop-ws';
+// Outside the user's home: Claude Code loads CLAUDE.md, .claude/CLAUDE.md, skills and commands from every
+// ancestor of the workspace, so a workspace under /home/stachu read the user's own setup (W696).
+const WS = process.env.BENCH_WS || '/var/tmp/bench-loop-ws';
+{ const found = setupAbove(WS); if (found.length) throw Error(`workspace ${WS} sits under agent setup: ${found.join(', ')}`); }
 
 const sets = ["orig", "train", "held-out", "held-out-2", "probe"];
 const set = sets.find(s => existsSync(`${B}/tasks/${s}/${taskName}.md`));
