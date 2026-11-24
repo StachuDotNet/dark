@@ -400,6 +400,20 @@ let private runOnce
       return Error $"Isolated test failed: {e.Message}"
   }
 
+/// The temp directory and why a worker can't be given a directory in it, if it can't.
+let private tempDirProblem () : Option<string * string> =
+  let dir = System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetTempPath())
+  try
+    System.IO.Directory.Delete(
+      System.IO.Directory.CreateTempSubdirectory("dark-test-").FullName
+    )
+    None
+  with
+  // these two carry a resource key, not words, in a trimmed build
+  | :? System.UnauthorizedAccessException -> Some(dir, "permission denied")
+  | :? System.IO.DirectoryNotFoundException -> Some(dir, "no such directory")
+  | :? System.IO.IOException as e -> Some(dir, e.Message)
+
 /// The request and result travel separately from stdout. The host owns the
 /// temporary directory and process tree, and reports cleanup failures even after success.
 let run
@@ -438,6 +452,17 @@ let run
         columns
         rows
     let! outcome = once store
+    // A sandbox with a read-only /tmp fails every isolated test the same way, so say what
+    // to change rather than failing the test with the OS's few words.
+    match outcome with
+    | Error _ ->
+      match tempDirProblem () with
+      | Some(dir, cause) ->
+        Exception.raiseStoreCondition
+          $"Isolated tests need a writable temp directory, and {dir} is not ({cause}). Set TMPDIR to a writable directory and run again."
+          []
+      | None -> ()
+    | Ok _ -> ()
     let wrote = shared.Value && System.IO.File.Exists marker
     if wrote then System.IO.File.Delete marker
     match store with

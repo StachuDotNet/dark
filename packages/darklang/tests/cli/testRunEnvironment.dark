@@ -1,0 +1,39 @@
+/// `dark test run` in a place it can't run isolated tests says what to change.
+module Darklang.Cli.Tests.TestRunEnvironment
+
+test unwritableTempDirIsNamedOnce = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/printer.dark"
+  let source =
+    [ "let main(): Int64 ="
+      "  Stdlib.printLine(\"hi\")"
+      "  0"
+      ""
+      "test printsA = main() |> Stdlib.Test.equal(0)"
+      ""
+      "test printsB = main() |> Stdlib.Test.equal(0)" ]
+    |> Stdlib.String.join("\n")
+
+  let _ = Stdlib.Cli.File.writeAtomic(path, source) |> Builtin.unwrap
+  let _ = Instance.ran(i, [ "module", "/Me.Printer", path ])
+  // a file, not a directory: no user, root included, can make a directory in it
+  let notADir = Instance.home(i) + "/not-a-dir"
+  let _ = Stdlib.Cli.File.writeAtomic(notADir, "") |> Builtin.unwrap
+  let out =
+    Instance.call(
+      i,
+      Instance.Call
+        { args = [ "test", "run", "Me.Printer" ]
+          stdin = Stdlib.Option.Option.None
+          env = [ ("TMPDIR", notADir) ]
+          tty = false })
+
+  let shown = Instance.shown(out)
+  Stdlib.Test.all(
+    [ Instance.exitedWith(out.exitCode, 1, "the run could not finish")
+      Instance.says(
+        shown,
+        $"Isolated tests need a writable temp directory, and {notADir} is not (no such directory)",
+        "the cause")
+
+      Instance.says(shown, "Set TMPDIR to a writable directory", "what to do")
+      Instance.doesNotSay(shown, "FAIL", "not a test failure") ]))
