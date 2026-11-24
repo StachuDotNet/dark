@@ -23,8 +23,20 @@ const rows = readFileSync(`${B}/results/${label}.jsonl`, 'utf8').trim().split('\
 const DARK_ERR = /error\[(?:LEX|PARSE)|Parse error|Not found: |not found\. Did you mean|is unresolved|Type check failed|permission denied|No script file or function named|Uncaught exception|Encountered a Runtime Error/;
 const NAME = String.raw`([A-Z]\w*(?:\.\w+)+)`;
 
+// `dark run [flags] Fn args`: the first dotted name after `run` whose last part is lower case, however
+// the flags were written (quoted, or a shell array), and the words after it up to `;`, `|`, `&` or `>`
+function runsIn(text) {
+  const out = [];
+  for (const line of text.split('\n')) for (const m of line.matchAll(/(?<!test )\brun\b(.*)/g)) {
+    const words = m[1].split(/[;|&>]/)[0].trim().split(/\s+/);
+    const i = words.findIndex(w => /^[A-Z]\w*(?:\.\w+)*\.[a-z]\w*$/.test(w));
+    if (i >= 0 && !/^(Stdlib|Darklang)\./.test(words[i])) out.push({ fn: words[i], rest: words.slice(i + 1) });
+  }
+  return out;
+}
+
 function entryFrom(transcript) {
-  const tools = new Map(); const runs = [], serves = [], modules = new Set(); let final = '', lastArgs = [];
+  const tools = new Map(); const runs = [], serves = [], modules = new Set(); let final = '', argsOf = {};
   for (const line of transcript.split('\n')) {
     let e; try { e = JSON.parse(line); } catch { continue; }
     if (e.type === 'assistant') for (const c of e.message?.content || []) if (c.type === 'tool_use') tools.set(c.id, c);
@@ -36,17 +48,21 @@ function entryFrom(transcript) {
       const cmd = tu?.input?.command; if (typeof cmd !== 'string') continue;
       const t = typeof c.content === 'string' ? c.content : (c.content || []).map(x => x.text || '').join('\n');
       const ok = !DARK_ERR.test(t);
-      for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:module|fn)\s+/?` + NAME, 'g'))) modules.add(m[1].replace(/\.Tests$/, ''));
+      for (const m of cmd.matchAll(/\b(?:module|fn)\s+\/?([A-Z][\w.]*)/g)) modules.add(m[1].replace(/\.Tests$/, ''));
       if (!ok) continue;
-      for (const m of cmd.matchAll(new RegExp(String.raw`(?<!test )\brun\s+(?:--?[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s-]\S*))?\s+)*` + NAME + String.raw`([^\n;&|>]*)`, 'g'))) if (!/^Stdlib\.|^Darklang\./.test(m[1]) && /\.[a-z]\w*$/.test(m[1])) { runs.push(m[1]); lastArgs = m[2].trim().split(/\s+/).filter(Boolean); }
+      for (const { fn, rest } of runsIn(cmd)) { runs.push(fn); argsOf[fn] = rest; }
       for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:serve|http-server)\s+` + NAME, 'g'))) serves.push(m[1]);
     }
     if (e.type === 'result' && !final) final = String(e.result || '');
   }
-  for (const m of final.matchAll(new RegExp(String.raw`(?<!test )\brun\s+(?:--?[\w-]+(?:\s+(?:"[^"]*"|'[^']*'|[^\s-]\S*))?\s+)*` + NAME, 'g'))) if (/\.[a-z]\w*$/.test(m[1])) runs.push(m[1]);
+  for (const { fn } of runsIn(final.replace(/`/g, ' '))) runs.push(fn);
   for (const m of final.matchAll(new RegExp(String.raw`\bserve\s+` + NAME, 'g'))) serves.push(m[1]);
   const count = xs => { const c = {}; xs.forEach((x, i) => c[x] = (c[x] || 0) + 1 + i / 1000); return Object.entries(c).sort((a, b) => b[1] - a[1]).map(x => x[0]); };
-  return { main: runs.at(-1) || null, mainArgs: lastArgs, mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final };
+  // the program is the one the final answer names, else the one run most often, else the last one run
+  const inFinal = [...final.matchAll(/\b([A-Z]\w*(?:\.[A-Z]\w*)*\.main)\b/g)].map(m => m[1]);
+  const named = [...runs].reverse().find(f => inFinal.includes(f)) || inFinal[0] || [...runs].reverse().find(f => final.includes(f));
+  const main = named || count(runs)[0] || null;
+  return { main, mainArgs: argsOf[main] || [], mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final };
 }
 
 function ctxFor(row, runRoot, entry) {
@@ -66,7 +82,17 @@ function ctxFor(row, runRoot, entry) {
     run: (argv, o = {}) => dark(['run', ...allow(o.allow), o.fn || entry.main, ...argv], o),
     eval: (expr, o = {}) => dark(['eval', expr], o),
     // counts from the summary line, which every release prints (`--json` is newer)
-    test: (filter) => { const r = dark(['test', 'run', filter], { timeout: 300000 }); const m = (r.out + r.err).match(/(\d+) tests?[^\n]*?: (\d+) passed, (\d+) failed/); return m ? { tests: +m[1], passed: +m[2], failed: +m[3], code: r.code } : { passed: 0, failed: 0, code: r.code, raw: (r.out + r.err).slice(-200) }; },
+    // tests named after the program, else after any saved module, else every test in the store
+    test: (filter) => {
+      let last;
+      for (const f of [filter, ...entry.modules, null]) {
+        const r = dark(['test', 'run', ...(f ? [f] : [])], { timeout: 300000 });
+        const m = (r.out + r.err).match(/(\d+) tests?[^\n]*?: (\d+) passed, (\d+) failed/);
+        last = m ? { tests: +m[1], passed: +m[2], failed: +m[3], code: r.code, filter: f } : { passed: 0, failed: 0, code: r.code, raw: (r.out + r.err).slice(-200) };
+        if (m) return last;
+      }
+      return last;
+    },
     source: (name) => dark(['view', name, '--raw']).out,
     // the user's declarations `let f(...): T` in the saved modules
     fns: () => entry.modules.flatMap(m => [...ctx.source(m).matchAll(/^\s*let (\w+)\(([^)]*)\)\s*:\s*([^=]+)=/gm)].map(x => ({ module: m, name: `${m}.${x[1]}`, short: x[1], params: x[2].trim(), ret: x[3].trim() }))),
@@ -111,6 +137,8 @@ for (const row of rows) {
     else {
       const entry = entryFrom(readFileSync(transcript, 'utf8'));
       const ctx = ctxFor(row, root, entry);
+      // nothing was run by name: a saved module's `main`, preferring one the final answer names
+      if (!entry.main) { const ms = entry.modules.filter(m => /^\s*let main\(/m.test(ctx.source(m))); entry.main = ms.find(m => entry.final.includes(m)) ? `${ms.find(m => entry.final.includes(m))}.main` : ms.length ? `${ms.at(-1)}.main` : null; }
       try {
         const check = (await import(checkFile)).default;
         g.checks = (await check(ctx)).map(c => ({ name: c.name, ok: !!c.ok, got: c.ok ? undefined : String(c.got ?? '').slice(0, 200) }));

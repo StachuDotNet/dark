@@ -6,3 +6,4 @@ sbin/
 *.out
 runner/.cache/
 node_modules/
+PAUSE
