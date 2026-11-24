@@ -31,11 +31,14 @@ const minutes = set === 'orig' ? 20 : 30;
 
 const task = { templateId: taskName, name: taskName, enabled: true, prompt, networkSites };
 const runtimeId = `${label}-${taskName}-${n}-${randomBytes(3).toString('hex')}`.replace(/[^a-zA-Z0-9-]/g, '-');
-const config = { agents: [{ agent: 'claude', path: `${B}/claude-iso`, model }], languages: [language],
+// BENCH_AGENT: claude (default); dark-agent (store tools and checks, one trajectory); dark-agent-attempts (the same, up to 3 attempts on fresh branches); dark-agent-generic (files and bash only)
+const AGENT = process.env.BENCH_AGENT || 'claude';
+const agentEntry = AGENT.startsWith('dark-agent') ? { agent: AGENT, path: `${B}/bins/${label}/dark`, model } : { agent: 'claude', path: `${B}/claude-iso`, model };
+const config = { agents: [agentEntry], languages: [language],
   darkPath: `${B}/bins/${label}/dark`, darkBuild: 'release', repetitions: 1, minutes,
   outputFolder: `${B}/results/${label}`, workspaceRoot: WS, tasks: [task], documentation: { Dark: '' },
   setupTrack: 'ready-environment', runtimeId };
-const run = { task: taskName, agent: 'claude', model, repetition: +n };
+const run = { task: taskName, agent: AGENT, model, repetition: +n };
 const out = `${B}/results/${label}/${taskName}-${n}`;
 await mkdir(out, { recursive: true });
 const workspace = path.join(WS, label, `${taskName}-${n}-${runtimeId.slice(-6)}`);
@@ -55,6 +58,12 @@ try {
   const homeDotnet = path.join(runtime.root, '.dotnet');
   await mkdir(homeDotnet, { recursive: true });
   runtime.writableDirs = [...runtime.writableDirs, homeDotnet];
+  if (AGENT.startsWith('dark-agent')) {
+    // the agent reads its key beside the store: the attempt's rundir, else HOME/.darklang
+    const secrets = path.join(runtime.env.DARK_CONFIG_RUNDIR || path.join(runtime.root, '.darklang'), 'secrets');
+    await mkdir(secrets, { recursive: true });
+    execFileSync('/bin/cp', [process.env.DARK_AGENT_KEY_FILE, path.join(secrets, 'anthropic.key')]);
+  }
   environment = await preflight(config, undefined, runtime);
   if (seed) execFileSync('/bin/sh', ['-c', `cp -r "${seed}/dark/." . && { [ ! -d "${seed}/fixtures" ] || cp -r "${seed}/fixtures" .; } && rm -f setup.sh && DARK="${runtime.binaryPath}" sh "${seed}/dark/setup.sh"`],
     { cwd: workspace, env: { ...process.env, ...runtime.env }, stdio: ['ignore', 'pipe', 'pipe'] });

@@ -46,6 +46,15 @@ export function parseUsage(agent, events) {
 }
 
 export function launchArgs(agent, model, dirs = [], sites = []) {
+  if (agent.startsWith('dark-agent')) {
+    // the Dark binary itself is the agent; the prompt arrives on stdin, as for claude
+    const allow = ['file-write', 'process', ...(sites.length ? ['http'] : [])].join(',');
+    const args = ['agent', '--output-format', 'stream-json', '--allow', allow, '--merge'];
+    if (agent === 'dark-agent-generic') args.push('--tools', 'generic');
+    if (agent === 'dark-agent-attempts') args.push('--attempts', '3');
+    if (model) args.push('--model', model);
+    return args;
+  }
   if (agent === 'codex') {
     const args = ['exec'];
     args.push('--json', '--skip-git-repo-check');
