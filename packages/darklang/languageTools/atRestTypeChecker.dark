@@ -717,6 +717,10 @@ let contextToStringWith(
     | _ -> $"Needs an implementation of {traitName}"
 
 
+let inParens(text: String): String =
+  if text == "" then "" else " (" + text + ")"
+
+
 /// What to write when an operator gets an integer and a Float64, since Dark never converts one
 /// to the other on its own: "Write the number with a decimal point, as `5.0`, or convert with
 /// `Stdlib.Int64.toFloat64(n)`." Empty for any other pair of types. A run that meets the pair says
@@ -744,8 +748,7 @@ let mixedNumbersHint(left: String, right: String): String =
       Option.None
 
   match integer with
-  | Some(name) ->
-    $"Write the number with a decimal point, as `5.0`, or convert with `Stdlib.{name}.toFloat64(n)`."
+  | Some(name) -> Fixes.typeHint(Fixes.TypeSlip.MixedNumbers, [ name ])
   | None -> ""
 
 
@@ -776,7 +779,7 @@ let stringExpectedHint(expected: StaticType, actual: StaticType): String =
     | _ -> false
 
   match expected with
-  | TString when convertible -> " (wrap it in `Stdlib.display`)"
+  | TString when convertible -> inParens(Fixes.typeHint(Fixes.TypeSlip.NotAString, []))
   | _ -> ""
 
 
@@ -790,7 +793,7 @@ let tupleParameterHint(expected: StaticType, actual: StaticType): String =
     if count == 2 + Stdlib.List.length(rest) && count <= Stdlib.List.length(names) then
       let noun = if count == 2 then "pair" else "tuple"
       let pattern = Stdlib.String.join(Stdlib.List.take(names, count), ", ")
-      $" (a {noun} is one argument; write `fun (({pattern})) -> ...`)"
+      inParens(Fixes.typeHint(Fixes.TypeSlip.TupleParameters, [ noun, pattern ]))
     else
       ""
   | _ -> ""
@@ -808,7 +811,7 @@ let appendListHint(callee: String, expected: StaticType, actual: StaticType): St
 
   match actual with
   | TList(element) when isAppend && element == expected ->
-    " (`append` adds one item; to join two lists use `Stdlib.List.concat(a, b)` or `[...a, ...b]`)"
+    inParens(Fixes.typeHint(Fixes.TypeSlip.AppendList, []))
   | _ -> ""
 
 
@@ -835,8 +838,8 @@ let unwrapHint(
     | _ -> kind(expected)
 
   match kind(actual), wanted with
-  | "Result", "" -> " (that is a Result: match `Ok(x)` and `Error(e)` to get at the value)"
-  | "Option", "" -> " (that is an Option: match `Some(x)` and `None` to get at the value)"
+  | "Result", "" -> inParens(Fixes.typeHint(Fixes.TypeSlip.ResultValue, []))
+  | "Option", "" -> inParens(Fixes.typeHint(Fixes.TypeSlip.OptionValue, []))
   | _ -> ""
 
 

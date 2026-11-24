@@ -323,7 +323,9 @@ module ExecutionError =
   let nameSuggestion(branchId: Uuid, rte: LanguageTools.RuntimeTypes.RuntimeError.Error): String =
     match rte with
     | ParseTimeNameResolution(originalName, NotFound) ->
-      match Packages.Errors.didYouMeanText(Packages.Errors.didYouMean(branchId, originalName)) with
+      match Packages.Errors.notFoundHint(
+              originalName,
+              Packages.Errors.didYouMean(branchId, originalName)) with
       | "" -> ""
       | text -> ". " + text
     | _ -> ""

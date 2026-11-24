@@ -1,0 +1,166 @@
+/// Every row of <fn Darklang.LanguageTools.Fixes.table> runs its own example.
+module Darklang.LanguageTools.Fixes.Tests
+
+type Fix = LanguageTools.Fixes.Fix
+
+
+let ops(
+  source: String)
+  : Stdlib.Result.Result<List<LanguageTools.ProgramTypes.PackageOp>, String> =
+  LanguageTools.Parser.Parse.packageSourceToOps(
+    SCM.Branch.mainBranchId,
+    "Tests",
+    [ "Fixes" ],
+    source)
+
+
+/// Every checker diagnostic in <param ops>, as the CLI prints it.
+let issues(ops: List<LanguageTools.ProgramTypes.PackageOp>): List<String> =
+  (LanguageTools.AtRestTypeChecker.checkPackageOps(ops)).items
+  |> Stdlib.List.map(fun i -> i.diagnostics)
+  |> Stdlib.List.flatten
+  |> Stdlib.List.map(fun issue ->
+    LanguageTools.AtRestTypeChecker.issueToStringWith(
+      (fun h ->
+         Cli.Packages.AtRestCheck.customTypeName(SCM.Branch.mainBranchId, h)),
+      issue))
+
+
+/// The row's example as a whole declaration: names, operators and words are expressions.
+let source(fix: Fix, code: String): String =
+  match fix.slip with
+  | TypeMismatch(_) | Syntax(_) -> code
+  | _ -> "val example = " + code
+
+
+/// The name <param before> fails on, as written.
+let unresolved(error: String): List<String> =
+  Stdlib.String.dropFirst(error, Stdlib.String.length("unresolved: "))
+  |> Stdlib.String.split(", ")
+  |> Stdlib.List.head
+  |> Stdlib.Option.withDefault("")
+  |> Stdlib.String.split(".")
+
+
+/// What the not-found line says for <param written>.
+let notFound(written: List<String>): (List<String> * String) =
+  let names = Cli.Packages.Errors.didYouMean(SCM.Branch.mainBranchId, written)
+  (names, Cli.Packages.Errors.notFoundHint(written, names))
+
+
+/// Why <param fix>'s `before` is not the slip it names: it must fail the way the row says, and the
+/// not-found hint for a name must be the row's.
+let beforeProblem(fix: Fix): Option<String> =
+  match fix.slip, ops(source(fix, fix.before)) with
+  | Syntax(_), Error(e)
+    when Stdlib.Bool.not(Stdlib.String.startsWith(e, "unresolved: ")) ->
+    Option.None
+  | TypeMismatch(_), Ok(found) ->
+    let expected =
+      Stdlib.String.split(fix.write, "{")
+      |> Stdlib.List.head
+      |> Stdlib.Option.withDefault(fix.write)
+
+    if
+      Stdlib.List.any(issues(found), fun i ->
+        Stdlib.String.contains(i, expected))
+    then
+      Option.None
+    else
+      Option.Some($"no hint: {Stdlib.inspect(issues(found))}")
+  | TypeMismatch(_), Error(e) -> Option.Some(e)
+  | Syntax(_), result -> Option.Some($"parses: {Stdlib.inspect(result)}")
+  | _, Error(e) when Stdlib.String.startsWith(e, "unresolved: ") ->
+    let (names, hint) = notFound(unresolved(e))
+    let ok =
+      match fix.slip, fix.safety with
+      | _, Explain -> hint == fix.write
+      | Word(_), _ -> Stdlib.String.contains(hint, "." + fix.write + "`")
+      | _ -> Stdlib.List.head(names) == Option.Some(fix.write)
+
+    if ok then Option.None else Option.Some($"hint is: {hint}")
+  | _, result -> Option.Some($"resolves: {Stdlib.inspect(result)}")
+
+
+/// Why <param fix>'s `after` is not good Dark: it must parse, name what exists and check.
+let afterProblem(fix: Fix): Option<String> =
+  match ops(source(fix, fix.after)) with
+  | Error(e) -> Option.Some(e)
+  | Ok(found) ->
+    match issues(found) with
+    | [] -> Option.None
+    | found -> Option.Some(Stdlib.String.join(found, "; "))
+
+
+test everyRowsExampleRuns =
+  LanguageTools.Fixes.table
+  |> Stdlib.List.map(fun fix ->
+    [ beforeProblem(fix) |> Stdlib.Option.map(fun p -> $"{fix.before}: {p}")
+      afterProblem(fix) |> Stdlib.Option.map(fun p -> $"{fix.after}: {p}") ])
+  |> Stdlib.List.flatten
+  |> Stdlib.Option.values
+  |> Stdlib.Test.equal([])
+
+
+let moreCode(parts: List<String>): List<String> =
+  match parts with
+  | [sep, code, ...rest] when sep == " or " || sep == ", " ->
+    Stdlib.List.prepend(moreCode(rest), code)
+  | _ -> []
+
+
+/// The code after `there is no` in <param piece>: `` `::` or `@` `` gives both.
+let codeAfter(piece: String): List<String> =
+  match Stdlib.String.split(piece, "`") with
+  | ["", code, ...rest] -> Stdlib.List.prepend(moreCode(rest), code)
+  | _ -> []
+
+
+/// Whether a row recognizes <param code>: a name, or what a syntax row's `before` writes.
+let inTable(code: String): Bool =
+  let named = LanguageTools.Fixes.forName(Stdlib.String.split(code, "."))
+  let written =
+    LanguageTools.Fixes.table
+    |> Stdlib.List.any(fun fix ->
+      match fix.slip with
+      | Syntax(_) -> Stdlib.String.contains(fix.before, " " + code + " ")
+      | _ -> false)
+
+  written || Stdlib.Bool.not(Stdlib.List.isEmpty(named))
+
+
+// each "there is no `...`" in `docs for-ai` names a slip the table has a row for
+test docsSlipsAreInTheTable =
+  let parts =
+    match Cli.Docs.Command.Topics.findTopic("for-ai") with
+    | Some(topic) ->
+      topic.subtopics
+      |> Stdlib.List.map(fun sub ->
+        let content = sub.content
+        content())
+    | None -> []
+
+  let named =
+    Stdlib.List.prepend(parts, Cli.Docs.ForAI.content())
+    |> Stdlib.List.map(fun text ->
+      Stdlib.String.split(text, "here is no ")
+      |> Stdlib.List.drop(1)
+      |> Stdlib.List.map(codeAfter)
+      |> Stdlib.List.flatten)
+    |> Stdlib.List.flatten
+
+  Stdlib.Test.all(
+    [ Stdlib.Test.expect(
+        Stdlib.List.length(named) >= 3,
+        $"found {Stdlib.inspect(named)}")
+
+      named
+      |> Stdlib.List.filter(fun c -> Stdlib.Bool.not(inTable(c)))
+      |> Stdlib.Test.equal([]) ])
+
+
+test fillsPlaceholders =
+  LanguageTools.Fixes.typeHint(
+    LanguageTools.Fixes.TypeSlip.TupleParameters,
+    [ "pair", "a, b" ])
+  |> Stdlib.Test.equal("a pair is one argument; write `fun ((a, b)) -> ...`")

@@ -1,0 +1,619 @@
+/// The slips code makes and the Dark form for each: a name another language uses, a function
+/// name for an operator, a word search reads as another, a type mismatch the checker explains, a
+/// syntax slip the parser refuses. CLI errors, search, the checker and the editor read this table.
+module Darklang.LanguageTools.Fixes
+
+/// Whether a rewrite can be made without asking.
+type Safety =
+  /// one candidate, with the same type and behaviour
+  | Apply
+  /// a choice, or a different type
+  | Suggest
+  /// no direct Dark form: `write` says what to do instead
+  | Explain
+
+
+/// A type mismatch the checker explains.
+type TypeSlip =
+  | NotAString
+  | TupleParameters
+  | ResultValue
+  | OptionValue
+  | AppendList
+  | MixedNumbers
+
+
+/// A syntax slip the parser refuses.
+type SyntaxSlip =
+  | Semicolon
+  | DictOneTypeArgument
+  | SpacedArguments
+  | LambdaAnnotation
+  | LongSuffix
+  | CaseWithSpace
+  | DictEntry
+  | LetValue
+  | LetRec
+  | ConsOperator
+  | AppendOperator
+  | ConcatOperator
+
+
+/// What a row recognizes. Names compare ignoring case.
+type Slip =
+  /// names in one module: `Char.toString`
+  | Name(moduleName: String, names: List<String>)
+  /// names in any module: `Int64.toString`, `Float64.toString`
+  | AnyModule(names: List<String>)
+  /// a function name for an operator, in a module whose type implements the trait's method
+  | Operator(names: List<String>, traitName: String, method: String)
+  /// words search and near-name matching read as `write`: `size` is `length`
+  | Word(words: List<String>)
+  | TypeMismatch(TypeSlip)
+  | Syntax(SyntaxSlip)
+
+
+type Fix =
+  { slip: Slip
+    /// the Dark form; `{0}`, `{1}` are filled in where it is shown
+    write: String
+    safety: Safety
+    /// code with the slip, and the same code written in the Dark form: an expression for a
+    /// name, operator or word, a whole declaration for a type or syntax slip
+    before: String
+    after: String }
+
+
+let name(
+  moduleName: String,
+  names: List<String>,
+  write: String,
+  safety: Safety,
+  before: String,
+  after: String)
+  : Fix =
+  Fix
+    { slip = Slip.Name(moduleName, names)
+      write = write
+      safety = safety
+      before = before
+      after = after }
+
+
+let operator(
+  names: List<String>,
+  traitName: String,
+  method: String,
+  write: String,
+  before: String,
+  after: String)
+  : Fix =
+  Fix
+    { slip = Slip.Operator(names, traitName, method)
+      write = write
+      safety = Safety.Suggest
+      before = before
+      after = after }
+
+
+let word(words: List<String>, write: String, before: String, after: String): Fix =
+  Fix
+    { slip = Slip.Word(words)
+      write = write
+      safety = Safety.Suggest
+      before = before
+      after = after }
+
+
+let typeMismatch(
+  slip: TypeSlip,
+  write: String,
+  safety: Safety,
+  before: String,
+  after: String)
+  : Fix =
+  Fix
+    { slip = Slip.TypeMismatch(slip)
+      write = write
+      safety = safety
+      before = before
+      after = after }
+
+
+let syntax(slip: SyntaxSlip, write: String, safety: Safety, before: String, after: String): Fix =
+  Fix { slip = Slip.Syntax(slip), write = write, safety = safety, before = before, after = after }
+
+
+val table =
+  [ name(
+      "String",
+      [ "fromBytes", "fromUtf8" ],
+      "Stdlib.Utf8.decode",
+      Safety.Suggest,
+      "Stdlib.String.fromBytes(Stdlib.Utf8.encode(\"hi\"))",
+      "Stdlib.Utf8.decode(Stdlib.Utf8.encode(\"hi\"))")
+
+    name(
+      "Bytes",
+      [ "toString" ],
+      "Stdlib.Utf8.decode",
+      Safety.Suggest,
+      "Stdlib.Bytes.toString(Stdlib.Utf8.encode(\"hi\"))",
+      "Stdlib.Utf8.decode(Stdlib.Utf8.encode(\"hi\"))")
+
+    name(
+      "String",
+      [ "toBytes", "toUtf8" ],
+      "Stdlib.Utf8.encode",
+      Safety.Apply,
+      "Stdlib.String.toBytes(\"hi\")",
+      "Stdlib.Utf8.encode(\"hi\")")
+
+    name(
+      "Bytes",
+      [ "fromString" ],
+      "Stdlib.Utf8.encode",
+      Safety.Apply,
+      "Stdlib.Bytes.fromString(\"hi\")",
+      "Stdlib.Utf8.encode(\"hi\")")
+
+    name(
+      "Bytes",
+      [ "hexEncode", "toHex" ],
+      "Stdlib.Base16.encode",
+      Safety.Apply,
+      "Stdlib.Bytes.hexEncode(Stdlib.Utf8.encode(\"hi\"))",
+      "Stdlib.Base16.encode(Stdlib.Utf8.encode(\"hi\"))")
+
+    name(
+      "Char",
+      [ "toString" ],
+      "Stdlib.String.fromChar",
+      Safety.Apply,
+      "Stdlib.Char.toString('a')",
+      "Stdlib.String.fromChar('a')")
+
+    name(
+      "Char",
+      [ "fromInt", "fromInt64", "fromUInt8" ],
+      "Stdlib.Char.fromCodepoint",
+      Safety.Suggest,
+      "Stdlib.Char.fromInt(97)",
+      "Stdlib.Char.fromCodepoint(97u32)")
+
+    name(
+      "Float64",
+      [ "toFixed" ],
+      "Stdlib.Float64.roundTo",
+      Safety.Suggest,
+      "Stdlib.Float64.toFixed(2.345, 2)",
+      "Stdlib.Float64.roundTo(2.345, 2)")
+
+    name(
+      "List",
+      [ "flatMap", "concatMap", "collect", "bind", "selectMany", "chain" ],
+      "Stdlib.List.flatten(Stdlib.List.map(xs, f))",
+      Safety.Suggest,
+      "Stdlib.List.flatMap([ 1, 2 ], fun x -> [ x, x ])",
+      "Stdlib.List.flatten(Stdlib.List.map([ 1, 2 ], fun x -> [ x, x ]))")
+
+    name(
+      "List",
+      [ "choose", "mapMaybe", "compactMap" ],
+      "Stdlib.List.filterMap",
+      Safety.Apply,
+      "Stdlib.List.choose([ 1, 2 ], fun x -> Stdlib.Option.Option.Some(x))",
+      "Stdlib.List.filterMap([ 1, 2 ], fun x -> Stdlib.Option.Option.Some(x))")
+
+    name(
+      "List",
+      [ "nth", "item", "at", "elementAt", "get" ],
+      "Stdlib.List.getAt",
+      Safety.Suggest,
+      "Stdlib.List.nth([ 1, 2 ], 0)",
+      "Stdlib.List.getAt([ 1, 2 ], 0)")
+
+    name(
+      "List",
+      [ "reduce", "foldl", "foldLeft", "inject", "aggregate" ],
+      "Stdlib.List.fold",
+      Safety.Suggest,
+      "Stdlib.List.reduce([ 1, 2 ], fun (a, b) -> a + b)",
+      "Stdlib.List.fold([ 1, 2 ], 0, fun (a, b) -> a + b)")
+
+    name(
+      "String",
+      [ "toInt", "parseInt" ],
+      "Stdlib.Int64.parse",
+      Safety.Suggest,
+      "Stdlib.String.toInt(\"5\")",
+      "Stdlib.Int64.parse(\"5\")")
+
+    name(
+      "String",
+      [ "toFloat", "parseFloat" ],
+      "Stdlib.Float64.parse",
+      Safety.Suggest,
+      "Stdlib.String.toFloat(\"1.5\")",
+      "Stdlib.Float64.parse(\"1.5\")")
+
+    name(
+      "String",
+      [ "substring", "substr" ],
+      "Stdlib.String.slice",
+      Safety.Suggest,
+      "Stdlib.String.substring(\"hello\", 1, 3)",
+      "Stdlib.String.slice(\"hello\", 1, 3)")
+
+    name(
+      "Option",
+      [ "unwrap", "getUnsafe", "get" ],
+      "Dark has no function that takes the value out of an Option: match `Some(x)` and `None`, or use `Stdlib.Option.withDefault`.",
+      Safety.Explain,
+      "Stdlib.Option.unwrap(Stdlib.Option.Option.Some(1))",
+      "Stdlib.Option.withDefault(Stdlib.Option.Option.Some(1), 0)")
+
+    name(
+      "Result",
+      [ "unwrap", "getUnsafe", "get" ],
+      "Dark has no function that takes the value out of a Result: match `Ok(x)` and `Error(e)`, or use `Stdlib.Result.withDefault`.",
+      Safety.Explain,
+      "Stdlib.Result.unwrap(Stdlib.Int64.parse(\"5\"))",
+      "Stdlib.Result.withDefault(Stdlib.Int64.parse(\"5\"), 0)")
+
+    Fix
+      { slip = Slip.AnyModule([ "toString" ])
+        write = "Stdlib.display"
+        safety = Safety.Apply
+        before = "Stdlib.Int64.toString(5)"
+        after = "Stdlib.display(5)" }
+
+    Fix
+      { slip = Slip.AnyModule([ "toRepr", "repr" ])
+        write = "Stdlib.inspect"
+        safety = Safety.Apply
+        before = "Stdlib.Int64.toRepr(5)"
+        after = "Stdlib.inspect(5)" }
+
+    Fix
+      { slip = Slip.AnyModule([ "absoluteValue", "absolute" ])
+        write = "Stdlib.abs"
+        safety = Safety.Apply
+        before = "Stdlib.Int64.absoluteValue(-5)"
+        after = "Stdlib.abs(-5)" }
+
+    operator([ "add", "plus" ], "Add", "add", "a + b", "Stdlib.Int64.add(1, 2)", "1 + 2")
+
+    operator(
+      [ "sub", "subtract", "minus" ],
+      "Subtract",
+      "subtract",
+      "a - b",
+      "Stdlib.Int64.subtract(3, 2)",
+      "3 - 2")
+
+    operator(
+      [ "mul", "multiply", "times" ],
+      "Multiply",
+      "multiply",
+      "a * b",
+      "Stdlib.Int64.multiply(3, 2)",
+      "3 * 2")
+
+    operator([ "div", "divide" ], "Divide", "divide", "a / b", "Stdlib.Int64.divide(6, 3)", "6 / 3")
+
+    operator([ "mod", "modulo" ], "Modulo", "modulo", "a % b", "Stdlib.Int64.mod(7, 3)", "7 % 3")
+
+    operator(
+      [ "pow", "power" ],
+      "Power",
+      "power",
+      "a ** b",
+      "Stdlib.Float64.pow(2.0, 3.0)",
+      "2.0 ** 3.0")
+
+    operator([ "neg", "negate" ], "Negate", "negate", "-a", "Stdlib.Int64.negate(5)", "-5")
+
+    operator(
+      [ "shiftLeft" ],
+      "ShiftLeft",
+      "shiftLeft",
+      "a << b",
+      "Stdlib.Int64.shiftLeft(1, 3)",
+      "1 << 3")
+
+    operator(
+      [ "shiftRight" ],
+      "ShiftRight",
+      "shiftRight",
+      "a >> b",
+      "Stdlib.Int64.shiftRight(8, 3)",
+      "8 >> 3")
+
+    operator(
+      [ "bitwiseAnd" ],
+      "BitwiseAnd",
+      "bitwiseAnd",
+      "a & b",
+      "Stdlib.Int64.bitwiseAnd(6, 3)",
+      "6 & 3")
+
+    operator(
+      [ "bitwiseOr" ],
+      "BitwiseOr",
+      "bitwiseOr",
+      "a | b",
+      "Stdlib.Int64.bitwiseOr(6, 3)",
+      "6 | 3")
+
+    operator(
+      [ "bitwiseXor", "xor" ],
+      "BitwiseXor",
+      "bitwiseXor",
+      "a ^ b",
+      "Stdlib.Int64.xor(6, 3)",
+      "6 ^ 3")
+
+    operator([ "bitwiseNot" ], "BitwiseNot", "bitwiseNot", "~a", "Stdlib.Int64.bitwiseNot(6)", "~6")
+
+    operator([ "lessThan" ], "Compare", "lessThan", "a < b", "Stdlib.Int64.lessThan(1, 2)", "1 < 2")
+
+    operator(
+      [ "greaterThan" ],
+      "Compare",
+      "greaterThan",
+      "a > b",
+      "Stdlib.Int64.greaterThan(1, 2)",
+      "1 > 2")
+
+    word(
+      [ "size", "count", "len" ],
+      "length",
+      "Stdlib.List.size([ 1 ])",
+      "Stdlib.List.length([ 1 ])")
+
+    word(
+      [ "concat", "concatenate" ],
+      "join",
+      "Stdlib.String.concat([ \"a\", \"b\" ], \"\")",
+      "Stdlib.String.join([ \"a\", \"b\" ], \"\")")
+
+    word(
+      [ "concat", "concatenate" ],
+      "append",
+      "Stdlib.String.concat(\"a\", \"b\")",
+      "Stdlib.String.append(\"a\", \"b\")")
+
+    word(
+      [ "replace" ],
+      "replaceAll",
+      "Stdlib.String.replace(\"aa\", \"a\", \"b\")",
+      "Stdlib.String.replaceAll(\"aa\", \"a\", \"b\")")
+
+    word(
+      [ "member", "mem", "elem", "includes" ],
+      "contains",
+      "Stdlib.List.member([ 1 ], 1)",
+      "Stdlib.List.contains([ 1 ], 1)")
+
+    typeMismatch(
+      TypeSlip.NotAString,
+      "wrap it in `Stdlib.display`",
+      Safety.Suggest,
+      "let f(n: Int64): String = n",
+      "let f(n: Int64): String = Stdlib.display(n)")
+
+    typeMismatch(
+      TypeSlip.TupleParameters,
+      "a {0} is one argument; write `fun (({1})) -> ...`",
+      Safety.Apply,
+      "let f(xs: List<(Int64 * Int64)>): List<Int64> = Stdlib.List.map(xs, fun (a, b) -> a + b)",
+      "let f(xs: List<(Int64 * Int64)>): List<Int64> = Stdlib.List.map(xs, fun ((a, b)) -> a + b)")
+
+    typeMismatch(
+      TypeSlip.ResultValue,
+      "that is a Result: match `Ok(x)` and `Error(e)` to get at the value",
+      Safety.Explain,
+      "let f(s: String): Int64 = Stdlib.Int64.parse(s)",
+      "let f(s: String): Int64 =\n  match Stdlib.Int64.parse(s) with\n  | Ok(n) -> n\n  | Error(_) -> 0")
+
+    typeMismatch(
+      TypeSlip.OptionValue,
+      "that is an Option: match `Some(x)` and `None` to get at the value",
+      Safety.Explain,
+      "let f(xs: List<Int64>): Int64 = Stdlib.List.head(xs)",
+      "let f(xs: List<Int64>): Int64 =\n  match Stdlib.List.head(xs) with\n  | Some(x) -> x\n  | None -> 0")
+
+    typeMismatch(
+      TypeSlip.AppendList,
+      "`append` adds one item; to join two lists use `Stdlib.List.concat(a, b)` or `[...a, ...b]`",
+      Safety.Suggest,
+      "let f(xs: List<Int64>): List<Int64> = Stdlib.List.append(xs, [ 1 ])",
+      "let f(xs: List<Int64>): List<Int64> = Stdlib.List.concat(xs, [ 1 ])")
+
+    typeMismatch(
+      TypeSlip.MixedNumbers,
+      "Write the number with a decimal point, as `5.0`, or convert with `Stdlib.{0}.toFloat64(n)`.",
+      Safety.Suggest,
+      "let f(n: Int64): Float64 = n * 1.5",
+      "let f(n: Int64): Float64 = Stdlib.Int64.toFloat64(n) * 1.5")
+
+    syntax(
+      SyntaxSlip.Semicolon,
+      "`,` between items and fields",
+      Safety.Apply,
+      "val xs = [ 1; 2; 3 ]",
+      "val xs = [ 1, 2, 3 ]")
+
+    syntax(
+      SyntaxSlip.DictOneTypeArgument,
+      "`Dict<String, V>`",
+      Safety.Suggest,
+      "let f(d: Dict<Int64>): Int64 = 0",
+      "let f(d: Dict<String, Int64>): Int64 = 0")
+
+    syntax(
+      SyntaxSlip.SpacedArguments,
+      "`f(a, b)`",
+      Safety.Suggest,
+      "let f(s: String): String = Stdlib.String.trim s",
+      "let f(s: String): String = Stdlib.String.trim(s)")
+
+    syntax(
+      SyntaxSlip.LambdaAnnotation,
+      "`fun x ->`",
+      Safety.Apply,
+      "let f(xs: List<Int64>): List<Int64> = Stdlib.List.map(xs, fun (x: Int64) -> x + 1)",
+      "let f(xs: List<Int64>): List<Int64> = Stdlib.List.map(xs, fun x -> x + 1)")
+
+    syntax(SyntaxSlip.LongSuffix, "`200`", Safety.Apply, "val n = 200L", "val n = 200")
+
+    syntax(
+      SyntaxSlip.CaseWithSpace,
+      "`Ok(x)`",
+      Safety.Apply,
+      "let f(x: Int64): Stdlib.Option.Option<Int64> = Stdlib.Option.Option.Some x",
+      "let f(x: Int64): Stdlib.Option.Option<Int64> = Stdlib.Option.Option.Some(x)")
+
+    syntax(
+      SyntaxSlip.DictEntry,
+      "`Dict { \"a\": 1 }`",
+      Safety.Suggest,
+      "val d = Dict { a = 1 }",
+      "val d = Dict { \"a\": 1 }")
+
+    syntax(SyntaxSlip.LetValue, "`val`", Safety.Apply, "let x = 5", "val x = 5")
+
+    syntax(
+      SyntaxSlip.LetRec,
+      "a function calls itself by name, with no `rec`",
+      Safety.Apply,
+      "let rec f(n: Int64): Int64 = if n > 0 then f(n - 1) else n",
+      "let f(n: Int64): Int64 = if n > 0 then f(n - 1) else n")
+
+    syntax(
+      SyntaxSlip.ConsOperator,
+      "`[x, ...xs]`",
+      Safety.Apply,
+      "let f(xs: List<Int64>): List<Int64> = 0 :: xs",
+      "let f(xs: List<Int64>): List<Int64> = [ 0, ...xs ]")
+
+    syntax(
+      SyntaxSlip.AppendOperator,
+      "`[...a, ...b]`",
+      Safety.Apply,
+      "let f(xs: List<Int64>): List<Int64> = xs @ xs",
+      "let f(xs: List<Int64>): List<Int64> = [ ...xs, ...xs ]")
+
+    syntax(
+      SyntaxSlip.ConcatOperator,
+      "`a + b`",
+      Safety.Apply,
+      "let f(s: String): String = s ++ \"!\"",
+      "let f(s: String): String = s + \"!\"") ]
+
+
+let named(names: List<String>, written: String): Bool =
+  let lower = Stdlib.String.toLowercase(written)
+  Stdlib.List.any(names, fun n -> Stdlib.String.toLowercase(n) == lower)
+
+
+/// The rows for a name that did not resolve, as written (`[Stdlib, Int64, toString]`): the ones
+/// for its module first, then any module's, then the operator it names.
+let forName(written: List<String>): List<Fix> =
+  match Stdlib.List.reverse(written) with
+  | [] -> []
+  | [last, ...modules] ->
+    let moduleName = Stdlib.List.head(modules) |> Stdlib.Option.map(Stdlib.String.toLowercase)
+    table
+    |> Stdlib.List.filter(fun fix ->
+      match fix.slip with
+      | Name(m, names) ->
+        Option.Some(Stdlib.String.toLowercase(m)) == moduleName && named(names, last)
+      | AnyModule(names) -> named(names, last)
+      | Operator(names, _, _) -> named(names, last)
+      | _ -> false)
+
+
+/// Why <param written> does not exist, when the table says there is no such function.
+let explanation(written: List<String>): Option<String> =
+  forName(written)
+  |> Stdlib.List.findFirst(fun fix -> fix.safety == Safety.Explain)
+  |> Stdlib.Option.map(fun fix -> fix.write)
+
+
+/// The operator a function name stands for, as (its trait, the trait's method, how it is
+/// written): `mod` and `modulo` are `a % b`.
+let operatorOf(written: String): Option<(String * String * String)> =
+  table
+  |> Stdlib.List.filterMap(fun fix ->
+    match fix.slip with
+    | Operator(names, traitName, method) when named(names, written) ->
+      Option.Some((traitName, method, fix.write))
+    | _ -> Option.None)
+  |> Stdlib.List.head
+
+
+/// The Stdlib name for a job any module's name stands for: `toString` is `Stdlib.display`.
+let anyModuleName(written: String): Option<String> =
+  table
+  |> Stdlib.List.filterMap(fun fix ->
+    match fix.slip with
+    | AnyModule(names) when named(names, written) -> Option.Some(fix.write)
+    | _ -> Option.None)
+  |> Stdlib.List.head
+
+
+/// The names search and near-name matching also read <param word> as: `size` is `length`, and
+/// `toString` is `display`.
+let synonyms(word: String): List<String> =
+  table
+  |> Stdlib.List.filterMap(fun fix ->
+    match fix.slip with
+    | Word(words) when named(words, word) -> Option.Some(fix.write)
+    | AnyModule(names) when named(names, word) ->
+      Stdlib.String.split(fix.write, ".") |> Stdlib.List.last
+    | _ -> Option.None)
+
+
+/// The conversion written from the other side: `UInt8.toInt64` is `Int64.fromUInt8`, and
+/// `Int64.fromUInt8` is `UInt8.toInt64`. Each as (the module it is in, its name).
+let conversion(modules: List<String>, written: String): Option<(List<String> * String)> =
+  match Stdlib.List.reverse(modules) with
+  | [] -> Option.None
+  | [from, ...outerReversed] ->
+    let outer = Stdlib.List.reverse(outerReversed)
+    let other = fun prefix ->
+      let rest = Stdlib.String.dropFirst(written, Stdlib.String.length(prefix))
+      match Stdlib.String.toList(rest) with
+      | [c, ...] when Stdlib.String.startsWith(written, prefix) && Stdlib.Char.isUppercase(c) ->
+        Option.Some(rest)
+      | _ -> Option.None
+
+    match other("to"), other("from") with
+    | Some(target), _ -> Option.Some((Stdlib.List.append(outer, target), "from" + from))
+    | _, Some(source) -> Option.Some((Stdlib.List.append(outer, source), "to" + from))
+    | _ -> Option.None
+
+
+let forTypeMismatch(slip: TypeSlip): Option<Fix> =
+  table |> Stdlib.List.findFirst(fun fix -> fix.slip == Slip.TypeMismatch(slip))
+
+
+let forSyntax(slip: SyntaxSlip): Option<Fix> =
+  table |> Stdlib.List.findFirst(fun fix -> fix.slip == Slip.Syntax(slip))
+
+
+/// <param template> with `{0}`, `{1}` ... replaced by <param args>.
+let fill(template: String, args: List<String>): String =
+  args
+  |> Stdlib.List.indexedMap(fun(i, arg) -> (i, arg))
+  |> Stdlib.List.fold(template, fun(acc, (i, arg)) ->
+    Stdlib.String.replaceAll(acc, "{" + Stdlib.display(i) + "}", arg))
+
+
+/// What the checker says for <param slip>, filled with <param args>.
+let typeHint(slip: TypeSlip, args: List<String>): String =
+  match forTypeMismatch(slip) with
+  | Some(fix) -> fill(fix.write, args)
+  | None -> ""

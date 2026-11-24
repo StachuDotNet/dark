@@ -121,25 +121,9 @@ let queryWords(query: String): List<String> =
 
 // ---- Synonyms ----
 //
-// Words for an operation that Stdlib names another way: `size` is `length`, `replace`
-// is `replaceAll`. Each answer is searched as well as what was typed, so a query that
-// already finds the name loses nothing.
-// What a word may also mean: the name Stdlib gives it.
-let wordSynonyms(word: String): List<String> =
-  match Stdlib.String.toLowercase(word) with
-  | "size" -> [ "length" ]
-  | "count" -> [ "length" ]
-  | "len" -> [ "length" ]
-  | "concat" -> [ "join", "append" ]
-  | "concatenate" -> [ "join", "append" ]
-  | "replace" -> [ "replaceAll" ]
-  | "member" | "mem" | "elem" | "includes" -> [ "contains" ]
-  | "tostring" -> [ "display" ]
-  | "torepr" -> [ "inspect" ]
-  | "repr" -> [ "inspect" ]
-  | _ -> []
-
-
+// Words for an operation that Stdlib names another way come from <fn LanguageTools.Fixes.synonyms>:
+// `size` is `length`. Each answer is searched as well as what was typed, so a query that already
+// finds the name loses nothing.
 // What a whole query may also mean, for words that mean something only together.
 let phraseSynonyms(words: List<String>): List<String> =
   match words with
@@ -183,7 +167,7 @@ let synonymQueries(query: String): List<(String * String)> =
       | [] ->
         words
         |> Stdlib.List.map(fun word ->
-          wordSynonyms(word)
+          LanguageTools.Fixes.synonyms(word)
           |> Stdlib.List.map(fun target ->
             let swapped = words |> Stdlib.List.map(fun w -> if w == word then target else w)
             (Stdlib.String.join(swapped, " "), target)))
