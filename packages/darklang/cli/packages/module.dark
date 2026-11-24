@@ -124,6 +124,44 @@ let leftOver(branchId: Uuid, home: List<String>, defined: List<String>): List<(S
   |> Stdlib.List.unique
 
 
+/// Where the expressions a script runs are, when <param source> is a script: `module` saves its
+/// declarations and leaves these out.
+let scriptExpressions(source: String): List<LanguageTools.Parser.Range> =
+  match LanguageTools.Parser.Parse.parse(LanguageTools.Parser.FileKind.Script, source) with
+  | Some(SourceFile(file)), [] ->
+    file.exprsToEval |> Stdlib.List.map(LanguageTools.WrittenTypes.Expr.range)
+  | _ -> []
+
+
+/// Name each expression <param leftOut> a save left out of <param source>, and how to run it.
+let printLeftOut(
+  source: String,
+  leftOut: List<LanguageTools.Parser.Range>,
+  home: String,
+  definedNames: List<String>)
+  : Unit =
+  match leftOut with
+  | [] -> ()
+  | _ ->
+    let lines = Stdlib.String.split(source, "\n")
+    leftOut
+    |> Stdlib.List.iter(fun range ->
+      let text =
+        Stdlib.List.getAt(lines, range.start.row)
+        |> Stdlib.Option.withDefault("")
+        |> Stdlib.String.dropFirst(range.start.column)
+        |> Stdlib.String.trim
+
+      let line = Stdlib.display(range.start.row + 1)
+      printHint(
+        $"  left out line {line}, `{Text.oneLineAt(60, text)}`: a module holds declarations, not expressions"))
+
+    if Stdlib.List.contains(definedNames, "main") then
+      printHint($"  run it with `dark run {home}.main`")
+    else
+      printHint("  run the whole file as a script with `dark run <file>` (or `dark run -`)")
+
+
 let save(state: AppState, modulePath: String, source: String, mode: SaveMode): AppState =
   let bundled = mode == SaveMode.DevBuild
   let moduleCommand = mode == SaveMode.Module
@@ -134,6 +172,18 @@ let save(state: AppState, modulePath: String, source: String, mode: SaveMode): A
       LanguageTools.Parser.FileKind.Package
 
   let (parsed, diagnostics) = LanguageTools.Parser.Parse.parse(kind, source)
+  // A script's expressions aren't errors here: the declarations are what's saved.
+  let leftOut =
+    if moduleCommand then
+      scriptExpressions(source)
+      |> Stdlib.List.filter(fun range -> Stdlib.List.any(diagnostics, fun((r, _)) -> r == range))
+    else
+      []
+
+  let diagnostics =
+    diagnostics
+    |> Stdlib.List.filter(fun((range, _)) -> Stdlib.Bool.not(Stdlib.List.contains(leftOut, range)))
+
   let parseFailed = Errors.reportParseErrors(diagnostics)
   let state = if parseFailed then failed(state) else state
   match parsed with
@@ -333,6 +383,7 @@ let save(state: AppState, modulePath: String, source: String, mode: SaveMode): A
             else
               ()
 
+            printLeftOut(source, leftOut, Stdlib.String.join(home, "."), definedNames)
             AtRestCheck.printUnresolvedTraitCalls(authored.unresolvedTraitCalls, 0u64)
 
             // main's at-rest type check reports on every save; keep it ahead of propagation
@@ -484,6 +535,7 @@ let help(_state: AppState): String =
     "as drafts. Other incomplete checks warn and exit 0."
     "Saving again replaces what the source has; names it no longer has stay and"
     "are listed, for `delete`."
+    "A script's expressions are left out and named; its declarations are saved."
     ""
     "Example:"
     "  dark module /Me.Example - <<'EOF'"

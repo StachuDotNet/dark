@@ -25,6 +25,9 @@ A module save reports parse errors and exits 1. Declarations the parser can
 recover and validate are still saved as WIP. Send a corrected declaration with
 `edit` for an existing item, `fn` for a new function, or `module` for any subset.
 
+A script file saves too: `module /Me.Report report.dark` keeps its declarations
+and names the expressions it left out. From then on the store holds them.
+
 For one function, stdin accepts a complete declaration; the shorter signature
 and body fragment remains valid:
 

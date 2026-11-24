@@ -45,25 +45,39 @@ test oneBrokenDeclarationCanBeRetriedOnItsOwn = Instance.withInstance(fun i ->
         "the corrected declaration saves on its own") ]))
 
 
-test expressionAtModuleScopeDoesNotPreventSavingDeclarations =
+test aScriptSavesItsDeclarationsAndNamesWhatItLeftOut =
   Instance.withInstance(fun i ->
-    let path = Instance.home(i) + "/stray.dark"
+    let path = Instance.home(i) + "/script.dark"
     let _ =
       Stdlib.Cli.File.writeAtomic(path, "let ok(): Int64 = 1\n42\n")
       |> Builtin.unwrap
 
     let (code, out) = Instance.ran(i, [ "module", "/Me.Stray", path ])
     Stdlib.Test.all(
-      [ Instance.exitedWith(code, 1, "the invalid standalone expression")
-        Instance.says(
-          out,
-          "Expressions are not allowed in package files",
-          "the original diagnostic")
+      [ Instance.exitedWith(code, 0, "only the expression was left out")
+        Instance.says(out, "Defined 1 declaration", "the valid item was saved")
 
         Instance.says(
           out,
-          "Defined 1 declaration",
-          "the valid item was saved") ]))
+          "left out line 2, `42`: a module holds declarations, not expressions",
+          "the expression it left out")
+
+        Instance.says(out, "`dark run <file>`", "how to run the script")
+        Instance.doesNotSay(out, "Parse error", "no parse error") ]))
+
+
+test aScriptWithMainSaysHowToRunIt = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/main.dark"
+  let source = "let main(args: List<String>): Int64 =\n  0\n\nmain([])\n"
+  let _ = Stdlib.Cli.File.writeAtomic(path, source) |> Builtin.unwrap
+  let (code, out) = Instance.ran(i, [ "module", "/Me.Main", path ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the script")
+      Instance.says(out, "left out line 4, `main([])`", "the call it left out")
+      Instance.says(
+        out,
+        "run it with `dark run Me.Main.main`",
+        "how to run it") ]))
 
 
 test missingDelimiterDoesNotRejectTheNextDeclaration =

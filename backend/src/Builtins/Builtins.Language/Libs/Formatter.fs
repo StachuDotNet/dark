@@ -613,22 +613,36 @@ let private rememberingNames (pm : PT.PackageManager) : PT.PackageManager =
       findTest = remember pm.findTest }
 
 
+/// The top-level declarations of <param source> and the module path they lower under. A script's
+/// expressions come in among its declarations, in source order, and print as written.
+let private topLevel
+  (source : string)
+  : Result<List<string> * List<WT.Declaration>, string> =
+  match P.parseFor Validation.Package source with
+  | Ok validated ->
+    Ok([], (Validation.ValidatedSourceFile.toWrittenTypes validated).declarations)
+  | Error diagnostics ->
+    let notParsing =
+      match diagnostics with
+      | d :: _ -> P.renderDiagnostic source d
+      | [] -> "the file doesn't parse"
+    match P.parseFor Validation.Script source with
+    | Ok validated ->
+      let sf = Validation.ValidatedSourceFile.toWrittenTypes validated
+      let all =
+        sf.declarations @ List.map WT.DExpr sf.exprsToEval
+        |> List.sortBy (fun d ->
+          let r = declRange d
+          (r.start.row, r.start.column))
+      Ok([ "Script" ], all)
+    | Error _ -> Error notParsing
+
+
 let private parse (state : ExecutionState) (source : string) : Result<Dval, string> =
-  match P.parseFor Validation.Package source, Lex.tokenize source with
-  | Error diagnostics, _ ->
-    let message =
-      match P.parseFor Validation.Script source with
-      // A script parses where a file of declarations doesn't: say that, not the first
-      // thing about it that a file of declarations can't have.
-      | Ok _ ->
-        "a script: `format` lays out files of declarations (`module ...` and what is in it), and leaves scripts as they are"
-      | Error _ ->
-        match diagnostics with
-        | d :: _ -> P.renderDiagnostic source d
-        | [] -> "the file doesn't parse"
-    Error message
+  match topLevel source, Lex.tokenize source with
+  | Error message, _ -> Error message
   | _, Error message -> Error message
-  | Ok validated, Ok(tokenList, _) ->
+  | Ok(path, topDecls), Ok(tokenList, _) ->
     let tokens = Array.ofList tokenList
     let lines = source.Split('\n')
     let ctx =
@@ -644,8 +658,7 @@ let private parse (state : ExecutionState) (source : string) : Result<Dval, stri
         tokens = tokens
         ranges = Ranges()
         fnSpans = ResizeArray() }
-    let sf = Validation.ValidatedSourceFile.toWrittenTypes validated
-    let decls = declarations ctx [] sf.declarations
+    let decls = declarations ctx path topDecls
     let locals = localFns ctx source tokens
     // The range of every node a comment could belong to, in the order lowering noted them: a
     // node's parts before it.
@@ -724,11 +737,14 @@ let fns () : List<BuiltInFn> =
     { name = fn "formatterParse" 0
       typeParams = []
       parameters =
-        [ Param.make "source" TString "The text of a package `.dark` file" ]
+        [ Param.make
+            "source"
+            TString
+            "The text of a `.dark` file: a package file or a script" ]
       returnType =
         TypeReference.result (TCustomType(NR.ok (tn Refs.file), [])) TString
       description =
-        "Parses and lowers a package file for the formatter: each declaration as the loader would store it, with the comments, node lines and local fn signatures lowering drops. An error is the parser's first diagnostic."
+        "Parses and lowers a package file or a script for the formatter: each declaration as the loader would store it, with the comments, node lines and local fn signatures lowering drops. An error is the parser's first diagnostic."
       fn =
         (function
         | state, _, _, [| DString source |] ->

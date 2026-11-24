@@ -243,3 +243,21 @@ test refusesWhatDoesNotParse =
     |> Stdlib.Option.map(fun e ->
       Stdlib.String.startsWith(e, "formatting would leave it not parsing")))
   |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(Option.Some(true)))
+
+
+test formatsAScriptAndKeepsWhatItRuns =
+  LanguageTools.Formatter.source(
+    SCM.Branch.mainBranchId,
+    100,
+    "let f(x: Int64): Int64 =\n    x+1\n\nf(2)\n")
+  |> Stdlib.Result.map(fun f -> f.text)
+  |> Stdlib.Test.equal(
+    Stdlib.Result.Result.Ok("let f(x: Int64): Int64 =\n  x + 1\n\n\nf(2)\n"))
+
+
+// a top-level `let` holds the rest of the script, fns included: all of it stays as written
+test leavesWhatATopLevelLetHoldsAsWritten =
+  let script = "let x = 5\nlet f(y: Int64): Int64 =\n      y+1\nf(x)\n"
+  LanguageTools.Formatter.source(SCM.Branch.mainBranchId, 100, script)
+  |> Stdlib.Result.map(fun f -> f.text)
+  |> Stdlib.Test.equal(Stdlib.Result.Result.Ok(script))
