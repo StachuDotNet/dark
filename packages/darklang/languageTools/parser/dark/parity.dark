@@ -1,0 +1,104 @@
+/// Parse files with both parsers and compare: the tree, and the diagnostics.
+module Darklang.LanguageTools.Parser.Dark.Parity
+
+type Outcome =
+  | Same
+  | TreeDiffers
+  | DiagnosticsDiffer
+
+
+type FileResult =
+  { path: String
+    outcome: Outcome
+    darkMs: Int64
+    builtinMs: Int64 }
+
+
+/// Package files declare; anything else is a script.
+let kindFor(path: String): LanguageTools.Parser.FileKind =
+  if Stdlib.String.contains(path, "packages/") then
+    LanguageTools.Parser.FileKind.Package
+  else
+    LanguageTools.Parser.FileKind.Script
+
+
+let compare(path: String, source: String, partial: Bool): FileResult =
+  let kind = if partial then LanguageTools.Parser.FileKind.PackagePartialSave else kindFor(path)
+  let t0 = Stdlib.DateTime.now()
+  let (darkTree, darkDiagnostics) = Dark.parse(kind, source)
+  let t1 = Stdlib.DateTime.now()
+  let (builtinTree, builtinDiagnostics) = Builtin.parse(kind, source)
+  let t2 = Stdlib.DateTime.now()
+  let outcome =
+    if darkTree != builtinTree then Outcome.TreeDiffers
+    else if darkDiagnostics != builtinDiagnostics then Outcome.DiagnosticsDiffer
+    else Outcome.Same
+  FileResult
+    { path = path
+      outcome = outcome
+      darkMs = Stdlib.DateTime.subtractMs(t1, t0)
+      builtinMs = Stdlib.DateTime.subtractMs(t2, t1) }
+
+
+let percent(n: Int64, total: Int64): String =
+  if total == 0 then "0%"
+  else
+    let tenths = n * 1000 / total
+    $"{tenths / 10}.{tenths % 10}%"
+
+
+/// Broken versions of <param source>: cut off after each eighth of its lines, and with the
+/// line at each eighth removed.
+let brokenVersions(source: String): List<(String * String)> =
+  let lines = Stdlib.String.splitOnNewline(source)
+  let n = Stdlib.List.length(lines)
+  Stdlib.List.range(1, 7)
+  |> Stdlib.List.map(fun k ->
+    let at = n * k / 8
+    let cut = Stdlib.String.join(Stdlib.List.take(lines, at), "\n")
+    let dropped = Stdlib.String.join(Stdlib.List.concat(Stdlib.List.take(lines, at), Stdlib.List.drop(lines, at + 1)), "\n")
+    [ ($"cut@{at}", cut), ($"drop@{at}", dropped) ])
+  |> Stdlib.List.flatten
+
+
+/// Compare each file named in <param args> (or listed, one per line, in a file named with
+/// `--list`), printing a line per file and a summary. `--broken` compares broken versions of
+/// each file, and `--partial` parses them as a partial save.
+let main(args: List<String>): Int64 =
+  let paths =
+    match args with
+    | [ "--list", listFile, ... ] ->
+      Stdlib.Cli.FileSystem.readFileAsString(listFile)
+      |> Stdlib.Result.withDefault("")
+      |> Stdlib.String.splitOnNewline
+      |> Stdlib.List.filter(fun p -> p != "")
+    | _ -> Stdlib.List.filter(args, fun a -> a != "--broken" && a != "--partial")
+  let broken = Stdlib.List.contains(args, "--broken")
+  let partial = Stdlib.List.contains(args, "--partial")
+  let results =
+    Stdlib.List.map(paths, fun path ->
+      match Stdlib.Cli.FileSystem.readFileAsString(path) with
+      | Ok(source) ->
+        let versions = if broken then brokenVersions(source) else [ ("", source) ]
+        Stdlib.List.map(versions, fun((label, text)) ->
+          let r = compare(path, text, partial)
+          let mark =
+            match r.outcome with
+            | Same -> "same "
+            | TreeDiffers -> "TREE "
+            | DiagnosticsDiffer -> "DIAG "
+          Stdlib.printLine($"{mark} {r.darkMs}ms {r.builtinMs}ms {path} {label}")
+          r)
+      | Error(_) ->
+        Stdlib.printLine($"unreadable {path}")
+        [])
+    |> Stdlib.List.flatten
+  let total = Stdlib.List.length(results)
+  let count = fun o -> Stdlib.List.length(Stdlib.List.filter(results, fun r -> r.outcome == o))
+  let same = count(Outcome.Same)
+  let treeSame = same + count(Outcome.DiagnosticsDiffer)
+  let darkMs = Stdlib.List.fold(results, 0, fun(acc, r) -> acc + r.darkMs)
+  let builtinMs = Stdlib.List.fold(results, 0, fun(acc, r) -> acc + r.builtinMs)
+  Stdlib.printLine($"files {total}: same tree {treeSame} ({percent(treeSame, total)}), same tree and diagnostics {same} ({percent(same, total)})")
+  Stdlib.printLine($"time: Dark parser {darkMs}ms, builtin {builtinMs}ms")
+  0
