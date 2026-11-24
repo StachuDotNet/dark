@@ -572,47 +572,114 @@ let holdsAsWritten(given: String, stored: String): Bool =
         + "\n"))
 
 
-/// Declarations as one source, each under the submodule path it is paired with, one `module`
-/// block per submodule.
-let inModules(entries: List<(List<String> * String)>): String =
-  // (submodule, entries below it), or (None, a declaration here), in order of first mention
-  entries
-  |> Stdlib.List.fold([], fun(groups, (path, text)) ->
-    match path with
-    | [] -> Stdlib.List.append(groups, (Option.None, [ ([], text) ]))
-    | [name, ...rest] ->
-      if Stdlib.List.any(groups, fun((g, _)) -> g == Option.Some(name)) then
-        groups
-        |> Stdlib.List.map(fun((g, inside)) ->
-          if g == Option.Some(name) then
-            (g, Stdlib.List.append(inside, (rest, text)))
-          else
-            (g, inside))
-      else
-        Stdlib.List.append(groups, (Option.Some(name), [ (rest, text) ])))
-  |> Stdlib.List.map(fun((g, inside)) ->
-    match g, inside with
-    | Some(name), _ ->
-      let body =
-        Stdlib.String.split(inModules(inside), "\n")
-        |> Stdlib.List.map(fun line -> if line == "" then line else "  " + line)
-        |> Stdlib.String.join("\n")
-
-      $"module {name} =\n{body}"
-    | None, [(_, text)] -> text
-    | None, _ -> "")
-  |> Stdlib.String.join("\n\n")
+/// After a save's first line: a draft is easily read as "not saved yet".
+val keptNote: String = " (kept in your draft; `commit` records it in history)"
 
 
-/// Print the declarations of <param stored> that the save reformatted from <param given>, so the
-/// next edit can start from them without a `view`. Each comes with the submodule path it sits
-/// in below the saved module, and is printed inside that submodule so it can be sent back.
+let unspaced(text: String): String =
+  [ "\r\n", " ", "\n", "\t" ]
+  |> Stdlib.List.fold(text, fun(t, s) -> Stdlib.String.replaceAll(t, s, ""))
+
+
+let nonBlankLines(text: String): List<String> =
+  Stdlib.String.split(text, "\n") |> Stdlib.List.filter(fun l -> Stdlib.String.trim(l) != "")
+
+
+/// The lines of <param given> that wrote the declaration stored as <param stored>: the line that
+/// starts it, the doc comment above and the lines indented below, at the stored indent.
+let writtenLines(given: List<String>, stored: List<String>): List<String> =
+  let indent(line: String): Int64 =
+    Stdlib.String.length(line) - Stdlib.String.length(Stdlib.String.trimStart(line))
+
+  let isDoc(line: String): Bool = Stdlib.String.startsWith(Stdlib.String.trimStart(line), "///")
+  // `let name`, `type Name`, ...: the header up to the end of the name
+  let key =
+    match stored |> Stdlib.List.findFirst(fun l -> Stdlib.Bool.not(isDoc(l))) with
+    | None -> ""
+    | Some(header) ->
+      match Stdlib.String.split(header, " ") with
+      | [keyword, name, ...] ->
+        let bare =
+          [ "(", ":", "<", "=" ]
+          |> Stdlib.List.fold(name, fun(n, d) ->
+            Stdlib.String.split(n, d)
+            |> Stdlib.List.head
+            |> Stdlib.Option.withDefault(n))
+
+        keyword + " " + bare
+      | _ -> header
+
+  let starts(line: String): Bool =
+    let t = Stdlib.String.trimStart(line)
+    key != ""
+    && (t == key
+        || Stdlib.List.any([ "(", ":", "<", "=", " " ], fun d ->
+          Stdlib.String.startsWith(t, key + d)))
+
+  match given
+        |> Stdlib.List.indexedMap(fun(i, l) -> (i, l))
+        |> Stdlib.List.findFirst(fun((_, l)) -> starts(l)) with
+  | None -> []
+  | Some((at, line)) ->
+    let docs =
+      Stdlib.List.take(given, at)
+      |> Stdlib.List.reverse
+      |> Stdlib.List.takeWhile(isDoc)
+      |> Stdlib.List.reverse
+
+    let body =
+      Stdlib.List.drop(given, at + 1) |> Stdlib.List.takeWhile(fun l -> indent(l) > indent(line))
+
+    Stdlib.List.flatten([ docs, [ line ], body ])
+    |> Stdlib.List.map(fun l -> Stdlib.String.dropFirst(l, indent(line)))
+
+
+/// The lines that differ between <param written> and <param stored> apart from spacing: `- ` as
+/// written, `+ ` as stored.
+let changedLines(written: List<String>, stored: List<String>): List<String> =
+  let joined(lines: List<String>): String =
+    lines
+    |> Stdlib.List.map(unspaced)
+    |> Stdlib.String.join("\n")
+
+  let first(lines: List<String>): String = Stdlib.List.head(lines) |> Stdlib.Option.withDefault("")
+  let (_, _, out) =
+    Stdlib.Diff.lines(joined(written), joined(stored))
+    |> Stdlib.List.fold((written, stored, []), fun((w, s, out), line) ->
+      match line with
+      | Same(_) -> (Stdlib.List.drop(w, 1), Stdlib.List.drop(s, 1), out)
+      | Removed(_) -> (Stdlib.List.drop(w, 1), s, Stdlib.List.append(out, "- " + first(w)))
+      | Added(_) -> (w, Stdlib.List.drop(s, 1), Stdlib.List.append(out, "+ " + first(s))))
+
+  out
+
+
+/// Name the declarations of <param stored> that the save reformatted from <param given>, each by
+/// its path below the saved module, and show the lines it changed where more than spacing did.
 let printReformatted(stored: List<(List<String> * String)>, given: String): Unit =
   match stored |> Stdlib.List.filter(fun((_, s)) -> Stdlib.Bool.not(holdsAsWritten(given, s))) with
   | [] -> ()
   | changed ->
-    printQuiet("stored as:")
-    Stdlib.printLine(inModules(changed))
+    let names =
+      changed
+      |> Stdlib.List.map(fun((path, _)) -> Stdlib.String.join(path, "."))
+      |> Stdlib.String.join(", ")
+
+    printQuiet($"  reformatted: {names} (`view --raw` shows the stored text)")
+    let givenLines = nonBlankLines(given)
+    let givenUnspaced = unspaced(given)
+    changed
+    |> Stdlib.List.filter(fun((_, s)) ->
+      Stdlib.Bool.not(Stdlib.String.contains(givenUnspaced, unspaced(s))))
+    |> Stdlib.List.iter(fun((path, s)) ->
+      let storedLines = nonBlankLines(s)
+      match writtenLines(givenLines, storedLines) with
+      | [] -> ()
+      | written ->
+        if Stdlib.List.length(changed) > 1 then
+          printQuiet("  " + Stdlib.String.join(path, ".") + ":")
+
+        changedLines(written, storedLines) |> Stdlib.List.iter(fun l -> Stdlib.printLine("  " + l)))
 
 
 /// Shared tail of the authoring flow: build the name-resolution context, convert the written
@@ -692,17 +759,17 @@ let saveAuthored(
               $" (same code as {PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(other)}, stored once)"
             | None -> ""
 
-          Stdlib.printLine($"{glyph} {action} {kindWord} {fullPath}{alsoNamed}")
+          Stdlib.printLine($"{glyph} {action} {kindWord} {fullPath}{alsoNamed}{keptNote}")
         else if deprecationNote == Option.None then
           Stdlib.printLine(
             Stdlib.Cli.UI.Colors.hint($"= {kindWord} {fullPath} is unchanged; nothing was saved"))
 
         if landed && kind == LanguageTools.ProgramTypes.ItemKind.Fn then
-          Stdlib.printLine(
-            "  effects: "
-            + Effects.saveSummary(
-              previousHash |> Stdlib.Option.map(LanguageTools.ProgramTypes.hashToString),
-              LanguageTools.ProgramTypes.hashToString(committed.boundHash)))
+          Effects.saveSummary(
+            previousHash |> Stdlib.Option.map(LanguageTools.ProgramTypes.hashToString),
+            LanguageTools.ProgramTypes.hashToString(committed.boundHash))
+          |> Stdlib.Option.toList
+          |> Stdlib.List.iter(fun summary -> Stdlib.printLine($"  effects: {summary}"))
 
         deprecationNote
         |> Stdlib.Option.toList
@@ -736,7 +803,7 @@ let saveAuthored(
             kind,
             location.name)
           |> Stdlib.Option.toList
-          |> Stdlib.List.map(fun text -> ([], text))
+          |> Stdlib.List.map(fun text -> ([ location.name ], text))
           |> printReformatted(given)
         else
           ()

@@ -37,8 +37,10 @@ let entryNote(e: SCM.PackageOps.BranchDiffEntry): String =
     | names -> "  now also " + Stdlib.String.join(names, ", ")
 
 
-/// What a fn save says about its effects: `none`, `http, raise (was none)`, `file-read (no longer http)`.
-let saveSummary(previous: Option<String>, hash: String): String =
+/// What a fn save says about its effects, when there is news: `http, raise` for a new fn that
+/// has some, `http, raise (was none)`, `file-read (no longer http)`. None when a new fn has
+/// none or a saved one does what it did before.
+let saveSummary(previous: Option<String>, hash: String): Option<String> =
   let (now, complete) = namesOf(hash)
   let shown =
     match now, complete with
@@ -47,33 +49,29 @@ let saveSummary(previous: Option<String>, hash: String): String =
     | _, true -> Stdlib.String.join(now, ", ")
     | _, false -> Stdlib.String.join(now, ", ") + ", possibly more"
 
-  let change =
-    match previous with
-    | Some(previous) when previous != hash ->
-      let (before, _) = namesOf(previous)
-      let gained = without(now, before)
-      let lost = without(before, now)
-      if Stdlib.List.isEmpty(before) && Stdlib.Bool.not(Stdlib.List.isEmpty(now)) then
-        " (was none)"
-      else
-        let parts =
-          Stdlib.List.concat(
-            (if Stdlib.List.isEmpty(gained) then
-               []
-             else
-               [ "now also " + Stdlib.String.join(gained, ", ") ]),
-            if Stdlib.List.isEmpty(lost) then
-              []
-            else
-              [ "no longer " + Stdlib.String.join(lost, ", ") ])
+  match previous with
+  | Some(previous) ->
+    let (before, _) = namesOf(previous)
+    let gained = without(now, before)
+    let lost = without(before, now)
+    if Stdlib.List.isEmpty(gained) && Stdlib.List.isEmpty(lost) then
+      Option.None
+    else if Stdlib.List.isEmpty(before) then
+      Option.Some(shown + " (was none)")
+    else
+      let parts =
+        Stdlib.List.concat(
+          (if Stdlib.List.isEmpty(gained) then
+             []
+           else
+             [ "now also " + Stdlib.String.join(gained, ", ") ]),
+          if Stdlib.List.isEmpty(lost) then
+            []
+          else
+            [ "no longer " + Stdlib.String.join(lost, ", ") ])
 
-        if Stdlib.List.isEmpty(parts) then
-          ""
-        else
-          " (" + Stdlib.String.join(parts, "; ") + ")"
-    | _ -> ""
-
-  shown + change
+      Option.Some(shown + " (" + Stdlib.String.join(parts, "; ") + ")")
+  | None -> if Stdlib.List.isEmpty(now) then Option.None else Option.Some(shown)
 
 
 let execute(state: AppState, args: List<String>): AppState =

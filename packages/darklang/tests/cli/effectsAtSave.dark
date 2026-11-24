@@ -1,4 +1,5 @@
-/// A save says what a fn's effects are, and a review flags a fn that does more than before.
+/// A save says what a fn's effects are when there is news, and a review flags a fn that does
+/// more than before.
 module Darklang.Cli.Tests.EffectsAtSave
 
 val pureFn: String = "(path: String): String = path + \"/fx-7731\""
@@ -8,14 +9,27 @@ val readsFn: String =
   "(path: String): String = Stdlib.Cli.File.readText(path + \"/fx-7731\") |> Stdlib.Result.withDefault(\"\")"
 
 
-test aPureFnSaysNone = Instance.withInstance(fun i ->
+test aNewPureFnSaysNothing = Instance.withInstance(fun i ->
   let (_, out, _) = Instance.streams(i, [ "fn", "Me.Fx.f", pureFn ])
-  Instance.says(out, "\n  effects: none", "on stdout, under the save line"))
+  Instance.doesNotSay(out, "effects", "no news"))
 
 
 test anEffectfulFnNamesThem = Instance.withInstance(fun i ->
   let (_, out, _) = Instance.streams(i, [ "fn", "Me.Fx.f", readsFn ])
-  Instance.says(out, "\n  effects: file-read", "the effect it has"))
+  Instance.says(
+    out,
+    "\n  effects: file-read",
+    "on stdout, under the save line"))
+
+
+test aSaveWithTheSameEffectsSaysNothing = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "fn", "Me.Fx.f", readsFn ])
+  let (_, out, _) =
+    Instance.streams(
+      i,
+      [ "fn", "Me.Fx.f", Stdlib.String.replaceAll(readsFn, "7731", "7732") ])
+
+  Instance.doesNotSay(out, "effects", "they did not change"))
 
 
 test aSaveSaysWhatChanged = Instance.withInstance(fun i ->
@@ -37,7 +51,7 @@ test aModuleSaveNamesEachFn = Instance.withInstance(fun i ->
   let _ = Stdlib.Cli.File.writeAtomic(path, source) |> Builtin.unwrap
   let (_, out, _) = Instance.streams(i, [ "module", "/Me.Fx", path ])
   Stdlib.Test.all(
-    [ Instance.says(out, "effects of f: none", "the pure one")
+    [ Instance.doesNotSay(out, "effects of f", "the pure one")
       Instance.says(out, "effects of g: file-read", "the one that reads") ]))
 
 

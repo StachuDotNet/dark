@@ -6,7 +6,8 @@ let content(): String =
 """
   + SyntaxAtAGlance.content()
   + """
-Saved code lives in a persistent package tree, not in files. Use your own namespace;
+Saved code lives in a persistent package tree, not in files; a save is kept as your draft,
+and `commit` records it in history. Use your own namespace;
 `Darklang` is reserved.
 
 ## Build, run, test
@@ -58,7 +59,7 @@ needs `--allow <rule>` on `run`, before the function name:
 `serve` takes no `--allow`; allow what it needs first: `permissions allow http-server
 127.0.0.1 <port>`, and `permissions allow file read <dir>` / `file write <dir>`.
 
-Effects are inferred, never declared; a save lists them (`effects: none`). Keep pure
+Effects are inferred, never declared; a save names them when they change. Keep pure
 code pure: pass in what reads, writes or fetches as an argument instead of calling it.
 
 ## Functions most programs need

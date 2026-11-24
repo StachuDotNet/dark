@@ -1,8 +1,8 @@
-/// A save that reformats the code prints what it stored, on stdout, so the next edit can start
-/// from it.
+/// A save that reformats the code names what it reformatted, and shows the lines it changed
+/// where more than spacing did.
 module Darklang.Cli.Tests.SaveReformatted
 
-test fnPrintsTheStoredForm = Instance.withInstance(fun i ->
+test fnShowsWhatChangedBeyondSpacing = Instance.withInstance(fun i ->
   let (code, out, _) =
     Instance.streams(
       i,
@@ -10,12 +10,28 @@ test fnPrintsTheStoredForm = Instance.withInstance(fun i ->
 
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "the save")
-      Instance.says(out, "stored as:", "the label")
+      Instance.says(out, "kept in your draft", "the save line says it is kept")
+
+      Instance.says(out, "reformatted: double", "the name")
+
+      Instance.says(out, "Int64 = (x * 2)\n", "as written")
 
       Instance.says(
         out,
-        "let double(x: Int64): Int64 =\n  x * 2",
-        "the stored declaration") ]))
+        "  + let double(x: Int64): Int64 =\n  +   x * 2",
+        "as stored")
+
+      Instance.doesNotSay(out, "stored as", "no whole declaration") ]))
+
+
+test fnWithOnlyNewSpacingShowsNoLines = Instance.withInstance(fun i ->
+  let (code, out, _) =
+    Instance.streams(i, [ "fn", "Me.Fmt.sq", "(x: Int64): Int64 = x*x" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the save")
+      Instance.says(out, "reformatted: sq", "the name")
+      Instance.doesNotSay(out, "x * x", "no lines for spacing") ]))
 
 
 test fnAlreadyFormattedPrintsNothingMore = Instance.withInstance(fun i ->
@@ -29,11 +45,11 @@ test fnAlreadyFormattedPrintsNothingMore = Instance.withInstance(fun i ->
   let (code, out, _) = Instance.streams(i, [ "fn", "Me.Fmt.triple", path ])
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "the save")
-      Instance.doesNotSay(out, "stored as", "the text was stored as given")
+      Instance.doesNotSay(out, "reformatted", "the text was stored as given")
       Instance.doesNotSay(out, "x * 3", "nothing reprinted") ]))
 
 
-test modulePrintsOnlyWhatItReformatted = Instance.withInstance(fun i ->
+test moduleNamesOnlyWhatItReformatted = Instance.withInstance(fun i ->
   let path = Instance.home(i) + "/mod.dark"
   let source =
     "let same(x: Int64): Int64 =\n  x + 1\n\nlet squeezed(x: Int64): Int64 = x+2\n"
@@ -43,20 +59,17 @@ test modulePrintsOnlyWhatItReformatted = Instance.withInstance(fun i ->
   let (againCode, again, _) = Instance.streams(i, [ "module", "/Me.Fmt", path ])
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "the save")
-      Instance.says(
-        out,
-        "let squeezed(x: Int64): Int64 =\n  x + 2",
-        "the reformatted one")
-
-      Instance.doesNotSay(out, "let same", "a declaration stored as written")
+      Instance.says(out, "kept in your draft", "the save line says it is kept")
+      Instance.says(out, "reformatted: squeezed (", "the reformatted one")
+      Instance.doesNotSay(out, "x + 2", "spacing alone shows no lines")
       Instance.exitedWith(againCode, 0, "the second save")
       Instance.doesNotSay(
         again,
-        "stored as",
+        "reformatted",
         "a resend that changed nothing") ]))
 
 
-test editPrintsTheStoredForm = Instance.withInstance(fun i ->
+test editShowsWhatChanged = Instance.withInstance(fun i ->
   let _ = Instance.ran(i, [ "fn", "Me.Fmt.inc", "(x: Int64): Int64 = x + 1" ])
   let path = Instance.home(i) + "/inc.dark"
   let _ =
@@ -70,23 +83,25 @@ test editPrintsTheStoredForm = Instance.withInstance(fun i ->
 
       Instance.says(
         out,
-        "let inc(x: Int64): Int64 =\n  x + 10",
-        "the stored declaration") ]))
+        "  - let inc(x: Int64): Int64 = (x + 10)",
+        "as written")
+
+      Instance.says(out, "  +   x + 10", "as stored") ]))
 
 
-test aSubmoduleDeclarationKeepsItsModule = Instance.withInstance(fun i ->
+test aSubmoduleDeclarationIsNamedByItsPath = Instance.withInstance(fun i ->
   let path = Instance.home(i) + "/sub.dark"
   let source =
-    "let top(x: Int64): Int64 =\n  x\n\nmodule Sub =\n  let c(x: Int64): Int64 = x+3\n"
+    "let top(x: Int64): Int64 =\n  x + 100\n\nmodule Sub =\n  let c(x: Int64): Int64 = x+3\n\n  let d(x: Int64): Int64 =\n    (x + 4)\n"
 
   let _ = Stdlib.Cli.File.writeAtomic(path, source) |> Builtin.unwrap
   let (code, out, _) = Instance.streams(i, [ "module", "/Me.Fmt", path ])
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "the save")
-      Instance.says(
-        out,
-        "module Sub =\n  let c(x: Int64): Int64 =\n    x + 3",
-        "inside its submodule") ]))
+      Instance.says(out, "reformatted: Sub.c, Sub.d", "both, by path")
+      Instance.says(out, "  Sub.d:", "a heading for each")
+      Instance.says(out, "  -   (x + 4)\n  +   x + 4", "the lines that changed")
+      Instance.doesNotSay(out, "x + 3", "spacing alone shows no lines") ]))
 
 
 test aPatchWithATypeErrorShowsTheDeclarationOnce =

@@ -278,10 +278,11 @@ let save(state: AppState, modulePath: String, source: String, mode: SaveMode): A
               | _ -> Option.None
 
             if count > 0 || unchangedDeprecated == 0 then
+              let kept = if bundled then "" else keptNote
               let summary =
                 match updatedName with
-                | Some(name) -> $"{glyph} Updated {name}"
-                | None -> $"{glyph} Defined {count} {what} in {modulePath}"
+                | Some(name) -> $"{glyph} Updated {name}{kept}"
+                | None -> $"{glyph} Defined {count} {what} in {modulePath}{kept}"
 
               Stdlib.printLine(if docNote == "" then summary else $"{summary}. {docNote}")
             else if docNote != "" then
@@ -314,9 +315,10 @@ let save(state: AppState, modulePath: String, source: String, mode: SaveMode): A
                   previous |> Stdlib.Option.map(LanguageTools.ProgramTypes.hashToString),
                   LanguageTools.ProgramTypes.hashToString(now))
 
-              match updatedName, savedFns with
-              | Some(_), [_] -> Stdlib.printLine($"  effects: {summary}")
-              | _ ->
+              match summary, updatedName, savedFns with
+              | None, _, _ -> ()
+              | Some(summary), Some(_), [_] -> Stdlib.printLine($"  effects: {summary}")
+              | Some(summary), _, _ ->
                 // named below the module just saved, which the line above names
                 let below =
                   Stdlib.List.drop(
@@ -398,16 +400,13 @@ let save(state: AppState, modulePath: String, source: String, mode: SaveMode): A
                 match SCM.Propagation.hashOn(branchId, location, kind) with
                 | Some(now) when Stdlib.Bool.not(Stdlib.List.contains(previous, now)) ->
                   let path = Stdlib.List.prepend(location.modules, location.owner)
-                  // an impl sits under its type's name but is written in the type's module
-                  let writtenIn =
-                    if kind == LanguageTools.ProgramTypes.ItemKind.TraitImpl then
-                      Stdlib.List.dropLast(path)
-                    else
-                      path
-
                   View.moduleDecl(branchId, path, kind, location.name)
                   |> Stdlib.Option.map(fun text ->
-                    (Stdlib.List.drop(writtenIn, Stdlib.List.length(home)), text))
+                    (
+                      Stdlib.List.append(
+                        Stdlib.List.drop(path, Stdlib.List.length(home)),
+                        location.name),
+                      text))
                 | _ -> Option.None
               | _ -> Option.None)
             |> printReformatted(source)
