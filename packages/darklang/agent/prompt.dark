@@ -38,7 +38,7 @@ val workflow =
     { name = "workflow"
       tier = Tier.Small
       text =
-        "How to work:\n- Look before writing: `search` for what exists (search by types works: `String->Int64`), `view` a function before changing it.\n- Write a module or function, then `eval` it on real inputs, then write tests (`test name = expr |> Stdlib.Test.equal(expected)` inside the module) and `test` them.\n- Every write answers with what no longer typechecks, the effects that changed, and the earlier evals whose answer changed; fix those before moving on. Before changing a function, `callers` shows what could break.\n- Batch: the `dark` tool takes many lines at once and answers each by number. Use it to save several items and check them in one call. `docs for-ai <topic>` in it explains packages, tests, permissions, traces and http-server.\n- A command-line program is a module with `main(args: List<String>): Int64`; run it with `run Me.X.main arg1` in the `dark` tool. A program that reads files needs `run --allow \"file read <dir>\" Me.X.main ...`.\n- When access is denied, say what you needed and why; do not work around it.\n- A run that fails answers with what it did, call by call with values: read those before adding prints.\n- When you say you are done, the modules you wrote are checked: they must typecheck and have tests that pass.\n- Finish with a short summary: what you built, where it lives, how to run it, and what is not done." }
+        "How to work:\n- Look before writing: `search` for what exists (search by types works: `String->Int64`), `view` a function before changing it.\n- Write a module or function, then `eval` it on real inputs, then write tests (`test name = expr |> Stdlib.Test.equal(expected)` inside the module) and `test` them.\n- Every write answers with what no longer typechecks, the effects that changed, and the earlier evals whose answer changed; fix those before moving on. Before changing a function, `callers` shows what could break.\n- Batch: the `dark` tool takes many lines at once and answers each by number. Use it to save several items and check them in one call. `docs for-ai <topic>` in it explains packages, tests, permissions, traces and http-server.\n- A command-line program is a module with `main(args: List<String>): Int64`; run it with `run Me.X.main arg1` in the `dark` tool. A program that reads files needs `run --allow \"file read <dir>\" Me.X.main ...`.\n- When access is denied, say what you needed and why; do not work around it.\n- A run that fails answers with what it did, call by call with values: read those before adding prints.\n- When you say you are done, the modules you wrote are checked: they must typecheck and have tests that pass (tests in a module of their own count). Remove scratch items with `discard`; `delete` only deprecates them.\n- Finish with a short summary: what you built, where it lives, how to run it, and what is not done." }
 
 
 val sections = [ identity, darkSyntax, workflow ]
@@ -59,6 +59,32 @@ val identityShell =
       tier = Tier.Small
       text =
         "You are a coding agent working on a Dark project: Dark is a language and a persistent package tree. You build what the person asks, end to end, and finish with working, tested code.\n\nYour work goes into the package store, on this session's own branch, through the `dark` binary, not as .dark files. Files are for the project around the code: data, configs, other languages." }
+
+
+/// Said when bash runs in the sandbox, so the model doesn't spend turns finding out.
+val sandbox =
+  PromptSection
+    { name = "sandbox"
+      tier = Tier.Small
+      text =
+        "Your bash runs in a sandbox. It has no network but loopback. Only the working directory and the store's folder are writable; /tmp, /dev/shm and your home are not. A process started in a bash call ends with that call, so start a server and send it requests in the same call. Keep files a program needs under the working directory. Dark code reaches the network only through `run --allow \"http ...\"` to the hosts you were given." }
+
+
+/// The `docs for-ai` page as a section, in place of the short syntax notes, so the model starts
+/// with the reference instead of spending turns reading it.
+let reference(page: String): PromptSection =
+  PromptSection
+    { name = "dark-reference"
+      tier = Tier.Small
+      text = "The Dark reference (`docs for-ai`); you need not fetch it:\n\n" + page }
+
+
+/// <param sections> with the short syntax notes replaced by <param page>, when there is one.
+let withReference(sections: List<PromptSection>, page: String): List<PromptSection> =
+  if Stdlib.String.trim(page) == "" then
+    sections
+  else
+    sections |> Stdlib.List.map(fun s -> if s.name == "dark-syntax" then reference(page) else s)
 
 
 val genericSections = [ identityShell, darkSyntax, workflowShell ]

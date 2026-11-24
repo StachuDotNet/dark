@@ -943,6 +943,18 @@ let all(): List<Tool> =
     Tool
       { spec =
           spec(
+            "discard",
+            "Remove a function, type, value, test or whole module you made this session, so it is gone from the store, not just deprecated as `delete` leaves it. For scratch work you no longer need.",
+            [ param(
+                "name",
+                "string",
+                "e.g. Me.Scratch.probe, or Me.Scratch for everything in it") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageWrite ]
+        run = Store.discard }
+
+    Tool
+      { spec =
+          spec(
             "callers",
             "What uses a function, type or value, from the store's references: the callers an edit could break. Set deep for everything that depends on it, transitively.",
             [ param("name", "string", "e.g. Me.Todo.add")

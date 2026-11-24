@@ -389,9 +389,12 @@ let runCommand(
       Workbench.captureOutputAnd(fun () -> Registry.executeCommand(name, before, args))
 
     let lines = outputLines(out) |> Stdlib.List.map(fun l -> dropGlyph(l))
-    let ok = after.exitCode == 0
+    // a program that exits nonzero answered; a batch that tries the error paths goes on
+    let exited = name == "run" && after.exitCode != 0
+    let ok = after.exitCode == 0 || exited
     let lines =
       match ok, lines with
+      | true, _ when exited -> Stdlib.List.prepend(lines, $"exit {Stdlib.display(after.exitCode)}")
       | true, [] -> [ "ok" ]
       | true, [first, ...rest] -> Stdlib.List.prepend(rest, "ok " + first)
       | false, [] -> [ $"error: `{name}` exited {Stdlib.display(after.exitCode)}" ]

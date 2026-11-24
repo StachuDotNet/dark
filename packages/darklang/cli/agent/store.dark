@@ -123,6 +123,45 @@ let effects(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Ag
     | Ok(hash) -> (ctx, Tools.ok($"{name} may: {effectsText(hash)}")))
 
 
+/// Drop <param name> from the session's draft: one item, or every item of a module and the
+/// modules under it.
+let discard(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Agent.ToolOutput) =
+  Tools.needing(ctx, input, "name", fun name ->
+    let path = Stdlib.String.split(name, ".")
+    let branch = Repls.branchOf(ctx.repl)
+    let items =
+      itemsUnder(branch, path)
+      |> Stdlib.List.map(fun n -> Stdlib.String.join(Stdlib.List.append(path, n), "."))
+
+    let names = if Stdlib.List.isEmpty(items) then [ name ] else items
+    let batch =
+      names
+      |> Stdlib.List.map(fun n -> $"discard {n} -y")
+      |> Stdlib.String.join("\n")
+
+    let (ctx, _outcome, output) = Tools.runBatch(ctx, batch)
+    (ctx, output))
+
+
+/// The names of the items under <param path>, its submodules' included, relative to it.
+let itemsUnder(branch: Uuid, path: List<String>): List<String> =
+  let (subs, types, values, fns, traits, impls, tests) =
+    Packages.Query.allDirectDescendantNamesAndHashes(branch, path)
+
+  let here =
+    Stdlib.List.flatten([ types, values, fns, traits, impls, tests ])
+    |> Stdlib.List.map(fun((n, _h)) -> [ n ])
+
+  let below =
+    subs
+    |> Stdlib.List.map(fun sub ->
+      itemsUnder(branch, Stdlib.List.append(path, sub))
+      |> Stdlib.List.map(fun n -> Stdlib.List.prepend(Stdlib.String.split(n, "."), sub)))
+    |> Stdlib.List.flatten
+
+  Stdlib.List.concat(here, below) |> Stdlib.List.map(fun parts -> Stdlib.String.join(parts, "."))
+
+
 // ---- before a run
 
 /// The function a `run` statement runs, past its flags.
@@ -162,10 +201,18 @@ let beforeRuns(ctx: Tools.Context, text: String): List<String> =
 
 // ---- after a failed run
 
+/// Whether a `run` reply is a program that crashed, not one that chose its exit code: a crash
+/// prints its call stack.
+let crashed(r: Repls.Reply): Bool =
+  Stdlib.List.any(r.lines, fun l ->
+    let l = Stdlib.String.trim(l)
+    Stdlib.String.startsWith(l, "Call stack") || Stdlib.String.startsWith(l, "Script error"))
+
+
 /// The trace ids a failed `run` reply names.
 let failedTraces(outcome: Repls.Batch.Outcome): List<String> =
   outcome.replies
-  |> Stdlib.List.filter(fun r -> r.status == "error")
+  |> Stdlib.List.filter(fun r -> r.status == "error" || crashed(r))
   |> Stdlib.List.map(fun r -> r.lines)
   |> Stdlib.List.flatten
   |> Stdlib.List.filterMap(fun l ->
@@ -302,12 +349,48 @@ let moduleProblems(ctx: Tools.Context, m: String): List<String> =
     | [r] ->
       let text = Stdlib.String.join(r.lines, "\n")
       if Stdlib.String.contains(text, "No package tests matched") then
-        [ $"{m} has no tests" ]
+        match testsOf(ctx, m) with
+        | [] -> [ $"{m} has no tests" ]
+        | tests -> testsElsewhere(ctx, m, tests)
       else
         [ $"{m} has failing tests:\n{Stdlib.String.first(text, 1500)}" ]
     | _ -> []
 
   Stdlib.List.concat(typeProblems, testProblems)
+
+
+/// The tests, anywhere, that use an item of <param m>: tests kept in a module of their own.
+let testsOf(ctx: Tools.Context, m: String): List<String> =
+  let path = Stdlib.String.split(m, ".")
+  let branch = Repls.branchOf(ctx.repl)
+  let (_subs, types, values, fns, _traits, _impls, _tests) =
+    Packages.Query.allDirectDescendantNamesAndHashes(branch, path)
+
+  Stdlib.List.flatten([ types, values, fns ])
+  |> Stdlib.List.map(fun((name, _hash)) ->
+    match depsOf(ctx, m + "." + name, Deps.Direction.UsedBy, Reach.Direct) with
+    | Ok(answer) ->
+      answer.dependents
+      |> Stdlib.List.filter(fun d -> d.kind == "test")
+      |> Stdlib.List.map(fun d -> d.name)
+    | Error(_) -> [])
+  |> Stdlib.List.flatten
+  |> Stdlib.List.unique
+
+
+/// What fails among <param tests>, the tests elsewhere that use <param m>.
+let testsElsewhere(ctx: Tools.Context, m: String, tests: List<String>): List<String> =
+  let (_app, _record, outcome) =
+    Repls.Batch.run(
+      ctx.app,
+      ctx.repl,
+      "test run " + Stdlib.String.join(tests, " "),
+      Repls.Batch.OnFailure.Stop)
+
+  match outcome.replies with
+  | [r] when r.status == "ok" -> []
+  | [r] -> [ $"{m}'s tests fail:\n{Stdlib.String.first(Stdlib.String.join(r.lines, "\n"), 1500)}" ]
+  | _ -> []
 
 
 /// The modules this session wrote and still has live items in, without the agent's own prompt and

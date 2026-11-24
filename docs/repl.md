@@ -89,10 +89,11 @@ function, a stream) prints as the CLI's `eval` prints it.
 
 No colour, no banners and no prose framing, whether or not stdout is a terminal.
 
-A `run` reply ends with the trace it left, `trace 13b52c04: dark traces inspect 13b52c04`, and a
-failed command with no output says what it exited with (``error: `run` exited 2``).
+A `run` reply ends with the trace it left, `trace 13b52c04: dark traces inspect 13b52c04`. A
+program that exits non-zero answers `exit 1` above its output: that is its answer, not a failure,
+so a batch that tries a program's error paths goes on.
 
-A command fails when it exits non-zero. An expression or binding fails when evaluating it
+A command other than `run` fails when it exits non-zero. An expression or binding fails when evaluating it
 raises or is refused. On the first failure the batch stops and every later statement replies
 `skipped`; with `--continue` every statement runs and each replies for itself.
 

@@ -60,10 +60,18 @@ the typecheck it caused (`docs/repl.md`). A batch may not change the instance (`
 - **Before a run,** the reply says what the function may do (`effects`).
 - **`callers`, `calls` and `effects`** answer from the store's references and effect analysis.
 
+`discard` removes an item, or every item of a module, from the session's draft: scratch work
+goes in one call, where `delete` would only deprecate it.
+
+The system prompt carries the `docs for-ai` page in place of the short syntax notes, so the
+model starts with the reference. Under `--sandbox` it also says what bash can't do (network,
+writes outside the working directory, processes that outlive the call).
+
 ## Done, and long sessions
 
 - When the model answers without a tool call, the modules the session wrote are checked: they
-  must typecheck and have tests that pass. If not, the problems go back as a user message, up to
+  must typecheck and have tests that pass; tests in another module that use a module's items count
+  for it, and a module whose items were all removed is skipped. If not, the problems go back as a user message, up to
   `--checks` times (default 2).
 - Once a call's input passes `--compact-at` tokens (default 120,000), the conversation is
   replaced by one message: the task, what the store says now (modules, their checks, the kept

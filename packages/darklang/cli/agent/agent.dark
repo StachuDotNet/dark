@@ -827,12 +827,30 @@ let toolsFor(o: Options): List<Tools.Tool> =
   | Generic -> Tools.generic()
 
 
+/// The `docs for-ai` page, as `dark docs for-ai` prints it, or "".
+let forAiPage(state: AppState): String =
+  let (after, text) =
+    Workbench.captureOutputAnd(fun () ->
+      Registry.executeCommand("docs", { state with exitCode = 0 }, [ "for-ai" ]))
+
+  if after.exitCode == 0 then
+    Stdlib.String.trim(Repls.Batch.stripAnsi(text))
+  else
+    ""
+
+
 /// The system prompt for a session at <param cwd> on <param branch>.
 let systemPrompt(state: AppState, o: Options, cwd: String, branch: String): String =
   let sections =
     match o.toolset with
-    | StoreTools -> promptSections(state)
+    | StoreTools -> Agent.Prompt.withReference(promptSections(state), forAiPage(state))
     | Generic -> Agent.Prompt.genericSections
+
+  let sections =
+    if o.sandbox then
+      Stdlib.List.append(sections, Agent.Prompt.sandbox)
+    else
+      sections
 
   Agent.Prompt.compose(
     sections,

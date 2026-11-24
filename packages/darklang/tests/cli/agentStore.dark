@@ -280,3 +280,121 @@ test aDeletedScratchModuleIsNotPartOfTheWork = Instance.withInstance(fun i ->
         "the deleted scratch module needs no tests")
 
       Instance.says(out, "\"num_turns\":4", "no turn was spent on it") ]))
+
+
+val testsElsewhere =
+  "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"define_module\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"module\\\": \\\"Me.Calc\\\", \\\"source\\\": \\\"let add(a: Int64, b: Int64): Int64 = a + b\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"define_module\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"module\\\": \\\"Me.CalcTests\\\", \\\"source\\\": \\\"test adds = Me.Calc.add(1, 2) |> Stdlib.Test.equal(3)\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Done: Me.Calc.add, tested in Me.CalcTests.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n"
+
+
+test testsInAModuleOfTheirOwnCount = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/elsewhere.replay"
+  let _ = Stdlib.Cli.File.writeText(path, testsElsewhere)
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "agent"
+        "-p"
+        "add"
+        "--replay"
+        path
+        "--checks"
+        "1"
+        "--output-format"
+        "stream-json" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the session answers")
+      Instance.doesNotSay(
+        out,
+        "Before this is accepted as done",
+        "Me.CalcTests covers Me.Calc")
+
+      Instance.says(out, "\"num_turns\":3", "no turn was spent on it") ]))
+
+
+val discardScratch =
+  "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"define_module\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"module\\\": \\\"Me.Probe\\\", \\\"source\\\": \\\"let probe(): Int64 = 1\\\\nlet other(): Int64 = 2\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"discard\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"name\\\": \\\"Me.Probe\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"define_module\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"module\\\": \\\"Me.Real\\\", \\\"source\\\": \\\"let two(): Int64 = 2\\\\ntest isTwo = two() |> Stdlib.Test.equal(2)\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Done: Me.Real.two, with a test.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n"
+
+
+test discardRemovesScratchInOneCall = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/discard.replay"
+  let _ = Stdlib.Cli.File.writeText(path, discardScratch)
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "agent"
+        "-p"
+        "two"
+        "--replay"
+        path
+        "--checks"
+        "1"
+        "--output-format"
+        "stream-json" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the session answers")
+      Instance.says(out, "dropped Me.Probe.probe", "the scratch items go")
+
+      Instance.says(
+        out,
+        "dropped Me.Probe.other",
+        "all of them, in the one call")
+
+      Instance.doesNotSay(
+        out,
+        "Before this is accepted as done",
+        "nothing is left to test")
+
+      Instance.says(out, "\"num_turns\":4", "no turn was spent on it") ]))
+
+
+val exitIsAnAnswer =
+  "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"dark\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"command\\\": \\\"module /Me.Cli -\\\\n  let main(args: List<String>): Int64 =\\\\n    match args with\\\\n    | [] ->\\\\n      Stdlib.printLine(\\\\\\\"usage: cli <name>\\\\\\\")\\\\n      1\\\\n    | [n] ->\\\\n      Stdlib.printLine(\\\\\\\"hi \\\\\\\" + n)\\\\n      0\\\\n    | _ -> 2\\\\n  test usage = main([]) |> Stdlib.Test.equal(1)\\\\nrun Me.Cli.main\\\\nrun Me.Cli.main Ada\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Done: Me.Cli.main.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n"
+
+
+test aProgramsExitCodeDoesNotStopTheBatch = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/exit.replay"
+  let _ = Stdlib.Cli.File.writeText(path, exitIsAnAnswer)
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "agent"
+        "-p"
+        "cli"
+        "--replay"
+        path
+        "--checks"
+        "0"
+        "--output-format"
+        "stream-json" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the session answers")
+      Instance.says(out, "exit 1", "the usage path answered with its exit code")
+      Instance.says(out, "hi Ada", "and the batch went on to the next run")
+      Instance.says(out, "3 ok, 0 failed, 0 skipped", "every statement ran")
+      Instance.doesNotSay(
+        out,
+        "the values in run",
+        "a chosen exit code is not a crash") ]))
+
+
+test thePromptCarriesTheReferenceAndTheSandbox = Instance.withInstance(fun i ->
+  let (_c, store) = Instance.ran(i, [ "agent", "--show-prompt", "--sandbox" ])
+  let (_g, plain) = Instance.ran(i, [ "agent", "--show-prompt" ])
+  Stdlib.Test.all(
+    [ Instance.says(
+        store,
+        "The Dark reference (`docs for-ai`)",
+        "the reference is in the prompt")
+
+      Instance.says(
+        store,
+        "Your bash runs in a sandbox",
+        "the sandbox is described under --sandbox")
+
+      Instance.doesNotSay(
+        plain,
+        "Your bash runs in a sandbox",
+        "and only then") ]))
