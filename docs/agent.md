@@ -46,6 +46,33 @@ the typecheck it caused (`docs/repl.md`). A batch may not change the instance (`
 `config`, `install`, ...) or move work off the branch (`merge`, `switch`, `rebase`), and a
 `run --allow` inside it may grant only what the session has.
 
+## What the store checks, with no model turn
+
+- **Slips at save.** When `define_fn`, `define_module` or `edit_fn` fails to save, the source is
+  run through `Darklang.Agent.Fixes` (other languages' names with one Dark form, `;` in lists and
+  records, `200L`), outside strings and comments. If anything changed, the fixed source is saved
+  instead, and the reply starts with each changed line, before and after.
+- **Earlier evals.** Each successful `eval` is kept with its answer (the last 20). After a write
+  that saves cleanly, they run again on the new code, and the reply lists the ones whose answer
+  changed.
+- **A failed run** answers with the values of the session's own functions in its trace
+  (`traces show <fn> <trace>`), so the model doesn't need print statements.
+- **Before a run,** the reply says what the function may do (`effects`).
+- **`callers`, `calls` and `effects`** answer from the store's references and effect analysis.
+
+## Done, and long sessions
+
+- When the model answers without a tool call, the modules the session wrote are checked: they
+  must typecheck and have tests that pass. If not, the problems go back as a user message, up to
+  `--checks` times (default 2).
+- Once a call's input passes `--compact-at` tokens (default 120,000), the conversation is
+  replaced by one message: the task, what the store says now (modules, their checks, the kept
+  evals), and a note the model writes on request (`Darklang.Agent.Prompt.compaction`).
+
+`--tools generic` keeps only the file tools and bash, with a prompt that points at the `dark`
+binary, and turns the checks off: the comparison arm for measuring what the store adds.
+`--show-prompt` prints everything sent to the model before the conversation.
+
 ## Sessions
 
 A session is a record in the store's config (`agent.session.a1`) holding the conversation, the

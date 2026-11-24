@@ -35,6 +35,12 @@ type Format =
   | StreamJson
 
 
+/// Which tools the agent has: the store's, or only files and the shell (the comparison arm).
+type Toolset =
+  | StoreTools
+  | Generic
+
+
 type Options =
   { prompt: String
     model: String
@@ -46,7 +52,13 @@ type Options =
     maxTurns: Int64
     replay: Option<String>
     baseUrl: String
-    effort: String }
+    effort: String
+    toolset: Toolset
+    /// how many times a failed done-check sends the model back; 0 turns the check off
+    checks: Int64
+    /// compact once a call's input passes this many tokens; 0 never
+    compactAt: Int64
+    showPrompt: Bool }
 
 
 type Run =
@@ -313,6 +325,38 @@ let callModel(run: Run, messages: List<Agent.Message>): (Run * Agent.Event) =
       | Error(why) -> (run, Agent.Event.ModelFailed(why))
 
 
+/// The first prompt of a conversation: the task the person gave.
+let taskOf(messages: List<Agent.Message>): String =
+  messages
+  |> Stdlib.List.findFirst(fun m -> m.role == Agent.Role.User && Agent.textOf(m.content) != "")
+  |> Stdlib.Option.map(fun m -> Agent.textOf(m.content))
+  |> Stdlib.Option.withDefault("")
+
+
+/// A shorter conversation in place of <param messages>: the task, what the store says now, and the
+/// model's own note on what it tried and what is next. If the note can't be had, the conversation
+/// stays as it was.
+let compact(run: Run, messages: List<Agent.Message>): (Run * List<Agent.Message>) =
+  let ask = Stdlib.List.append(messages, Agent.userText(Agent.Prompt.compaction))
+  let (r, event) = callModel({ run with text = TextShown.AtTheEnd }, ask)
+  let r = { r with text = run.text }
+  match event with
+  | ModelReplied(reply) ->
+    let note = Agent.textOf(reply.content)
+    let loop = { r.loop with usage = Agent.addUsage(r.loop.usage, reply.usage) }
+    let first =
+      [ "The conversation so far was compacted. The task, as the person gave it:"
+        taskOf(messages)
+        Store.stateBlock(r.ctx)
+        "Your own note from before the compaction:"
+        note
+        "Carry on from here." ]
+      |> Stdlib.String.join("\n\n")
+
+    ({ r with loop = loop }, [ Agent.userText(first) ])
+  | _ -> (r, messages)
+
+
 let save(run: Run): Run =
   let withMsgs = withMessages(run.session, run.loop.messages)
   let session =
@@ -340,6 +384,10 @@ let perform(run: Run, command: Agent.Command): Run =
     let _ = show(run, m)
     run
   | Save -> save(run)
+  | Check(_answer) -> feed(run, Agent.Event.Checked(Store.doneCheck(run.ctx)))
+  | Compact(messages) ->
+    let (r, compacted) = compact(run, messages)
+    feed(r, Agent.Event.Compacted(compacted))
   | Finish(ending) -> { run with ending = Option.Some(ending) }
 
 
@@ -385,6 +433,19 @@ let parseArgs(args: List<String>, o: Options): Result<Options, String> =
       parseArgs(rest, { o with effort = e })
     else
       Result.Error($"--effort is low, medium, high, xhigh or max, not {e}")
+  | ["--tools", "store", ...rest] -> parseArgs(rest, { o with toolset = Toolset.StoreTools })
+  | ["--tools", "generic", ...rest] ->
+    parseArgs(rest, { o with toolset = Toolset.Generic, checks = 0 })
+  | ["--tools", t, ..._rest] -> Result.Error($"--tools is store or generic, not {t}")
+  | ["--checks", n, ...rest] ->
+    match Stdlib.Int64.parse(n) with
+    | Ok(v) when v >= 0 -> parseArgs(rest, { o with checks = v })
+    | _ -> Result.Error($"--checks takes a number, not {n}")
+  | ["--compact-at", n, ...rest] ->
+    match Stdlib.Int64.parse(n) with
+    | Ok(v) when v >= 0 -> parseArgs(rest, { o with compactAt = v })
+    | _ -> Result.Error($"--compact-at takes a number of tokens, not {n}")
+  | ["--show-prompt", ...rest] -> parseArgs(rest, { o with showPrompt = true })
   | ["--allow", names, ...rest] ->
     let wanted = Stdlib.String.split(names, ",") |> Stdlib.List.map(fun n -> Stdlib.String.trim(n))
     let expanded =
@@ -423,7 +484,11 @@ let defaultOptions(): Options =
       maxTurns = 50
       replay = Option.None
       baseUrl = "https://api.anthropic.com"
-      effort = "high" }
+      effort = "high"
+      toolset = Toolset.StoreTools
+      checks = 2
+      compactAt = 120000
+      showPrompt = false }
 
 
 /// The session to run in: a resumed one, a fork of one, or a new one on its own new branch.
@@ -582,6 +647,7 @@ let run(state: AppState, args: List<String>): AppState =
   | Error(why) ->
     printErr(why)
     { state with exitCode = 2 }
+  | Ok(o) when o.showPrompt -> showPrompt(state, o)
   | Ok(o) when o.prompt == "" && Stdlib.Cli.Sys.isTerminal(0) -> chat(state, o)
   | Ok(o) when o.prompt == "" ->
     match Stdlib.Cli.Stdin.readAll() with
@@ -611,6 +677,49 @@ let promptSections(state: AppState): List<Agent.Prompt.PromptSection> =
   | Error(_) -> Agent.Prompt.sections
 
 
+let toolsFor(o: Options): List<Tools.Tool> =
+  match o.toolset with
+  | StoreTools -> Tools.all()
+  | Generic -> Tools.generic()
+
+
+/// The system prompt for a session at <param cwd> on <param branch>.
+let systemPrompt(state: AppState, o: Options, cwd: String, branch: String): String =
+  let sections =
+    match o.toolset with
+    | StoreTools -> promptSections(state)
+    | Generic -> Agent.Prompt.genericSections
+
+  Agent.Prompt.compose(
+    sections,
+    Agent.Prompt.Tier.Frontier,
+    [ projectContext(cwd), skillsIndex(cwd) ]
+    |> Stdlib.List.filter(fun t -> t != "")
+    |> Stdlib.String.join("\n\n"),
+    cwd,
+    branch,
+    // the day, not the time: the prompt stays the same, and cached, for a day
+    Stdlib.String.first(Stdlib.display(Stdlib.DateTime.now()), 10),
+    Stdlib.Cli.Sys.currentExecutablePath())
+
+
+/// Everything sent to the model before the conversation, as it would be sent: the system prompt
+/// and each tool's description and parameters.
+let showPrompt(state: AppState, o: Options): AppState =
+  let cwd = Stdlib.Cli.Posix.getCwd() |> Stdlib.Result.withDefault(".")
+  let _ = Stdlib.printLine("=== system prompt")
+  let _ = Stdlib.printLine(systemPrompt(state, o, cwd, "agent-a1"))
+  let _ =
+    toolsFor(o)
+    |> Stdlib.List.iter(fun t ->
+      let _ = Stdlib.printLine($"\n=== tool {t.spec.name}")
+      Stdlib.printLine(Stdlib.AltJson.format(Agent.Anthropic.toolToJson(t.spec, false))))
+
+  let _ = Stdlib.printLine("\n=== compaction request")
+  let _ = Stdlib.printLine(Agent.Prompt.compaction)
+  state
+
+
 /// Everything a run needs, before the first prompt: the session (new, resumed or forked), its
 /// repl, the tools and the system prompt.
 let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
@@ -622,19 +731,7 @@ let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
     let _ = register(session)
     let repl = replFor(session)
     let branch = Repls.branchText(Repls.branchOf(repl))
-    let system =
-      Agent.Prompt.compose(
-        promptSections(state),
-        Agent.Prompt.Tier.Frontier,
-        [ projectContext(cwd), skillsIndex(cwd) ]
-        |> Stdlib.List.filter(fun t -> t != "")
-        |> Stdlib.String.join("\n\n"),
-        cwd,
-        branch,
-        // the day, not the time: the prompt stays the same, and cached, for a day
-        Stdlib.String.first(Stdlib.display(Stdlib.DateTime.now()), 10),
-        Stdlib.Cli.Sys.currentExecutablePath())
-
+    let system = systemPrompt(state, o, cwd, branch)
     let ctx =
       Tools.Context
         { app = Repls.enter(state, repl)
@@ -645,17 +742,21 @@ let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
           ask =
             o.format == Format.PlainText
             && Stdlib.Cli.Sys.isTerminal(0)
-            && Stdlib.Cli.Sys.isTerminal(2) }
+            && Stdlib.Cli.Sys.isTerminal(2)
+          store = o.toolset == Toolset.StoreTools
+          touched = []
+          probes = [] }
 
+    let loop = Agent.start(messagesOf(session), o.maxTurns)
     Result.Ok(
       Run
-        { loop = Agent.start(messagesOf(session), o.maxTurns)
+        { loop = { loop with checksLeft = o.checks, compactAt = o.compactAt }
           queue = []
           ctx = ctx
           session = session
           provider = provider
           system = system
-          tools = Tools.all()
+          tools = toolsFor(o)
           format = o.format
           ending = Option.None
           text = text })
@@ -812,8 +913,11 @@ let accepts(): Accepts.Accepts =
       "--replay"
       "--base-url"
       "--allow"
-      "--effort" ],
-    Accepts.freeText(0, [ "-p", "--print", "--continue", "--list" ]))
+      "--effort"
+      "--tools"
+      "--checks"
+      "--compact-at" ],
+    Accepts.freeText(0, [ "-p", "--print", "--continue", "--list", "--show-prompt" ]))
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
@@ -841,6 +945,11 @@ let help(_state: AppState): String =
     "  --max-turns <n>            stop after n model calls (default 50)"
     "  --output-format <f>        text (default) or stream-json, one JSON event per line"
     "  --replay <file>            answer from recorded SSE responses (separated by =====), not the API"
+    "  --tools <set>              store (default): the store's tools and checks; generic: files and bash only"
+    "  --checks <n>               when the model says it is done, check the modules it wrote typecheck and"
+    "                             have passing tests, and send it back up to n times (default 2; 0 off)"
+    "  --compact-at <tokens>      compact the conversation once a call's input passes this (default 120000)"
+    "  --show-prompt              print everything sent to the model before the conversation, and stop"
     "  --base-url <url>           the Messages API's address (default https://api.anthropic.com)"
     ""
     "The API key is read from secrets/anthropic.key beside the store." ]

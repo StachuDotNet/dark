@@ -1,0 +1,357 @@
+/// What the agent asks the store directly, instead of reading text: who calls a function, what it
+/// calls, what it may do; and the checks that need no model turn: the values of a failed run, the
+/// earlier evals run again after a save, and whether the work is done.
+module Darklang.Cli.Agent.Store
+
+/// Run <param f> standing on the session's branch: names resolve on the process's branch.
+let onBranch(ctx: Tools.Context, f: AppState -> 'a): 'a =
+  let stored = SCM.PackageOps.currentBranch()
+  let app = Repls.enter(ctx.app, ctx.repl)
+  let _ = SCM.PackageOps.selectBranch(app.currentBranchId)
+  let result = f(app)
+  let _ = SCM.PackageOps.selectBranch(stored)
+  result
+
+
+val listCap = 40
+
+
+/// Names, at most `listCap`, tests counted rather than listed.
+let nameList(rows: List<ScmJson.DependencyJson>): String =
+  let tests = rows |> Stdlib.List.filter(fun r -> r.kind == "test")
+  let others = rows |> Stdlib.List.filter(fun r -> r.kind != "test")
+  let shown =
+    others
+    |> Stdlib.List.take(listCap)
+    |> Stdlib.List.map(fun r -> $"  {r.name} ({r.kind})")
+
+  let more =
+    if Stdlib.List.length(others) > listCap then
+      [ $"  ... {Stdlib.display(Stdlib.List.length(others) - listCap)} more" ]
+    else
+      []
+
+  let testLine =
+    if Stdlib.List.isEmpty(tests) then
+      []
+    else
+      [ $"  and {Stdlib.display(Stdlib.List.length(tests))} tests" ]
+
+  match Stdlib.List.flatten([ shown, more, testLine ]) with
+  | [] -> "  nothing"
+  | lines -> Stdlib.String.join(lines, "\n")
+
+
+let depsOf(
+  ctx: Tools.Context,
+  name: String,
+  direction: Deps.Direction,
+  deep: Bool)
+  : Result<ScmJson.DepsJson, String> =
+  onBranch(ctx, fun app ->
+    match Deps.resolvePath(app.currentBranchId, app.packageData.currentLocation, name) with
+    | Error(e) -> Result.Error(e)
+    | Ok((hash, loc, label, kind)) ->
+      Deps.answerOf(app.currentBranchId, hash, loc, kind, label, direction, deep))
+
+
+let callers(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Agent.ToolOutput) =
+  Tools.needing(ctx, input, "name", fun name ->
+    let deep = Tools.getBool(input, "deep")
+    match depsOf(ctx, name, Deps.Direction.UsedBy, deep) with
+    | Error(e) -> (ctx, Tools.fail(e))
+    | Ok(answer) ->
+      let what = if deep then "Everything that depends on" else "What uses"
+      (ctx, Tools.ok($"{what} {answer.item}:\n{nameList(answer.dependents)}")))
+
+
+let calls(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Agent.ToolOutput) =
+  Tools.needing(ctx, input, "name", fun name ->
+    match depsOf(ctx, name, Deps.Direction.Uses, false) with
+    | Error(e) -> (ctx, Tools.fail(e))
+    | Ok(answer) -> (ctx, Tools.ok($"What {answer.item} uses:\n{nameList(answer.dependencies)}")))
+
+
+/// The function's hash on the session's branch.
+let fnHash(ctx: Tools.Context, name: String): Result<String, String> =
+  onBranch(ctx, fun app ->
+    match Deps.resolvePath(app.currentBranchId, app.packageData.currentLocation, name) with
+    | Error(e) -> Result.Error(e)
+    | Ok((hash, _loc, label, kind)) ->
+      if kind == LanguageTools.ProgramTypes.ItemKind.Fn then
+        Result.Ok(LanguageTools.ProgramTypes.hashToString(hash))
+      else
+        Result.Error($"{label} is not a function"))
+
+
+/// `file-read (via A -> B), raise (via ...)`, or `none`.
+let effectsText(hash: String): String =
+  let (complete, found) = Effects.reasons(hash)
+  let rows =
+    found
+    |> Stdlib.List.map(fun((effect, why)) ->
+      let name = LanguageTools.Permissions.effectName(effect)
+      match why with
+      | [] -> name
+      | [first, ...] -> $"{name} (via {first})")
+
+  let text = if Stdlib.List.isEmpty(rows) then "none" else Stdlib.String.join(rows, "; ")
+  if complete then text else text + "; some calls could not be followed"
+
+
+let effects(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Agent.ToolOutput) =
+  Tools.needing(ctx, input, "name", fun name ->
+    match fnHash(ctx, name) with
+    | Error(e) -> (ctx, Tools.fail(e))
+    | Ok(hash) -> (ctx, Tools.ok($"{name} may: {effectsText(hash)}")))
+
+
+// ---- before a run
+
+/// The function a `run` statement runs, past its flags.
+let runTarget(statement: String): Option<String> =
+  let words =
+    LanguageTools.Permissions.tokens(Stdlib.String.trim(statement)) |> Stdlib.Option.withDefault([])
+
+  match words with
+  | ["run", ...rest] ->
+    rest
+    |> Stdlib.List.fold((Option.None, false), fun(acc, w) ->
+      let (found, skipNext) = acc
+      match found with
+      | Some(_) -> acc
+      | None ->
+        if skipNext then
+          (Option.None, false)
+        else if w == "--allow" then
+          (Option.None, true)
+        else if Stdlib.String.startsWith(w, "-") then
+          (Option.None, false)
+        else
+          (Option.Some(w), false))
+    |> Stdlib.Tuple2.first
+  | _ -> Option.None
+
+
+/// One line per `run` in <param text>: what the function may do, before it does it.
+let beforeRuns(ctx: Tools.Context, text: String): List<String> =
+  Repl.splitStatements(text)
+  |> Stdlib.List.filterMap(fun st -> runTarget(st))
+  |> Stdlib.List.filterMap(fun name ->
+    match fnHash(ctx, name) with
+    | Ok(hash) -> Option.Some($"before running: {name} may: {effectsText(hash)}")
+    | Error(_) -> Option.None)
+
+
+// ---- after a failed run
+
+/// The trace ids a failed `run` reply names.
+let failedTraces(outcome: Repls.Batch.Outcome): List<String> =
+  outcome.replies
+  |> Stdlib.List.filter(fun r -> r.status == "error")
+  |> Stdlib.List.map(fun r -> r.lines)
+  |> Stdlib.List.flatten
+  |> Stdlib.List.filterMap(fun l ->
+    let l = Stdlib.String.trim(l)
+    if
+      Stdlib.String.startsWith(l, "trace ") && Stdlib.String.contains(l, ": dark traces inspect ")
+    then
+      Stdlib.String.split(Stdlib.String.dropFirst(l, 6), ":") |> Stdlib.List.head
+    else
+      Option.None)
+
+
+val traceLines = 60
+
+
+/// The output of one CLI command, run on the session's branch.
+let commandText(ctx: Tools.Context, name: String, args: List<String>): List<String> =
+  onBranch(ctx, fun app ->
+    let (_after, text) =
+      Workbench.captureOutputAnd(fun () ->
+        Registry.executeCommand(name, { app with exitCode = 0 }, args))
+
+    Stdlib.String.splitOnNewline(Repls.Batch.stripAnsi(text)))
+
+
+/// What the failed run did: the session's own functions it went through, each with that run's
+/// values beside the code, so the model needs no print statements.
+let traceValues(ctx: Tools.Context, id: String): String =
+  let fns =
+    match Tracing.resolveTraceID(id) with
+    | Some(full) ->
+      Tracing.Store.fnsWithHashes(full)
+      |> Stdlib.List.map(fun((name, _hash)) -> name)
+      |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.String.startsWith(n, "Darklang.")))
+      |> Stdlib.List.take(3)
+    | None -> []
+
+  let lines =
+    match fns with
+    | [] -> commandText(ctx, "traces", [ "inspect", id ])
+    | _ ->
+      fns
+      |> Stdlib.List.map(fun f -> commandText(ctx, "traces", [ "show", f, id ]))
+      |> Stdlib.List.flatten
+
+  let shown = Stdlib.List.take(lines, traceLines)
+  let cut =
+    if Stdlib.List.length(lines) > traceLines then
+      [ $"... {Stdlib.display(Stdlib.List.length(lines) - traceLines)} more lines: `dark` tool, traces show <fn> {id}" ]
+    else
+      []
+
+  $"the values in run {id}:\n" + Stdlib.String.join(Stdlib.List.concat(shown, cut), "\n")
+
+
+// ---- earlier evals, run again after a save
+
+val probeCap = 20
+
+
+/// An eval's answer, as the batch replied.
+let answerOf(outcome: Repls.Batch.Outcome): Option<String> =
+  match outcome.replies with
+  | [r] when r.status == "ok" -> Option.Some(Stdlib.String.join(r.lines, "\n"))
+  | _ -> Option.None
+
+
+/// Keep <param expression>'s answer to compare after later saves.
+let remember(ctx: Tools.Context, expression: String, outcome: Repls.Batch.Outcome): Tools.Context =
+  match answerOf(outcome) with
+  | None -> ctx
+  | Some(answer) ->
+    let others = ctx.probes |> Stdlib.List.filter(fun((e, _)) -> e != expression)
+    let kept = Stdlib.List.append(others, (expression, answer))
+    let n = Stdlib.List.length(kept)
+    { ctx with probes = Stdlib.List.drop(kept, n - probeCap) }
+
+
+/// Run every remembered eval again on the new code: which answers changed. The answers move to
+/// the new ones, so a change is reported once.
+let rerunProbes(ctx: Tools.Context): (Tools.Context * Option<String>) =
+  match ctx.probes with
+  | [] -> (ctx, Option.None)
+  | probes ->
+    let results =
+      probes
+      |> Stdlib.List.map(fun((expression, was)) ->
+        let (_app, _record, outcome) =
+          Repls.Batch.run(ctx.app, ctx.repl, expression, Repls.Batch.OnFailure.Stop)
+
+        let now =
+          match outcome.replies with
+          | [r] ->
+            let text = Stdlib.String.join(r.lines, "\n")
+            if r.status == "ok" then text else "error: " + text
+          | _ -> "error"
+
+        (expression, was, now))
+
+    let changed = results |> Stdlib.List.filter(fun((_e, was, now)) -> was != now)
+    let ctx = { ctx with probes = results |> Stdlib.List.map(fun((e, _was, now)) -> (e, now)) }
+    let total = Stdlib.List.length(results)
+    match changed with
+    | [] -> (ctx, Option.Some($"re-ran {Stdlib.display(total)} earlier evals: all the same"))
+    | _ ->
+      let rows =
+        changed
+        |> Stdlib.List.map(fun((e, was, now)) ->
+          $"  {Stdlib.String.first(e, 120)}\n    was {Stdlib.String.first(was, 300)}\n    now {Stdlib.String.first(now, 300)}")
+
+      (
+        ctx,
+        Option.Some(
+          $"re-ran {Stdlib.display(total)} earlier evals: {Stdlib.display(Stdlib.List.length(changed))} answer differently now:\n"
+          + Stdlib.String.join(rows, "\n")))
+
+
+// ---- the done-check
+
+/// What still fails in <param m>: its typecheck, and its tests (none is a failure too).
+let moduleProblems(ctx: Tools.Context, m: String): List<String> =
+  let check = Repls.Batch.checkModule(Repls.branchOf(ctx.repl), m)
+  let typeProblems =
+    check.failures
+    |> Stdlib.List.map(fun((label, issues)) ->
+      $"{label} does not typecheck: {Stdlib.String.join(Stdlib.List.take(issues, 2), " ")}")
+
+  let (_app, _record, outcome) =
+    Repls.Batch.run(ctx.app, ctx.repl, $"test run {m}", Repls.Batch.OnFailure.Stop)
+
+  let testProblems =
+    match outcome.replies with
+    | [r] when r.status == "ok" -> []
+    | [r] ->
+      let text = Stdlib.String.join(r.lines, "\n")
+      if Stdlib.String.contains(text, "No package tests matched") then
+        [ $"{m} has no tests" ]
+      else
+        [ $"{m} has failing tests:\n{Stdlib.String.first(text, 1500)}" ]
+    | _ -> []
+
+  Stdlib.List.concat(typeProblems, testProblems)
+
+
+/// The modules this session wrote, without the agent's own prompt and tools.
+let workModules(ctx: Tools.Context): List<String> =
+  ctx.touched
+  |> Stdlib.List.filter(fun m -> Stdlib.Bool.not(Stdlib.String.startsWith(m, "Me.Agent")))
+
+
+/// Nothing, or what to fix before the answer is accepted.
+let doneCheck(ctx: Tools.Context): Option<String> =
+  let problems =
+    workModules(ctx)
+    |> Stdlib.List.map(fun m -> moduleProblems(ctx, m))
+    |> Stdlib.List.flatten
+
+  match problems with
+  | [] -> Option.None
+  | _ ->
+    let rows = problems |> Stdlib.List.map(fun p -> "- " + p)
+    Option.Some(
+      "Before this is accepted as done, the check of the modules you wrote found:\n"
+      + Stdlib.String.join(rows, "\n")
+      + "\nFix these. Every module you wrote needs tests that pass. If one cannot be fixed, say why in your answer.")
+
+
+// ---- after a compaction
+
+/// The facts a compacted conversation starts from, read from the store rather than remembered.
+let stateBlock(ctx: Tools.Context): String =
+  let modules = workModules(ctx)
+  let moduleRows =
+    modules
+    |> Stdlib.List.map(fun m ->
+      match moduleProblems(ctx, m) with
+      | [] -> $"- {m}: typechecks, tests pass"
+      | problems -> $"- {m}: " + Stdlib.String.join(problems, "; "))
+
+  let (_app, _record, outcome) =
+    Repls.Batch.run(ctx.app, ctx.repl, "status", Repls.Batch.OnFailure.Stop)
+
+  let status =
+    outcome.replies
+    |> Stdlib.List.map(fun r -> Stdlib.String.join(r.lines, "\n"))
+    |> Stdlib.String.join("\n")
+
+  let probeRows =
+    ctx.probes
+    |> Stdlib.List.map(fun((e, now)) ->
+      $"- {Stdlib.String.first(e, 120)} = {Stdlib.String.first(now, 200)}")
+
+  [ "What the store says now (computed, not remembered):"
+    "Branch: " + status
+    "Modules written this session:"
+    if Stdlib.List.isEmpty(moduleRows) then
+      "- none"
+    else
+      Stdlib.String.join(moduleRows, "\n")
+
+    "Evals kept for comparison after each save:"
+    if Stdlib.List.isEmpty(probeRows) then
+      "- none"
+    else
+      Stdlib.String.join(probeRows, "\n") ]
+  |> Stdlib.String.join("\n")

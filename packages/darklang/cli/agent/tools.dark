@@ -13,7 +13,14 @@ type Context =
     seen: List<String>
     allowed: List<LanguageTools.Permissions.Effect>
     /// A person is at the terminal to approve what the policy does not allow.
-    ask: Bool }
+    ask: Bool
+    /// The checks only the store can do: slips fixed at save, earlier evals run again after a save,
+    /// a failed run's values, effects before a run. Off for the generic comparison arm.
+    store: Bool
+    /// The modules this session wrote to.
+    touched: List<String>
+    /// Earlier evals and their answers, run again after each save.
+    probes: List<(String * String)> }
 
 
 type Tool =
@@ -444,18 +451,58 @@ let batchRefusal(ctx: Context, text: String): Option<String> =
 let batch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
   match batchRefusal(ctx, text) with
   | Some(why) -> (ctx, fail(why))
-  | None -> runBatch(ctx, text)
+  | None ->
+    let (ctx, _outcome, output) = runBatch(ctx, text)
+    (ctx, output)
 
 
-let runBatch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
+/// Run a batch: the session after it, the batch's outcome, and what the model is told. With the
+/// store checks on, the reply also carries what each `run` may do, a failed run's values, and the
+/// earlier evals that answer differently after a write.
+let runBatch(ctx: Context, text: String): (Context * Repls.Batch.Outcome * Agent.ToolOutput) =
+  let before = if ctx.store then Store.beforeRuns(ctx, text) else []
   let (app, record, outcome) = Repls.Batch.run(ctx.app, ctx.repl, text, Repls.Batch.OnFailure.Stop)
+  let written = outcome.checks |> Stdlib.List.map(fun c -> c.name)
+  let touched =
+    Stdlib.List.concat(
+      ctx.touched,
+      written |> Stdlib.List.filter(fun m -> Stdlib.Bool.not(Stdlib.List.contains(ctx.touched, m))))
+
+  let ctx = { ctx with app = app, repl = record, touched = touched }
   // the model cannot run `dark repl show`, so it gets whole replies; `truncate` bounds the total
   let caps = Repls.Batch.Caps { lines = 2000, chars = outputCap }
   let lines = Repls.Batch.renderText(ctx.repl.id, caps, outcome)
   let failed = Repls.Batch.count(outcome, "error") > 0
-  (
-    { ctx with app = app, repl = record },
-    Agent.ToolOutput { text = truncate(Stdlib.String.join(lines, "\n")), isError = failed })
+  let traces =
+    if ctx.store then
+      Store.failedTraces(outcome) |> Stdlib.List.map(fun id -> Store.traceValues(ctx, id))
+    else
+      []
+
+  let (ctx, probes) =
+    if ctx.store && Stdlib.Bool.not(failed) && Stdlib.Bool.not(Stdlib.List.isEmpty(written)) then
+      match Store.rerunProbes(ctx) with
+      | c, Some(line) -> (c, [ line ])
+      | c, None -> (c, [])
+    else
+      (ctx, [])
+
+  let text = Stdlib.List.flatten([ before, lines, traces, probes ]) |> Stdlib.String.join("\n")
+  (ctx, outcome, Agent.ToolOutput { text = truncate(text), isError = failed })
+
+
+/// Save <param source> through <param statement>; if the save fails on slips the fix table knows,
+/// save the fixed source instead and say what changed.
+let save(ctx: Context, statement: String -> String, source: String): (Context * Agent.ToolOutput) =
+  let (ctx2, output) = batch(ctx, statement(source))
+  if output.isError && ctx.store then
+    match Agent.Fixes.apply(source) with
+    | _, [] -> (ctx2, output)
+    | fixedSource, changes ->
+      let (ctx3, retried) = batch(ctx, statement(fixedSource))
+      (ctx3, { retried with text = Agent.Fixes.describe(changes) + "\n" + retried.text })
+  else
+    (ctx2, output)
 
 
 let darkBatch(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
@@ -491,7 +538,14 @@ let eval(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput)
       |> Stdlib.List.indexedMap(fun(i, l) -> if i == 0 then l else "  " + l)
       |> Stdlib.String.join("\n")
 
-    batch(ctx, indented))
+    match batchRefusal(ctx, indented) with
+    | Some(why) -> (ctx, fail(why))
+    | None ->
+      let (ctx, outcome, output) = runBatch(ctx, indented)
+      if ctx.store then
+        (Store.remember(ctx, indented, outcome), output)
+      else
+        (ctx, output))
 
 
 let test(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
@@ -500,12 +554,14 @@ let test(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput)
 
 let defineFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
   needing(ctx, input, "name", fun name ->
-    needing(ctx, input, "source", fun source -> batch(ctx, block($"fn {name}", source))))
+    needing(ctx, input, "source", fun source ->
+      save(ctx, (fun src -> block($"fn {name}", src)), source)))
 
 
 let defineModule(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutput) =
   needing(ctx, input, "module", fun m ->
-    needing(ctx, input, "source", fun source -> batch(ctx, block($"module /{m}", source))))
+    needing(ctx, input, "source", fun source ->
+      save(ctx, (fun src -> block($"module /{m}", src)), source)))
 
 
 /// The item's source as `view --raw` shows it, or why not.
@@ -535,7 +591,8 @@ let editFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutpu
         | Ok(source) ->
           match editText(source, old, replacement, Occurrences.One) with
           | Error(why) -> (ctx, fail(why + $"; `view {name}` shows the source"))
-          | Ok(updated) -> batch(ctx, block($"fn {name}", Stdlib.String.trim(updated))))))
+          | Ok(updated) ->
+            save(ctx, (fun src -> block($"fn {name}", src)), Stdlib.String.trim(updated)))))
 
 
 /// Put a question to the person at the terminal. In print mode nobody is there, and the model is
@@ -724,7 +781,44 @@ let all(): List<Tool> =
             "Ask the person one short question, only when the request is ambiguous in a way that changes what you build. Offer the options you see.",
             [ param("question", "string", "the question, with the options") ])
         effects = []
-        run = askPerson } ]
+        run = askPerson }
+
+    Tool
+      { spec =
+          spec(
+            "callers",
+            "What uses a function, type or value, from the store's references: the callers an edit could break. Set deep for everything that depends on it, transitively.",
+            [ param("name", "string", "e.g. Me.Todo.add")
+              optional("deep", "boolean", "everything that depends on it, not only direct users") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = Store.callers }
+
+    Tool
+      { spec =
+          spec(
+            "calls",
+            "What a function, type or value uses: the functions and types it refers to.",
+            [ param("name", "string", "e.g. Me.Todo.add") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = Store.calls }
+
+    Tool
+      { spec =
+          spec(
+            "effects",
+            "What a function may do when it runs (file-read, file-write, http, process, raise, ...) and which call causes each, worked out from its code without running it.",
+            [ param("name", "string", "e.g. Me.Report.main") ])
+        effects = [ LanguageTools.Permissions.Effect.PackageRead ]
+        run = Store.effects } ]
+
+
+/// The comparison arm's tools: files and the shell, as a generic agent has. Dark is reached
+/// through `dark` in bash.
+val genericNames = [ "read", "write", "edit", "bash", "grep", "find", "ls" ]
+
+
+let generic(): List<Tool> =
+  all() |> Stdlib.List.filter(fun t -> Stdlib.List.contains(genericNames, t.spec.name))
 
 
 let named(tools: List<Tool>, name: String): Option<Tool> =

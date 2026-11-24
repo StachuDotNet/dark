@@ -11,6 +11,7 @@
 1 Darklang.Cli.Agent.projectContext Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Agent.providerFor Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Agent.readKey Darklang.Stdlib.Cli.File.readText
+1 Darklang.Cli.Agent.showPrompt Darklang.Stdlib.Cli.Posix.getCwd
 1 Darklang.Cli.Agent.skillsIndex Darklang.Stdlib.Cli.File.readText
 1 Darklang.Cli.Agent.skillsIndex Darklang.Stdlib.Cli.FileSystem.isDirectory
 1 Darklang.Cli.Agent.skillsIndex Darklang.Stdlib.Cli.FileSystem.listDirectory

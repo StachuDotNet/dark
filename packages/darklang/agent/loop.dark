@@ -60,6 +60,10 @@ type Event =
   | ModelReplied(Reply)
   | ModelFailed(String)
   | ToolFinished(id: String, output: ToolOutput)
+  /// The done-check's answer: what is still wrong, or nothing.
+  | Checked(problem: Option<String>)
+  /// The conversation that replaces the current one after a compaction.
+  | Compacted(messages: List<Message>)
 
 
 /// How the session ended, for the runner's last word and its exit code.
@@ -75,6 +79,10 @@ type Command =
   /// a message to show the person watching (or the stream-json reader)
   | Show(Message)
   | Save
+  /// check the work before accepting the model's answer; the runner answers with `Checked`
+  | Check(answer: String)
+  /// replace the conversation with a shorter one; the runner answers with `Compacted`
+  | Compact(List<Message>)
   | Finish(Ending)
 
 
@@ -83,6 +91,9 @@ type Status =
   | WaitingForModel
   /// tool calls still running, and the results that have come back, in call order
   | WaitingForTools(pending: List<String>, results: List<Block>)
+  /// the model said it is done; the work is being checked
+  | Checking(answer: String)
+  | Compacting
   | Done(Ending)
 
 
@@ -92,7 +103,13 @@ type State =
     /// model calls made in this run
     turns: Int64
     maxTurns: Int64
-    usage: Usage }
+    usage: Usage
+    /// how many more times a failed done-check sends the model back to work; 0 accepts any answer
+    checksLeft: Int64
+    /// compact once a call's input passes this many tokens; 0 never
+    compactAt: Int64
+    /// the input tokens of the last call, cached or not
+    lastInput: Int64 }
 
 
 let noUsage(): Usage =
@@ -101,7 +118,14 @@ let noUsage(): Usage =
 
 let start(messages: List<Message>, maxTurns: Int64): State =
   State
-    { messages = messages, status = Status.Idle, turns = 0, maxTurns = maxTurns, usage = noUsage() }
+    { messages = messages
+      status = Status.Idle
+      turns = 0
+      maxTurns = maxTurns
+      usage = noUsage()
+      checksLeft = 0
+      compactAt = 0
+      lastInput = 0 }
 
 
 let addUsage(a: Usage, b: Usage): Usage =
@@ -147,6 +171,19 @@ let append(state: State, m: Message): State =
   { state with messages = Stdlib.List.append(state.messages, m) }
 
 
+let userText(text: String): Message =
+  Message { role = Role.User, content = [ Block.Text(text) ] }
+
+
+/// The model's turn is over and every tool result is in: compact first when the context has grown
+/// past `compactAt`, otherwise ask the model again.
+let continueAfterTools(state: State): (State * List<Command>) =
+  if state.compactAt > 0 && state.lastInput > state.compactAt then
+    ({ state with status = Status.Compacting }, [ Command.Compact(state.messages) ])
+  else
+    callModel(state)
+
+
 /// The loop. An event that does not fit the state (a tool result nobody asked for, a reply while
 /// idle) leaves it as it was: replaying a log must not crash on one stray entry.
 let step(state: State, event: Event): (State * List<Command>) =
@@ -161,9 +198,18 @@ let step(state: State, event: Event): (State * List<Command>) =
   | WaitingForModel, ModelReplied(reply) ->
     let m = Message { role = Role.Assistant, content = reply.content }
     let appended = append(state, m)
-    let state = { appended with usage = addUsage(state.usage, reply.usage) }
+    let state =
+      { appended with
+          usage = addUsage(state.usage, reply.usage)
+          lastInput = reply.usage.input + reply.usage.cacheRead + reply.usage.cacheWrite }
+
     let shown = [ Command.Show(m), Command.Save ]
     match toolUses(reply.content) with
+    | [] when state.checksLeft > 0 ->
+      let answer = textOf(reply.content)
+      (
+        { state with status = Status.Checking(answer) },
+        Stdlib.List.concat(shown, [ Command.Check(answer) ]))
     | [] ->
       let (s, commands) = finish(state, Ending.Answered(textOf(reply.content)))
       (s, Stdlib.List.concat(shown, commands))
@@ -179,10 +225,18 @@ let step(state: State, event: Event): (State * List<Command>) =
     if Stdlib.List.isEmpty(pending) then
       // every result goes back in one message, in the order the model asked
       let m = Message { role = Role.User, content = results }
-      let (s, commands) = callModel(append(state, m))
+      let (s, commands) = continueAfterTools(append(state, m))
       (s, Stdlib.List.concat([ Command.Show(m), Command.Save ], commands))
     else
       ({ state with status = Status.WaitingForTools(pending, results) }, [])
+  | Checking(answer), Checked(None) -> finish(state, Ending.Answered(answer))
+  | Checking(_), Checked(Some(problem)) ->
+    let m = userText(problem)
+    let (s, commands) = callModel(append({ state with checksLeft = state.checksLeft - 1 }, m))
+    (s, Stdlib.List.concat([ Command.Show(m), Command.Save ], commands))
+  | Compacting, Compacted(messages) ->
+    let (s, commands) = callModel({ state with messages = messages, lastInput = 0 })
+    (s, Stdlib.List.prepend(commands, Command.Save))
   | _ -> (state, [])
 
 

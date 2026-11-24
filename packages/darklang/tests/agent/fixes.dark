@@ -1,0 +1,51 @@
+// The slips the agent fixes without a model turn. Each row: what is written, what is saved.
+module Darklang.Agent.Fixes.Tests
+
+test namesFromOtherLanguages =
+  [ Agent.Fixes.rewrite("Stdlib.Int64.toString(n)")
+    Agent.Fixes.rewrite("Int64.toString(n)")
+    Agent.Fixes.rewrite("Stdlib.UInt64.toString(n)")
+    Agent.Fixes.rewrite("Char.toString(c)")
+    Agent.Fixes.rewrite("Stdlib.UInt8.toInt64(b)")
+    Agent.Fixes.rewrite("Bytes.hexEncode(b)") ]
+  |> Stdlib.Test.equal(
+    [ "Stdlib.display(n)"
+      "Stdlib.display(n)"
+      "Stdlib.UInt64.toString(n)"
+      "Stdlib.String.fromChar(c)"
+      "Stdlib.Int64.fromUInt8(b)"
+      "Stdlib.Base16.encode(b)" ])
+
+
+test semicolonsInListsAndRecords =
+  [ Agent.Fixes.rewrite("[1; 2; 3]")
+    Agent.Fixes.rewrite("P { x = 1; y = 2 }")
+    Agent.Fixes.rewrite("f(a); g(b)") ]
+  |> Stdlib.Test.equal([ "[1, 2, 3]", "P { x = 1, y = 2 }", "f(a); g(b)" ])
+
+
+test longSuffixes =
+  [ Agent.Fixes.rewrite("200L + x1L"), Agent.Fixes.rewrite("[1L; 2L]") ]
+  |> Stdlib.Test.equal([ "200 + x1L", "[1, 2]" ])
+
+
+test stringsAndCommentsAreLeftAlone =
+  Agent.Fixes.rewrite("\"a; Int64.toString(1) 2L\" // [1; 2]\n[3; 4]")
+  |> Stdlib.Test.equal("\"a; Int64.toString(1) 2L\" // [1; 2]\n[3, 4]")
+
+
+test changedLinesAreReported =
+  Agent.Fixes.apply("let a = 1\nlet b = [1; 2]\n")
+  |> Stdlib.Tuple2.second
+  |> Stdlib.Test.equal([ (2, "let b = [1; 2]", "let b = [1, 2]") ])
+
+
+// the forms the table writes exist, with the types the slips had
+test theDarkFormsExist =
+  [ Stdlib.display(1)
+    Stdlib.display(1.5)
+    Stdlib.String.fromChar('a')
+    Stdlib.display(Stdlib.Int64.fromUInt8(1u8))
+    Stdlib.display(Stdlib.Int64.fromInt32(2s32))
+    Stdlib.Base16.encode(Stdlib.Utf8.encode("a")) ]
+  |> Stdlib.Test.equal([ "1", "1.5", "a", "1", "2", "61" ])

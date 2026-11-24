@@ -1,0 +1,134 @@
+/// The checks only the store can do, end to end on a recorded conversation: a slip fixed at save
+/// with no model turn, an earlier eval run again after an edit, callers and effects from the store,
+/// and the done-check sending the model back when a module has no tests.
+module Darklang.Cli.Tests.AgentStore
+
+val recorded =
+  "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"define_module\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"module\\\": \\\"Me.Inv\\\", \\\"source\\\": \\\"val sample = [1; 2; 3]\\\\nlet total(xs: List<Int64>): Int64 = Stdlib.List.fold(xs, 0, fun(a, x) -> a + x)\\\\nlet label(n: Int64): String = \\\\\\\"n=\\\\\\\" + Int64.toString(n)\\\\nlet summary(): String = label(total(sample))\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"eval\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"expression\\\": \\\"Me.Inv.summary()\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"define_fn\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"name\\\": \\\"Me.Inv.total\\\", \\\"source\\\": \\\"(xs: List<Int64>): Int64 = Stdlib.List.fold(xs, 1, fun(a, x) -> a + x)\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 1, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t677\", \"name\": \"callers\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 1, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"name\\\": \\\"Me.Inv.total\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 1}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 2, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t1081\", \"name\": \"effects\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 2, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"name\\\": \\\"Me.Inv.label\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 2}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Done.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"No tests: this is a demo.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n"
+
+
+test theStoreChecksRunWithoutAModelTurn = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/store.replay"
+  let _ = Stdlib.Cli.File.writeText(path, recorded)
+  let (code, out) =
+    Instance.ran(
+      i,
+      [ "agent"
+        "-p"
+        "build an invoice total"
+        "--replay"
+        path
+        "--checks"
+        "1"
+        "--output-format"
+        "stream-json" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "the session answers")
+      Instance.says(
+        out,
+        "fixed 2 lines that used another language's form",
+        "the slips were fixed at save")
+
+      Instance.says(out, "Stdlib.display(n)", "the Dark form was saved")
+
+      Instance.says(
+        out,
+        "re-ran 1 earlier evals: 1 answer differently now",
+        "the eval ran again after the edit")
+
+      Instance.says(out, "now \\\"n=7\\\"", "with its new answer")
+
+      Instance.says(out, "Me.Inv.summary (fn)", "callers come from the store")
+
+      Instance.says(
+        out,
+        "Me.Inv.label may: none",
+        "effects come from the store")
+
+      Instance.says(
+        out,
+        "Me.Inv has no tests",
+        "the done-check found the missing tests")
+
+      Instance.says(
+        out,
+        "\"num_turns\":5",
+        "five model calls: the fix took none") ]))
+
+
+val failedRun =
+  "event: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"tool_use\", \"id\": \"t183\", \"name\": \"dark\", \"input\": {}}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"input_json_delta\", \"partial_json\": \"{\\\"batch\\\": \\\"module /Me.Bad -\\\\n  let half(n: Int64): Int64 = n / 0\\\\n  let main(args: List<String>): Int64 = half(10)\\\\nrun Me.Bad.main\\\"}\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"tool_use\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Note: main divides by zero in half; fix half next.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n=====\nevent: message_start\ndata: {\"type\": \"message_start\", \"message\": {\"usage\": {\"input_tokens\": 900, \"cache_read_input_tokens\": 0, \"cache_creation_input_tokens\": 0, \"output_tokens\": 1}}}\n\nevent: content_block_start\ndata: {\"type\": \"content_block_start\", \"index\": 0, \"content_block\": {\"type\": \"text\", \"text\": \"\"}}\n\nevent: content_block_delta\ndata: {\"type\": \"content_block_delta\", \"index\": 0, \"delta\": {\"type\": \"text_delta\", \"text\": \"Done: found the division by zero.\"}}\n\nevent: content_block_stop\ndata: {\"type\": \"content_block_stop\", \"index\": 0}\n\nevent: message_delta\ndata: {\"type\": \"message_delta\", \"delta\": {\"stop_reason\": \"end_turn\"}, \"usage\": {\"output_tokens\": 100}}\n\nevent: message_stop\ndata: {\"type\": \"message_stop\"}\n\n"
+
+
+test aFailedRunShowsItsValuesAndALongSessionIsCompacted =
+  Instance.withInstance(fun i ->
+    let path = Instance.home(i) + "/trace.replay"
+    let _ = Stdlib.Cli.File.writeText(path, failedRun)
+    let (code, out) =
+      Instance.ran(
+        i,
+        [ "agent"
+          "-p"
+          "find the bug"
+          "--replay"
+          path
+          "--checks"
+          "0"
+          "--compact-at"
+          "1"
+          "--output-format"
+          "stream-json" ])
+
+    let (_l, sessions) = Instance.ran(i, [ "agent", "--list" ])
+    Stdlib.Test.all(
+      [ Instance.exitedWith(code, 0, "the session answers")
+        Instance.says(
+          out,
+          "the values in run ",
+          "the failed run's values came back with it")
+
+        Instance.says(
+          out,
+          "let half(n: Int64): Int64 =",
+          "the function it failed in")
+
+        Instance.says(
+          sessions,
+          "The conversation so far was compacted",
+          "the conversation was compacted")
+
+        Instance.says(
+          out,
+          "\"num_turns\":2",
+          "the compaction is not a turn of the task") ]))
+
+
+test showPromptPrintsWhatTheModelGetsForEachArm = Instance.withInstance(fun i ->
+  let (code, store) = Instance.ran(i, [ "agent", "--show-prompt" ])
+
+  let (_g, generic) =
+    Instance.ran(i, [ "agent", "--show-prompt", "--tools", "generic" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "no key or session is needed")
+      Instance.says(
+        store,
+        "=== tool callers",
+        "the store arm has the store tools")
+
+      Instance.says(
+        store,
+        "=== compaction request",
+        "and the compaction request")
+
+      Instance.says(generic, "=== tool bash", "the generic arm has the shell")
+      Instance.doesNotSay(
+        generic,
+        "=== tool define_fn",
+        "and none of the store tools")
+
+      Instance.says(
+        generic,
+        "through the `dark` binary",
+        "and is told to use the binary") ]))

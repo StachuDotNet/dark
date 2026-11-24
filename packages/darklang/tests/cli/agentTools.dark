@@ -108,7 +108,10 @@ let ctxAllowing(
       cwd = "/"
       seen = []
       allowed = effects
-      ask = false }
+      ask = false
+      store = true
+      touched = []
+      probes = [] }
 
 
 test aBatchCannotChangeThePolicy =
@@ -139,3 +142,11 @@ test aBatchMayPassOnWhatTheSessionHas =
 test testRunIsNotAWrite =
   Cli.Repls.Batch.moduleOfWrite([ "Me", "Demo" ], "test", [ "run", "Me.Demo" ])
   |> Stdlib.Test.equal(Option.None)
+
+
+test runTargetSkipsFlags =
+  [ Cli.Agent.Store.runTarget("run --allow 'file read /d' Me.A.main x")
+    Cli.Agent.Store.runTarget("run Me.A.main")
+    Cli.Agent.Store.runTarget("view Me.A.main") ]
+  |> Stdlib.Test.equal(
+    [ Option.Some("Me.A.main"), Option.Some("Me.A.main"), Option.None ])

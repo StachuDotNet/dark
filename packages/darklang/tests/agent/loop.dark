@@ -31,6 +31,8 @@ let kinds(commands: List<Agent.Command>): List<String> =
     | RunTool(id, name, _) -> $"run {name} {id}"
     | Show(_) -> "show"
     | Save -> "save"
+    | Check(_) -> "check"
+    | Compact(_) -> "compact"
     | Finish(_) -> "finish")
 
 
@@ -309,3 +311,91 @@ test costCountsEveryKindOfToken =
 test costIsUnknownForAnUnlistedModel =
   Agent.Anthropic.cost("some-model", Agent.noUsage())
   |> Stdlib.Test.equal(Option.None)
+
+
+// ---- the done-check and compaction
+
+test aFinalAnswerIsCheckedFirst =
+  let start = { Agent.start([], 10) with checksLeft = 1 }
+  let (s, commands) =
+    Agent.replay(
+      start,
+      [ Agent.Event.Prompt("hi"), reply([ Agent.Block.Text("done") ]) ])
+
+  (kinds(commands), s.status)
+  |> Stdlib.Test.equal(
+    (
+      [ "save", "call", "show", "save", "check" ],
+      Agent.Status.Checking("done")))
+
+
+test aPassingCheckFinishes =
+  let start = { Agent.start([], 10) with checksLeft = 1 }
+  let (s, _) =
+    Agent.replay(
+      start,
+      [ Agent.Event.Prompt("hi")
+        reply([ Agent.Block.Text("done") ])
+        Agent.Event.Checked(Option.None) ])
+
+  s.status
+  |> Stdlib.Test.equal(Agent.Status.Done(Agent.Ending.Answered("done")))
+
+
+test aFailingCheckSendsTheModelBack =
+  let start = { Agent.start([], 10) with checksLeft = 1 }
+  let (s, commands) =
+    Agent.replay(
+      start,
+      [ Agent.Event.Prompt("hi")
+        reply([ Agent.Block.Text("done") ])
+        Agent.Event.Checked(Option.Some("Me.W has no tests"))
+        reply([ Agent.Block.Text("still done") ]) ])
+
+  // the second answer is accepted: the check is used up
+  (
+    Stdlib.List.length(s.messages),
+    s.checksLeft,
+    s.status,
+    Stdlib.List.last(kinds(commands)))
+  |> Stdlib.Test.equal(
+    (
+      4,
+      0,
+      Agent.Status.Done(Agent.Ending.Answered("still done")),
+      Option.Some("finish")))
+
+
+test aLargeContextIsCompactedBeforeTheNextCall =
+  let big =
+    Agent.Event.ModelReplied(
+      Agent.Reply
+        { content = [ toolUse("t1", "ls") ]
+          stop = Agent.StopReason.ToolUseStop
+          usage =
+            Agent.Usage
+              { input = 100, output = 5, cacheRead = 900, cacheWrite = 0 } })
+
+  let start = { Agent.start([], 10) with compactAt = 500 }
+  let (s, commands) =
+    Agent.replay(
+      start,
+      [ Agent.Event.Prompt("hi")
+        big
+        Agent.Event.ToolFinished("t1", output("a")) ])
+
+  let replaced = [ Agent.userText("compacted") ]
+  let (after, more) = Agent.step(s, Agent.Event.Compacted(replaced))
+  (
+    Stdlib.List.last(kinds(commands)),
+    s.status,
+    after.messages,
+    after.lastInput,
+    kinds(more))
+  |> Stdlib.Test.equal(
+    (
+      Option.Some("compact"),
+      Agent.Status.Compacting,
+      replaced,
+      0,
+      [ "save", "call" ]))

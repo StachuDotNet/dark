@@ -38,10 +38,36 @@ val workflow =
     { name = "workflow"
       tier = Tier.Small
       text =
-        "How to work:\n- Look before writing: `search` for what exists (search by types works: `String->Int64`), `view` a function before changing it.\n- Write a module or function, then `eval` it on real inputs, then write tests (`test name = expr |> Stdlib.Test.equal(expected)` inside the module) and `test` them.\n- Every write answers with what no longer typechecks; fix those before moving on.\n- Batch: the `dark` tool takes many lines at once and answers each by number. Use it to save several items and check them in one call. `docs for-ai <topic>` in it explains packages, tests, permissions, traces and http-server.\n- A command-line program is a module with `main(args: List<String>): Int64`; run it with `run Me.X.main arg1` in the `dark` tool. A program that reads files needs `run --allow \"file read <dir>\" Me.X.main ...`.\n- When access is denied, say what you needed and why; do not work around it.\n- Finish with a short summary: what you built, where it lives, how to run it, and what is not done." }
+        "How to work:\n- Look before writing: `search` for what exists (search by types works: `String->Int64`), `view` a function before changing it.\n- Write a module or function, then `eval` it on real inputs, then write tests (`test name = expr |> Stdlib.Test.equal(expected)` inside the module) and `test` them.\n- Every write answers with what no longer typechecks, the effects that changed, and the earlier evals whose answer changed; fix those before moving on. Before changing a function, `callers` shows what could break.\n- Batch: the `dark` tool takes many lines at once and answers each by number. Use it to save several items and check them in one call. `docs for-ai <topic>` in it explains packages, tests, permissions, traces and http-server.\n- A command-line program is a module with `main(args: List<String>): Int64`; run it with `run Me.X.main arg1` in the `dark` tool. A program that reads files needs `run --allow \"file read <dir>\" Me.X.main ...`.\n- When access is denied, say what you needed and why; do not work around it.\n- A run that fails answers with what it did, call by call with values: read those before adding prints.\n- When you say you are done, the modules you wrote are checked: they must typecheck and have tests that pass.\n- Finish with a short summary: what you built, where it lives, how to run it, and what is not done." }
 
 
 val sections = [ identity, darkSyntax, workflow ]
+
+
+/// The comparison arm's workflow: Dark through the `dark` binary in bash, as an outside agent has it.
+val workflowShell =
+  PromptSection
+    { name = "workflow-shell"
+      tier = Tier.Small
+      text =
+        "How to work:\n- Dark is the `dark` binary; run it with bash, with `--branch` set to this session's branch (below). `dark docs for-ai` explains the workflow; `dark docs for-ai <topic>` covers packages, tests, permissions, traces and http-server.\n- Write code into the package store with `dark module /Me.X -` (the module on stdin), `dark fn`, `dark test add`, not as .dark files. `dark view`, `dark search` and `dark eval` look and try.\n- Write tests inside the module (`test name = expr |> Stdlib.Test.equal(expected)`) and run them with `dark test run Me.X`.\n- When access is denied, say what you needed and why; do not work around it.\n- Finish with a short summary: what you built, where it lives, how to run it, and what is not done." }
+
+
+val identityShell =
+  PromptSection
+    { name = "identity-shell"
+      tier = Tier.Small
+      text =
+        "You are a coding agent working on a Dark project: Dark is a language and a persistent package tree. You build what the person asks, end to end, and finish with working, tested code.\n\nYour work goes into the package store, on this session's own branch, through the `dark` binary, not as .dark files. Files are for the project around the code: data, configs, other languages." }
+
+
+val genericSections = [ identityShell, darkSyntax, workflowShell ]
+
+
+/// Sent as the last user message when the conversation is compacted. The facts (what was written,
+/// what fails) come from the store; only the intent comes from the model.
+val compaction =
+  "The conversation is about to be compacted to save context. Write a note to yourself that replaces it, in at most 300 words: what you tried, what you decided and why, what is left to do, and anything the person said that changes the task. Do not list files or functions you wrote, or whether tests pass: that will be read from the store and given to you. Do not call tools."
 
 
 let tierRank(t: Tier): Int64 =

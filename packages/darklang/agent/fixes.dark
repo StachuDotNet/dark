@@ -1,0 +1,171 @@
+/// Slips the agent repairs without a model turn: other languages' names and syntax that have exactly
+/// one Dark form. Applied only after a save failed, to code outside strings and comments; the fixed
+/// source is saved through the same path, and every changed line is shown to the model.
+module Darklang.Agent.Fixes
+
+/// A name from another language, and the Dark call that does the same.
+type NameRow =
+  { slip: String
+    dark: String }
+
+
+val names =
+  [ NameRow { slip = "Int64.toString(", dark = "Stdlib.display(" }
+    NameRow { slip = "Float64.toString(", dark = "Stdlib.display(" }
+    NameRow { slip = "Char.toString(", dark = "Stdlib.String.fromChar(" }
+    NameRow { slip = "UInt8.toInt64(", dark = "Stdlib.Int64.fromUInt8(" }
+    NameRow { slip = "Int32.toInt64(", dark = "Stdlib.Int64.fromInt32(" }
+    NameRow { slip = "Bytes.hexEncode(", dark = "Stdlib.Base16.encode(" } ]
+
+
+let isIdent(c: Char): Bool =
+  Stdlib.Char.isAlphanumeric(c) || c == '_'
+
+
+let endsInIdent(s: String): Bool =
+  match Stdlib.List.last(Stdlib.String.toList(s)) with
+  | Some(c) -> isIdent(c)
+  | None -> false
+
+
+/// <param row>'s slip replaced where it starts a name: `UInt64.toString(` is not `Int64.toString(`.
+let replaceName(code: String, row: NameRow): String =
+  match Stdlib.String.split(code, row.slip) with
+  | [] -> code
+  | [first, ...rest] ->
+    rest
+    |> Stdlib.List.fold(first, fun(acc, piece) ->
+      if endsInIdent(acc) then
+        acc + row.slip + piece
+      else if Stdlib.String.endsWith(acc, "Stdlib.") then
+        Stdlib.String.dropLast(acc, 7) + row.dark + piece
+      else
+        acc + row.dark + piece)
+
+
+type Mode =
+  | Code
+  | InString
+  | InComment
+
+
+type Scan =
+  { mode: Mode
+    escaped: Bool
+    /// open brackets, innermost first
+    open: List<Char>
+    out: List<String>
+    /// the code since the last string or comment, so names are replaced a run at a time
+    code: String }
+
+
+let flushCode(s: Scan): Scan =
+  if s.code == "" then
+    s
+  else
+    let fixedCode = names |> Stdlib.List.fold(s.code, fun(acc, row) -> replaceName(acc, row))
+    { s with out = Stdlib.List.append(s.out, fixedCode), code = "" }
+
+
+let emit(s: Scan, text: String): Scan =
+  { s with out = Stdlib.List.append(s.out, text) }
+
+
+/// A number's `L` suffix (`200L`): the char before is a digit in a number, the char after ends it.
+let isLongSuffix(chars: List<Char>, i: Int64, codeSoFar: String): Bool =
+  let next = Stdlib.List.getAt(chars, i + 1)
+  let after =
+    match next with
+    | Some(c) -> Stdlib.Bool.not(isIdent(c))
+    | None -> true
+
+  let digits =
+    Stdlib.String.toList(codeSoFar)
+    |> Stdlib.List.reverse
+    |> Stdlib.List.takeWhile(fun c -> Stdlib.Char.isDigit(c))
+
+  let before = Stdlib.String.dropLast(codeSoFar, Stdlib.List.length(digits))
+  after && Stdlib.Bool.not(Stdlib.List.isEmpty(digits)) && Stdlib.Bool.not(endsInIdent(before))
+
+
+let step(chars: List<Char>, s: Scan, i: Int64, c: Char): Scan =
+  let ch = Stdlib.String.fromChar(c)
+  match s.mode with
+  | InString ->
+    let s = emit(s, ch)
+    if s.escaped then
+      { s with escaped = false }
+    else if c == '\\' then
+      { s with escaped = true }
+    else if c == '"' then
+      { s with mode = Mode.Code }
+    else
+      s
+  | InComment ->
+    let s = emit(s, ch)
+    if c == '\n' then { s with mode = Mode.Code } else s
+  | Code ->
+    if c == '"' then
+      let flushed = emit(flushCode(s), ch)
+      { flushed with mode = Mode.InString }
+    else if c == '/' && Stdlib.List.getAt(chars, i + 1) == Option.Some('/') then
+      let flushed = emit(flushCode(s), ch)
+      { flushed with mode = Mode.InComment }
+    else if c == '[' || c == '{' || c == '(' then
+      { s with code = s.code + ch, open = Stdlib.List.prepend(s.open, c) }
+    else if c == ']' || c == '}' || c == ')' then
+      { s with code = s.code + ch, open = Stdlib.List.drop(s.open, 1) }
+    else if
+      c == ';'
+      && (Stdlib.List.head(s.open) == Option.Some('[')
+          || Stdlib.List.head(s.open) == Option.Some('{'))
+    then
+      { s with code = s.code + "," }
+    else if c == 'L' && isLongSuffix(chars, i, s.code) then
+      s
+    else
+      { s with code = s.code + ch }
+
+
+/// <param source> with every slip this table knows rewritten.
+let rewrite(source: String): String =
+  let chars = Stdlib.String.toList(source)
+  let start = Scan { mode = Mode.Code, escaped = false, open = [], out = [], code = "" }
+  let finished =
+    chars
+    |> Stdlib.List.indexedMap(fun(i, c) -> (i, c))
+    |> Stdlib.List.fold(start, fun(s, pair) ->
+      let (i, c) = pair
+      step(chars, s, i, c))
+
+  Stdlib.String.join((flushCode(finished)).out, "")
+
+
+/// The rewritten source and each changed line as (line number, before, after); no changes when
+/// the table knows nothing in it.
+let apply(source: String): (String * List<(Int64 * String * String)>) =
+  let fixedSource = rewrite(source)
+  let before = Stdlib.String.split(source, "\n")
+  let after = Stdlib.String.split(fixedSource, "\n")
+  let changes =
+    Stdlib.List.zipShortest(before, after)
+    |> Stdlib.List.indexedMap(fun(i, pair) -> (i + 1, pair))
+    |> Stdlib.List.filterMap(fun numbered ->
+      let (n, (b, a)) = numbered
+      if a == b then
+        Option.None
+      else
+        Option.Some((n, Stdlib.String.trim(b), Stdlib.String.trim(a))))
+
+  (fixedSource, changes)
+
+
+/// What the model is told about the slips fixed before its code was saved.
+let describe(changes: List<(Int64 * String * String)>): String =
+  let lines =
+    changes |> Stdlib.List.map(fun((n, b, a)) -> $"  line {Stdlib.display(n)}: {b}  ->  {a}")
+
+  let count = Stdlib.List.length(changes)
+  let noun = if count == 1 then "line" else "lines"
+  $"fixed {Stdlib.display(count)} {noun} that used another language's form; saved the Dark form:\n"
+  + Stdlib.String.join(lines, "\n")
