@@ -29,8 +29,9 @@ export function entryFrom(transcript) {
       else if (typeof tu?.input?.name === 'string' && typeof tu.input.source === 'string') modules.add(tu.input.name.replace(/^\//, '').split('.').slice(0, -1).join('.').replace(/\.Tests$/, ''));
       const cmd = tu?.input?.command; if (typeof cmd !== 'string') continue;
       const t = typeof c.content === 'string' ? c.content : (c.content || []).map(x => x.text || '').join('\n');
-      // a clean run: no Dark diagnostic and a zero exit; arguments and rules come only from those
-      const ok = !c.is_error && !DARK_ERR.test(t);
+      // a clean run: no Dark diagnostic (a refused rule is one); arguments and rules come only from those.
+      // Not the exit code: a server run in the background ends killed, and its arguments are the ones to keep.
+      const ok = !DARK_ERR.test(t);
       // `module X` and `fn X` as commands, not as flags (`search --fn Stdlib.String.toList`)
       for (const m of cmd.matchAll(/(?<![-\w])(module|fn)\s+\/?([A-Z][\w.]*)/g)) if (!/^(Stdlib|Darklang)\b/.test(m[2])) {
         const name = m[2].replace(/\.Tests$/, ''); modules.add(name); if (m[1] === 'module') moduleSaves.add(name);
