@@ -57,8 +57,11 @@ test testsNamedWithAString =
 
     Agent.Fixes.rewrite("  test \"Adds two\" =\n    f()")
 
+    Agent.Fixes.rewrite("test \"bad number\" = run([ \"abc\", \"C\" ])")
+
     Agent.Fixes.rewrite("let s = \"test \\\"x\\\" = 1\"") ]
   |> Stdlib.Test.equal(
     [ "test squareOf4 = square(4) |> Stdlib.Test.equal(16)"
       "  test addsTwo =\n    f()"
+      "test badNumber = run([ \"abc\", \"C\" ])"
       "let s = \"test \\\"x\\\" = 1\"" ])

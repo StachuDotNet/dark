@@ -158,8 +158,12 @@ let quotedTestName(line: String): String =
   let indent = Stdlib.String.first(line, Stdlib.String.length(line) - Stdlib.String.length(body))
   if Stdlib.String.startsWith(body, "test \"") then
     match Stdlib.String.split(Stdlib.String.dropFirst(body, 6), "\"") with
-    | [words, rest] when Stdlib.String.startsWith(Stdlib.String.trimStart(rest), "=") ->
-      $"{indent}test {camelName(words)} {Stdlib.String.trimStart(rest)}"
+    | [words, ...more] ->
+      let rest = Stdlib.String.join(more, "\"")
+      if Stdlib.String.startsWith(Stdlib.String.trimStart(rest), "=") then
+        $"{indent}test {camelName(words)} {Stdlib.String.trimStart(rest)}"
+      else
+        line
     | _ -> line
   else
     line

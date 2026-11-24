@@ -199,3 +199,28 @@ test theSandboxRefusesWritesOutside =
     Cli.Agent.Tools.mayWrite(sandboxed(), "/workother/a.txt")
     Cli.Agent.Tools.mayWrite(ctxAllowing([]), "/anywhere") ]
   |> Stdlib.Test.equal([ true, false, true ])
+
+
+test aHeredocInABatchIsABlock =
+  [ Cli.Agent.Tools.heredocsToBlocks(
+      "fn /Me.A.f - <<'EOF'\nlet f(): Int64 = 1\nEOF\nMe.A.f()")
+
+    Cli.Agent.Tools.heredocsToBlocks(
+      "module /Me.B <<EOF\nlet g() = 2\n\nlet h() = 3\nEOF")
+
+    Cli.Agent.Tools.heredocsToBlocks("1 << 2") ]
+  |> Stdlib.Test.equal(
+    [ "fn /Me.A.f -\n  let f(): Int64 = 1\nMe.A.f()"
+      "module /Me.B -\n  let g() = 2\n  \n  let h() = 3"
+      "1 << 2" ])
+
+
+test editingATestSavesItAsATest =
+  [ Cli.Agent.Tools.saveStatement(
+      "Me.T.works",
+      "test works = 1 |> Stdlib.Test.equal(1)")
+
+    Cli.Agent.Tools.saveStatement("Me.T.f", "let f(): Int64 = 1") ]
+  |> Stdlib.Test.equal(
+    [ "test add Me.T.works -\n  1 |> Stdlib.Test.equal(1)"
+      "fn Me.T.f -\n  let f(): Int64 = 1" ])

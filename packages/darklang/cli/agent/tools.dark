@@ -536,7 +536,51 @@ let batchRefusal(ctx: Context, text: String): Option<String> =
 
 
 /// Run a repl batch in the session's repl: its numbered replies and report, as `dark @r1` prints them.
+/// A shell heredoc in a batch (`fn X - <<'EOF'` ... `EOF`) becomes the block the batch takes: the
+/// lines up to the marker, indented under the command.
+let heredocsToBlocks(text: String): String =
+  let marker = fun line ->
+    match Stdlib.String.split(line, "<<") with
+    | [cmd, tag] ->
+      let tag =
+        Stdlib.String.trim(tag)
+        |> Stdlib.String.replaceAll("'", "")
+        |> Stdlib.String.replaceAll("\"", "")
+        |> Stdlib.String.replaceAll("-", "")
+
+      let startsWithLetter =
+        match Stdlib.List.head(Stdlib.String.toList(tag)) with
+        | Some(c) -> Stdlib.Char.isLetter(c)
+        | None -> false
+
+      if startsWithLetter && Stdlib.Bool.not(Stdlib.String.contains(tag, " ")) then
+        let cmd = Stdlib.String.trimEnd(cmd)
+        let cmd = if Stdlib.String.endsWith(cmd, " -") then cmd else cmd + " -"
+        Option.Some((cmd, tag))
+      else
+        Option.None
+    | _ -> Option.None
+
+  let (out, _open) =
+    Stdlib.String.split(text, "\n")
+    |> Stdlib.List.fold(([], Option.None), fun(acc, line) ->
+      let (out, open) = acc
+      match open with
+      | Some(tag) ->
+        if Stdlib.String.trim(line) == tag then
+          (out, Option.None)
+        else
+          (Stdlib.List.append(out, "  " + line), open)
+      | None ->
+        match marker(line) with
+        | Some((cmd, tag)) -> (Stdlib.List.append(out, cmd), Option.Some(tag))
+        | None -> (Stdlib.List.append(out, line), Option.None))
+
+  Stdlib.String.join(out, "\n")
+
+
 let batch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
+  let text = heredocsToBlocks(text)
   match batchRefusal(ctx, text) with
   | Some(why) -> (ctx, fail(why))
   | None ->
@@ -684,7 +728,26 @@ let editFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutpu
           match editText(source, old, replacement, Occurrences.One) with
           | Error(why) -> (ctx, fail(why + $"; `view {name}` shows the source"))
           | Ok(updated) ->
-            save(ctx, (fun src -> block($"fn {name}", src)), Stdlib.String.trim(updated)))))
+            save(ctx, (fun src -> saveStatement(name, src)), Stdlib.String.trim(updated)))))
+
+
+/// How to save one item's whole source: a test through `test add` with its body, anything else
+/// through `fn`.
+let saveStatement(name: String, source: String): String =
+  let code =
+    Stdlib.String.splitOnNewline(source)
+    |> Stdlib.List.filter(fun l ->
+      Stdlib.Bool.not(Stdlib.String.startsWith(Stdlib.String.trimStart(l), "///")))
+    |> Stdlib.String.join("\n")
+    |> Stdlib.String.trim
+
+  if Stdlib.String.startsWith(code, "test ") then
+    match Stdlib.String.split(code, "=") with
+    | [_head, ...body] ->
+      block($"test add {name}", Stdlib.String.trim(Stdlib.String.join(body, "=")))
+    | _ -> block($"fn {name}", source)
+  else
+    block($"fn {name}", source)
 
 
 /// Put a question to the person at the terminal. In print mode nobody is there, and the model is
@@ -832,7 +895,7 @@ let all(): List<Tool> =
       { spec =
           spec(
             "edit_fn",
-            "Change part of a Dark function: old_string in its source becomes new_string, then it is saved.",
+            "Change part of a Dark function or test: old_string in its source becomes new_string, then it is saved.",
             [ param("name", "string", "the function")
               param("old_string", "string", "text in its current source")
               param("new_string", "string", "the replacement") ])
