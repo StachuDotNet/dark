@@ -29,7 +29,11 @@ function entryFrom(transcript) {
     let e; try { e = JSON.parse(line); } catch { continue; }
     if (e.type === 'assistant') for (const c of e.message?.content || []) if (c.type === 'tool_use') tools.set(c.id, c);
     if (e.type === 'user' && Array.isArray(e.message?.content)) for (const c of e.message.content) if (c.type === 'tool_result') {
-      const tu = tools.get(c.tool_use_id); const cmd = tu?.input?.command; if (typeof cmd !== 'string') continue;
+      const tu = tools.get(c.tool_use_id);
+      // structured save tools: { module: "Me.X", source } or { name: "Me.X.f", source }
+      if (typeof tu?.input?.module === 'string') modules.add(tu.input.module.replace(/^\//, '').replace(/\.Tests$/, ''));
+      else if (typeof tu?.input?.name === 'string' && typeof tu.input.source === 'string') modules.add(tu.input.name.replace(/^\//, '').split('.').slice(0, -1).join('.').replace(/\.Tests$/, ''));
+      const cmd = tu?.input?.command; if (typeof cmd !== 'string') continue;
       const t = typeof c.content === 'string' ? c.content : (c.content || []).map(x => x.text || '').join('\n');
       const ok = !DARK_ERR.test(t);
       for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:module|fn)\s+/?` + NAME, 'g'))) modules.add(m[1].replace(/\.Tests$/, ''));
