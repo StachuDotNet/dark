@@ -32,7 +32,7 @@ let tsType(
   | TUInt32 -> "number"
   | TInt128 -> "number"
   | TUInt128 -> "number"
-  | TFloat -> "number"
+  | TFloat64 -> "number"
   | TFloat32 -> "number"
   | TDecimal -> "number"
   | TBool -> "boolean"

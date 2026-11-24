@@ -30,7 +30,7 @@ let cellsOf(line: String): List<String> =
       && Stdlib.String.endsWith(trimmed, "\"")
       && Stdlib.String.length(trimmed) >= 2
     then
-      Stdlib.String.slice(trimmed, 1, Stdlib.String.length(trimmed) - 1)
+      Stdlib.String.dropLast(Stdlib.String.dropFirst(trimmed, 1), 1)
     else
       trimmed)
 
@@ -42,7 +42,7 @@ let isInt(cell: String): Bool =
 
 
 let isFloat(cell: String): Bool =
-  match Stdlib.Float.parse(cell) with
+  match Stdlib.Float64.parse(cell) with
   | Ok(_) -> true
   | Error(_) -> isInt(cell)
 
@@ -93,7 +93,7 @@ let convertExpr(column: Column, header: String): String =
     $"Stdlib.Int64.parse(cell) |> Stdlib.Result.mapError(fun _ -> {message} + cell)"
   | Float ->
     let message = says("a number")
-    $"Stdlib.Float.parse(cell) |> Stdlib.Result.mapError(fun _ -> {message} + cell)"
+    $"Stdlib.Float64.parse(cell) |> Stdlib.Result.mapError(fun _ -> {message} + cell)"
   | Bool ->
     let message = says("true or false")
     $"(match Stdlib.String.toLowercase(cell) with | \"true\" -> Stdlib.Result.Result.Ok(true) | \"false\" -> Stdlib.Result.Result.Ok(false) | _ -> Stdlib.Result.Result.Error({message} + cell))"
@@ -196,7 +196,7 @@ let fromSample(name: String, sample: Bytes): Run =
               "      |> Stdlib.List.map(fun cell ->"
               "        let trimmed = Stdlib.String.trim(cell)"
               "        if (Stdlib.String.startsWith(trimmed, \"\\\"\")) && (Stdlib.String.endsWith(trimmed, \"\\\"\")) && ((Stdlib.String.length(trimmed)) >= 2) then"
-              "          Stdlib.String.slice(trimmed, 1, (Stdlib.String.length(trimmed)) - 1)"
+              "          Stdlib.String.dropLast(Stdlib.String.dropFirst(trimmed, 1), 1)"
               "        else"
               "          trimmed)"
               "    fromFields(cells))" ],

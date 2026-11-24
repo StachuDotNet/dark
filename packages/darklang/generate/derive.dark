@@ -16,7 +16,7 @@ let showExpr(
   | TString -> quote + " + " + v + " + " + quote
   | TInt64 -> $"Stdlib.display({v})"
   | TBigInt -> $"Stdlib.display({v})"
-  | TFloat -> $"Stdlib.display({v})"
+  | TFloat64 -> $"Stdlib.display({v})"
   | TBool -> $"Stdlib.display({v})"
   | TUuid -> $"Stdlib.display({v})"
   | TUnit -> "\"()\""

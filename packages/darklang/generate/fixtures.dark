@@ -27,7 +27,7 @@ let exampleExpr(
   | TUInt64 -> "1u64"
   | TInt128 -> "1s128"
   | TUInt128 -> "1u128"
-  | TFloat -> "1.5"
+  | TFloat64 -> "1.5"
   | TFloat32 -> "1.5f32"
   | TDecimal -> "1.5dec"
   | TBool -> "true"
