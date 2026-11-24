@@ -125,7 +125,13 @@ let wake(state: State): State =
 // --- documents ---
 
 let setDocument(state: State, uri: String, text: String): State =
-  let doc = Requests.Document { uri = uri, text = text, analysis = Option.None, live = Option.None }
+  let parseCache =
+    match Stdlib.Dict.get(state.documents, uri) with
+    | Some(previous) -> previous.parseCache
+    | None -> Parser.Dark.Incremental.empty
+  let doc =
+    Requests.Document
+      { uri = uri, text = text, analysis = Option.None, live = Option.None, parseCache = parseCache }
   { state with documents = Stdlib.Dict.set(state.documents, uri, doc) }
 
 
@@ -144,34 +150,43 @@ let analysePending(state: State): State =
       match doc.analysis with
       | Some(_) -> doc
       | None ->
-        let analysis = analyseSafely(state.branchId, doc)
+        let (analysis, parseCache) = analyseSafely(state.branchId, doc)
         Rpc.log($"analysed {doc.uri}")
         publish(doc.uri, analysis.diagnostics)
-        { doc with analysis = Option.Some(analysis), live = liveSafely(state.branchId, doc) })
+        { doc with
+            analysis = Option.Some(analysis)
+            live = liveSafely(state.branchId, doc)
+            parseCache = parseCache })
 
   if state.refresh then askToRefresh(state) else ()
   { state with documents = documents, refresh = false }
 
 
-/// <param doc> analysed. An analysis that fails is a diagnostic saying so, not the end of the
-/// server.
-let analyseSafely(branchId: Uuid, doc: Requests.Document): Analysis.Analysis =
-  match Live.apply(
-          (fun text -> Analysis.analyse(Names.context(branchId, doc.uri), text)),
-          doc.text) with
-  | Ok(analysis) -> analysis
-  | Error(e) ->
-    Rpc.log($"analysing {doc.uri} failed: {e}")
-    let start = Parser.Point { row = 0, column = 0 }
-    Analysis.Analysis
-      { parsed = Option.None
-        diagnostics =
-          [ Analysis.diagnostic(
-              1,
-              Parser.Range { start = start, end_ = start },
-              Option.None,
-              $"The analysis failed: {e}") ]
-        typeHints = [] }
+/// <param doc> analysed, with the parse cache for its next change. The Dark parser reads it,
+/// re-parsing only the declarations that changed; if that fails the F# parser reads it, and an
+/// analysis that fails then too is a diagnostic saying so, not the end of the server.
+let analyseSafely(branchId: Uuid, doc: Requests.Document): (Analysis.Analysis * Parser.Dark.Incremental.Cache) =
+  let ctx = Names.context(branchId, doc.uri)
+  match Live.apply((fun text -> Analysis.analyseIncrementally(ctx, doc.parseCache, text)), doc.text) with
+  | Ok(result) -> result
+  | Error(darkError) ->
+    Rpc.log($"the Dark parser failed on {doc.uri}, so the F# parser reads it: {darkError}")
+    match Live.apply((fun text -> Analysis.analyse(ctx, text)), doc.text) with
+    | Ok(analysis) -> (analysis, Parser.Dark.Incremental.empty)
+    | Error(e) ->
+      Rpc.log($"analysing {doc.uri} failed: {e}")
+      let start = Parser.Point { row = 0, column = 0 }
+      let failed =
+        Analysis.Analysis
+          { parsed = Option.None
+            diagnostics =
+              [ Analysis.diagnostic(
+                  1,
+                  Parser.Range { start = start, end_ = start },
+                  Option.None,
+                  $"The analysis failed: {e}") ]
+            typeHints = [] }
+      (failed, Parser.Dark.Incremental.empty)
 
 
 /// The live values for <param doc>, when it shows a store function; none when working them out

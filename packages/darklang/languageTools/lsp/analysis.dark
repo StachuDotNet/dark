@@ -280,6 +280,33 @@ let typeHints(
 /// parser's recovery holes would read as errors of their own.
 let analyse(ctx: NameResolver.NRContext, text: String): Analysis =
   let (parsed, syntax) = Parser.Parse.parse(Parser.FileKind.Script, text)
+  analyseParsed(ctx, parsed, syntax)
+
+
+/// `analyse`, with the Dark parser re-parsing only the declarations that changed since the parse
+/// <param cache> remembers. Text it can't split goes to the F# parser, as `analyse` does it.
+let analyseIncrementally(
+  ctx: NameResolver.NRContext,
+  cache: Parser.Dark.Incremental.Cache,
+  text: String)
+  : (Analysis * Parser.Dark.Incremental.Cache) =
+  let t0 = Stdlib.DateTime.__monotonicMilliseconds()
+  match Parser.Dark.Incremental.reparseChunked(cache, text) with
+  | Some(r) ->
+    let syntax = Stdlib.List.map(r.parsed.diagnostics, fun d -> (d.range, d.message))
+    Rpc.log(
+      $"parsed {r.parsedChunks} of {r.totalChunks} declarations in {Stdlib.DateTime.__monotonicMilliseconds() - t0}ms")
+    (analyseParsed(ctx, r.parsed.parsed, syntax), r.cache)
+  | None ->
+    Rpc.log($"parsed whole with the F# parser")
+    (analyse(ctx, text), Parser.Dark.Incremental.empty)
+
+
+let analyseParsed(
+  ctx: NameResolver.NRContext,
+  parsed: Option<WrittenTypes.ParsedFile>,
+  syntax: List<(Parser.Range * String)>)
+  : Analysis =
   let syntaxDiagnostics =
     Stdlib.List.map(syntax, fun((r, message)) -> diagnostic(1, r, Option.None, message))
 

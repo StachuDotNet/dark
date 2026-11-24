@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -206,6 +207,29 @@ def run(cli):
         ]
         check(len(publishes) == 1, f"ten keystrokes gave {len(publishes)} analyses, not one")
         checked.append("ten keystrokes, one analysis")
+
+        # An edit re-parses the declaration it is in, not the document: 60 declarations, one
+        # changed, and the time from the change to its diagnostics, less the typing pause.
+        uri = "file:///tmp/lsp-gate/many.dark"
+        text = "\n".join(f"let f{i}(x: Int64): Int64 =\n  let y = x + {i}\n  y * 2\n" for i in range(60))
+        s.open(uri, text)
+        s.diagnostics(uri)
+        logged = len(s.log)
+        started = time.time()
+        s.change(uri, 2, text.replace("x + 30\n", "x + 31\n"))
+        s.diagnostics(uri)
+        took = (time.time() - started) * 1000 - 250
+        parsed = None
+        deadline = time.time() + 5
+        while parsed is None and time.time() < deadline:
+            parsed = re.search(rb"parsed (\d+) of (\d+) declarations in (\d+)ms", bytes(s.log[logged:]))
+            if parsed is None:
+                time.sleep(0.05)
+        check(parsed is not None, f"no parse logged after the edit: {bytes(s.log[logged:])[-400:]!r}")
+        check(parsed.group(1) == b"1", f"the edit re-parsed {parsed.group(1).decode()} of {parsed.group(2).decode()} declarations")
+        checked.append(
+            f"an edit re-parses 1 of {parsed.group(2).decode()} declarations, in {parsed.group(3).decode()} ms; diagnostics {took:.0f} ms after the pause")
+        print(checked[-1], flush=True)
 
         # Non-ASCII text: Content-Length counts bytes, so the message after it must still parse.
         uri = "file:///tmp/lsp-gate/utf8.dark"

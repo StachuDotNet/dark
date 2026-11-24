@@ -12,7 +12,9 @@ type Document =
     /// new Document with this empty, so an analysis is never read against other text.
     analysis: Option<Analysis.Analysis>
     /// For a store function's document: the values its newest run gave each call.
-    live: Option<Lens.Live> }
+    live: Option<Lens.Live>
+    /// What the last parse of this document remembers, so the next re-parses only what changed.
+    parseCache: Parser.Dark.Incremental.Cache }
 
 
 /// What a request reads: the branch, and the open documents by URI.
