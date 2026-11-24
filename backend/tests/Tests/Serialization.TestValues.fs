@@ -241,6 +241,7 @@ module RuntimeTypes =
       RTE.TrustedCommandOnly RTE.TrustedCommands.PolicyChanges
       RTE.TrustedCommandOnly RTE.TrustedCommands.StoreBackups
       RTE.TrustedCommandOnly(RTE.TrustedCommands.PersonOnlySetting "http.loopback")
+      RTE.TestTempDirUnusable("/tmp", 30)
       RTE.UncaughtException("msg", [ ("k", dv) ])
       RTE.Condition "c" ]
 
