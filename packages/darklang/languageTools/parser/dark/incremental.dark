@@ -132,18 +132,14 @@ let parseChunk(scope: Decls.ItemScope, row: Int64, text: String, isLast: Bool): 
       parseDiagnostics = parseDiagnostics }
 
 
-/// The script <param code>, parsed again with what <param cache> remembers from the last parse.
-let reparse(cache: Cache, code: String): Reparsed =
+/// The script <param code>, parsed again with what <param cache> remembers from the last parse;
+/// None when it can't be split, so it has to be parsed whole.
+let reparseChunked(cache: Cache, code: String): Option<Reparsed> =
   let lines = Stdlib.String.split(code, "\n")
   let whole =
     Stdlib.String.contains(code, "\"\"\"") || Stdlib.String.contains(code, "(*")
   match (if whole then Stdlib.Option.Option.None else chunkStarts(lines)) with
-  | None ->
-    Reparsed
-      { parsed = Dark.parseWith(LanguageTools.Parser.FileKind.Script, code)
-        cache = empty
-        parsedChunks = -1
-        totalChunks = 1 }
+  | None -> Stdlib.Option.Option.None
   | Some(starts) ->
     let chunks = chunksOf(lines, starts)
     let count = Stdlib.List.length(chunks)
@@ -155,11 +151,24 @@ let reparse(cache: Cache, code: String): Reparsed =
         | None -> (true, parseChunk(Decls.ItemScope.Script, row, text, i == count - 1)))
     let parsedNow = Stdlib.List.length(Stdlib.List.filter(results, fun((fresh, _)) -> fresh))
     let rs = Stdlib.List.map(results, fun((_, r)) -> r)
+    Stdlib.Option.Option.Some(
+      Reparsed
+        { parsed = combine(rs, code)
+          cache = Cache { chunks = Stdlib.Dict.fromList(Stdlib.List.map(rs, fun r -> (r.key, r))) }
+          parsedChunks = parsedNow
+          totalChunks = count })
+
+
+/// `reparseChunked`, or a whole parse when the text can't be split.
+let reparse(cache: Cache, code: String): Reparsed =
+  match reparseChunked(cache, code) with
+  | Some(r) -> r
+  | None ->
     Reparsed
-      { parsed = combine(rs, code)
-        cache = Cache { chunks = Stdlib.Dict.fromList(Stdlib.List.map(rs, fun r -> (r.key, r))) }
-        parsedChunks = parsedNow
-        totalChunks = count }
+      { parsed = Dark.parseWith(LanguageTools.Parser.FileKind.Script, code)
+        cache = empty
+        parsedChunks = -1
+        totalChunks = 1 }
 
 
 /// The chunks' results as one file's, as `Dark.parseWith` would put them together.
@@ -192,12 +201,6 @@ let combine(rs: List<ChunkResult>, code: String): Dark.Parsed =
   Dark.Parsed
     { parsed = Stdlib.Option.Option.Some(WrittenTypes.ParsedFile.SourceFile(file))
       diagnostics = diagnostics }
-
-
-/// `Builtin.parse`'s shape, for a script parsed again with <param cache>.
-let parseScript(cache: Cache, code: String): ((Option<WrittenTypes.ParsedFile> * List<(Range * String)>) * Cache) =
-  let r = reparse(cache, code)
-  ((r.parsed.parsed, Stdlib.List.map(r.parsed.diagnostics, fun d -> (d.range, d.message))), r.cache)
 
 
 // --- checking it against whole-file parses ---
