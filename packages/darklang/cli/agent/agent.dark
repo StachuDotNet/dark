@@ -512,7 +512,7 @@ let defaultOptions(): Options =
       fork = Option.None
       branch = Option.None
       format = Format.PlainText
-      maxTurns = 50
+      maxTurns = 200
       replay = Option.None
       baseUrl = "https://api.anthropic.com"
       effort = "high"
@@ -1215,7 +1215,7 @@ let help(_state: AppState): String =
     "  --resume <id>              continue session <id>"
     "  --fork <id>                a new session from <id>'s conversation, on a branch off its branch"
     "  --branch <name>            work on this existing branch instead of a new one"
-    "  --max-turns <n>            stop after n model calls (default 50)"
+    "  --max-turns <n>            stop after n model calls (default 200)"
     "  --output-format <f>        text (default) or stream-json, one JSON event per line"
     "  --replay <file>            answer from recorded SSE responses (separated by =====), not the API"
     "  --tools <set>              store (default): the store's tools and checks; generic: files and bash only"
