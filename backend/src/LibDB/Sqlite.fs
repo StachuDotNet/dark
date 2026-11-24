@@ -38,26 +38,70 @@ module WriteGate =
 
 /// Copy the live store for the test runner's baseline.
 ///
-/// Through SQLite's online-backup API, never a file copy: recent writes sit in `data.db-wal`. Every
-/// other whole-store copy (backups, snapshots, the upgrade path's) is `StoreBackups`.
+/// Through SQLite, never a file copy: recent writes sit in `data.db-wal`. Every other whole-store
+/// copy (backups, snapshots, the upgrade path's) is `StoreBackups`.
 module Backup =
-  let private copy (fromConn : string) (toConn : string) : Result<unit, string> =
+  /// Create a database file for tests: a test run's shared snapshot, or a nested test
+  /// worker's own store.
+  ///
+  /// Every table but the traces, which hold no package code, keep growing with use, and leave
+  /// free pages behind when pruned that a whole-file copy would carry along. The trace tables
+  /// are there, empty.
+  let toTestBaseline (target : string) : Result<unit, string> =
     try
-      use source = new SqliteConnection(fromConn)
+      use source = new SqliteConnection(connString)
       source.Open()
-      use destination = new SqliteConnection(toConn)
-      destination.Open()
-      source.BackupDatabase destination
+      let run (conn : SqliteConnection) (sql : string) =
+        use command = conn.CreateCommand()
+        command.CommandText <- sql
+        command.ExecuteNonQuery() |> ignore<int>
+
+      let schema =
+        use command = source.CreateCommand()
+        command.CommandText <-
+          "SELECT type, name, sql FROM sqlite_master
+           WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'"
+        use reader = command.ExecuteReader()
+        [ while reader.Read() do
+            yield reader.GetString 0, reader.GetString 1, reader.GetString 2 ]
+      let tables = schema |> List.filter (fun (kind, _, _) -> kind = "table")
+      let rest = schema |> List.filter (fun (kind, _, _) -> kind <> "table")
+
+      do
+        use image =
+          new SqliteConnection(
+            $"Data Source={target};Mode=ReadWriteCreate;Pooling=false"
+          )
+        image.Open()
+        for _, _, sql in tables do
+          run image sql
+
+      use attach = source.CreateCommand()
+      attach.CommandText <- "ATTACH DATABASE @target AS image"
+      attach.Parameters.AddWithValue("@target", target) |> ignore<SqliteParameter>
+      attach.ExecuteNonQuery() |> ignore<int>
+      // One transaction, so the image is one moment of the store.
+      run source "BEGIN"
+      for _, name, _ in tables do
+        if not (name.StartsWith "trace") then
+          run source $"INSERT INTO image.\"{name}\" SELECT * FROM main.\"{name}\""
+      run
+        source
+        "INSERT INTO image.sqlite_sequence SELECT * FROM main.sqlite_sequence
+         WHERE name NOT LIKE 'trace%'"
+      run source "COMMIT"
+      run source "DETACH DATABASE image"
+
+      use image =
+        new SqliteConnection(
+          $"Data Source={target};Mode=ReadWriteCreate;Pooling=false"
+        )
+      image.Open()
+      for _, _, sql in rest do
+        run image sql
       Ok()
     with e ->
       Error e.Message
-
-  /// Create a complete database file for tests: a test run's shared snapshot, or
-  /// a nested test worker's own store.
-  /// Disable connection pooling so closing the backup flushes any WAL
-  /// contents into that file before returning.
-  let toTestBaseline (target : string) : Result<unit, string> =
-    copy connString $"Data Source={target};Mode=ReadWriteCreate;Pooling=false"
 
 
 /// "Did the store change since I last asked?", for a process that stays up.

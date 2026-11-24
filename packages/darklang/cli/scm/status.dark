@@ -121,6 +121,7 @@ let executePretty(state: AppState): AppState =
         Stdlib.Cli.UI.Colors.hint(
           $"""  {Text.plural(s.constraints, "constraint")} outstanding, {mine} -> `dark constraints`"""))
 
+    Packages.TestWatch.printTouched(state.currentBranchId, Packages.TestWatch.draftTouched())
     if s.changed > 0 || s.removed > 0 then
       // "it asks first": to a git reflex, commit is the one verb you do not run to look, and the
       // review screen is exactly where the names this line withholds live.

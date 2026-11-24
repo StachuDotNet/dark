@@ -617,6 +617,10 @@ let executePretty(state: AppState, args: List<String>): AppState =
       conflicts |> Stdlib.List.iter(fun c -> Stderr.line(SCM.Conflicts.summaryLine(c)))
       Stderr.line(Stdlib.Cli.UI.Colors.hint("    -> `dark conflicts` to inspect / override"))
 
+    Packages.TestWatch.printTouched(
+      SCM.PackageOps.currentBranch(),
+      Packages.TestWatch.draftTouched())
+
     // Show the requested names before asking for confirmation.
     let _ =
       if Stdlib.List.isEmpty(parsed.include) then

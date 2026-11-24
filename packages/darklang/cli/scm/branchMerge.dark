@@ -71,6 +71,8 @@ let executeMergePreview(state: AppState, branchRef: String, preview: Preview): A
         printQuiet(
           $"  {Text.plural(Stdlib.List.length(cs), "conflict")} would be auto-resolved by recency, and recorded for review.")
 
+      Packages.TestWatch.printTouched(branchId, Packages.TestWatch.branchTouched(branchId))
+
       // Only when this IS the whole command. In the confirm flow the next line is the question, and
       // telling someone to run the thing they are being asked to approve reads as a non-sequitur.
       if preview == Preview.Alone then
@@ -161,6 +163,10 @@ let executeMerge(
       printErr($"couldn't merge: {SCM.Branches.refusalMessage(r)}")
       failed(state)
     | Ok(_) ->
+      // The bare form printed this in its preview already.
+      if confirm == Confirm.Ask then
+        Packages.TestWatch.printTouched(branchId, Packages.TestWatch.branchTouched(branchId))
+
       if
         Stdlib.Bool.not(
           Prompt.confirmExplicit(

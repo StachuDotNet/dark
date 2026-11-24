@@ -116,6 +116,7 @@ module Registry =
             [ "--jobs", "--seed" ],
             Accepts.freeText(0, [ "--force", "--brief", "--verbose", "--json" ])))
 
+        ("watch", Accepts.nothing())
         ("count", Accepts.withValues([ "--for" ], Accepts.freeText(0, [])))
         ("add", Accepts.text(2)) ],
       Accepts.nothing())

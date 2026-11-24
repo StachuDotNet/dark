@@ -1,0 +1,196 @@
+/// `dark test watch`: runs the tests your saves touch, soon after you make them, so their results
+/// are already stored when `status`, `commit` or `merge` looks.
+module Darklang.Cli.Packages.TestWatch
+
+/// How long the store stays still before a run starts: a burst of saves makes one run.
+val quietMs = 1500
+
+
+type Tests =
+  List<LanguageTools.ProgramTypes.LocatedItem<LanguageTools.ProgramTypes.PackageTest.PackageTest>>
+
+
+/// The live tests <param touched> reaches on <param branchId>: those it touched, and every test
+/// that uses one of them, directly or through other code.
+let testsReached(branchId: Uuid, touched: List<LanguageTools.Live.Touched>): Tests =
+  let depSets = Query.loadDeprecationSets(branchId)
+  LanguageTools.Live.dependents(touched)
+  |> Stdlib.List.filterMap(fun location ->
+    LanguageTools.PackageManager.Test.find(branchId, location)
+    |> Stdlib.Option.andThen(fun hash ->
+      if Query.isDeprecatedAtLocation(depSets, location, hash) then
+        Option.None
+      else
+        LanguageTools.PackageManager.Test.get(hash))
+    |> Stdlib.Option.map(fun test ->
+      LanguageTools.ProgramTypes.LocatedItem { entity = test, location = location }))
+
+
+/// Run <param tests> as `test run` does, printing nothing: from the cache where it allows, the
+/// ones that run inside this process first. A quarter of the cores, so editing stays quick.
+let runQuietly(branchId: Uuid, tests: Tests): Test.Counts =
+  let cores = LanguageTools.Exec.workers()
+  let options =
+    Test.RunOptions
+      { force = false
+        json = true
+        brief = true
+        jobs = if cores < 4 then 1 else cores / 4
+        seed = Option.None
+        filters = [] }
+
+  let initial =
+    Test.Counts
+      { passed = 0
+        failed = 0
+        cached = 0
+        ran = 0
+        isolated = 0
+        reran = 0
+        timings = []
+        results = [] }
+
+  LanguageTools.PackageManager.Test.withStoreSnapshot(branchId, Test.freshSeed(), fun run ->
+    let cacheSafe =
+      LanguageTools.PackageManager.Test.areCacheSafe(
+        Stdlib.List.map(tests, fun item -> item.entity.hash))
+
+    let ordered =
+      Stdlib.List.zipShortest(tests, cacheSafe)
+      |> Stdlib.List.sortBy(fun((item, _)) ->
+        if LanguageTools.PackageManager.Test.runsInProcess(item.entity.hash) then
+          0
+        else
+          1)
+
+    Test.runSelected(run, branchId, options, Test.cacheContext(branchId), ordered, [], initial))
+
+
+let report(counts: Test.Counts, ms: Int64): Unit =
+  let total = counts.passed + counts.failed
+  let took = $"{Stdlib.display(ms)} ms"
+  if counts.failed == 0 then
+    printQuiet($"{Test.countLine(total)} passed ({took})")
+  else
+    printErr($"{Test.countLine(total)}: {Stdlib.display(counts.failed)} failed ({took})")
+    counts.results
+    |> Stdlib.List.reverse
+    |> Stdlib.List.iter(fun t ->
+      if t.status != "passed" then
+        Stdlib.printLine(Stdlib.Cli.UI.Colors.error($"FAIL {t.name}"))
+        t.messages
+        |> Stdlib.List.iter(fun m -> Stdlib.printLine(Stdlib.Cli.UI.Colors.dimText($"  {m}")))
+      else
+        ())
+
+
+/// Wait until the store has been still for <param quietMs>, gathering what lands meanwhile.
+let settle(
+  watch: LanguageTools.Live.Watch,
+  touched: List<LanguageTools.Live.Touched>)
+  : (LanguageTools.Live.Watch * List<LanguageTools.Live.Touched>) =
+  let awaited =
+    Stdlib.Host.await(
+      watch,
+      [ Stdlib.Host.EventSpec.StoreChanged, Stdlib.Host.EventSpec.Timer(quietMs) ])
+
+  match awaited.event with
+  | StoreChanged(change) -> settle(awaited.watch, Stdlib.List.concat(touched, change.touched))
+  | _ -> (awaited.watch, touched)
+
+
+/// Wait for saves, then run what they touched. A save that lands during a run stops it and starts
+/// over with both sets: what finished is stored by hash already, so only the rest runs again.
+let loop(
+  branchId: Uuid,
+  watch: LanguageTools.Live.Watch,
+  touched: List<LanguageTools.Live.Touched>)
+  : Int64 =
+  let (watch, touched) =
+    if Stdlib.List.isEmpty(touched) then
+      let awaited = Stdlib.Host.await(watch, [ Stdlib.Host.EventSpec.StoreChanged ])
+      match awaited.event with
+      | StoreChanged(change) -> settle(awaited.watch, change.touched)
+      | _ -> (awaited.watch, [])
+    else
+      settle(watch, touched)
+
+  match testsReached(branchId, LanguageTools.Live.dedupeTouched(touched)) with
+  | [] -> loop(branchId, watch, [])
+  | tests ->
+    let started = Stdlib.DateTime.__monotonicMilliseconds()
+    let handle = Stdlib.Exec.spawn(fun () -> runQuietly(branchId, tests))
+    let awaited =
+      Stdlib.Host.await(
+        watch,
+        [ Stdlib.Host.EventSpec.StoreChanged, Stdlib.Host.EventSpec.ExecDone(handle.id) ])
+
+    match awaited.event with
+    | StoreChanged(change) ->
+      let _ = Stdlib.Exec.cancel(handle)
+      loop(branchId, awaited.watch, Stdlib.List.concat(touched, change.touched))
+    | _ ->
+      report(Stdlib.Exec.await(handle), Stdlib.DateTime.__monotonicMilliseconds() - started)
+      loop(branchId, awaited.watch, [])
+
+
+/// `dark test watch`.
+let execute(state: AppState): AppState =
+  printQuiet("running the tests each save touches; Ctrl-C stops.")
+  let _ = loop(state.currentBranchId, Stdlib.Host.begin(), [])
+  state
+
+
+/// How the tests <param touched> reaches stand, from what was stored for each at its current
+/// version. Silent when it reaches none. Names only the failures: those ran.
+let printTouched(branchId: Uuid, touched: List<LanguageTools.Live.Touched>): Unit =
+  match testsReached(branchId, touched) with
+  | [] -> ()
+  | tests ->
+    let outcomes = Test.lastOutcomes(branchId, Stdlib.List.map(tests, fun item -> item.entity.hash))
+    let pairs = Stdlib.List.zipShortest(tests, outcomes)
+    let failed =
+      pairs
+      |> Stdlib.List.filterMap(fun((item, outcome)) ->
+        match outcome with
+        | Some(o) when Stdlib.Bool.not(Test.isPassed(o)) -> Option.Some(Test.shownName(item))
+        | _ -> Option.None)
+
+    let notRun =
+      pairs
+      |> Stdlib.List.filter(fun((_, o)) -> Stdlib.Option.isNone(o))
+      |> Stdlib.List.length
+
+    let nFailed = Stdlib.List.length(failed)
+    let passed = Stdlib.List.length(tests) - nFailed - notRun
+    if nFailed == 0 && notRun == 0 then
+      printQuiet($"  touched tests: {Text.plural(passed, "test")} passed at this version")
+    else
+      let parts =
+        [ (passed, "passed"), (nFailed, "failed"), (notRun, "not run yet") ]
+        |> Stdlib.List.filterMap(fun((n, what)) ->
+          if n == 0 then Option.None else Option.Some($"{Stdlib.display(n)} {what}"))
+
+      printErr($"  touched tests: {Stdlib.String.join(parts, ", ")}")
+      failed |> Stdlib.List.iter(fun name -> printErr($"    FAIL {name}"))
+      if notRun > 0 then printHint("  -> `dark test watch` runs them as you save")
+
+
+/// The names a draft binds, as touched names.
+let draftTouched(): List<LanguageTools.Live.Touched> =
+  (SCM.Draft.read()).bindings
+  |> Stdlib.List.map(fun b ->
+    LanguageTools.Live.Touched
+      { location = Commit.locationOf(b), kind = Commit.itemKindOf(b.itemType) })
+
+
+/// The names <param branchId> changes against its parent, as touched names.
+let branchTouched(branchId: Uuid): List<LanguageTools.Live.Touched> =
+  SCM.PackageOps.branchDiffEntries(branchId)
+  |> Stdlib.List.filterMap(fun e ->
+    match SCM.Branches.parseFqn(e.name), LanguageTools.ProgramTypes.ItemKind.fromString(e.kind) with
+    | Some((owner, modules, name)), Some(kind) ->
+      Option.Some(
+        LanguageTools.Live.Touched
+          { location = SCM.Deps.locationOf(owner, modules, name), kind = kind })
+    | _ -> Option.None)

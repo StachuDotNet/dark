@@ -93,7 +93,7 @@ let testJson(name: String, outcome: Outcome, cached: Bool): TestJson =
 
 
 val usage =
-  "Usage: test run [--force] [--brief | --verbose] [--json] [--jobs <count>] [--seed <n>] [name-or-module ... | <script>.dark]\n       test count [--for <item>] [module]\n       test add <location> <body> | <source-file> | - [--description <text>]"
+  "Usage: test run [--force] [--brief | --verbose] [--json] [--jobs <count>] [--seed <n>] [name-or-module ... | <script>.dark]\n       test watch\n       test count [--for <item>] [module]\n       test add <location> <body> | <source-file> | - [--description <text>]"
 
 
 let fullPath(
@@ -426,6 +426,7 @@ let execute(state: AppState, args: List<String>): AppState =
       else
         addTest(state, location, definition, description)
   | ["run", ...runArgs] -> runTests(state, runArgs)
+  | ["watch"] -> TestWatch.execute(state)
   | ["count", ...countArgs] -> countTests(state, countArgs)
   | [] ->
     Stdlib.printLine(help(state))
@@ -667,8 +668,9 @@ let finishTest(
   if Stdlib.Bool.not(finished.wasCached) then
     match cache, finished.outcome with
     | _, RuntimeFailed(_) -> ()
-    | Some(context), _ when isCacheable(finished.test, finished.cacheSafe) ->
-      storeOutcome(context, finished.test.hash, finished.outcome)
+    // Every judged outcome is the record of this version; whether a pass is reused is
+    // checked again where it is read.
+    | Some(context), _ -> storeOutcome(context, finished.test.hash, finished.outcome)
     | _ -> ()
 
   let tests =
