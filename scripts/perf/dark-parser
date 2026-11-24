@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# What the Dark parser costs, against Builtin.parse:
+#
+#   scripts/perf/dark-parser [--release] [--reps N] [--lex] <file>...
+#   scripts/perf/dark-parser [--release] corpus
+#
+# `--cli <exe>` runs another binary (a Debug CLI directly, while a build is in flight).
+#
+# Per file: tokens, then for each parser the median ms over N parses (default 7) and, from one
+# more parse with the interpreter's counters on, allocation, VM instructions, package calls, builtin calls and frame pushes, each
+# also per token. `--lex` adds the lexer alone. `corpus` runs the parity report over every
+# .dark file outside later/ (one parse each, both parsers) and prints its summary.
+# Runs inside the dev container, through the slot queue; `--release` uses the published build.
+# Runs are untraced (`--no-trace`), as a release CLI runs by default; the dev container records.
+
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$DIR"
+
+cli="./scripts/run-cli"
+reps=7
+lex=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --release) cli="backend/Build/out/Cli/Release/net11.0/publish/Cli"; shift ;;
+    --cli) cli="$2"; shift 2 ;;
+    --reps) reps="$2"; shift 2 ;;
+    --lex) lex=true; shift ;;
+    *) break ;;
+  esac
+done
+
+out="rundir/perf-dark-parser"
+mkdir -p "$out"
+
+if [[ "${1:-}" == "corpus" ]]; then
+  git ls-files '*.dark' | grep -v '^later/' | sed "s|^|/home/dark/app/|" > "$out/corpus.txt"
+  "$cli" run --no-trace --allow "file read /home/dark/app" Darklang.LanguageTools.Parser.Dark.Parity.main \
+    --list "/home/dark/app/$out/corpus.txt" > "$out/corpus.out" 2>&1 < /dev/null
+  grep -v "^same " "$out/corpus.out" | tail -20
+  exit 0
+fi
+
+paths=$(printf '"%s", ' "$@")
+# Two processes: counting turns the interpreter's fast paths off for the rest of the process, so
+# the times come from one where nothing ever counted, and the counters from another.
+for pass in time count; do
+  if [[ $pass == time ]]; then
+    measure='let ms = Stdlib.List.sort(Stdlib.List.map(Stdlib.List.range(1, '$reps'), fun _ -> timeOnce(f)))
+  let median = Stdlib.List.getAt(ms, '$reps' / 2) |> Stdlib.Option.withDefault(0)
+  Stdlib.printLine($"  {name}: {median} ms (runs {ms}), {per(median * 1000000) / 1000} us/token")'
+  else
+    measure='let harness = Darklang.LanguageTools.Perf.floor()
+  let m = Darklang.LanguageTools.Perf.minus(Stdlib.Tuple2.first(Darklang.LanguageTools.Perf.measure(f)), harness)
+  Stdlib.printLine($"  {name}, counted: {m.allocBytes / 1024} KB, {m.instructions} instr, {m.packageCalls} pkg calls, {m.builtinCalls} builtin calls, {m.framePushes} frames; per token {per(m.allocBytes)} B, {per(m.instructions)} instr, {per(m.packageCalls)} pkg, {per(m.builtinCalls)} builtin, {per(m.framePushes)} frames")'
+  fi
+  cat > "$out/bench-$pass.dark" <<DARK
+let timeOnce(f: Unit -> 'a): Int64 =
+  let t0 = Stdlib.DateTime.__monotonicMilliseconds()
+  let _ = f()
+  Stdlib.DateTime.__monotonicMilliseconds() - t0
+let row(name: String, tokens: Int64, f: Unit -> 'a): Unit =
+  let per = fun n -> if tokens > 0 then n / tokens else 0
+  $measure
+let paths = [ $paths ]
+Stdlib.List.iter(paths, fun p ->
+  let src = Stdlib.Cli.FileSystem.readFileAsString(p) |> Stdlib.Result.withDefault("")
+  let kind = Darklang.LanguageTools.Parser.Dark.Parity.kindFor(p)
+  let tokens = Stdlib.List.length((Darklang.LanguageTools.Parser.Dark.Lexer.lex(src)).tokens)
+  (if "$pass" == "time" then Stdlib.printLine(\$"{p}: {Stdlib.String.length(src)} chars, {tokens} tokens") else ())
+  row("builtin", tokens, fun () -> Builtin.parse(kind, src))
+  (if $lex then row("dark lex", tokens, fun () -> Darklang.LanguageTools.Parser.Dark.Lexer.lex(src)) else ())
+  row("dark", tokens, fun () -> Darklang.LanguageTools.Parser.Dark.parse(kind, src)))
+DARK
+  "$cli" run --no-trace --allow "file read /home/dark/app" "$out/bench-$pass.dark" < /dev/null
+done
