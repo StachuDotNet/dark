@@ -2700,6 +2700,24 @@ let private quickOpsFor (instrData : InstrData) : QuickOp[] =
 
 /// Cached data needed to enter a package function. Built once per function to
 /// avoid rebuilding its instructions and permission layers on every call.
+/// <param t> with every alias in it replaced by what it names, so the checks on every call and
+/// return compare the value's own type name with the declared one and take the quick path.
+let rec private withoutAliases (types : Types) (t : TypeReference) : TypeReference =
+  match t with
+  | TCustomType({ resolved = Ok _ } as name, args) ->
+    match TypeReference.unwrapAlias types t with
+    | TCustomType({ resolved = Ok _ }, _) as same when same = t ->
+      TCustomType(name, List.map (withoutAliases types) args)
+    | resolved -> withoutAliases types resolved
+  | TTuple(a, b, rest) ->
+    TTuple(withoutAliases types a, withoutAliases types b, List.map (withoutAliases types) rest)
+  | TList inner -> TList(withoutAliases types inner)
+  | TDict(k, v) -> TDict(withoutAliases types k, withoutAliases types v)
+  | TStream inner -> TStream(withoutAliases types inner)
+  | TFn(args, ret) -> TFn(NEList.map (withoutAliases types) args, withoutAliases types ret)
+  | other -> other
+
+
 let private packageFnCallData
   (exeState : ExecutionState)
   (fn : PackageFn.PackageFn)
@@ -2720,7 +2738,9 @@ let private packageFnCallData
             quick = quicken (PackageRefs.currentGeneration ()) instructions }
         policy = { owner = null; name = None; policy = None }
         freeTVars = FreeTVars.ofPackage fn
-        paramList = FreeTVars.paramsOfPackage fn
+        paramList =
+          FreeTVars.paramsOfPackage fn
+          |> List.map (fun p -> { p with typ = withoutAliases exeState.types p.typ })
         executionPoint = FreeTVars.packageExecutionPoint fn.hash
         // The parameters that take a callback. A named type, like `Check`, may be an
         // alias of a function type.
@@ -2744,7 +2764,7 @@ let private packageFnCallData
           match thinWrapper with
           | ValueSome biFn -> fastOpTagOf biFn.name
           | ValueNone -> ValueNone
-        fn = fn }
+        fn = { fn with returnType = withoutAliases exeState.types fn.returnType } }
     exeState.packageFnCallCache[fn.hash] <- d
     d
 
