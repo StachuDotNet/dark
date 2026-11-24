@@ -14,10 +14,10 @@ export default async (c) => {
   const r4 = c.run(['src', 'dst'], { allow: al, env: { BACKUP_MAX_BYTES: '3' } });
   const big = sh('[ -e dst/big.txt ] && echo copied || echo skipped').trim();
   const miss = c.run(['missing', 'dst'], { allow: al });
-  const nums = (l) => (l.replace(/\d{4}-\d\d-\d\d|\d\d:\d\d(:\d\d)?(\.\d+)?|T|Z/g, ' ').match(/\d+/g) || []).map(Number);
+  const nums = (l) => (l.replace(/\d{8}T\d{4,6}(\.\d+)?Z?|\d{4}-\d\d-\d\d|\d\d:\d\d(:\d\d)?(\.\d+)?|T|Z/g, ' ').match(/\d+/g) || []).map(Number);
   return [
     { name: 'copies the .txt files only', ok: r1.code === 0 && files1 === 'a.txt,b.txt' && same === 'same', got: `${r1.code} ${files1} ${r1.err.slice(0, 120)}` },
-    { name: 'log: 3 lines, counts 2/0, 0/2, 1/1', ok: log.length === 3 && [[2, 0], [0, 2], [1, 1]].every(([cp, sk], i) => nums(log[i] || '').includes(cp) && nums(log[i] || '').includes(sk)) && /\d\d:\d\d/.test(log[0] || ''), got: log.join(' | ') },
+    { name: 'log: 3 lines, counts 2/0, 0/2, 1/1', ok: log.length === 3 && [[2, 0], [0, 2], [1, 1]].every(([cp, sk], i) => nums(log[i] || '').includes(cp) && nums(log[i] || '').includes(sk)) && /\d\d:\d\d|\d{8}T\d{4}/.test(log[0] || ''), got: log.join(' | ') },
     { name: 'max bytes skips and names big.txt', ok: big === 'skipped' && /big\.txt/.test(r4.out + r4.err), got: `${big} ${r4.out}${r4.err}`.slice(0, 150) },
     { name: 'missing source exits 1 with stderr', ok: miss.code === 1 && miss.err.trim() !== '', got: `${miss.code} ${miss.err}` },
   ];

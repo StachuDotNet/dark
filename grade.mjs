@@ -54,7 +54,7 @@ function entryFrom(transcript) {
       if (!ok) continue;
       for (const { fn, rest } of runsIn(cmd)) { runs.push(fn); argsOf[fn] = rest; }
       for (const m of cmd.matchAll(/(?:127\.0\.0\.1|localhost):(\d{4,5})/g)) ports.push(+m[1]);
-      for (const m of cmd.matchAll(/--allow[= ]+(?:"([^"]*)"|'([^']*)')/g)) for (const r of (m[1] ?? m[2]).split(';')) rules.add(r.trim());
+      for (const m of cmd.matchAll(/--allow[= ]+(?:"([^"]*)"|'([^']*)'|([a-z][\w-]*)(?=\s|$))/g)) for (const r of (m[1] ?? m[2] ?? m[3]).split(';')) rules.add(r.trim());
       for (const m of cmd.matchAll(new RegExp(String.raw`\b(?:serve|http-server)\s+` + NAME, 'g'))) serves.push(m[1]);
     }
     if (e.type === 'result' && !final) final = String(e.result || '');
@@ -66,7 +66,7 @@ function entryFrom(transcript) {
   const inFinal = [...final.matchAll(/\b([A-Z]\w*(?:\.[A-Z]\w*)*\.main)\b/g)].map(m => m[1]);
   const named = [...runs].reverse().find(f => inFinal.includes(f)) || inFinal[0] || [...runs].reverse().find(f => final.includes(f));
   const main = named || count(runs)[0] || null;
-  return { main, mainArgs: argsOf[main] || [], mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final, ports: [...new Set(ports.reverse())], rules: [...rules].filter(r => r && !r.includes('$')) };
+  return { main, mainArgs: argsOf[main] || [], mains: count(runs), router: serves.at(-1) || null, modules: [...modules], final, ports: [...new Set(ports.reverse())], rules: [...rules].filter(Boolean) };
 }
 
 function ctxFor(row, runRoot, entry) {
@@ -74,16 +74,19 @@ function ctxFor(row, runRoot, entry) {
   const D = existsSync(path.join(runRoot, 'dark')) ? path.join(runRoot, 'dark') : `${B}/bins/${row.label}/dark`;
   const env = { ...process.env, DARK_CONFIG_RUNDIR: path.join(runRoot, '.darklang'), DOTNET_BUNDLE_EXTRACT_BASE_DIR: path.join(runRoot, 'dotnet'), NO_PROXY: '127.0.0.1,localhost' };
   const tmp = mkdtempSync('/home/stachu/code/bench-loop-ws/grade-');
+  env.TMPDIR = tmp; // a program's temporary files land in the grading folder, as the agent's landed in its sandbox
   const dark = (argv, o = {}) => {
     const r = spawnSync(D, argv, { cwd: o.cwd || tmp, input: o.stdin ?? '', env: { ...env, ...(o.env || {}) }, timeout: o.timeout || 60000, maxBuffer: 64 << 20 });
     return { code: r.status, out: String(r.stdout || ''), err: String(r.stderr || ''), timedOut: !!r.error };
   };
   // what any program in these tasks may need, scoped to the grading folder
   // plus the non-file, non-server rules the agent itself passed to `run` (`concurrency`, `env read X`, ...)
-  const theirs = entry.rules.filter(r => !/^(file|http-server)\b/.test(r));
-  const allow = (extra = []) => ['--allow', [...new Set([`file read ${tmp}`, `file write ${tmp}`, ...theirs, ...extra])].join('; ')];
+  // with `$D` as this attempt's dark and any other `$VAR...` path as the grading folder
+  const theirs = entry.rules.filter(r => !/^(file|http-server)\b/.test(r))
+    .map(r => r.replace(/["']?\$\{?(?:D|DARK)\}?["']?(?=\s|$)/g, D).replace(/\$\{?\w+\}?(\/[^\s'"]*)?/g, tmp));
+  const allow = (extra = []) => ['--allow', [...new Set([`file read ${tmp}`, `file write ${tmp}`, 'env read *', ...theirs, ...extra])].join('; ')];
   // an agent's path argument becomes one inside the grading folder; one without an extension is a folder
-  const here = (x) => { const q = path.join(tmp, path.basename(x)); if (!path.extname(q)) mkdirSync(q, { recursive: true }); return q; };
+  const here = (x) => { if (/^"?\$\{?(D|DARK)\}?"?$/.test(x)) return D; const q = path.join(tmp, path.basename(x)); if (!path.extname(q)) mkdirSync(q, { recursive: true }); return q; };
   const ctx = {
     tmp, entry, dark, final: entry.final,
     write: (name, content) => { writeFileSync(path.join(tmp, name), content); return path.join(tmp, name); },
