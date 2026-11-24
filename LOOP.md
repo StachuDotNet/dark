@@ -100,6 +100,7 @@ it builds from is `~/code/dark/bench-loop` (make it with `~/code/dark/new-clone 
   `a+b` pools runs. Measure-set tasks (every `lists/measure*.txt`) are counted, never quoted or timelined.
 - Classes match Dark's own diagnostics only (a program's own `error:` lines and docs text don't count). When
   Dark's wording changes, check the `ERR` table at the top before comparing runs.
+- `BENCH_EFFORT=<level>` passes `--effort` to every arm (claude and dark-agent); unset, no flag.
 - `BENCH_LANG=Python` on `run-round.sh` runs the same tasks in Python for a floor (seeds use `<seed>/python`).
 - `BENCH_YIELD=1` makes each attempt and the AOT wait until no suite is queued and IO is calm (`yield-gate.sh`);
   with `BENCH_NOSLOT=1` attempts then take no slot, so a suite queued later never waits behind the bench.

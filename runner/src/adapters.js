@@ -56,6 +56,7 @@ export function launchArgs(agent, model, dirs = [], sites = []) {
     if (agent === 'dark-agent-generic') args.push('--tools', 'generic');
     if (agent === 'dark-agent-attempts') args.push('--attempts', '3');
     if (model) args.push('--model', model);
+    if (process.env.BENCH_EFFORT) args.push('--effort', process.env.BENCH_EFFORT);
     return args;
   }
   if (agent === 'codex') {
@@ -74,6 +75,8 @@ export function launchArgs(agent, model, dirs = [], sites = []) {
   args.push('--permission-prompts', 'none', '--settings', claudeSandbox(sites), '--allowedTools', 'Bash', 'Read', 'Glob', 'Grep');
   if (dirs.length) args.push('--add-dir', ...dirs);
   if (model) args.push('--model', model);
+  // BENCH_EFFORT: the same effort level for every arm of an A/B; unset passes no flag
+  if (process.env.BENCH_EFFORT) args.push('--effort', process.env.BENCH_EFFORT);
   return args;
 }
 
