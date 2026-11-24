@@ -165,7 +165,7 @@ let declaringJson(): List<List<String>> =
 
 
 /// What still prints its pretty view under `--plain`, because it doesn't answer through `Output`.
-val plainIsPretty = [ "constraints", "conflicts walk", "ps" ]
+val plainIsPretty = [ "conflicts walk" ]
 
 
 /// Every command that declares `--json`, in all three modes, so one is covered the day it declares

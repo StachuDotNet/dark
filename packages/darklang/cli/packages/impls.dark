@@ -214,44 +214,48 @@ let statusOf(
     "active"
 
 
-/// `--json`: the same listing, for something parsing it rather than reading it. One object,
-/// `implementations` in the order the human listing prints them, each with the status a call
-/// would see. An error leaves stdout empty, says why on stderr, and exits 1, as every --json does.
-let printJson(
+/// One implementation, with the status a call would see.
+type ImplAnswer =
+  { self: String
+    name: String
+    hash: String
+    status: String }
+
+
+/// The listing, as a program gets it: `implementations` in the order the text view prints them.
+type Answer =
+  { trait: String
+    methods: List<String>
+    implementations: List<ImplAnswer> }
+
+
+let answer(
   branchId: Uuid,
   traitName: String,
   candidates: List<LanguageTools.RuntimeTypes.ImplCandidate>)
-  : Unit =
-  let methods =
-    match candidates with
-    | [c, ...] ->
-      c.methods
-      |> Stdlib.Dict.keys
-      |> Stdlib.List.sort
-    | [] -> []
-
-  let methodsJson =
-    methods
-    |> Stdlib.List.map(fun m -> jsonStr(m))
-    |> Stdlib.String.join(",")
-
-  let implsJson =
-    candidates
-    |> Stdlib.List.sortBy(fun c -> describeSelf(branchId, c.self))
-    |> Stdlib.List.map(fun c ->
-      let self = jsonStr(describeSelf(branchId, c.self))
-      let name = jsonStr(sourceNameOf(branchId, c.source))
-      let hash = jsonStr(LanguageTools.ProgramTypes.hashToString(c.source))
-      let status = jsonStr(statusOf(branchId, candidates, c))
-      $"{{\"self\":{self},\"name\":{name},\"hash\":{hash},\"status\":{status}}}")
-    |> Stdlib.String.join(",")
-
-  Stdlib.printLine(
-    $"{{\"trait\":{jsonStr(traitName)},\"methods\":[{methodsJson}],\"implementations\":[{implsJson}]}}")
+  : Answer =
+  Answer
+    { trait = traitName
+      methods =
+        match candidates with
+        | [c, ...] ->
+          c.methods
+          |> Stdlib.Dict.keys
+          |> Stdlib.List.sort
+        | [] -> []
+      implementations =
+        candidates
+        |> Stdlib.List.sortBy(fun c -> describeSelf(branchId, c.self))
+        |> Stdlib.List.map(fun c ->
+          ImplAnswer
+            { self = describeSelf(branchId, c.self)
+              name = sourceNameOf(branchId, c.source)
+              hash = LanguageTools.ProgramTypes.hashToString(c.source)
+              status = statusOf(branchId, candidates, c) }) }
 
 
 let execute(state: AppState, args: List<String>): AppState =
-  let json = Stdlib.List.contains(args, "--json")
+  let json = state.output == Output.Mode.Json
   let positional =
     args |> Stdlib.List.filter(fun a -> Stdlib.String.startsWith(a, "-") |> Stdlib.Bool.not)
 
@@ -270,57 +274,60 @@ let execute(state: AppState, args: List<String>): AppState =
       { state with exitCode = 1 }
     | Ok(traitHash) ->
       let candidates = LanguageTools.PackageManager.Trait.impls(state.currentBranchId, traitHash)
-      if json then
+      Output.answer(state, (fun () ->
+                              if Stdlib.List.isEmpty(candidates) then
+                                Stdlib.printLine(
+                                  Stdlib.Cli.UI.Colors.dimText(
+                                    $"No implementations of {traitPath} on this branch. `dark search {traitPath} --impl` looks on others."))
+                              else
+                                // Sorted, because the store returns candidates in whatever order its index does.
+                                let methodNames =
+                                  match candidates with
+                                  | [c, ...] ->
+                                    c.methods
+                                    |> Stdlib.Dict.keys
+                                    |> Stdlib.List.sort
+                                    |> Stdlib.String.join(", ")
+                                  | [] -> ""
+
+                                Stdlib.printLine($"{traitPath}  ({methodNames})")
+
+                                // 12 is a floor, so a page of short type names still has a column.
+                                let selfWidth =
+                                  candidates
+                                  |> Stdlib.List.map(fun c ->
+                                    Stdlib.String.displayWidth(
+                                      describeSelf(state.currentBranchId, c.self)))
+                                  |> Stdlib.List.fold(12, fun(acc, w) -> if w > acc then w else acc)
+
+                                candidates
+                                |> Stdlib.List.sortBy(fun c ->
+                                  describeSelf(state.currentBranchId, c.self))
+                                |> Stdlib.List.iter(fun c ->
+                                  let selfStr = describeSelf(state.currentBranchId, c.self)
+                                  let sourceName = sourceNameOf(state.currentBranchId, c.source)
+
+                                  // Mark what a call will not reach.
+                                  let note =
+                                    match statusOf(state.currentBranchId, candidates, c) with
+                                    | "unordered" ->
+                                      Stdlib.Cli.UI.Colors.dimText(
+                                        "  nothing orders these two, so a call errors; deprecate one")
+                                    | "shadowed" ->
+                                      Stdlib.Cli.UI.Colors.dimText(
+                                        "  not used; a newer implementation for this type runs")
+                                    | _ -> ""
+
+                                  Stdlib.printLine(
+                                    $"  {Stdlib.Text.padEndToWidth(selfStr, selfWidth)} {Stdlib.Cli.UI.Colors.dimText(sourceName)}{note}"))
+
+                              state), fun () ->
         let traitName =
           match LanguageTools.PackageManager.Trait.locations(state.currentBranchId, traitHash) with
           | [loc, ...] -> PrettyPrinter.ProgramTypes.PackageLocation.packageLocation(loc)
           | [] -> traitPath
 
-        printJson(state.currentBranchId, traitName, candidates)
-      else if Stdlib.List.isEmpty(candidates) then
-        Stdlib.printLine(
-          Stdlib.Cli.UI.Colors.dimText(
-            $"No implementations of {traitPath} on this branch. `dark search {traitPath} --impl` looks on others."))
-      else
-        // Sorted, because the store returns candidates in whatever order its index does.
-        let methodNames =
-          match candidates with
-          | [c, ...] ->
-            c.methods
-            |> Stdlib.Dict.keys
-            |> Stdlib.List.sort
-            |> Stdlib.String.join(", ")
-          | [] -> ""
-
-        Stdlib.printLine($"{traitPath}  ({methodNames})")
-
-        // 12 is a floor, so a page of short type names still has a column.
-        let selfWidth =
-          candidates
-          |> Stdlib.List.map(fun c ->
-            Stdlib.String.displayWidth(describeSelf(state.currentBranchId, c.self)))
-          |> Stdlib.List.fold(12, fun(acc, w) -> if w > acc then w else acc)
-
-        candidates
-        |> Stdlib.List.sortBy(fun c -> describeSelf(state.currentBranchId, c.self))
-        |> Stdlib.List.iter(fun c ->
-          let selfStr = describeSelf(state.currentBranchId, c.self)
-          let sourceName = sourceNameOf(state.currentBranchId, c.source)
-
-          // Mark what a call will not reach.
-          let note =
-            match statusOf(state.currentBranchId, candidates, c) with
-            | "unordered" ->
-              Stdlib.Cli.UI.Colors.dimText(
-                "  nothing orders these two, so a call errors; deprecate one")
-            | "shadowed" ->
-              Stdlib.Cli.UI.Colors.dimText("  not used; a newer implementation for this type runs")
-            | _ -> ""
-
-          Stdlib.printLine(
-            $"  {Stdlib.Text.padEndToWidth(selfStr, selfWidth)} {Stdlib.Cli.UI.Colors.dimText(sourceName)}{note}"))
-
-      state
+        answer(state.currentBranchId, traitName, candidates))
   | _ ->
     printErr("Usage: impls <trait> [--json]          e.g. `dark impls Display`")
     if json then

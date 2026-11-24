@@ -293,23 +293,12 @@ test typecheckAnswersWithItsCounts = Instance.withInstance(fun i ->
         i,
         [ "typecheck", "Darklang.Stdlib.List", "--json" ],
         [ (fun j ->
-             hasKeys(
-               j,
-               [ "verdict"
-                 "checked"
-                 "failed"
-                 "incomplete"
-                 "total"
-                 "items" ]))
-
-          (fun j ->
              isTrue(
                Stdlib.List.contains(
                  [ "checked", "failed", "incomplete" ],
                  string(j, "verdict")),
                "verdict is one of the three the renderer can produce"))
 
-          (fun j -> fieldIsArray(j, "items"))
           (fun j ->
              isTrue(
                int(j, "total") > 0,

@@ -19,7 +19,6 @@ type ParsedArgs =
   { outputFilter: OutputFilter
     parseErrors: List<FlagParser.ParseError>
     positionals: List<String>
-    asJson: Bool
     conflictingFilters: Bool }
 
 
@@ -46,7 +45,6 @@ let parseArgs(args: List<String>): ParsedArgs =
             showIncomplete = showAll || incompleteOnly || Stdlib.Bool.not(hasSpecificFilter) }
       parseErrors = parsed.errors
       positionals = parsed.positionals
-      asJson = FlagParser.hasFlag(parsed, "--json")
       conflictingFilters = showAll && hasSpecificFilter }
 
 
@@ -211,52 +209,55 @@ let printItem(
       |> Stdlib.printLines
 
 
-// The --json rendering. The same data the human view renders, typed: `docs for-ai` promises every
-// question-answering command takes --json, and an agent auditing a branch after a batch of
-// edits is this command's main consumer. Items are filtered the same way the human view is.
-let jsonReport(
+/// One audited item, as a program gets it.
+type ItemAnswer =
+  { name: String
+    verdict: String
+    issues: List<String> }
+
+
+/// The audit, as a program gets it: what the text view prints, typed. Items are filtered the same
+/// way.
+type Answer =
+  { verdict: String
+    checked: Int64
+    failed: Int64
+    incomplete: Int64
+    total: Int64
+    items: List<ItemAnswer> }
+
+
+let answer(
   branchId: Uuid,
   scope: List<String>,
   outputFilter: OutputFilter,
   report: LanguageTools.AtRestTypeChecker.Report,
   totals: Counts,
   total: Int64)
-  : String =
+  : Answer =
   let verdictWord(v: LanguageTools.AtRestTypeChecker.Verdict): String =
     match v with
     | Checked -> "checked"
     | Failed -> "failed"
     | Incomplete -> "incomplete"
 
-  let items =
-    listed(branchId, scope, outputFilter, report.items)
-    |> Stdlib.List.map(fun((label, item)) ->
-      let issues =
-        Stdlib.List.concat(
-          AtRestCheck.issueLines(branchId, item.diagnostics),
-          AtRestCheck.issueLines(branchId, item.warnings))
-        |> Stdlib.List.map(fun l -> Stdlib.String.trim(l))
-
-      Stdlib.AltJson.Json.Object(
-        [ ("name", Stdlib.AltJson.Json.String(label))
-          ("verdict", Stdlib.AltJson.Json.String(verdictWord(auditVerdict(item))))
-          (
-            "issues",
-            Stdlib.AltJson.Json.Array(
-              issues |> Stdlib.List.map(fun l -> Stdlib.AltJson.Json.String(l)))) ]))
-
-  Stdlib.AltJson.format(
-    Stdlib.AltJson.Json.Object(
-      [ (
-          "verdict",
-          Stdlib.AltJson.Json.String(
-            if totals.failedCount > 0 then "failed" else verdictWord(report.verdict)))
-
-        ("checked", Stdlib.AltJson.Json.Integer(totals.checkedCount))
-        ("failed", Stdlib.AltJson.Json.Integer(totals.failedCount))
-        ("incomplete", Stdlib.AltJson.Json.Integer(totals.incompleteCount))
-        ("total", Stdlib.AltJson.Json.Integer(total))
-        ("items", Stdlib.AltJson.Json.Array(items)) ]))
+  Answer
+    { verdict = if totals.failedCount > 0 then "failed" else verdictWord(report.verdict)
+      checked = totals.checkedCount
+      failed = totals.failedCount
+      incomplete = totals.incompleteCount
+      total = total
+      items =
+        listed(branchId, scope, outputFilter, report.items)
+        |> Stdlib.List.map(fun((label, item)) ->
+          ItemAnswer
+            { name = label
+              verdict = verdictWord(auditVerdict(item))
+              issues =
+                Stdlib.List.concat(
+                  AtRestCheck.issueLines(branchId, item.diagnostics),
+                  AtRestCheck.issueLines(branchId, item.warnings))
+                |> Stdlib.List.map(fun l -> Stdlib.String.trim(l)) }) }
 
 
 let execute(state: AppState, args: List<String>): AppState =
@@ -310,38 +311,48 @@ let execute(state: AppState, args: List<String>): AppState =
       let name = Stdlib.String.join(parsed.positionals, "")
       printErr($"no module named {name} on this branch")
       { state with exitCode = 1 }
-    else if parsed.asJson then
-      Stdlib.printLine(
-        jsonReport(state.currentBranchId, scope, parsed.outputFilter, report, totals, total))
-
-      finished
     else
-      let checkedCount = Stdlib.display(totals.checkedCount)
-      let failedCount =
-        if totals.unresolvedCount > 0 then
-          $"{Stdlib.display(totals.failedCount)} ({Stdlib.display(totals.unresolvedCount)} name something that does not exist)"
-        else
-          Stdlib.display(totals.failedCount)
+      Output.answer(finished, (fun () ->
+                                 let checkedCount = Stdlib.display(totals.checkedCount)
+                                 let failedCount =
+                                   if totals.unresolvedCount > 0 then
+                                     $"{Stdlib.display(totals.failedCount)} ({Stdlib.display(totals.unresolvedCount)} name something that does not exist)"
+                                   else
+                                     Stdlib.display(totals.failedCount)
 
-      let incompleteCount = Stdlib.display(totals.incompleteCount)
-      let totalCount = Stdlib.display(total)
-      Stdlib.printLine(Stdlib.Cli.UI.Colors.boldText("At-rest package type audit"))
+                                 let incompleteCount = Stdlib.display(totals.incompleteCount)
+                                 let totalCount = Stdlib.display(total)
+                                 Stdlib.printLine(
+                                   Stdlib.Cli.UI.Colors.boldText("At-rest package type audit"))
 
-      Stdlib.printLine(
-        $"checked {checkedCount}, failed {failedCount}, incomplete {incompleteCount}, total {totalCount}")
+                                 Stdlib.printLine(
+                                   $"checked {checkedCount}, failed {failedCount}, incomplete {incompleteCount}, total {totalCount}")
 
-      listed(state.currentBranchId, scope, parsed.outputFilter, report.items)
-      |> Stdlib.List.iter(fun((label, item)) ->
-        printItem(state.currentBranchId, parsed.outputFilter, label, item))
+                                 listed(
+                                   state.currentBranchId,
+                                   scope,
+                                   parsed.outputFilter,
+                                   report.items)
+                                 |> Stdlib.List.iter(fun((label, item)) ->
+                                   printItem(
+                                     state.currentBranchId,
+                                     parsed.outputFilter,
+                                     label,
+                                     item))
 
-      if Stdlib.List.isEmpty(report.items) then
-        match report.verdict with
-        | Incomplete ->
-          Stdlib.printLine(Stdlib.Cli.UI.Colors.warning("The audit could not complete:"))
-          AtRestCheck.issueLines(state.currentBranchId, report.warnings) |> Stdlib.printLines
-        | Checked | Failed -> ()
+                                 if Stdlib.List.isEmpty(report.items) then
+                                   match report.verdict with
+                                   | Incomplete ->
+                                     Stdlib.printLine(
+                                       Stdlib.Cli.UI.Colors.warning(
+                                         "The audit could not complete:"))
 
-      finished
+                                     AtRestCheck.issueLines(state.currentBranchId, report.warnings)
+                                     |> Stdlib.printLines
+                                   | Checked | Failed -> ()
+
+                                 finished), fun () ->
+        answer(state.currentBranchId, scope, parsed.outputFilter, report, totals, total))
 
 
 let help(_state: AppState): String =

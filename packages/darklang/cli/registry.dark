@@ -319,41 +319,47 @@ module Registry =
 
   let acceptsTraces(): Accepts.Accepts =
     Accepts.everywhere(
-      [ "-y", "--yes", "--json", "--inspect", "--full" ],
+      [ "-y", "--yes", "--inspect", "--full" ],
       [ "--iteration" ],
       Accepts.subcommands(
-        [ ("list", Accepts.withValues([ "--fn", "--route" ], Accepts.upTo(1, [])))
-          ("follow", Accepts.withValues([ "--route" ], Accepts.nothing()))
-          ("stats", Accepts.upTo(1, []))
+        [ ("list", Accepts.withValues([ "--fn", "--route" ], Accepts.upTo(1, [ "--json" ])))
+          ("follow", Accepts.withValues([ "--route" ], Accepts.flagsOnly([ "--json" ])))
+          ("stats", Accepts.upTo(1, [ "--json" ]))
           ("tail", Accepts.withValues([ "--route" ], Accepts.upTo(1, [])))
           ("find", Accepts.text(1))
-          ("fns", Accepts.upTo(1, [ "--all" ]))
-          ("hotspots", Accepts.upTo(1, []))
-          ("view", Accepts.between(1, 2, [ "--watch" ]))
+          ("fns", Accepts.upTo(1, [ "--all", "--json" ]))
+          ("hotspots", Accepts.upTo(1, [ "--json" ]))
+          ("view", Accepts.between(1, 2, [ "--watch", "--json" ]))
           (
             "details",
             Accepts.withValues(
               [ "--filter", "--exclude", "--slow-ms", "--depth" ],
-              Accepts.between(1, 1, [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib" ])))
+              Accepts.between(
+                1,
+                1,
+                [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib", "--json" ])))
 
           ("log", Accepts.text(0))
-          ("record", Accepts.upTo(1, []))
+          ("record", Accepts.upTo(1, [ "--json" ]))
           (
             "inspect",
             Accepts.withValues(
               [ "--filter", "--exclude", "--slow-ms", "--depth" ],
-              Accepts.between(1, 1, [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib" ])))
+              Accepts.between(
+                1,
+                1,
+                [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib", "--json" ])))
 
           ("resume", Accepts.between(1, 1, []))
           ("fork", Accepts.withValues([ "--at" ], Accepts.between(1, 1, [])))
           ("pin", Accepts.between(1, 1, []))
           ("unpin", Accepts.between(1, 1, []))
-          ("calls", Accepts.between(1, 1, []))
-          ("show", Accepts.between(1, 2, [ "--watch" ]))
+          ("calls", Accepts.between(1, 1, [ "--json" ]))
+          ("show", Accepts.between(1, 2, [ "--watch", "--json" ]))
           ("values", Accepts.text(0))
           ("rerun", Accepts.between(1, 1, []))
           ("delete", Accepts.withValues([ "--keep", "--before" ], Accepts.upTo(1, [ "--all" ]))) ],
-        Accepts.nothing()))
+        Accepts.flagsOnly([ "--json" ])))
 
 
   let acceptsConflicts(): Accepts.Accepts =

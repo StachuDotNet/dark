@@ -323,7 +323,7 @@ let printMachineShow(target: String, json: Bool): Bool =
   match machineByPid(target) with
   | Some(m) ->
     if json then
-      Cli.printJson(Stdlib.Json.checkedSerialize<LanguageTools.Exec.MachineProcess>(m))
+      printJson(Stdlib.Json.checkedSerialize<LanguageTools.Exec.MachineProcess>(m))
     else
       Stdlib.printLine($"{Stdlib.display(m.pid)}  {m.title}")
       Stdlib.printLine($"  command       {m.command}")
@@ -385,17 +385,15 @@ let stop(target: String, how: Stdlib.Exec.Stop): Result<String, String> =
   | Error(_) -> stopLocal(target, how)
 
 
-/// Everything `ps` knows, as JSON, for something that is not a person: this instance's
+/// Everything `ps` knows, for something that is not a person: this instance's
 /// processes and the machine's other Dark processes, in the same two groups the tables print.
-let printJson(branchId: Uuid): Bool =
+let snapshot(branchId: Uuid): PsSnapshot =
   let processes = LanguageTools.Exec.list() |> Stdlib.List.map(fun p -> psProcess(branchId, p))
   // Self is filtered out, the same way the table does it: the process answering the question is
   // not news, and the two renderings must not disagree about what is running.
   let me = Stdlib.Cli.Sys.currentPid()
   let machine = LanguageTools.Exec.machineList() |> Stdlib.List.filter(fun m -> m.pid != me)
-  Cli.printJson(
-    Stdlib.Json.checkedSerialize<PsSnapshot>(
-      PsSnapshot { thisInstance = processes, machine = machine }))
+  PsSnapshot { thisInstance = processes, machine = machine }
 
 
 let execute(state: AppState, args: List<String>): AppState =
@@ -404,11 +402,10 @@ let execute(state: AppState, args: List<String>): AppState =
   let args = args |> Stdlib.List.filter(fun a -> a != "--json")
   match args with
   | [] ->
-    if wantsJson then
-      exitWith(state, printJson(state.currentBranchId))
-    else
-      printList(state.currentBranchId)
-      state
+    Output.answer(state, (fun () ->
+                            printList(state.currentBranchId)
+                            state), fun () ->
+      snapshot(state.currentBranchId))
   | ["--watch"] ->
     let view =
       LiveView.Model.View
@@ -453,7 +450,7 @@ let execute(state: AppState, args: List<String>): AppState =
                     d.frames
                     |> Stdlib.List.map(fun ep -> executionPointText(state.currentBranchId, ep)) }
 
-            Cli.printJson(Stdlib.Json.checkedSerialize<PsDetail>(detail))
+            printJson(Stdlib.Json.checkedSerialize<PsDetail>(detail))
       else
         printShow(state.currentBranchId, prefix)
 

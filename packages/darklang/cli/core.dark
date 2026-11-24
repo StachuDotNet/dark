@@ -196,20 +196,6 @@ let shortHash(h: LanguageTools.ProgramTypes.Hash): String =
   LanguageTools.ProgramTypes.hashToString(h) |> Stdlib.String.first(8)
 
 
-/// Escape a string for a hand-assembled JSON body. Backslash first, or it would
-/// re-escape the ones the quote pass just wrote.
-let jsonEscape(x: String): String =
-  x
-  |> Stdlib.String.replaceAll("\\", "\\\\")
-  |> Stdlib.String.replaceAll("\"", "\\\"")
-
-
-/// A JSON string literal: escaped and wrapped in quotes.
-let jsonStr(s: String): String =
-  let escaped = jsonEscape(s)
-  $"\"{escaped}\""
-
-
 /// Takes the command list rather than calling `Registry.allCommands ()` itself: `initState` needs both the
 /// list and the options, and building the list twice per process start would be duplicate work on every
 /// invocation, including `dark version`.

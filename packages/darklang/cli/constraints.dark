@@ -48,33 +48,60 @@ let line(f: SCM.Constraints.Finding): String =
   | _, _ -> $"  #{f.id}  {u}"
 
 
-/// The same data the human view renders, not a subset. If an agent ever has to fall back to parsing the
-/// pretty output for one field, this is incomplete and that's a bug, not a workaround.
-let toJson(f: SCM.Constraints.Finding): String =
-  let k = jsonStr(SCM.Constraints.kindToString(f.kind))
-  let u = jsonStr(SCM.Constraints.fqnOf(f.usage))
-  let d = jsonStr(SCM.Constraints.fqnOf(f.dependency))
-  let uk = jsonStr(LanguageTools.ProgramTypes.ItemKind.toString(f.usageKind))
-  let dk = jsonStr(LanguageTools.ProgramTypes.ItemKind.toString(f.dependencyKind))
+/// One finding, as a program gets it: the same data the text view renders, not a subset. If an
+/// agent ever has to parse the text for one field, this is incomplete. The detail is named for what
+/// it is, so a policy finding's names don't sit in fields called `using` and `current`.
+type FindingAnswer =
+  { id: String
+    kind: String
+    usage: String
+    usageKind: String
+    dependency: String
+    dependencyKind: String
+    using: Option<String>
+    current: Option<String>
+    self: Option<String>
+    rival: Option<String>
+    runs: Option<String> }
 
-  // The varying half is named for what it IS, so an agent reading this does not have to know that a
-  // policy finding puts policy names in fields called `using` and `current`.
-  let detail =
-    match f.detail with
-    | Versions(using, current) ->
-      let usingStr = jsonStr(LanguageTools.ProgramTypes.hashToString(using))
-      let curStr = jsonStr(LanguageTools.ProgramTypes.hashToString(current))
-      $"\"using\":{usingStr},\"current\":{curStr}"
-    | Rivals(self, rival, choice) ->
-      let runs =
-        match choice with
-        | Mine -> SCM.Constraints.fqnOf(f.usage)
-        | Theirs -> SCM.Constraints.fqnOf(rival)
-        | Neither -> ""
 
-      $"\"self\":{jsonStr(self)},\"rival\":{jsonStr(SCM.Constraints.fqnOf(rival))},\"runs\":{jsonStr(runs)}"
+/// `blocked` is normally `[]`. Without it an agent reads "we didn't look" as "nothing to see".
+type Answer =
+  { findings: List<FindingAnswer>
+    blocked: List<String> }
 
-  $"{{\"id\":{jsonStr(f.id)},\"kind\":{k},\"usage\":{u},\"usageKind\":{uk},\"dependency\":{d},\"dependencyKind\":{dk},{detail}}}"
+
+let findingAnswer(f: SCM.Constraints.Finding): FindingAnswer =
+  let plain =
+    FindingAnswer
+      { id = f.id
+        kind = SCM.Constraints.kindToString(f.kind)
+        usage = SCM.Constraints.fqnOf(f.usage)
+        usageKind = LanguageTools.ProgramTypes.ItemKind.toString(f.usageKind)
+        dependency = SCM.Constraints.fqnOf(f.dependency)
+        dependencyKind = LanguageTools.ProgramTypes.ItemKind.toString(f.dependencyKind)
+        using = Option.None
+        current = Option.None
+        self = Option.None
+        rival = Option.None
+        runs = Option.None }
+
+  match f.detail with
+  | Versions(using, current) ->
+    { plain with
+        using = Option.Some(LanguageTools.ProgramTypes.hashToString(using))
+        current = Option.Some(LanguageTools.ProgramTypes.hashToString(current)) }
+  | Rivals(self, rival, choice) ->
+    let runs =
+      match choice with
+      | Mine -> SCM.Constraints.fqnOf(f.usage)
+      | Theirs -> SCM.Constraints.fqnOf(rival)
+      | Neither -> ""
+
+    { plain with
+        self = Option.Some(self)
+        rival = Option.Some(SCM.Constraints.fqnOf(rival))
+        runs = Option.Some(runs) }
 
 
 let selectKind(
@@ -105,22 +132,6 @@ let kindArgChecked(args: List<String>): Result<Unit, String> =
       | None ->
         Result.Error(
           $"\"{wanted}\" isn't a kind -- stale-usage, kind-changed, or rival-implementations.")
-
-
-let executeJson(state: AppState, args: List<String>): AppState =
-  let detected = SCM.Constraints.pending()
-  let findings = selectKind(detected.findings, args)
-  let body =
-    findings
-    |> Stdlib.List.map(toJson)
-    |> (fun ls -> Stdlib.String.join(ls, ","))
-
-  // Add-only, normally `[]`. Without it an agent reads "we didn't look" as "nothing to see".
-  let answer =
-    Stdlib.Json.checkedSerialize<List<String>>(detected.blocked)
-    |> Stdlib.Result.map(fun blocked -> $"{{\"findings\":[{body}],\"blocked\":{blocked}}}")
-
-  exitWith(state, printJson(answer))
 
 
 let executeList(state: AppState, args: List<String>): AppState =
@@ -463,10 +474,11 @@ let execute(state: AppState, args: List<String>): AppState =
         printErr(why)
         failed(state)
       | Ok(_) ->
-        if Stdlib.List.contains(args, "--json") then
-          executeJson(state, args)
-        else
-          executeList(state, args)
+        Output.answer(state, (fun () -> executeList(state, args)), fun () ->
+          let detected = SCM.Constraints.pending()
+          Answer
+            { findings = selectKind(detected.findings, args) |> Stdlib.List.map(findingAnswer)
+              blocked = detected.blocked })
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
