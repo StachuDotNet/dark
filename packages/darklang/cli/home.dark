@@ -1,0 +1,235 @@
+/// `dark` at a terminal: one prompt for Dark expressions and commands, each answer under what you
+/// typed. It is the kernel's way to work interactively; everything here is also a plain command,
+/// and a line is exactly what you would type after `dark`.
+module Darklang.Cli.Home
+
+type Entry =
+  { typed: String
+    said: List<String> }
+
+
+type Model =
+  { app: AppState
+    input: String
+    /// Oldest first.
+    entries: List<Entry>
+    /// How far back ↑ has gone into what was typed; 0 is the line being edited.
+    back: Int64
+    /// The line enter runs when nothing is typed: the next step, shown dim after the prompt.
+    next: String }
+
+
+type Msg =
+  | Nothing
+
+
+let init(app: AppState): Model =
+  let app = Registry.withAll(app)
+  Model
+    { app = app
+      input = ""
+      entries = []
+      back = 0
+      next = Stdlib.List.head(firstSteps) |> Stdlib.Option.withDefault("") }
+
+
+/// A first session, one line at a time: each is offered once the one before it has run. Enter on an
+/// empty prompt takes it; typing anything else ignores it.
+val firstSteps =
+  [ "1 + 2"
+    "fn Me.Hi.greet '(name: String): String = \"hi \" + name'"
+    "Me.Hi.greet(\"Ada\")"
+    "commit \"my first function\" -y"
+    "extensions" ]
+
+
+/// What to offer after <param line> printed <param said>: the command a refusal named, the line that
+/// was refused once its extension is on, or the next of `firstSteps`.
+let nextAfter(m: Model, line: String, said: List<String>): String =
+  let named =
+    said
+    |> Stdlib.List.findFirst(fun l ->
+      Stdlib.String.startsWith(Stdlib.String.trim(l), "dark extensions enable "))
+    |> Stdlib.Option.map(fun l -> Stdlib.String.dropFirst(Stdlib.String.trim(l), 5))
+
+  let refused =
+    m.entries
+    |> Stdlib.List.reverse
+    |> Stdlib.List.findFirst(fun e ->
+      Stdlib.List.any(e.said, fun l -> Stdlib.String.contains(l, "which is off.")))
+    |> Stdlib.Option.map(fun e -> e.typed)
+
+  match named with
+  | Some(cmd) -> cmd
+  | None ->
+    match refused with
+    | Some(again) when Stdlib.String.startsWith(line, "extensions enable") -> again
+    | _ ->
+      let done_ = Stdlib.List.append(Stdlib.List.map(m.entries, fun e -> e.typed), line)
+      firstSteps
+      |> Stdlib.List.findFirst(fun s -> Stdlib.Bool.not(Stdlib.List.contains(done_, s)))
+      |> Stdlib.Option.withDefault("")
+
+
+/// A line split the way a shell splits it: spaces separate words, and quotes keep them together.
+let words(line: String): List<String> =
+  let step(
+    acc: (List<String> * String * String * Bool),
+    c: String)
+    : (List<String> * String * String * Bool) =
+    let (done_, word, quote, started) = acc
+    if quote != "" then
+      if c == quote then (done_, word, "", true) else (done_, word + c, quote, true)
+    else if c == "'" || c == "\"" then
+      (done_, word, c, true)
+    else if c == " " then
+      if started then (Stdlib.List.append(done_, word), "", "", false) else acc
+    else
+      (done_, word + c, "", true)
+
+  let (done_, word, _, started) =
+    Stdlib.String.toList(line)
+    |> Stdlib.List.map(fun ch -> Stdlib.String.fromChar(ch))
+    |> Stdlib.List.fold(([], "", "", false), step)
+
+  if started then Stdlib.List.append(done_, word) else done_
+
+
+/// `it` is the last answer, as its text, so the next line can use it: `it |> Stdlib.String.length`.
+let withIt(m: Model, line: String): String =
+  match Stdlib.List.last(m.entries) with
+  | Some(last)
+    when Stdlib.List.contains(words(line), "it") || Stdlib.String.startsWith(line, "it ") ->
+    let literal = Stdlib.Json.serialize<String>(Stdlib.String.join(last.said, "\n"))
+    "let it = " + literal + "\n" + line
+  | _ -> line
+
+
+/// What a line printed, as lines without styles.
+let captured(m: Model, cmd: String, args: List<String>): List<String> =
+  let owned = Builtin.stdoutCaptureStart()
+  let _ = Registry.executeCommand(cmd, m.app, args)
+  let out = if owned then Builtin.stdoutCaptureStop() else ""
+  Stdlib.String.splitOnNewline(out)
+  |> Stdlib.List.map(fun l -> Stdlib.String.trimEnd(Stdlib.Cli.Tui.Text.stripSgr(l)))
+  |> Stdlib.List.filter(fun l -> l != "")
+
+
+/// Commands that draw their own screen: the prompt hands them the terminal and comes back after.
+let ownsScreen(m: Model, cmd: String, args: List<String>): Bool =
+  match cmd, args with
+  | ("extensions", []) | ("ext", []) | ("workbench", _) | ("wb", _) -> true
+  | _ -> Registry.needsTerminal(m.app.allCommandsCache, cmd, args)
+
+
+/// Run one line: a command when its first word is one, an expression otherwise.
+let run(m: Model, line: String): Component.Step<Model> =
+  let known = Stdlib.List.map(m.app.allCommandsCache, fun c -> c.name)
+  match words(line) with
+  | [] -> Component.Step.Stay(m)
+  | [cmd, ...args] ->
+    if Stdlib.List.contains([ "quit", "exit", "q" ], cmd) then
+      Component.Step.Exit(m)
+    else if ownsScreen(m, cmd, args) then
+      let next = nextAfter(m, line, [])
+      let entry = Entry { typed = line, said = [] }
+      Component.Step.Launch(
+        { m with
+            entries = Stdlib.List.append(m.entries, entry)
+            input = ""
+            back = 0
+            next = next },
+        line)
+    else
+      let said =
+        if
+          Stdlib.List.contains(known, cmd)
+          || Stdlib.List.any(m.app.allCommandsCache, fun c -> Stdlib.List.contains(c.aliases, cmd))
+        then
+          captured(m, cmd, args)
+        else
+          captured(m, "eval", [ withIt(m, line) ])
+
+      let entry = Entry { typed = line, said = said }
+      let next = nextAfter(m, line, said)
+      Component.Step.Stay(
+        { m with
+            entries = Stdlib.List.append(m.entries, entry)
+            input = ""
+            back = 0
+            next = next })
+
+
+let typedBefore(m: Model, n: Int64): String =
+  Stdlib.List.getAt(Stdlib.List.reverse(m.entries), n - 1)
+  |> Stdlib.Option.map(fun e -> e.typed)
+  |> Stdlib.Option.withDefault("")
+
+
+let picture(m: Model, width: Int64, height: Int64): List<String> =
+  let intro =
+    if Stdlib.List.isEmpty(m.entries) then
+      Stdlib.String.splitOnNewline(Extensions.helpText(m.app))
+    else
+      []
+
+  let past =
+    m.entries
+    |> Stdlib.List.map(fun e -> [ "› " + e.typed, ...e.said, "" ])
+    |> Stdlib.List.flatten
+
+  let shown = Stdlib.List.concat(intro, past)
+  let room = height - 3
+  let start = Stdlib.max(0, Stdlib.List.length(shown) - room)
+  Stdlib.List.drop(shown, start)
+
+
+let view(m: Model, size: Stdlib.Cli.Tui.Size): Stdlib.Cli.Tui.View =
+  let frame =
+    Stdlib.Cli.UI.Chrome.frame(
+      "dark",
+      "",
+      "enter runs it (on an empty line, the dim suggestion)   tab completes   ↑ again   esc leaves")
+
+  Stdlib.Cli.UI.Chrome.view(frame, size, fun region ->
+    let hint = if m.input == "" then m.next else Registry.getCompletionHint(m.app, m.input)
+    let lines =
+      Stdlib.List.concat(picture(m, region.cols, region.rows), [ "", "dark› " + m.input + hint ])
+
+    let nodes = lines |> Stdlib.List.map(fun l -> Stdlib.Cli.UI.Node.text(l))
+    Stdlib.Cli.UI.Node.toRows(Stdlib.Cli.UI.Node.column(nodes), region.cols, "")
+    |> Stdlib.List.take(region.rows)
+    |> Stdlib.List.indexedMap(fun(i, row) -> Stdlib.Cli.UI.Layout.at(region, i, 0, row))
+    |> Stdlib.List.flatten)
+
+
+let onKey(
+  m: Model,
+  key: Stdlib.Cli.Stdin.Key.Key,
+  _modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers,
+  keyChar: Option<String>)
+  : Component.Step<Model> =
+  match key with
+  | Enter -> run(m, if m.input == "" then m.next else m.input)
+  | Escape -> Component.Step.Exit(m)
+  | Backspace -> Component.Step.Stay({ m with input = Stdlib.String.dropLast(m.input, 1) })
+  | Tab ->
+    Component.Step.Stay({ m with input = m.input + Registry.getCompletionHint(m.app, m.input) })
+  | UpArrow ->
+    let n = Stdlib.min(m.back + 1, Stdlib.List.length(m.entries))
+    Component.Step.Stay({ m with back = n, input = typedBefore(m, n) })
+  | DownArrow ->
+    let n = Stdlib.max(0, m.back - 1)
+    Component.Step.Stay({ m with back = n, input = typedBefore(m, n) })
+  | _ ->
+    match keyChar with
+    | Some(c) -> Component.Step.Stay({ m with input = m.input + c })
+    | None -> Component.Step.Stay(m)
+
+
+let component(): Component.Component<Model> =
+  Component.simple(view, onKey, Component.noSave)
+
+
+let start(state: AppState): AppState =
+  Component.launch(state, component(), init(state))

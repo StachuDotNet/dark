@@ -2,9 +2,8 @@
 /// turn it on itself, and never widens what it may do by doing so.
 module Darklang.Cli.Extensions.Agent
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "agent"
       title = "For an agent"
       blurb = "History, tests and the store tools: what an agent working in the store needs"

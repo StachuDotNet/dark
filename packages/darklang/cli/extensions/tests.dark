@@ -1,9 +1,8 @@
 /// Testing: one extension, built the way a user would build theirs.
 module Darklang.Cli.Extensions.Testing
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "tests"
       title = "Tests"
       blurb = "Tests saved beside your code, run by name"
@@ -20,40 +19,50 @@ val extension: Darklang.Cli.Extensions.Extension =
       pane = "Darklang.Cli.Extensions.Testing.pane"
       handlers = "Darklang.Cli.Extensions.Testing.commands"
       tour =
-        [ Darklang.Cli.Extensions.Step { say = "A test is saved beside your code, like a fn: `test add Me.Hi.greets '<expression>'`.", run = [], expect = "" }
-          Darklang.Cli.Extensions.Step { say = "`test run Me` runs yours. A rerun skips what didn't change.", run = [ "test", "count" ], expect = "" } ]
+        [ Step
+            { say =
+                "A test is saved beside your code, like a fn: `test add Me.Hi.greets '<expression>'`."
+              run = []
+              expect = "" }
+
+          Step
+            { say = "`test run Me` runs yours. A rerun skips what didn't change."
+              run = [ "test", "count" ]
+              expect = "" } ]
       peeks =
-        [ Darklang.Cli.Extensions.Peek { label = "what a test can check", command = [ "docs", "signatures", "Stdlib.Test" ] }
-          Darklang.Cli.Extensions.Peek { label = "test", command = [ "help", "test" ] } ]
+        [ Peek
+            { label = "what a test can check", command = [ "docs", "signatures", "Stdlib.Test" ] }
+
+          Peek { label = "test", command = [ "help", "test" ] } ]
       fake = "" }
 
 
-let acceptsTest(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.subcommands(
+let acceptsTest(): Accepts.Accepts =
+  Accepts.subcommands(
     [ (
         "run",
-        Darklang.Cli.Accepts.withValues(
+        Accepts.withValues(
           [ "--jobs", "--seed" ],
-          Darklang.Cli.Accepts.freeText(0, [ "--force", "--brief", "--verbose", "--json" ])))
+          Accepts.freeText(0, [ "--force", "--brief", "--verbose", "--json" ])))
 
-      ("count", Darklang.Cli.Accepts.withValues([ "--for" ], Darklang.Cli.Accepts.freeText(0, [])))
-      ("add", Darklang.Cli.Accepts.text(2)) ],
-    Darklang.Cli.Accepts.nothing())
+      ("count", Accepts.withValues([ "--for" ], Accepts.freeText(0, [])))
+      ("add", Accepts.text(2)) ],
+    Accepts.nothing())
 
 
-let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+let commands(): List<Registry.CommandHandler> =
   [ (
       "test",
       "Run package tests",
       [ "tests" ],
       acceptsTest,
-      Darklang.Cli.Packages.Test.execute,
-      Darklang.Cli.Packages.Test.help,
-      Darklang.Cli.Packages.Test.complete) ]
-  |> Stdlib.List.map(Darklang.Cli.Registry.handler)
+      Packages.Test.execute,
+      Packages.Test.help,
+      Packages.Test.complete) ]
+  |> Stdlib.List.map(Registry.handler)
 
 
-let pane(_input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pane =
-  Darklang.Cli.Extensions.Pane
+let pane(_input: PaneInput): Pane =
+  Pane
     { lines = [ "Tests live beside your code; a change reruns only what it touches." ]
-      actions = [ Darklang.Cli.Extensions.Action { key = "r", label = "run yours", command = [ "test", "run", "Me" ] } ] }
+      actions = [ Action { key = "r", label = "run yours", command = [ "test", "run", "Me" ] } ] }

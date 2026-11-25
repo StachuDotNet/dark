@@ -1,9 +1,8 @@
 /// Account: one extension, built the way a user would build theirs.
 module Darklang.Cli.Extensions.Account
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "account"
       title = "Account"
       blurb = "Log in to darklang.com"

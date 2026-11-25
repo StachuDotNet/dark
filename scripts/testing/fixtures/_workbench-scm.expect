@@ -20,7 +20,7 @@ proc press {key} { sleep 1; send $key }
 
 set exe [lindex $argv 0]
 set env(HOME) [file dirname [lindex $argv 1]]
-spawn $exe
+spawn $exe workbench
 
 # Home IS the SCM summary: needs attention / current work / recent commits / branches all render on the landing
 # screen, each from its own SCM API (`SCM.Conflicts.pending`, `SCM.Draft.read`, `SCM.Commits.recent`,

@@ -241,7 +241,9 @@ let initState(): AppState =
   // No accounts: approval scoping is the only thing that still takes one, and it takes None.
   let accountID = Option.None
   let branchId = resolveStartingBranch()
-  let commands = Registry.allCommands()
+  // The kernel's commands only: an extension's are found when a line names one (`Registry.withAll`),
+  // so a kernel command never looks for extensions, and code that builds a state needs no Native.
+  let commands = Registry.kernelCommands()
   AppState
     { isExiting = false
       prompt = Prompt.initState()

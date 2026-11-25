@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# The dev CLI on a throwaway install: a copy of this build's store with its config cleared, kept in rundir/fresh (delete it to start over). Run inside the container: scripts/dev/exec scripts/dev/fresh-cli <args>.
+H=/home/dark/app/rundir/fresh
+if [ ! -f $H/.darklang/data.db ]; then
+  mkdir -p $H/.darklang
+  sqlite3 -cmd '.timeout 10000' rundir/data.db ".backup $H/.darklang/data.db"
+  sqlite3 $H/.darklang/data.db "DELETE FROM config_v0; DELETE FROM traces_v0;" 2>/dev/null || sqlite3 $H/.darklang/data.db "DELETE FROM config_v0;"
+fi
+cd $H && HOME=$H DARK_CONFIG_DB_NAME=data.db /home/dark/app/backend/Build/out/Cli/Debug/net11.0/Cli "$@"

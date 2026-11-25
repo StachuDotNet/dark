@@ -1,15 +1,15 @@
 /// History: one extension, built the way a user would build theirs.
 module Darklang.Cli.Extensions.History
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "history"
       title = "History"
       blurb = "Commit what you saved, see what changed, undo"
       under = ""
       needs = []
-      commands = [ "status", "commit", "commits", "show", "discard", "undo", "ops", "constraints", "ack" ]
+      commands =
+        [ "status", "commit", "commits", "show", "discard", "undo", "ops", "constraints", "ack" ]
       adds = []
       asks = []
       settings = []
@@ -18,97 +18,110 @@ val extension: Darklang.Cli.Extensions.Extension =
       pane = "Darklang.Cli.Extensions.History.pane"
       handlers = "Darklang.Cli.Extensions.History.commands"
       tour =
-        [ Darklang.Cli.Extensions.Step { say = "What you save persists at once, as a draft. `status` says what is in it.", run = [ "status" ], expect = "main" }
-          Darklang.Cli.Extensions.Step { say = "`commit` turns the draft into a commit, after showing what changed; `commits` lists them.", run = [ "commits" ], expect = "" }
-          Darklang.Cli.Extensions.Step { say = "Changed your mind? `undo <name>` puts one name back; `discard` drops the whole draft.", run = [], expect = "" } ]
+        [ Step
+            { say = "What you save persists at once, as a draft. `status` says what is in it."
+              run = [ "status" ]
+              expect = "main" }
+
+          Step
+            { say =
+                "`commit` turns the draft into a commit, after showing what changed; `commits` lists them."
+              run = [ "commits" ]
+              expect = "" }
+
+          Step
+            { say =
+                "Changed your mind? `undo <name>` puts one name back; `discard` drops the whole draft."
+              run = []
+              expect = "" } ]
       peeks =
-        [ Darklang.Cli.Extensions.Peek { label = "how source control works", command = [ "docs", "scm" ] }
-          Darklang.Cli.Extensions.Peek { label = "what status reports", command = [ "help", "status" ] } ]
+        [ Peek { label = "how source control works", command = [ "docs", "scm" ] }
+          Peek { label = "what status reports", command = [ "help", "status" ] } ]
       fake = "" }
 
 
-let acceptsStatus(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.flagsOnly([ "--json" ])
+let acceptsStatus(): Accepts.Accepts =
+  Accepts.flagsOnly([ "--json" ])
 
 
-let acceptsCommits(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.upTo(1, [ "--json", "--detailed", "--all" ])
+let acceptsCommits(): Accepts.Accepts =
+  Accepts.upTo(1, [ "--json", "--detailed", "--all" ])
 
 
-let acceptsCommit(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.withValues(
+let acceptsCommit(): Accepts.Accepts =
+  Accepts.withValues(
     [ "--include" ],
-    Darklang.Cli.Accepts.freeText(
+    Accepts.freeText(
       0,
-      [ "-y"
-        "--yes"
-        "-m"
-        "--message"
-        "--allow-unresolved"
-        "--allow-type-errors"
-        "--json" ]))
+      [ "-y", "--yes", "-m", "--message", "--allow-unresolved", "--allow-type-errors", "--json" ]))
 
 
-let acceptsDiscard(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.upTo(1, [ "-y", "--yes" ])
+let acceptsDiscard(): Accepts.Accepts =
+  Accepts.upTo(1, [ "-y", "--yes" ])
 
 
-let acceptsShow(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.between(1, 1, [])
+let acceptsShow(): Accepts.Accepts =
+  Accepts.between(1, 1, [])
 
 
-let acceptsConstraints(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.subcommands(
-    [ ("resolve", Darklang.Cli.Accepts.withValues([ "--as" ], Darklang.Cli.Accepts.freeText(0, [ "--all", "--why" ])))
-      ("ack", Darklang.Cli.Accepts.freeText(0, [ "--all", "--why" ])) ],
-    Darklang.Cli.Accepts.withValues([ "--kind" ], Darklang.Cli.Accepts.flagsOnly([ "--json" ])))
+let acceptsConstraints(): Accepts.Accepts =
+  Accepts.subcommands(
+    [ ("resolve", Accepts.withValues([ "--as" ], Accepts.freeText(0, [ "--all", "--why" ])))
+      ("ack", Accepts.freeText(0, [ "--all", "--why" ])) ],
+    Accepts.withValues([ "--kind" ], Accepts.flagsOnly([ "--json" ])))
 
 
-let acceptsAck(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.freeText(0, [ "--all", "--why" ])
+let acceptsAck(): Accepts.Accepts =
+  Accepts.freeText(0, [ "--all", "--why" ])
 
 
-let acceptsUndo(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.between(1, 1, [])
+let acceptsUndo(): Accepts.Accepts =
+  Accepts.between(1, 1, [])
 
 
-let acceptsOps(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.subcommands(
-    [ ("list", Darklang.Cli.Accepts.upTo(1, [])), ("show", Darklang.Cli.Accepts.between(1, 1, [])) ],
-    Darklang.Cli.Accepts.upTo(1, []))
+let acceptsOps(): Accepts.Accepts =
+  Accepts.subcommands(
+    [ ("list", Accepts.upTo(1, [])), ("show", Accepts.between(1, 1, [])) ],
+    Accepts.upTo(1, []))
 
 
-let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+let commands(): List<Registry.CommandHandler> =
   [ (
       "status",
       "What's in your draft, in one line",
       [ "wip", "changes" ],
       acceptsStatus,
-      Darklang.Cli.Status.execute,
-      Darklang.Cli.Status.help,
-      Darklang.Cli.Status.complete)
+      Status.execute,
+      Status.help,
+      Status.complete)
+
     (
       "commits",
       "Your commits, newest first",
       [ "history" ],
       acceptsCommits,
-      Darklang.Cli.Commits.execute,
-      Darklang.Cli.Commits.help,
-      Darklang.Cli.Commits.complete)
+      Commits.execute,
+      Commits.help,
+      Commits.complete)
+
     (
       "commit",
       "Review your draft, propagate, and commit it",
       [],
       acceptsCommit,
-      Darklang.Cli.Commit.execute,
-      Darklang.Cli.Commit.help,
-      Darklang.Cli.Commit.complete)
+      Commit.execute,
+      Commit.help,
+      Commit.complete)
+
     (
       "discard",
       "Drop your draft: everything authored since the last commit",
       [ "reset" ],
       acceptsDiscard,
-      Darklang.Cli.Discard.execute,
-      Darklang.Cli.Discard.help,
-      Darklang.Cli.Discard.complete)
+      Discard.execute,
+      Discard.help,
+      Discard.complete)
+
     (
       "show",
       "Show what a commit contains, or what one op does",
@@ -116,36 +129,40 @@ let commands(): List<Darklang.Cli.Registry.CommandHandler> =
       acceptsShow,
       Commits.executeShow,
       Commits.helpShow,
-      Darklang.Cli.Commits.complete)
+      Commits.complete)
+
     (
       "constraints",
       "Standing findings: stale usages, kind changes, rival impls",
       [],
       acceptsConstraints,
-      Darklang.Cli.ConstraintsCmd.execute,
-      Darklang.Cli.ConstraintsCmd.help,
-      Darklang.Cli.ConstraintsCmd.complete)
+      ConstraintsCmd.execute,
+      ConstraintsCmd.help,
+      ConstraintsCmd.complete)
+
     (
       "ack",
       "Leave a constraint finding for now (`dark ack --all`)",
       [],
       acceptsAck,
       ConstraintsCmd.executeAckCmd,
-      Darklang.Cli.ConstraintsCmd.help,
-      Darklang.Cli.ConstraintsCmd.complete)
+      ConstraintsCmd.help,
+      ConstraintsCmd.complete)
+
     (
       "undo",
       "Step an item back to its previous version",
       [],
       acceptsUndo,
-      Darklang.Cli.Undo.execute,
-      Darklang.Cli.Undo.help,
-      Darklang.Cli.Undo.complete)
-    ("ops", "Read this instance's op log", [], acceptsOps, Darklang.Cli.Ops.execute, Darklang.Cli.Ops.help, Darklang.Cli.Ops.complete) ]
-  |> Stdlib.List.map(Darklang.Cli.Registry.handler)
+      Undo.execute,
+      Undo.help,
+      Undo.complete)
+
+    ("ops", "Read this instance's op log", [], acceptsOps, Ops.execute, Ops.help, Ops.complete) ]
+  |> Stdlib.List.map(Registry.handler)
 
 
-let pane(_input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pane =
+let pane(_input: PaneInput): Pane =
   let draft = SCM.Draft.read()
   let n = Stdlib.List.length(draft.bindings)
   let line =
@@ -154,8 +171,8 @@ let pane(_input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pan
     | 1 -> "1 item saved and not committed."
     | _ -> $"{n} items saved and not committed."
 
-  Darklang.Cli.Extensions.Pane
+  Pane
     { lines = [ line ]
       actions =
-        [ Darklang.Cli.Extensions.Action { key = "s", label = "what changed", command = [ "status" ] }
-          Darklang.Cli.Extensions.Action { key = "l", label = "the last commits", command = [ "commits" ] } ] }
+        [ Action { key = "s", label = "what changed", command = [ "status" ] }
+          Action { key = "l", label = "the last commits", command = [ "commits" ] } ] }

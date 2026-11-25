@@ -1,9 +1,8 @@
 /// TestsOnSave: one extension, built the way a user would build theirs.
 module Darklang.Cli.Extensions.TestsOnSave
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "tests-on-save"
       title = "Tests as you save"
       blurb = "Run the tests each save touches, in the background"

@@ -49,13 +49,17 @@ module Registry =
 
   let acceptsVersion(): Accepts.Accepts = Accepts.flagsOnly([ "--local" ])
 
+
   let acceptsLs(): Accepts.Accepts =
     Accepts.upTo(1, [ "--include-deprecated", "--include-internal", "--versions", "--json" ])
 
 
-  let acceptsRunScript(): Accepts.Accepts = Accepts.text(1)
+  let acceptsRunScript(): Accepts.Accepts =
+    Accepts.text(1)
 
-  let acceptsEval(): Accepts.Accepts = Accepts.text(1)
+
+  let acceptsEval(): Accepts.Accepts =
+    Accepts.text(1)
 
 
   let acceptsView(): Accepts.Accepts =
@@ -97,6 +101,7 @@ module Registry =
   let acceptsImpl(): Accepts.Accepts = Accepts.text(2)
 
   let acceptsModule(): Accepts.Accepts = Accepts.between(2, 2, [])
+
 
   let acceptsDocs(): Accepts.Accepts =
     Accepts.subcommands(
@@ -352,9 +357,35 @@ module Registry =
     Stdlib.List.concat(kernelCommands(), Extensions.handlers(resolveStartingBranch()))
 
 
+  let isNamed(commands: List<CommandHandler>, name: String): Bool =
+    Stdlib.List.any(commands, fun c -> c.name == name || Stdlib.List.contains(c.aliases, name))
+
+
+  /// <param state> with every extension's commands in its table, on or off, once.
+  let withAll(state: AppState): AppState =
+    let loaded =
+      Stdlib.List.any(state.allCommandsCache, fun c ->
+        Stdlib.Bool.not(Stdlib.List.contains(Extensions.kernel, c.name)))
+
+    if loaded then
+      state
+    else
+      let commands =
+        Stdlib.List.concat(state.allCommandsCache, Extensions.handlers(state.currentBranchId))
+
+      { state with allCommandsCache = commands, commandOptionsCache = commandOptions(commands) }
+
+
   /// A row of the command table, as `kernelCommands` and each extension's `handlers` write it.
   let handler(
-    row: (String * String * List<String> * (Unit -> Accepts.Accepts) * ((AppState, List<String>) -> AppState) * (AppState -> String) * ((AppState, List<String>) -> List<Completion.CompletionItem>)))
+    row:
+      (String *
+       String *
+       List<String> *
+       (Unit -> Accepts.Accepts) *
+       ((AppState, List<String>) -> AppState) *
+       (AppState -> String) *
+       ((AppState, List<String>) -> List<Completion.CompletionItem>)))
     : CommandHandler =
     let (name, desc, aliases, accepts, execute, help, complete) = row
     CommandHandler
@@ -403,6 +434,7 @@ module Registry =
 
 
   let executeCommand(name: String, state: AppState, args: List<String>): AppState =
+    let state = if isNamed(state.allCommandsCache, name) then state else withAll(state)
     let handler = findCommandIn(state.allCommandsCache, name)
 
     // A bare `help` as the FIRST argument means `--help`. Handled here rather than per-command, because
@@ -494,6 +526,7 @@ module Registry =
 
   /// What `dark <name> --help`, `dark <name> help` and `dark help <name>` all print.
   let commandHelpText(name: String, state: AppState): String =
+    let state = if isNamed(state.allCommandsCache, name) then state else withAll(state)
     let handler = findCommandIn(state.allCommandsCache, name)
     let helpFn = handler.help
     let aliasSuffix =
@@ -695,6 +728,8 @@ module Registry =
   /// on the whole prompt text misses on every character of a word. The partial token filters this result
   /// afterwards, and filtering a list is cheap.
   let getCompletionsForContext(state: AppState, input: String): List<Completion.CompletionItem> =
+    // Every command completes, on or off, so a name you half-remember is found.
+    let state = withAll(state)
     let parsed = Completion.parseInput(input)
     if parsed.isCompletingCommand then
       state.commandOptionsCache |> Stdlib.List.map(Completion.simple)
@@ -709,6 +744,8 @@ module Registry =
 
 
   let getCompletions(state: AppState, input: String): List<Completion.CompletionItem> =
+    // Every command completes, on or off, so a name you half-remember is found.
+    let state = withAll(state)
     let parsed = Completion.parseInput(input)
     if parsed.isCompletingCommand then
       // Completing command name

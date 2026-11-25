@@ -14,7 +14,7 @@ proc want {pattern what} {
 proc press {key} { sleep 1; send $key }
 set exe [lindex $argv 0]
 set env(HOME) [file dirname [lindex $argv 1]]
-spawn $exe
+spawn $exe workbench
 want "╭" "the workbench on startup"
 want "recent commits" "Home shows recent commits across branches"
 want "workbench quiet fixtur" "including the one this fixture made"

@@ -20,18 +20,21 @@ test didYouMeanPicksTheNearest =
 
 
 test unknownFlagSuggestsOne =
-  refusal("status", Cli.Registry.acceptsStatus(), [ "--jsno" ])
+  refusal("status", Cli.Extensions.History.acceptsStatus(), [ "--jsno" ])
   |> Stdlib.Test.equal(
     "`dark status` does not take `--jsno`. Did you mean `--json`?")
 
 
 test unknownSubcommandSuggestsOne =
   Stdlib.Test.all(
-    [ refusal("traces", Cli.Registry.acceptsTraces(), [ "lsit" ])
+    [ refusal("traces", Cli.Extensions.Tracing.acceptsTraces(), [ "lsit" ])
       |> Stdlib.Test.equal(
         "`dark traces` does not take `lsit`. Did you mean `list`?")
 
-      refusal("branch", Cli.Registry.acceptsBranch(), [ "craete", "foo" ])
+      refusal(
+        "branch",
+        Cli.Extensions.Branches.acceptsBranch(),
+        [ "craete", "foo" ])
       |> Stdlib.Test.equal(
         "`dark branch` does not take `foo`. Did you mean `create`?") ])
 

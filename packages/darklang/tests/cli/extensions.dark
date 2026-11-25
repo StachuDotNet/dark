@@ -32,19 +32,30 @@ test turningOffTurnsOffWhatNeedsIt = Instance.withKernelOnly(fun i ->
   Instance.says(output, "  branches off", "branches, which needs history"))
 
 
-test aCommandWhoseExtensionIsOffSaysHowToTurnItOn = Instance.withKernelOnly(fun i ->
-  let (code, out) = Instance.ran(i, [ "commit", "x", "-y" ])
-  Stdlib.Test.all(
-    [ Stdlib.Test.equal(code, 1)
-      Instance.says(out, "`commit` comes with history, which is off.", "names its extension")
-      Instance.says(out, "dark extensions enable history", "and the one command") ]))
+test aCommandWhoseExtensionIsOffSaysHowToTurnItOn =
+  Instance.withKernelOnly(fun i ->
+    let (code, out) = Instance.ran(i, [ "commit", "x", "-y" ])
+    Stdlib.Test.all(
+      [ Stdlib.Test.equal(code, 1)
+        Instance.says(
+          out,
+          "`commit` comes with history, which is off.",
+          "names its extension")
+
+        Instance.says(
+          out,
+          "dark extensions enable history",
+          "and the one command") ]))
 
 
 test itsHelpStillShows = Instance.withKernelOnly(fun i ->
   let out = Instance.said(i, [ "help", "commit" ])
   Stdlib.Test.all(
     [ Instance.says(out, "Usage", "the help itself")
-      Instance.says(out, "Comes with history, which is off", "where it lives") ]))
+      Instance.says(
+        out,
+        "Comes with history, which is off",
+        "where it lives") ]))
 
 
 test turnedOnItRuns = Instance.withKernelOnly(fun i ->
@@ -53,8 +64,9 @@ test turnedOnItRuns = Instance.withKernelOnly(fun i ->
   Stdlib.Test.equal(code, 0))
 
 
-test theKernelRunsWithNothingOn = Instance.withKernelOnly(fun i ->
-  Instance.expectContains(i, [ "eval", "1 + 2" ], "3"))
+test theKernelRunsWithNothingOn =
+  Instance.withKernelOnly(fun i ->
+    Instance.expectContains(i, [ "eval", "1 + 2" ], "3"))
 
 
 val askerSource =
@@ -88,8 +100,13 @@ val extension: Darklang.Cli.Extensions.Extension =
 
 let withAsker(f: Instance.T -> Stdlib.Test.Result): Stdlib.Test.Result =
   Instance.withKernelOnly(fun i ->
-    let (code, out) = Instance.runWithStdin(i, [ "module", "/Me.Asker", "-" ], askerSource)
-    if code == 0 then f(i) else Stdlib.Test.fail($"could not save the extension: {out}"))
+    let (code, out) =
+      Instance.runWithStdin(i, [ "module", "/Me.Asker", "-" ], askerSource)
+
+    if code == 0 then
+      f(i)
+    else
+      Stdlib.Test.fail($"could not save the extension: {out}"))
 
 
 /// <param args> at a terminal, with <param typed> typed into it: the pipe goes into `script`, so
@@ -111,7 +128,10 @@ let atTerminal(i: Instance.T, args: List<String>, typed: String): String =
     + Stdlib.Cli.Process.shellQuote("stty cols 100 rows 30; " + line)
     + " /dev/null"
 
-  match Stdlib.Cli.Process.runWithTimeout(Instance.commandTimeoutMs, "/bin/sh", [ "-c", shell ]) with
+  match Stdlib.Cli.Process.runWithTimeout(
+          Instance.commandTimeoutMs,
+          "/bin/sh",
+          [ "-c", shell ]) with
   | Ok(out) -> Stdlib.Cli.Tui.Text.stripSgr(out.stdout + out.stderr)
   | Error(e) -> $"could not run: {e}"
 
@@ -123,25 +143,43 @@ test withoutATerminalNothingIsAllowed = withAsker(fun i ->
   Stdlib.Test.all(
     [ Instance.says(enabled, "asker on", "it is on")
       Instance.says(enabled, "not allowed", "what it asks for is not")
-      (if code != 0 then Stdlib.Test.Result.Pass else Stdlib.Test.fail("it read the file")) ]))
+      if code != 0 then
+        Stdlib.Test.Result.Pass
+      else
+        Stdlib.Test.fail("it read the file") ]))
 
 
 test aYesAllowsItsOwnCommandAndDisableTakesItBack = withAsker(fun i ->
   let enabled = atTerminal(i, [ "extensions", "enable", "asker" ], "y\n")
   let ran = Instance.said(i, [ "asker" ])
   let listed = Instance.said(i, [ "permissions", "list" ])
-  let others = Instance.ran(i, [ "eval", "Stdlib.Cli.FileSystem.readFileAsString(\"/etc/hostname\")" ])
+  let others =
+    Instance.ran(
+      i,
+      [ "eval", "Stdlib.Cli.FileSystem.readFileAsString(\"/etc/hostname\")" ])
+
   let disabled = Instance.said(i, [ "extensions", "disable", "asker" ])
   let (after, _) = Instance.ran(i, [ "asker" ])
   Stdlib.Test.all(
     [ Instance.says(enabled, "allowed, for its own commands only", "the yes")
+
       Instance.says(ran, "read it", "its command reads the file")
-      Instance.says(listed, "asker: file read /etc/hostname", "permissions list shows it")
+
+      Instance.says(
+        listed,
+        "asker: file read /etc/hostname",
+        "permissions list shows it")
+
       Instance.says(
         Stdlib.Tuple2.second(others),
         "file read",
         "other code still needs its own grant")
-      Instance.says(disabled, "no longer allowed: file read /etc/hostname", "disable says so")
+
+      Instance.says(
+        disabled,
+        "no longer allowed: file read /etc/hostname",
+        "disable says so")
+
       Stdlib.Test.equal(after, 1) ]))
 
 
@@ -150,12 +188,20 @@ test aPaneShowsWhatItsExtensionIsDoing = Instance.withKernelOnly(fun i ->
   let out = Instance.said(i, [ "extensions", "show", "tracing" ])
   Stdlib.Test.all(
     [ Instance.says(out, "Every run is recorded.", "its state")
-      Instance.says(out, "t  the newest runs  (dark traces)", "a key and the command it runs") ]))
+
+      Instance.says(
+        out,
+        "t  the newest runs  (dark traces)",
+        "a key and the command it runs") ]))
 
 
-test helpShowsHowAnExtensionsCommandsGoTogether = Instance.withKernelOnly(fun i ->
-  let _ = Instance.output(i, [ "extensions", "enable", "history" ])
-  Instance.says(Instance.said(i, [ "help" ]), "dark status    dark commit", "history's guide"))
+test helpShowsHowAnExtensionsCommandsGoTogether =
+  Instance.withKernelOnly(fun i ->
+    let _ = Instance.output(i, [ "extensions", "enable", "history" ])
+    Instance.says(
+      Instance.said(i, [ "help" ]),
+      "dark status    dark commit",
+      "history's guide"))
 
 
 val paneSource =
@@ -212,7 +258,9 @@ val sneakyExtension: Darklang.Cli.Extensions.Extension =
 /// A user's pane is called the same way as ours, and runs as ordinary code: one that tries to read
 /// what only the CLI may is refused, in its place.
 test yourPaneRunsAsYourCode = Instance.withKernelOnly(fun i ->
-  let (code, saved) = Instance.runWithStdin(i, [ "module", "/Me.Paned", "-" ], paneSource)
+  let (code, saved) =
+    Instance.runWithStdin(i, [ "module", "/Me.Paned", "-" ], paneSource)
+
   let _ = Instance.output(i, [ "extensions", "enable", "paned", "sneaky" ])
   let paned = Instance.said(i, [ "extensions", "show", "paned" ])
   let sneaky = Instance.said(i, [ "extensions", "show", "sneaky" ])
@@ -230,13 +278,16 @@ test eachExtensionsCommandsAreItsHandlers =
   Cli.Extensions.all(branch)
   |> Stdlib.List.filter(fun e -> e.handlers != "")
   |> Stdlib.List.filter(fun e ->
-    let names = Cli.Extensions.handlersOf(branch, e) |> Stdlib.List.map(fun h -> h.name)
+    let names =
+      Cli.Extensions.handlersOf(branch, e) |> Stdlib.List.map(fun h -> h.name)
+
     Stdlib.List.sort(names) != Stdlib.List.sort(e.commands))
   |> Stdlib.List.map(fun e -> e.name)
   |> Stdlib.Test.equal([])
 
 
-test bareDarkIsTheIntroUntilTheWorkbenchIsOn = Instance.withKernelOnly(fun i ->
+/// Piped, bare `dark` is the intro; at a terminal it is the prompt (`homeTakesTheFirstRunInFewKeys`).
+test bareDarkWithoutATerminalIsTheIntro = Instance.withKernelOnly(fun i ->
   let (code, out) = Instance.ran(i, [])
   Stdlib.Test.all(
     [ Stdlib.Test.equal(code, 0)
@@ -253,22 +304,25 @@ test toursAndPeeksStillRun = Instance.withInstance(fun i ->
 
   let steps =
     exts
-    |> Stdlib.List.map(fun e -> Stdlib.List.map(e.tour, fun s -> (e.name, s.run, s.expect)))
+    |> Stdlib.List.map(fun e ->
+      Stdlib.List.map(e.tour, fun s -> (e.name, s.run, s.expect)))
     |> Stdlib.List.flatten
-    |> Stdlib.List.filter(fun ((_, run, _)) -> run != [])
+    |> Stdlib.List.filter(fun((_, run, _)) -> run != [])
 
   let peeks =
     exts
-    |> Stdlib.List.map(fun e -> Stdlib.List.map(e.peeks, fun p -> (e.name, p.command, "")))
+    |> Stdlib.List.map(fun e ->
+      Stdlib.List.map(e.peeks, fun p -> (e.name, p.command, "")))
     |> Stdlib.List.flatten
 
   Stdlib.List.concat(steps, peeks)
-  |> Stdlib.List.filterMap(fun ((name, run, expect)) ->
+  |> Stdlib.List.filterMap(fun((name, run, expect)) ->
     let (code, out) = Instance.ran(i, run)
     if code == 0 && Stdlib.String.contains(out, expect) then
       Option.None
     else
-      Option.Some($"{name}: `dark {Stdlib.String.join(run, " ")}` exited {Stdlib.display(code)}: {out}"))
+      Option.Some(
+        $"{name}: `dark {Stdlib.String.join(run, " ")}` exited {Stdlib.display(code)}: {out}"))
   |> Stdlib.Test.equal([]))
 
 
@@ -278,19 +332,28 @@ test explainWalksThroughAndIsRemembered = Instance.withKernelOnly(fun i ->
   let shown = Instance.said(i, [ "extensions", "show", "history" ])
   Stdlib.Test.all(
     [ Instance.says(walked, "1/3  What you save persists", "the first step")
+
       Instance.says(walked, "$ dark status", "its command, run")
+
       Instance.says(walked, "Peek at", "then what to peek at")
+
       Instance.says(walked, "dark docs scm", "a peek, as a command")
-      Instance.says(shown, "dark extensions explain history (seen)", "remembered") ]))
+
+      Instance.says(
+        shown,
+        "dark extensions explain history (seen)",
+        "remembered") ]))
 
 
 /// The fewest keys from a fresh tree to history on and explained: down to it, e, and q to leave.
 /// If this grows, a choice got slower.
 /// Each key as printf writes it: `\033[B` is the down arrow.
-val keysToExplainHistory = [ "\\033[B", "\\033[B", "\\033[B", "\\033[B", "\\033[B", "e", "q" ]
+val keysToExplainHistory =
+  [ "\\033[B", "\\033[B", "\\033[B", "\\033[B", "\\033[B", "e", "q" ]
 
 
-/// <param args> at a terminal, the keys pressed once it is up, one after another.
+/// <param args> at a terminal, the keys pressed once it is up, a few seconds apart as a person
+/// types them: keys that arrive together read as a paste.
 let pressing(i: Instance.T, args: List<String>, keys: List<String>): Unit =
   let line =
     Stdlib.List.flatten(
@@ -302,13 +365,20 @@ let pressing(i: Instance.T, args: List<String>, keys: List<String>): Unit =
     |> Stdlib.String.join(" ")
 
   let shell =
-    "(sleep 3; printf "
-    + Stdlib.Cli.Process.shellQuote(Stdlib.String.join(keys, ""))
-    + "; sleep 2) | script -qec "
+    "(sleep 3; for k in "
+    + Stdlib.String.join(
+      Stdlib.List.map(keys, Stdlib.Cli.Process.shellQuote),
+      " ")
+    + "; do printf \"$k\"; sleep 4; done; sleep 2) | script -qec "
     + Stdlib.Cli.Process.shellQuote("stty cols 100 rows 40; " + line)
     + " /dev/null"
 
-  let _ = Stdlib.Cli.Process.runWithTimeout(Instance.commandTimeoutMs, "/bin/sh", [ "-c", shell ])
+  let _ =
+    Stdlib.Cli.Process.runWithTimeout(
+      Instance.commandTimeoutMs,
+      "/bin/sh",
+      [ "-c", shell ])
+
   ()
 
 

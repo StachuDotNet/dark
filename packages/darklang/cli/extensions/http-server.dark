@@ -1,9 +1,8 @@
 /// HttpServer: one extension, built the way a user would build theirs.
 module Darklang.Cli.Extensions.HttpServer
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "http-server"
       title = "HTTP server"
       blurb = "Serve your functions on a local port"
@@ -18,27 +17,32 @@ val extension: Darklang.Cli.Extensions.Extension =
       pane = ""
       handlers = "Darklang.Cli.Extensions.HttpServer.commands"
       tour =
-        [ Darklang.Cli.Extensions.Step { say = "`serve <router> --port 8080` serves a fn of yours. The command line is the consent for the port.", run = [], expect = "" }
-          Darklang.Cli.Extensions.Step { say = "A router turns a request into a response.", run = [], expect = "" } ]
+        [ Step
+            { say =
+                "`serve <router> --port 8080` serves a fn of yours. The command line is the consent for the port."
+              run = []
+              expect = "" }
+
+          Step { say = "A router turns a request into a response.", run = [], expect = "" } ]
       peeks =
-        [ Darklang.Cli.Extensions.Peek { label = "serving", command = [ "docs", "http-server" ] }
-          Darklang.Cli.Extensions.Peek { label = "serve", command = [ "help", "serve" ] } ]
+        [ Peek { label = "serving", command = [ "docs", "http-server" ] }
+          Peek { label = "serve", command = [ "help", "serve" ] } ]
       fake = "" }
 
 
-let acceptsServe(): Darklang.Cli.Accepts.Accepts =
-  Darklang.Cli.Accepts.withValues(
+let acceptsServe(): Accepts.Accepts =
+  Accepts.withValues(
     [ "--bind", "--port", "--max-body-bytes" ],
-    Darklang.Cli.Accepts.between(1, 1, [ "--live", "--no-live", "--dev" ]))
+    Accepts.between(1, 1, [ "--live", "--no-live", "--dev" ]))
 
 
-let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+let commands(): List<Registry.CommandHandler> =
   [ (
       "serve",
       "Start an HTTP server",
       [ "http-server" ],
       acceptsServe,
-      Darklang.Cli.Http.Serve.execute,
-      Darklang.Cli.Http.Serve.help,
-      Darklang.Cli.Http.Serve.complete) ]
-  |> Stdlib.List.map(Darklang.Cli.Registry.handler)
+      Http.Serve.execute,
+      Http.Serve.help,
+      Http.Serve.complete) ]
+  |> Stdlib.List.map(Registry.handler)

@@ -72,7 +72,7 @@ test workbenchPaints =
     Instance.withInstance(fun i ->
       Interactive.expectSteps(
         i,
-        [],
+        [ "workbench" ],
         [ Interactive.Step.Await("Home")
           Interactive.Step.Await("quit")
           Interactive.Step.Send("q") ],

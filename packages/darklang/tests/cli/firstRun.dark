@@ -21,7 +21,11 @@ val steps: List<List<String>> =
 let keysTyped(path: List<List<String>>): Int64 =
   path
   |> Stdlib.List.map(fun args ->
-    let typed = args |> Stdlib.List.map(quoted) |> Stdlib.String.join(" ")
+    let typed =
+      args
+      |> Stdlib.List.map(quoted)
+      |> Stdlib.String.join(" ")
+
     Stdlib.String.length(Stdlib.String.trimEnd("dark " + typed)) + 1)
   |> Stdlib.List.fold(0, fun(a, b) -> a + b)
 
@@ -38,7 +42,9 @@ let steady(line: String): String =
 
 /// An argument as a person would type it at a shell.
 let quoted(arg: String): String =
-  if Stdlib.List.any([ " ", "(", "\"" ], fun c -> Stdlib.String.contains(arg, c)) then
+  if
+    Stdlib.List.any([ " ", "(", "\"" ], fun c -> Stdlib.String.contains(arg, c))
+  then
     "'" + arg + "'"
   else
     arg
@@ -50,11 +56,16 @@ let transcript(i: Instance.T): String =
     let (code, out) = Instance.ran(i, args)
     let shown =
       Stdlib.String.splitOnNewline(out)
-      |> Stdlib.List.map(fun l -> steady(Stdlib.String.trimEnd(Stdlib.Cli.Tui.Text.stripSgr(l))))
+      |> Stdlib.List.map(fun l ->
+        steady(Stdlib.String.trimEnd(Stdlib.Cli.Tui.Text.stripSgr(l))))
       |> Stdlib.String.join("\n")
       |> Stdlib.String.trimEnd
 
-    let typed = args |> Stdlib.List.map(quoted) |> Stdlib.String.join(" ")
+    let typed =
+      args
+      |> Stdlib.List.map(quoted)
+      |> Stdlib.String.join(" ")
+
     let prompt = Stdlib.String.trimEnd("$ dark " + typed)
     $"{prompt}\n{shown}\n[exit {Stdlib.display(code)}]")
   |> Stdlib.String.join("\n")
@@ -197,11 +208,30 @@ Off: account, agent, ai, compiler, http-server, tools
 [exit 0]"""
 
 
-test theFirstMinutes = Instance.withKernelOnly(fun i ->
-  Stdlib.Test.equal(transcript(i), expected))
+test theFirstMinutes =
+  Instance.withKernelOnly(fun i -> Stdlib.Test.equal(transcript(i), expected))
 
 
 /// The keys typed for the whole first-minutes path. If this grows, the first run got slower to
 /// type; change it only on purpose.
-test theFirstMinutesAreFewKeys =
-  Stdlib.Test.equal(keysTyped(steps), 341)
+test theFirstMinutesAreFewKeys = Stdlib.Test.equal(keysTyped(steps), 341)
+
+
+/// The same first minutes at a terminal: `dark`, then enter on each suggested next line (a sum,
+/// a function, calling it, a commit that names the extension it needs, turning that on, the
+/// commit again), then esc. Shell keys for `dark` are not counted here.
+val homeKeys = [ "\\r", "\\r", "\\r", "\\r", "\\r", "\\r", "\\033" ]
+
+
+test homeTakesTheFirstRunInFewKeys = Instance.withKernelOnly(fun i ->
+  Cli.Tests.Extensions.pressing(i, [], homeKeys)
+  let called = Instance.said(i, [ "eval", "Me.Hi.greet(\"Ada\")" ])
+  let commits = Instance.said(i, [ "commits" ])
+  Stdlib.Test.all(
+    [ Stdlib.Test.equal(Stdlib.List.length(homeKeys), 7)
+      Instance.says(called, "hi Ada", "the function was saved")
+
+      Instance.says(
+        commits,
+        "my first function",
+        "and committed, with history turned on on the way") ]))

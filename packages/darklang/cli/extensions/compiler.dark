@@ -1,9 +1,8 @@
 /// Compiler: one extension, built the way a user would build theirs.
 module Darklang.Cli.Extensions.Compiler
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "compiler"
       title = "Compiler"
       blurb = "Build a function into a standalone executable"

@@ -47,7 +47,7 @@ foreach v $views {
   set name [lindex $v 1]
   set pat  [lindex $v 2]
 
-  spawn $exe
+  spawn $exe workbench
   expect {
     -re "╭" { }
     timeout { fail "$name: the workbench did not start" }

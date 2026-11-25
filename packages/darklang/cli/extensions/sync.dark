@@ -1,9 +1,8 @@
 /// Sync: one extension, built the way a user would build theirs.
 module Darklang.Cli.Extensions.Sync
 
-
-val extension: Darklang.Cli.Extensions.Extension =
-  Darklang.Cli.Extensions.Extension
+val extension: Extension =
+  Extension
     { name = "sync"
       title = "Sync"
       blurb = "Your code and drafts on every machine, through one hub"

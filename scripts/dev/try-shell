@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 
-CLI = os.environ.get("TRY_CLI", "backend/Build/out/Cli/Debug/net11.0/Cli")
+CLI = os.path.abspath(os.environ.get("TRY_CLI", "backend/Build/out/Cli/Debug/net11.0/Cli"))
 STORE = os.environ.get("TRY_STORE", "rundir/data.db")
 
 # What a guest of our machine may not do, by the words it starts with.

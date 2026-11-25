@@ -134,7 +134,7 @@ let handlersOf(branchId: Uuid, e: Extension): List<Registry.CommandHandler> =
   match fnNamed(branchId, e.handlers) with
   | Ok(f) ->
     if Stdlib.String.startsWith(e.handlers, "Darklang.") then
-      f(())
+      f()
     else
       LanguageTools.Live.apply(f, ()) |> Stdlib.Result.withDefault([])
   | Error(_) -> []
@@ -217,7 +217,7 @@ let saveGrants(rows: List<(String * String * String)>): Unit =
     else
       let value =
         rows
-        |> Stdlib.List.map(fun ((name, rule, version)) -> name + "\t" + rule + "\t" + version)
+        |> Stdlib.List.map(fun((name, rule, version)) -> name + "\t" + rule + "\t" + version)
         |> Stdlib.String.join("\n")
 
       LanguageTools.LocalStore.configSet(grantsKey, value)
@@ -229,16 +229,16 @@ let saveGrants(rows: List<(String * String * String)>): Unit =
 let granted(e: Extension): List<String> =
   let version = codeVersion(e)
   grantRows()
-  |> Stdlib.List.filter(fun ((n, _, v)) -> n == e.name && v == version)
-  |> Stdlib.List.map(fun ((_, rule, _)) -> rule)
+  |> Stdlib.List.filter(fun((n, _, v)) -> n == e.name && v == version)
+  |> Stdlib.List.map(fun((_, rule, _)) -> rule)
 
 
 /// What <param e> was allowed for code it no longer has.
 let staleGrants(e: Extension): List<String> =
   let version = codeVersion(e)
   grantRows()
-  |> Stdlib.List.filter(fun ((n, _, v)) -> n == e.name && v != version)
-  |> Stdlib.List.map(fun ((_, rule, _)) -> rule)
+  |> Stdlib.List.filter(fun((n, _, v)) -> n == e.name && v != version)
+  |> Stdlib.List.map(fun((_, rule, _)) -> rule)
 
 
 /// What <param e> asks for and has not been allowed. Nothing for one that is not built yet:
@@ -253,16 +253,16 @@ let ungranted(e: Extension): List<String> =
 
 let grant(e: Extension, rules: List<String>): Unit =
   let version = codeVersion(e)
-  let others = grantRows() |> Stdlib.List.filter(fun ((n, _, v)) -> n != e.name || v == version)
+  let others = grantRows() |> Stdlib.List.filter(fun((n, _, v)) -> n != e.name || v == version)
   saveGrants(Stdlib.List.concat(others, Stdlib.List.map(rules, fun r -> (e.name, r, version))))
 
 
 let revoke(name: String): List<String> =
   let rows = grantRows()
-  saveGrants(rows |> Stdlib.List.filter(fun ((n, _, _)) -> n != name))
+  saveGrants(rows |> Stdlib.List.filter(fun((n, _, _)) -> n != name))
   rows
-  |> Stdlib.List.filter(fun ((n, _, _)) -> n == name)
-  |> Stdlib.List.map(fun ((_, rule, _)) -> rule)
+  |> Stdlib.List.filter(fun((n, _, _)) -> n == name)
+  |> Stdlib.List.map(fun((_, rule, _)) -> rule)
 
 
 /// The run grants an extension's own commands run with: what it was allowed, for this code.
@@ -291,7 +291,9 @@ let markExplained(name: String): Unit =
   if Stdlib.List.contains(seen, name) then
     ()
   else
-    let _ = LanguageTools.LocalStore.configSet(explainedKey, Stdlib.String.join([ name, ...seen ], ","))
+    let _ =
+      LanguageTools.LocalStore.configSet(explainedKey, Stdlib.String.join([ name, ...seen ], ","))
+
     ()
 
 
@@ -393,8 +395,7 @@ let describe(e: Extension): List<String> =
   let given = granted(e)
   let asks =
     e.asks
-    |> Stdlib.List.map(fun a ->
-      if Stdlib.List.contains(given, a) then a + " (allowed)" else a)
+    |> Stdlib.List.map(fun a -> if Stdlib.List.contains(given, a) then a + " (allowed)" else a)
 
   [ if Stdlib.List.isEmpty(names) then
       ""
@@ -468,9 +469,7 @@ let turnOff(exts: List<Extension>, name: String): Result<List<String>, String> =
     let lines =
       turning
       |> Stdlib.List.map(fun n ->
-        let taken =
-          revoke(n) |> Stdlib.List.map(fun rule -> $"    no longer allowed: {rule}")
-
+        let taken = revoke(n) |> Stdlib.List.map(fun rule -> $"    no longer allowed: {rule}")
         [ $"  {n} off", ...taken ])
       |> Stdlib.List.flatten
 
@@ -494,6 +493,7 @@ let allowAsked(e: Extension): Unit =
   else
     Stdlib.printLine(
       $"  {e.name} asks for {Stdlib.String.join(missing, "; ")}: not allowed, since only a person at a terminal can allow it.")
+
     Stdlib.printLine($"  At a terminal: dark extensions enable {e.name}")
 
 
@@ -514,7 +514,7 @@ let enable(exts: List<Extension>, name: String): Result<Unit, String> =
       | _ -> turned
 
     asking |> Stdlib.List.iter(fun e -> allowAsked(e))
-    Result.Ok(())
+    Result.Ok()
 
 
 // --- tours and peeks ---
@@ -573,7 +573,7 @@ let explain(app: AppState, exts: List<Extension>, e: Extension): Unit =
   Stdlib.printLine($"{e.title}: {e.blurb}")
   steps
   |> Stdlib.List.indexedMap(fun(i, s) -> (i, s))
-  |> Stdlib.List.iter(fun ((i, s)) ->
+  |> Stdlib.List.iter(fun((i, s)) ->
     Stdlib.printLine("")
     Stdlib.printLine($"{Stdlib.display(i + 1)}/{total}  " + s.say)
     if Stdlib.List.isEmpty(s.run) then
@@ -589,8 +589,12 @@ let explain(app: AppState, exts: List<Extension>, e: Extension): Unit =
     Stdlib.printLine("Peek at")
     peeks
     |> Stdlib.List.indexedMap(fun(i, p) -> (i, p))
-    |> Stdlib.List.iter(fun ((i, p)) ->
-      Stdlib.printLine($"  {Stdlib.display(i + 1)}  dark " + Stdlib.String.join(p.command, " ") + "    " + p.label))
+    |> Stdlib.List.iter(fun((i, p)) ->
+      Stdlib.printLine(
+        $"  {Stdlib.display(i + 1)}  dark "
+        + Stdlib.String.join(p.command, " ")
+        + "    "
+        + p.label))
 
   markExplained(e.name)
 
@@ -604,7 +608,7 @@ let settingNow(key: String): String =
 let paneInput(e: Extension, on: List<String>): PaneInput =
   PaneInput
     { on = Stdlib.List.contains(on, e.name)
-      settings = e.settings |> Stdlib.List.map(fun ((key, _)) -> (key, settingNow(key)))
+      settings = e.settings |> Stdlib.List.map(fun((key, _)) -> (key, settingNow(key)))
       granted = granted(e) }
 
 
@@ -660,8 +664,8 @@ let ran(app: AppState, command: List<String>): List<String> =
 /// The value of <param key> a pane was handed, "" when it was not.
 let setting(input: PaneInput, key: String): String =
   input.settings
-  |> Stdlib.List.findFirst(fun ((k, _)) -> k == key)
-  |> Stdlib.Option.map(fun ((_, v)) -> v)
+  |> Stdlib.List.findFirst(fun((k, _)) -> k == key)
+  |> Stdlib.Option.map(fun((_, v)) -> v)
   |> Stdlib.Option.withDefault("")
 
 
@@ -702,15 +706,24 @@ let rowLine(r: Row, on: List<String>, width: Int64): String =
   let mark = if Stdlib.List.contains(on, r.ext.name) then "[x]" else "[ ]"
   let indent = Stdlib.String.repeat("  ", r.depth)
   let name = Stdlib.String.padEnd(indent + r.ext.name, ' ', 16)
-  let blurb = if isSet(r.ext) then "turns on " + Stdlib.String.join(r.ext.needs, ", ") else r.ext.blurb
+  let blurb =
+    if isSet(r.ext) then
+      "turns on " + Stdlib.String.join(r.ext.needs, ", ")
+    else
+      r.ext.blurb
+
   let t = tag(r.ext)
   let prefix = $"{mark} {name} "
-  let room = width - Stdlib.String.length(prefix) - (if t == "" then 0 else Stdlib.String.length(t) + 2)
+  let room =
+    width - Stdlib.String.length(prefix) - (if t == "" then 0 else Stdlib.String.length(t) + 2)
+
   let fitted =
     if Stdlib.String.length(blurb) <= room then
       blurb
     else
-      let cut = Stdlib.String.slice(blurb, 0, Stdlib.max(0, room - 1)) |> Stdlib.Result.withDefault(blurb)
+      let cut =
+        Stdlib.String.slice(blurb, 0, Stdlib.max(0, room - 1)) |> Stdlib.Result.withDefault(blurb)
+
       cut + "…"
 
   if t == "" then
@@ -735,15 +748,22 @@ let facts(exts: List<Extension>, e: Extension): List<(String * String)> =
     e.asks
     |> Stdlib.List.map(fun a -> if Stdlib.List.contains(given, a) then a + " (allowed)" else a)
 
-  let sets = e.settings |> Stdlib.List.map(fun ((k, v)) -> $"{k} {v}")
+  let sets = e.settings |> Stdlib.List.map(fun((k, v)) -> $"{k} {v}")
   [ ("adds", Stdlib.String.join(commandNames(e), " "))
     ("needs", Stdlib.String.join(needs, ", "))
     ("asks for", Stdlib.String.join(asks, "; "))
     ("sets", Stdlib.String.join(sets, ", "))
     ("installs", e.installs)
-    ("tour", if Stdlib.List.isEmpty(e.tour) then "" else $"dark extensions explain {e.name}" + (if Stdlib.List.contains(explained(), e.name) then " (seen)" else ""))
+    (
+      "tour",
+      if Stdlib.List.isEmpty(e.tour) then
+        ""
+      else
+        $"dark extensions explain {e.name}"
+        + (if Stdlib.List.contains(explained(), e.name) then " (seen)" else ""))
+
     ("not built", e.fake) ]
-  |> Stdlib.List.filter(fun ((_, v)) -> v != "")
+  |> Stdlib.List.filter(fun((_, v)) -> v != "")
 
 
 let factLines(exts: List<Extension>, e: Extension, isOn: Bool): List<String> =
@@ -754,11 +774,15 @@ let factLines(exts: List<Extension>, e: Extension, isOn: Bool): List<String> =
       []
 
   Stdlib.List.concat(facts(exts, e), undo)
-  |> Stdlib.List.map(fun ((label, value)) -> "  " + Stdlib.String.padEnd(label, ' ', 11) + value)
+  |> Stdlib.List.map(fun((label, value)) -> "  " + Stdlib.String.padEnd(label, ' ', 11) + value)
 
 
 let header(exts: List<Extension>, on: List<String>): List<(Ink * String)> =
-  let count = exts |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name)) |> Stdlib.List.length
+  let count =
+    exts
+    |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name))
+    |> Stdlib.List.length
+
   let total = Stdlib.List.length(exts)
   [ (Ink.Bold, $"Turn on what you want ({count} of {total} on)")
     (Ink.Dim, "Each one adds commands to `dark help`. Turning one off deletes nothing.")
@@ -770,7 +794,7 @@ let listing(exts: List<Extension>): List<String> =
   let on = onNames(exts)
   let lines = rows(exts) |> Stdlib.List.map(fun r -> "  " + rowLine(r, on, 78))
   Stdlib.List.flatten(
-    [ header(exts, on) |> Stdlib.List.map(fun ((_, l)) -> l)
+    [ header(exts, on) |> Stdlib.List.map(fun((_, l)) -> l)
       lines
       [ ""
         "`dark extensions show <name>` says what one adds."
@@ -878,7 +902,11 @@ module Tree =
   let toggle(m: Model): Model =
     match selected(m) with
     | None -> m
-    | Some(e) -> if Stdlib.List.contains(m.on, e.name) then turnOffRow(m, e) else turnOnRow(m, e, false)
+    | Some(e) ->
+      if Stdlib.List.contains(m.on, e.name) then
+        turnOffRow(m, e)
+      else
+        turnOnRow(m, e, false)
 
 
   /// Back to what was on before the last change: what went on goes off, and what went off comes
@@ -887,8 +915,12 @@ module Tree =
     match m.past with
     | [] -> { m with note = [ "Nothing to undo." ] }
     | [before, ...older] ->
-      let offNow = m.on |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(before, n)))
-      let onNow = before |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(m.on, n)))
+      let offNow =
+        m.on |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(before, n)))
+
+      let onNow =
+        before |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(m.on, n)))
+
       let offLines =
         offNow
         |> Stdlib.List.map(fun n -> turnOff(m.exts, n) |> Stdlib.Result.withDefault([]))
@@ -931,7 +963,10 @@ module Tree =
 
 
   let paneHere(m: Model, e: Extension): Option<Pane> =
-    if Stdlib.List.contains(m.on, e.name) then paneOf(m.app.currentBranchId, e, m.on) else Option.None
+    if Stdlib.List.contains(m.on, e.name) then
+      paneOf(m.app.currentBranchId, e, m.on)
+    else
+      Option.None
 
 
   /// The whole screen as lines, at <param width> columns: the tree, a rule, then the selected row.
@@ -944,17 +979,18 @@ module Tree =
 
     let rule = (Ink.Dim, Stdlib.String.repeat("─", width))
     let detail =
-      match (m.asking, selected(m)) with
-      | (Some(e), _) ->
+      match m.asking, selected(m) with
+      | Some(e), _ ->
         Stdlib.List.flatten(
           [ [ (Ink.Bold, $"{e.title} asks for") ]
             ungranted(e) |> Stdlib.List.map(fun r -> (Ink.Plain, "  " + r))
             [ (Ink.Plain, "")
               (Ink.Plain, "Allow it, for its own commands only?   y yes   n not now") ] ])
-      | (None, None) -> []
-      | (None, Some(e)) ->
+      | None, None -> []
+      | None, Some(e) ->
         let isOn = Stdlib.List.contains(m.on, e.name)
         let state = if isOn then "on" else "off"
+
         let body =
           if Stdlib.List.isEmpty(m.note) then
             factLines(m.exts, e, isOn) |> Stdlib.List.map(fun l -> (Ink.Plain, l))
@@ -963,7 +999,8 @@ module Tree =
 
         let pane =
           match paneHere(m, e) with
-          | Some(p) -> [ (Ink.Plain, ""), ...Stdlib.List.map(paneLines(p), fun l -> (Ink.Plain, "  " + l)) ]
+          | Some(p) ->
+            [ (Ink.Plain, ""), ...Stdlib.List.map(paneLines(p), fun l -> (Ink.Plain, "  " + l)) ]
           | None -> []
 
         Stdlib.List.flatten(
@@ -974,13 +1011,15 @@ module Tree =
 
   let body(m: Model, width: Int64): Stdlib.Cli.UI.Node.Node<Msg> =
     picture(m, width)
-    |> Stdlib.List.map(fun ((ink, line)) ->
+    |> Stdlib.List.map(fun((ink, line)) ->
       match ink with
       | Plain -> Stdlib.Cli.UI.Node.text(line)
       | Dim -> Stdlib.Cli.UI.Node.dim(line)
       | Bold -> Stdlib.Cli.UI.Node.bold(line)
       | Cursor ->
-        Stdlib.Cli.UI.Node.styled(Stdlib.Cli.UI.Node.Style.Highlight, Stdlib.Cli.UI.Node.text(line)))
+        Stdlib.Cli.UI.Node.styled(
+          Stdlib.Cli.UI.Node.Style.Highlight,
+          Stdlib.Cli.UI.Node.text(line)))
     |> Stdlib.Cli.UI.Node.column
 
 
@@ -1125,7 +1164,9 @@ let execute(state: AppState, args: List<String>): AppState =
         printErr(e)
         failed(st))
   | _ ->
-    printErr("Usage: extensions [list | show <name> | enable <name>... | disable <name>... | explain <name>]")
+    printErr(
+      "Usage: extensions [list | show <name> | enable <name>... | disable <name>... | explain <name>]")
+
     failed(state)
 
 
@@ -1154,9 +1195,16 @@ let forAI(): String =
   let exts = all(resolveStartingBranch())
   let on = onNames(exts)
   let names(keep: Extension -> Bool): String =
-    exts |> Stdlib.List.filter(keep) |> Stdlib.List.map(fun e -> e.name) |> Stdlib.String.join(", ")
+    exts
+    |> Stdlib.List.filter(keep)
+    |> Stdlib.List.map(fun e -> e.name)
+    |> Stdlib.String.join(", ")
 
-  let onCount = exts |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name) && commandNames(e) != []) |> Stdlib.List.length
+  let onCount =
+    exts
+    |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name) && commandNames(e) != [])
+    |> Stdlib.List.length
+
   let onHere = if onCount == 0 then "" else Stdlib.display(onCount)
   let offHere = names(fun e -> Stdlib.Bool.not(Stdlib.List.contains(on, e.name)) && e.fake == "")
   [ "## Extensions: more commands"
@@ -1173,13 +1221,15 @@ let grantLines(): List<String> =
   | [] -> []
   | rows ->
     [ "Allowed to extensions, for their own commands:"
-      ...Stdlib.List.map(rows, fun ((name, rule, version)) -> $"  {name}: {rule}  (its code {version})") ]
+      ...Stdlib.List.map(rows, fun((name, rule, version)) ->
+        $"  {name}: {rule}  (its code {version})") ]
 
 
 let complete(state: AppState, args: List<String>): List<Completion.CompletionItem> =
   match args with
   | [] | [_] ->
-    [ "list", "show", "enable", "disable", "explain" ] |> Stdlib.List.map(fun s -> Completion.simple(s))
+    [ "list", "show", "enable", "disable", "explain" ]
+    |> Stdlib.List.map(fun s -> Completion.simple(s))
   | [_, ...] -> all(state.currentBranchId) |> Stdlib.List.map(fun e -> Completion.simple(e.name))
 
 

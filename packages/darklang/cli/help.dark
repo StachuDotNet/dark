@@ -6,6 +6,7 @@ let execute(state: AppState, args: List<String>): AppState =
     Stdlib.printLine(Extensions.helpText(state))
     state
   | [commandName] ->
+    let state = Registry.withAll(state)
     let known =
       state.allCommandsCache
       |> Stdlib.List.any(fun cmd ->
