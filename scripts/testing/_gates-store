@@ -253,7 +253,7 @@ gate_backups_restore() {
 
   rm -rf "$ROOT"; mkdir -p "$ROOT/.darklang"
   scripts/testing/_copy-store "$ROOT/.darklang/data.db"
-  sqlite3 "$ROOT/.darklang/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');'
+  sqlite3 "$ROOT/.darklang/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');"
   x() { HOME="$ROOT" "$PWD/$CLI" "$@" 2>&1 | sed 's/\x1b\[[0-9;]*m//g'; }
 
   echo "== a backup holds what the store holds, WAL included"
@@ -537,7 +537,7 @@ gate_trait_checker_vs_dispatch() {
   mkdir -p "$WORK/logs"
   scripts/testing/_copy-store "$WORK/data.db"
   # A copied store carries the real relay and its write secret. See the AGENTS.md note.
-  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');' 2>/dev/null || true
+  sqlite3 "$WORK/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');" 2>/dev/null || true
 
   # The runner's binary, not `run-cli`: CI has no debug build and passes the published one in.
   CLI="$PWD/${CLI:-backend/Build/out/Cli/Debug/net11.0/Cli}"
@@ -613,7 +613,7 @@ DARK
     rm -rf "$W2"
     mkdir -p "$W2/logs"
     scripts/testing/_copy-store "$W2/data.db"
-    sqlite3 "$W2/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');' 2>/dev/null || true
+    sqlite3 "$W2/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');" 2>/dev/null || true
 
     quietly $CLI trait Stachu.Fit.Show "<'a> = let show(v: 'a): String"
 
@@ -699,7 +699,7 @@ gate_trait_choice_survives_rival() {
   mkdir -p "$WORK/logs"
   scripts/testing/_copy-store "$WORK/data.db"
   # A copied store carries the real relay and its write secret. See the AGENTS.md note.
-  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');' 2>/dev/null || true
+  sqlite3 "$WORK/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');" 2>/dev/null || true
 
   # The runner's binary, not `run-cli`: CI has no debug build and passes the published one in.
   CLI="$PWD/${CLI:-backend/Build/out/Cli/Debug/net11.0/Cli}"
@@ -774,7 +774,7 @@ gate_trait_choice_any_batching() {
   mkdir -p "$WORK/logs"
   scripts/testing/_copy-store "$WORK/data.db"
   # A copied store carries the real relay and its write secret. See the AGENTS.md note.
-  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');' 2>/dev/null || true
+  sqlite3 "$WORK/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');" 2>/dev/null || true
 
   # The runner's binary, not `run-cli`: CI has no debug build and passes the published one in.
   CLI="$PWD/${CLI:-backend/Build/out/Cli/Debug/net11.0/Cli}"
@@ -903,7 +903,7 @@ gate_trait_deprecation_is_per_branch() {
   mkdir -p "$WORK/logs"
   scripts/testing/_copy-store "$WORK/data.db"
   # A copied store carries the real relay and its write secret. See the AGENTS.md note.
-  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');' 2>/dev/null || true
+  sqlite3 "$WORK/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');" 2>/dev/null || true
 
   # The runner's binary, not `run-cli`: CI has no debug build and passes the published one in.
   CLI="$PWD/${CLI:-backend/Build/out/Cli/Debug/net11.0/Cli}"
@@ -985,7 +985,7 @@ gate_trait_pin_across_branches() {
   mkdir -p "$WORK/logs"
   scripts/testing/_copy-store "$WORK/data.db"
   # A copied store carries the real relay and its write secret. See the AGENTS.md note.
-  sqlite3 "$WORK/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');' 2>/dev/null || true
+  sqlite3 "$WORK/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');" 2>/dev/null || true
 
   # The runner's binary, not `run-cli`: CI has no debug build and passes the published one in.
   CLI="$PWD/${CLI:-backend/Build/out/Cli/Debug/net11.0/Cli}"
@@ -1123,7 +1123,7 @@ gate_shipped_tree_typechecks() {
 
   rm -rf "$ROOT"; mkdir -p "$ROOT/.darklang/logs"
   scripts/testing/_copy-store "$ROOT/.darklang/data.db"
-  sqlite3 "$ROOT/.darklang/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');'
+  sqlite3 "$ROOT/.darklang/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');"
   export DARK_CONFIG_DB_NAME=data.db HOME="$ROOT"
 
   # The store's own item count, which is what the report is measured against.
@@ -1228,7 +1228,7 @@ gate_package_tests() {
   fi
 
   scripts/testing/_copy-store "$ROOT/.darklang/data.db"
-  sqlite3 "$ROOT/.darklang/data.db" 'DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');'
+  sqlite3 "$ROOT/.darklang/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');"
   # This disposable installation has its own policy and home. Tests must
   # succeed without grants on the saved installation policy.
   export HOME="$ROOT"
