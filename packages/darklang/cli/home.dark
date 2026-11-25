@@ -1,58 +1,27 @@
-/// `dark` at a terminal: one prompt for Dark expressions and commands, each answer under what you
-/// typed. It is the kernel's way to work interactively; everything here is also a plain command,
-/// and a line is exactly what you would type after `dark`.
+/// `dark` at a terminal: a REPL for Dark expressions and commands. Each answer prints under what you
+/// typed and scrolls up like any terminal program's. A line is exactly what you would type after `dark`.
 module Darklang.Cli.Home
 
-type Entry =
-  { typed: String
-    said: List<String> }
+type Session =
+  { on: Bool
+    /// What enter runs on an empty line, shown dim after the prompt. One that ends in `(` is a
+    /// start: enter puts it on the line to finish.
+    suggestion: String
+    /// A line refused because its extension was off, offered again once that is on.
+    refused: String
+    /// The first session's lines still to come, on a store with nothing of yours in it yet.
+    steps: List<String>
+    /// The full-screen command that has the terminal, for its line in the scrollback when it closes.
+    screen: String
+    /// The last answer's text, as `it`.
+    it: String }
 
 
-type Model =
-  { app: AppState
-    input: String
-    /// Oldest first.
-    entries: List<Entry>
-    /// How far back ↑ has gone into what was typed; 0 is the line being edited.
-    back: Int64
-    /// The line enter runs when nothing is typed: the next step, shown dim after the prompt. One
-    /// that ends in `(` is a start: enter puts it on the line to finish.
-    next: String
-    /// The first session's lines, on a store with nothing of yours in it yet.
-    steps: List<String> }
+let off(): Session =
+  Session { on = false, suggestion = "", refused = "", steps = [], screen = "", it = "" }
 
 
-type Msg =
-  | Nothing
-
-
-let init(app: AppState): Model =
-  let app = Registry.withAll(app)
-  let steps = if nothingYours(app) then firstSteps else []
-  Model
-    { app = app
-      input = ""
-      entries = []
-      back = 0
-      next = Stdlib.List.head(steps) |> Stdlib.Option.withDefault("")
-      steps = steps }
-
-
-let nothingYours(app: AppState): Bool =
-  let (modules, types, values, fns, traits, impls, tests) =
-    Packages.Query.allDirectDescendantNamesAndHashes(app.currentBranchId, [ "Me" ])
-
-  Stdlib.List.isEmpty(modules)
-  && Stdlib.List.isEmpty(types)
-  && Stdlib.List.isEmpty(values)
-  && Stdlib.List.isEmpty(fns)
-  && Stdlib.List.isEmpty(traits)
-  && Stdlib.List.isEmpty(impls)
-  && Stdlib.List.isEmpty(tests)
-
-
-/// A first session, one line at a time: each is offered once the one before it has run. Enter on an
-/// empty prompt takes it; typing anything else ignores it.
+/// A first session, one line at a time.
 val firstSteps =
   [ "1 + 2"
     "fn Me.Hi.greet '(name: String): String = \"hi \" + name'"
@@ -61,56 +30,57 @@ val firstSteps =
     "ext" ]
 
 
-/// What to offer after <param line> printed <param said>: the command a refusal named, the line that
-/// was refused once its extension is on, the next first step, then a call of the fn just saved,
-/// then a commit of what was saved.
-let nextAfter(m: Model, line: String, said: List<String>): String =
-  let named =
-    said
-    |> Stdlib.List.findFirst(fun l ->
-      Stdlib.String.startsWith(Stdlib.String.trim(l), "dark ext on "))
-    |> Stdlib.Option.map(fun l -> Stdlib.String.dropFirst(Stdlib.String.trim(l), 5))
+let start(app: AppState): AppState =
+  let app = Registry.withAll(app)
+  let steps = if nothingYours(app) then firstSteps else []
+  Stdlib.printLine(styled(Extensions.helpText(app)))
 
-  let refused =
-    m.entries
-    |> Stdlib.List.reverse
-    |> Stdlib.List.findFirst(fun e ->
-      Stdlib.List.any(e.said, fun l -> Stdlib.String.contains(l, "which is off.")))
-    |> Stdlib.Option.map(fun e -> e.typed)
+  Stdlib.printLine(
+    Stdlib.Cli.UI.Colors.dimText(
+      "\nType an expression or a command. Enter on an empty line runs the dim suggestion; tab takes it to edit; esc leaves."))
 
-  match named with
-  | Some(cmd) -> cmd
-  | None ->
-    match refused with
-    | Some(again) when turnsOn(line) -> again
-    | _ ->
-      let done_ = Stdlib.List.append(Stdlib.List.map(m.entries, fun e -> e.typed), line)
-      match
-        m.steps
-        |> Stdlib.List.findFirst(fun s -> Stdlib.Bool.not(Stdlib.List.contains(done_, s)))
-      with
-      | Some(step) -> step
-      | None -> afterSave(m, said)
+  { app with
+      home =
+        { off() with
+            on = true
+            steps = steps
+            suggestion = Stdlib.List.head(steps) |> Stdlib.Option.withDefault("") } }
 
 
-let turnsOn(line: String): Bool =
-  match words(line) with
-  | ["ext", "on", ..._] -> true
-  | _ -> false
+/// The intro with its headings in bold: at a terminal only, so a pipe still gets plain text.
+let styled(text: String): String =
+  let headings =
+    [ "Run code", "Keep code", "Learn", "Grow", "This install", "From your extensions" ]
 
-
-/// After a fn is saved, its name and `(`, to finish and call; after any other save, a commit, once
-/// history is on.
-let afterSave(m: Model, said: List<String>): String =
-  let created = "✓ Created function "
-  match said |> Stdlib.List.findFirst(fun l -> Stdlib.String.startsWith(l, created)) with
-  | Some(l) -> Stdlib.String.dropFirst(l, Stdlib.String.length(created)) + "("
-  | None ->
-    let saved = Stdlib.List.any(said, fun l -> Stdlib.String.startsWith(l, "✓ "))
-    if saved && Stdlib.Bool.not(Extensions.isOff(m.app.currentBranchId, "commit")) then
-      "commit -y"
+  Stdlib.String.splitOnNewline(text)
+  |> Stdlib.List.map(fun l ->
+    if Stdlib.List.contains(headings, l) then
+      Stdlib.Cli.UI.Colors.boldText(l)
     else
-      ""
+      l)
+  |> Stdlib.String.join("\n")
+
+
+/// Where the prompt says you are: nothing at the root, which is where a REPL starts.
+let location(app: AppState): String =
+  if app.packageData.currentLocation == Packages.PackageLocation.Module([]) then
+    ""
+  else
+    locationStr(app)
+
+
+let nothingYours(app: AppState): Bool =
+  let (modules, types, values, fns, traits, impls, tests) =
+    Packages.Query.allDirectDescendantNamesAndHashes(app.currentBranchId, [ "Me" ])
+
+  [ Stdlib.List.isEmpty(modules)
+    Stdlib.List.isEmpty(types)
+    Stdlib.List.isEmpty(values)
+    Stdlib.List.isEmpty(fns)
+    Stdlib.List.isEmpty(traits)
+    Stdlib.List.isEmpty(impls)
+    Stdlib.List.isEmpty(tests) ]
+  |> Stdlib.List.all(fun b -> b)
 
 
 /// A line split the way a shell splits it: spaces separate words, and quotes keep them together.
@@ -137,148 +107,160 @@ let words(line: String): List<String> =
   if started then Stdlib.List.append(done_, word) else done_
 
 
-/// `it` is the last answer, as its text, so the next line can use it: `it |> Stdlib.String.length`.
-let withIt(m: Model, line: String): String =
-  match Stdlib.List.last(m.entries) with
-  | Some(last)
-    when Stdlib.List.contains(words(line), "it") || Stdlib.String.startsWith(line, "it ") ->
-    let literal = Stdlib.Json.serialize<String>(Stdlib.String.join(last.said, "\n"))
-    "let it = " + literal + "\n" + line
-  | _ -> line
+/// `it` is the last answer, as its text: `it |> Stdlib.String.length`.
+let withIt(h: Session, line: String): String =
+  let names =
+    Stdlib.String.toList(line)
+    |> Stdlib.List.map(fun ch ->
+      let c = Stdlib.String.fromChar(ch)
+      if Stdlib.String.contains("()[],+-*/|>=<{}; ", c) then " " else c)
+    |> Stdlib.String.join("")
+    |> Stdlib.String.split(" ")
+
+  if h.it != "" && Stdlib.List.contains(names, "it") then
+    "let it = " + Stdlib.Json.serialize<String>(h.it) + "\n" + line
+  else
+    line
 
 
-/// What a line printed, as lines without styles.
-let captured(m: Model, cmd: String, args: List<String>): List<String> =
-  let owned = Builtin.stdoutCaptureStart()
-  let _ = Registry.executeCommand(cmd, m.app, args)
-  let out = if owned then Builtin.stdoutCaptureStop() else ""
-  Stdlib.String.splitOnNewline(out)
-  |> Stdlib.List.map(fun l -> Stdlib.String.trimEnd(Stdlib.Cli.Tui.Text.stripSgr(l)))
-  |> Stdlib.List.filter(fun l -> l != "")
-
-
-/// Commands that draw their own screen: the prompt hands them the terminal and comes back after.
-let ownsScreen(m: Model, cmd: String, args: List<String>): Bool =
-  match cmd, args with
-  | ("ext", []) | ("workbench", _) | ("wb", _) -> true
-  | _ -> Registry.needsTerminal(m.app.allCommandsCache, cmd, args)
+let isCommand(app: AppState, name: String): Bool =
+  Stdlib.List.any(app.allCommandsCache, fun c ->
+    c.name == name || Stdlib.List.contains(c.aliases, name))
 
 
 /// Run one line: a command when its first word is one, an expression otherwise.
-let run(m: Model, line: String): Component.Step<Model> =
-  let known = Stdlib.List.map(m.app.allCommandsCache, fun c -> c.name)
+let run(app: AppState, line: String): AppState =
   match words(line) with
-  | [] -> Component.Step.Stay(m)
+  | [] -> app
   | [cmd, ...args] ->
-    if Stdlib.List.contains([ "quit", "exit", "q" ], cmd) then
-      Component.Step.Exit(m)
-    else if ownsScreen(m, cmd, args) then
-      let next = nextAfter(m, line, [])
-      let entry = Entry { typed = line, said = [] }
-      Component.Step.Launch(
-        { m with
-            entries = Stdlib.List.append(m.entries, entry)
-            input = ""
-            back = 0
-            next = next },
-        line)
+    if Stdlib.List.contains([ "quit", "exit" ], cmd) then
+      { app with isExiting = true }
+    else if isCommand(app, cmd) then
+      let after = Registry.executeCommand(cmd, app, args)
+      let screen =
+        match after.currentPage with
+        | SubApp(_) -> cmd
+        | _ -> ""
+
+      next(after, line, cmd, after.exitCode != 0, screen, "")
     else
-      let said =
-        if
-          Stdlib.List.contains(known, cmd)
-          || Stdlib.List.any(m.app.allCommandsCache, fun c -> Stdlib.List.contains(c.aliases, cmd))
-        then
-          captured(m, cmd, args)
+      let owned = Builtin.stdoutCaptureStart()
+      let after = Registry.executeCommand("eval", app, [ withIt(app.home, line) ])
+      let out = if owned then Builtin.stdoutCaptureStop() else ""
+      let said = Stdlib.String.trimEnd(Stdlib.Cli.Tui.Text.stripSgr(out))
+      let failed = after.exitCode != 0
+      let names = Stdlib.List.map(app.allCommandsCache, fun c -> c.name)
+      let command =
+        if failed && Stdlib.String.contains(said, "There is no variable named: " + cmd) then
+          meant(Accepts.didYouMean(cmd, names))
         else
-          captured(m, "eval", [ withIt(m, line) ])
+          ""
 
-      let entry = Entry { typed = line, said = said }
-      let next = nextAfter(m, line, said)
-      Component.Step.Stay(
-        { m with
-            entries = Stdlib.List.append(m.entries, entry)
-            input = ""
-            back = 0
-            next = next })
-
-
-let typedBefore(m: Model, n: Int64): String =
-  Stdlib.List.getAt(Stdlib.List.reverse(m.entries), n - 1)
-  |> Stdlib.Option.map(fun e -> e.typed)
-  |> Stdlib.Option.withDefault("")
+      if command != "" then
+        // A mistyped command reads as an unknown name; say it as the command it nearly was.
+        printErr($"`{cmd}` is not a command or a name. Did you mean `{command}`?")
+        let fixed = Stdlib.String.join([ command, ...args ], " ")
+        next({ after with exitCode = 0 }, line, "eval", true, "", fixed)
+      else
+        Stdlib.print(out)
+        let it = if failed then app.home.it else said
+        let fix = if failed then fixed(line, said) else ""
+        next({ after with home = { after.home with it = it } }, line, "eval", failed, "", fix)
 
 
-let picture(m: Model, width: Int64, height: Int64): List<String> =
-  let intro =
-    if Stdlib.List.isEmpty(m.entries) then
-      Stdlib.String.splitOnNewline(Extensions.helpText(m.app))
+/// The name inside the first "Did you mean `<name>`?" of <param said>, or "".
+let meant(said: String): String =
+  match Stdlib.String.split(said, "Did you mean `") with
+  | [_, rest, ...] ->
+    match Stdlib.String.split(rest, "`") with
+    | [name, ...] -> name
+    | _ -> ""
+  | _ -> ""
+
+
+/// <param line> with the name an error says was not found replaced by the one it meant, or "".
+let fixed(line: String, said: String): String =
+  let wanted = meant(said)
+  let missing =
+    match Stdlib.String.split(said, "Error: ") with
+    | [_, rest, ...] ->
+      match Stdlib.String.split(rest, " not found.") with
+      | [name, _, ...] -> name
+      | _ -> ""
+    | _ -> ""
+
+  if wanted == "" || missing == "" || Stdlib.Bool.not(Stdlib.String.contains(line, missing)) then
+    ""
+  else
+    Stdlib.String.replaceAll(line, missing, wanted)
+
+
+/// What to offer after <param line>: the command a refusal named, the line that was refused once its
+/// extension is on, the next first step, a call of the fn just saved, then a commit of what was saved.
+let next(
+  app: AppState,
+  line: String,
+  cmd: String,
+  failed: Bool,
+  screen: String,
+  fix: String)
+  : AppState =
+  let h = app.home
+  let steps = h.steps |> Stdlib.List.filter(fun s -> s != line)
+  let offIn =
+    match Extensions.home(app.currentBranchId, cmd, true) with
+    | Off(e) -> e.name
+    | _ -> ""
+
+  let (suggestion, refused) =
+    if fix != "" then
+      (fix, h.refused)
+    else if offIn != "" then
+      ($"ext on {offIn}", line)
+    else if turnsOn(line) && h.refused != "" && Stdlib.Bool.not(failed) then
+      (h.refused, "")
     else
-      []
+      match Stdlib.List.head(steps) with
+      | Some(s) -> (s, h.refused)
+      | None -> (afterSave(app, line, cmd, failed), h.refused)
 
-  let past =
-    m.entries
-    |> Stdlib.List.map(fun e -> [ "› " + e.typed, ...e.said, "" ])
-    |> Stdlib.List.flatten
-
-  let shown = Stdlib.List.concat(intro, past)
-  let room = height - 3
-  let start = Stdlib.max(0, Stdlib.List.length(shown) - room)
-  Stdlib.List.drop(shown, start)
+  { app with
+      exitCode = 0
+      home = { h with suggestion = suggestion, refused = refused, steps = steps, screen = screen } }
 
 
-let view(m: Model, size: Stdlib.Cli.Tui.Size): Stdlib.Cli.Tui.View =
-  let frame =
-    Stdlib.Cli.UI.Chrome.frame(
-      "dark",
-      "",
-      "enter runs it (on an empty line, the dim suggestion)   tab completes   ↑ again   esc leaves")
-
-  Stdlib.Cli.UI.Chrome.view(frame, size, fun region ->
-    let hint = if m.input == "" then m.next else Registry.getCompletionHint(m.app, m.input)
-    let lines =
-      Stdlib.List.concat(picture(m, region.cols, region.rows), [ "", "dark› " + m.input + hint ])
-
-    let nodes = lines |> Stdlib.List.map(fun l -> Stdlib.Cli.UI.Node.text(l))
-    Stdlib.Cli.UI.Node.toRows(Stdlib.Cli.UI.Node.column(nodes), region.cols, "")
-    |> Stdlib.List.take(region.rows)
-    |> Stdlib.List.indexedMap(fun(i, row) -> Stdlib.Cli.UI.Layout.at(region, i, 0, row))
-    |> Stdlib.List.flatten)
+let turnsOn(line: String): Bool =
+  match words(line) with
+  | ["ext", "on", ...] -> true
+  | _ -> false
 
 
-let onKey(
-  m: Model,
-  key: Stdlib.Cli.Stdin.Key.Key,
-  _modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers,
-  keyChar: Option<String>)
-  : Component.Step<Model> =
-  match key with
-  | Enter ->
-    if m.input == "" && Stdlib.String.endsWith(m.next, "(") then
-      Component.Step.Stay({ m with input = m.next })
-    else
-      run(m, if m.input == "" then m.next else m.input)
-  | Escape -> Component.Step.Exit(m)
-  | Backspace -> Component.Step.Stay({ m with input = Stdlib.String.dropLast(m.input, 1) })
-  | Tab ->
-    if m.input == "" then
-      Component.Step.Stay({ m with input = m.next })
-    else
-      Component.Step.Stay({ m with input = m.input + Registry.getCompletionHint(m.app, m.input) })
-  | UpArrow ->
-    let n = Stdlib.min(m.back + 1, Stdlib.List.length(m.entries))
-    Component.Step.Stay({ m with back = n, input = typedBefore(m, n) })
-  | DownArrow ->
-    let n = Stdlib.max(0, m.back - 1)
-    Component.Step.Stay({ m with back = n, input = typedBefore(m, n) })
-  | _ ->
-    match keyChar with
-    | Some(c) -> Component.Step.Stay({ m with input = m.input + c })
-    | None -> Component.Step.Stay(m)
+/// After a fn is saved, its name and `(`, to finish and call; after any other save, a commit, once
+/// history is on.
+let afterSave(app: AppState, line: String, cmd: String, failed: Bool): String =
+  if failed then
+    ""
+  else
+    match cmd, words(line) with
+    | "fn", [_, name, ...] -> name + "("
+    | _ when Stdlib.List.contains([ "val", "type", "trait", "impl", "module" ], cmd) ->
+      if Extensions.isOff(app.currentBranchId, "commit") then "" else "commit -y"
+    | "eval", _ when Stdlib.String.contains(line, "(") ->
+      if Extensions.isOff(app.currentBranchId, "commit") then "" else "commit -y"
+    | _ -> ""
 
 
-let component(): Component.Component<Model> =
-  Component.simple(view, onKey, Component.noSave)
+/// A full-screen command closed: one line for the scrollback, and the prompt again.
+let closed(app: AppState): AppState =
+  let line =
+    match app.home.screen with
+    | "ext" -> Extensions.summaryLine(app.currentBranchId)
+    | "" -> ""
+    | other -> $"{other} closed"
 
+  if line != "" then
+    Stdlib.printLine(Stdlib.Cli.UI.Colors.dimText("  " + line))
+  else
+    ()
 
-let start(state: AppState): AppState =
-  Component.launch(state, component(), init(state))
+  { app with currentPage = Page.MainPrompt, home = { app.home with screen = "" } }

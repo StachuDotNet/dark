@@ -84,7 +84,9 @@ type AppState =
     /// only; they set this as they are touched.)
     exitCode: Int64
     /// How the command being run prints its answer; `Registry.executeCommand` sets it per command.
-    output: Output.Mode }
+    output: Output.Mode
+    /// Bare `dark` at a terminal: the REPL's suggestion, its first steps and `it`.
+    home: Home.Session }
 
 
 /// What the prompt shows to your left: where you are in the package tree, and WHICH BRANCH, when you're on
@@ -264,7 +266,8 @@ let initState(): AppState =
       commandOptionsCache = commandOptions(commands)
       telemetryEnabled = Stdlib.Env.get("DARK_TELEMETRY") == Option.Some("1")
       exitCode = 0
-      output = Output.Mode.Pretty }
+      output = Output.Mode.Pretty
+      home = Home.off() }
 
 
 type Msg =

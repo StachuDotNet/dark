@@ -22,14 +22,8 @@ let executeCliCommand(args: List<String>): Int64 =
 
     let watch = Stdlib.Host.begin()
 
-    // At a terminal, `dark` is the prompt: expressions and commands, each answer under it.
-    let workbenchState = Home.start(initialState)
-
-    // Exiting before the loop starts means the workbench refused to open; the loop's own exit is 0.
-    if workbenchState.isExiting then
-      workbenchState.exitCode
-    else
-      runInteractiveLoop(workbenchState, watch)
+    // At a terminal, `dark` is a REPL: expressions and commands, each answer under it.
+    runInteractiveLoop(Home.start(initialState), watch)
   // Otherwise, execute command directly (shell already split args correctly)
   | [commandName, ...commandArgs] ->
     let nonInteractiveState = { initialState with nonInteractive = true }

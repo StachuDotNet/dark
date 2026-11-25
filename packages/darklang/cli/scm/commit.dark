@@ -555,7 +555,12 @@ let defaultMessage(r: Review): String =
 let executePretty(state: AppState, args: List<String>): AppState =
   let given = parseArgs(args)
   let r = selectedReview(state, review(state), given.include)
-  let parsed = if given.message == "" then { given with message = defaultMessage(r) } else given
+  let parsed =
+    if given.message == "" then
+      { given with message = defaultMessage(r) }
+    else
+      given
+
   let changed = r.changed
 
   // Ask the DRAFT, not the changed-bindings list. A `Deprecate` op binds no name, so it never appears in

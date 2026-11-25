@@ -34,7 +34,7 @@ let releasePromptRegion(state: AppState): AppState =
     let parked =
       Prompt.Display.viewAtSize(
         state.prompt,
-        locationStr(state),
+        (if state.home.on then Home.location(state) else locationStr(state)),
         "",
         Stdlib.Cli.Tui.TerminalSession.currentSize())
 
@@ -84,6 +84,30 @@ let handleKeyInput(
     match state.currentPage with
     | MainPrompt ->
       match key with
+      | Enter
+        when state.home.on && Stdlib.String.isEmpty(state.prompt.text) && Stdlib.String.endsWith(state.home.suggestion, "(") ->
+        { state with prompt = Prompt.Editing.setText(state.prompt, state.home.suggestion) }
+      | Enter
+        when state.home.on && Stdlib.String.isEmpty(Stdlib.String.trim(state.prompt.text)) && state.home.suggestion != "" ->
+        // Taking the suggestion leaves it in the scrollback as if typed.
+        let line = state.home.suggestion
+        let shown =
+          renderMainPrompt(
+            { state with prompt = Prompt.Editing.setText(state.prompt, line) },
+            Home.location(state),
+            "",
+            Stdlib.Cli.Tui.TerminalSession.currentSize())
+
+        let released = releasePromptRegion(shown)
+        Stdlib.printLine("")
+        let newState = Home.run(released, line)
+        { newState with
+            prompt = Prompt.History.addCommand(Prompt.Editing.clear(state.prompt), line) }
+      | Escape when state.home.on && Stdlib.String.isEmpty(state.prompt.text) ->
+        let cleared = clearPromptRegion(state)
+        { cleared with isExiting = true }
+      | Tab when state.home.on && Stdlib.String.isEmpty(state.prompt.text) ->
+        { state with prompt = Prompt.Editing.setText(state.prompt, state.home.suggestion) }
       | Enter ->
         if Stdlib.String.isEmpty(Stdlib.String.trim(state.prompt.text)) then
           let released = releasePromptRegion(state)
@@ -94,7 +118,12 @@ let handleKeyInput(
           Stdlib.printLine("")
           let commandToExecute = Stdlib.String.trim(state.prompt.text)
           let tCmd = Telemetry.now()
-          let newState = Commands.parseAndExecute(released, commandToExecute)
+          let newState =
+            if state.home.on then
+              Home.run(released, commandToExecute)
+            else
+              Commands.parseAndExecute(released, commandToExecute)
+
           Telemetry.logWithContext("commandExec", tCmd, [ ("cmd", commandToExecute) ])
           let clearedPrompt = Prompt.Editing.clear(newState.prompt)
           let promptWithHistory = Prompt.History.addCommand(clearedPrompt, commandToExecute)
@@ -186,8 +215,9 @@ let handleKeyInput(
             | other -> other
 
           { state with currentPage = resumed, pageStack = rest }
+        | [] when state.home.on -> Home.closed(state)
         | [] ->
-          // The workbench is the experience: leaving it leaves the CLI, no classic-prompt fallback.
+          // A full-screen command run from the shell: leaving it leaves the CLI.
           { state with isExiting = true }
       | LaunchCommand(cmd) ->
         // Release this app's surface before the replacement command takes ownership, and push this page so the
@@ -454,7 +484,7 @@ let runInteractiveLoop(state: AppState, watch: LanguageTools.Live.Watch): Int64 
       let _ = LanguageTools.InterpreterStats.reset()
       ()
 
-    let location = locationStr(state)
+    let location = if state.home.on then Home.location(state) else locationStr(state)
     // Sampled once per pass. A resize while idle still repaints: SIGWINCH wakes the blocking read (see
     // Stdin.fs) with a keypress nobody handles, which sends us round again and re-samples here.
     let size = Stdlib.Cli.Tui.TerminalSession.currentSize()
@@ -464,7 +494,14 @@ let runInteractiveLoop(state: AppState, watch: LanguageTools.Live.Watch): Int64 
     let tRender = if state.telemetryEnabled then Telemetry.now() else 0
     let renderedState =
       match state.currentPage with
-      | MainPrompt -> renderMainPrompt(state, location, hint, size)
+      | MainPrompt ->
+        let shownHint =
+          if state.home.on && Stdlib.String.isEmpty(state.prompt.text) then
+            state.home.suggestion
+          else
+            hint
+
+        renderMainPrompt(state, location, shownHint, size)
       | InteractiveNav(_) ->
         // Navigation presents on start and state transitions so its Page
         // retains the corresponding renderer history.

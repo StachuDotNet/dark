@@ -248,8 +248,10 @@ test aCommitOnAPipeAsksAndNamesItself = scenario(fun dark ->
 
     says(dark, [ "status" ], "1 item changed", "and the draft is still there")
     says(dark, [ "commit", "-y" ], "-- 2 ops", "with -y it lands")
-
-    same(commits(dark), [ "Tests.CommitGate.f" ], "named for what it changes") ])
+    same(
+      commits(dark),
+      [ "Tests.CommitGate.f" ],
+      "named for what it changes") ])
 
 
 /// The refusal names the item and the error, and only live items are checked: once the broken

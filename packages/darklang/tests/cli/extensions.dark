@@ -42,10 +42,7 @@ test aCommandWhoseExtensionIsOffSaysHowToTurnItOn =
           "`commit` comes with history, which is off.",
           "names its extension")
 
-        Instance.says(
-          out,
-          "dark ext on history",
-          "and the one command") ]))
+        Instance.says(out, "dark ext on history", "and the one command") ]))
 
 
 test itsHelpStillShows = Instance.withKernelOnly(fun i ->
@@ -332,17 +329,10 @@ test explainWalksThroughAndIsRemembered = Instance.withKernelOnly(fun i ->
   let shown = Instance.said(i, [ "ext", "show", "history" ])
   Stdlib.Test.all(
     [ Instance.says(walked, "1/3  What you save persists", "the first step")
-
       Instance.says(walked, "$ dark status", "its command, run")
-
       Instance.says(walked, "Peek at", "then what to peek at")
-
       Instance.says(walked, "dark docs scm", "a peek, as a command")
-
-      Instance.says(
-        shown,
-        "dark ext explain history (seen)",
-        "remembered") ]))
+      Instance.says(shown, "dark ext explain history (seen)", "remembered") ]))
 
 
 /// The fewest keys from a fresh tree to history on and explained: down to it, e, and q to leave.
@@ -355,6 +345,12 @@ val keysToExplainHistory =
 /// <param args> at a terminal, the keys pressed once it is up, a few seconds apart as a person
 /// types them: keys that arrive together read as a paste.
 let pressing(i: Instance.T, args: List<String>, keys: List<String>): Unit =
+  let _ = pressed(i, args, keys)
+  ()
+
+
+/// `pressing`, and what the terminal showed, without styles.
+let pressed(i: Instance.T, args: List<String>, keys: List<String>): String =
   let line =
     Stdlib.List.flatten(
       [ [ "/usr/bin/env", "TERM=xterm-256color" ]
@@ -373,13 +369,12 @@ let pressing(i: Instance.T, args: List<String>, keys: List<String>): Unit =
     + Stdlib.Cli.Process.shellQuote("stty cols 100 rows 40; " + line)
     + " /dev/null"
 
-  let _ =
-    Stdlib.Cli.Process.runWithTimeout(
-      Instance.commandTimeoutMs,
-      "/bin/sh",
-      [ "-c", shell ])
-
-  ()
+  match Stdlib.Cli.Process.runWithTimeout(
+          Instance.commandTimeoutMs,
+          "/bin/sh",
+          [ "-c", shell ]) with
+  | Ok(out) -> Stdlib.Cli.Tui.Text.stripSgr(out.stdout + out.stderr)
+  | Error(e) -> $"could not run: {e}"
 
 
 test historyOnAndExplainedInSevenKeys = Instance.withKernelOnly(fun i ->

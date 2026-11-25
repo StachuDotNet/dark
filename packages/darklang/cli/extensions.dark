@@ -1165,7 +1165,6 @@ let execute(state: AppState, args: List<String>): AppState =
         failed(st))
   | _ ->
     printErr("Usage: ext [list | show <name> | on <name>... | off <name>... | explain <name>]")
-
     failed(state)
 
 
@@ -1227,9 +1226,16 @@ let grantLines(): List<String> =
 let complete(state: AppState, args: List<String>): List<Completion.CompletionItem> =
   match args with
   | [] | [_] ->
-    [ "list", "show", "on", "off", "explain" ]
-    |> Stdlib.List.map(fun s -> Completion.simple(s))
+    [ "list", "show", "on", "off", "explain" ] |> Stdlib.List.map(fun s -> Completion.simple(s))
   | [_, ...] -> all(state.currentBranchId) |> Stdlib.List.map(fun e -> Completion.simple(e.name))
+
+
+/// The line `ext` leaves in the scrollback when its tree closes.
+let summaryLine(branchId: Uuid): String =
+  let exts = all(branchId)
+  let on = onNames(exts)
+  let names = if Stdlib.List.isEmpty(on) then "" else ": " + Stdlib.String.join(on, ", ")
+  $"extensions: {Stdlib.display(Stdlib.List.length(on))} of {Stdlib.display(Stdlib.List.length(exts))} on{names}"
 
 
 // --- `dark help` ---

@@ -235,3 +235,19 @@ test homeTakesTheFirstRunInFewKeys = Instance.withKernelOnly(fun i ->
         commits,
         "Me.Hi.greet",
         "and committed, with history turned on on the way") ]))
+
+
+/// A typo in a name: the error names what was meant, and enter runs the line with it fixed. The
+/// keys past the first steps are the mistyped call and two enters.
+val typoKeys = [ "\\r", "\\r", "Me.Hi.gret(\"Ada\")", "\\r", "\\r", "\\033" ]
+
+
+test aTypoIsOneKeyToFix = Instance.withKernelOnly(fun i ->
+  let shown = Cli.Tests.Extensions.pressed(i, [], typoKeys)
+  Stdlib.Test.all(
+    [ Instance.says(
+        shown,
+        "Did you mean `Me.Hi.greet`?",
+        "the error names the fix")
+
+      Instance.says(shown, "hi Ada", "and enter ran it") ]))

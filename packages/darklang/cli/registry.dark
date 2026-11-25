@@ -607,15 +607,7 @@ module Registry =
       ("Security", [ "effects", "permissions" ])
       (
         "Utilities",
-        [ "clear"
-          "help"
-          "docs"
-          "quit"
-          "builtins"
-          "workbench"
-          "backups"
-          "config"
-          "ext" ]) ]
+        [ "clear", "help", "docs", "quit", "builtins", "workbench", "backups", "config", "ext" ]) ]
 
 
   let formatCommandGroup(
