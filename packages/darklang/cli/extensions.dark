@@ -1156,15 +1156,13 @@ let forAI(): String =
   let names(keep: Extension -> Bool): String =
     exts |> Stdlib.List.filter(keep) |> Stdlib.List.map(fun e -> e.name) |> Stdlib.String.join(", ")
 
-  let onHere = names(fun e -> Stdlib.List.contains(on, e.name) && commandNames(e) != [])
+  let onCount = exts |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name) && commandNames(e) != []) |> Stdlib.List.length
+  let onHere = if onCount == 0 then "" else Stdlib.display(onCount)
   let offHere = names(fun e -> Stdlib.Bool.not(Stdlib.List.contains(on, e.name)) && e.fake == "")
-  [ "## Extensions"
-    "Past running and keeping code, commands come from extensions; one that is off says how to"
-    "turn it on. `help` lists what each adds."
-    "  on: " + (if onHere == "" then "none" else onHere)
+  [ "## Extensions: more commands"
+    "  on: " + (if onHere == "" then "none" else onHere + "; `help` has their commands")
     "  off: " + (if offHere == "" then "none" else offHere)
-    "  extensions enable agent    history, tests, store tools; asks for nothing"
-    "  extensions explain <name>  a walk through one" ]
+    "  extensions enable agent   history, tests, tools; asks for nothing" ]
   |> Stdlib.String.join("\n")
   |> Stdlib.String.append("\n")
 
