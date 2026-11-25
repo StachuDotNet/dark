@@ -30,7 +30,8 @@ module Registry =
       [ ("list", Accepts.nothing())
         ("show", Accepts.between(1, 1, []))
         ("enable", Accepts.between(1, 99, []))
-        ("disable", Accepts.between(1, 99, [])) ],
+        ("disable", Accepts.between(1, 99, []))
+        ("explain", Accepts.between(1, 1, [])) ],
       Accepts.nothing())
 
 

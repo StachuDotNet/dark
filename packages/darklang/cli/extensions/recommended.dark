@@ -3,8 +3,20 @@ module Darklang.Cli.Extensions.Recommended
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named(
-      "recommended",
-      "The usual set",
-      "History, tests, tracing and the workbench, in one step") with
-      needs = [ "history", "tests", "tracing", "workbench" ] }
+  Darklang.Cli.Extensions.Extension
+    { name = "recommended"
+      title = "The usual set"
+      blurb = "History, tests, tracing and the workbench, in one step"
+      under = ""
+      needs = [ "history", "tests", "tracing", "workbench" ]
+      commands = []
+      adds = []
+      asks = []
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = ""
+      tour = []
+      peeks = []
+      fake = "" }

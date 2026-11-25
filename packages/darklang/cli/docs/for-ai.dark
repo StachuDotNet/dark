@@ -1,6 +1,11 @@
 module Darklang.Cli.Docs.ForAI
 
+/// The guide, with what is on and off in this install where it says what extensions are.
 let content(): String =
+  Stdlib.String.replaceAll(guide(), "\n## More\n", "\n" + Extensions.forAI() + "\n## More\n")
+
+
+let guide(): String =
   """# Darklang AI Quick Reference
 
 """

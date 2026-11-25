@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""A throwaway Dark for someone who has not installed it: what `ssh try.darklang.com` would run.
+
+Prototype only. It runs locally, in the dev container, with the clone's CLI. Wired up for real it
+would be the forced command of a restricted ssh account (`command="try-shell",restrict` in
+authorized_keys), inside a box made for the session (W630 section 6). Nothing here is deployed.
+
+Each session gets its own store, copied from this build's, and thrown away on exit. Only `dark`
+commands run; a line is split like a shell would split it, never given to one. What could reach
+past the box is refused before the CLI sees it: granting permissions, and turning on an
+extension that asks for any.
+"""
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+CLI = os.environ.get("TRY_CLI", "backend/Build/out/Cli/Debug/net11.0/Cli")
+STORE = os.environ.get("TRY_STORE", "rundir/data.db")
+
+# What a guest of our machine may not do, by the words it starts with.
+REFUSED = [
+    (["permissions", "allow"], "granting permissions"),
+    (["permissions", "set"], "granting permissions"),
+    (["permissions", "profile"], "granting permissions"),
+    (["permissions", "approve"], "granting permissions"),
+    (["config", "set"], "changing this machine's settings"),
+    (["install"], "installing"),
+    (["update"], "updating"),
+    (["uninstall"], "uninstalling"),
+    (["backups"], "backups of this machine's store"),
+    (["serve"], "serving on this machine"),
+]
+
+
+def refusal(words):
+    if any(w == "--allow" or w.startswith("--allow=") for w in words):
+        return "granting permissions"
+    for prefix, why in REFUSED:
+        if words[: len(prefix)] == prefix:
+            return why
+    return None
+
+
+def run(home, words):
+    env = {
+        "HOME": home,
+        "PATH": "/usr/bin:/bin",
+        "TERM": os.environ.get("TERM", "xterm-256color"),
+        "DARK_CONFIG_DB_NAME": "data.db",
+        "DARK_NO_INPUT": "1",
+    }
+    return subprocess.run([CLI, *words], env=env, cwd=home).returncode
+
+
+def asks_anything(home, name):
+    env = {"HOME": home, "PATH": "/usr/bin:/bin", "DARK_CONFIG_DB_NAME": "data.db"}
+    out = subprocess.run([CLI, "extensions", "show", name], env=env, cwd=home,
+                         capture_output=True, text=True).stdout
+    return any(line.strip().startswith("asks for") for line in out.splitlines())
+
+
+def main():
+    home = tempfile.mkdtemp(prefix="try-dark-")
+    try:
+        os.makedirs(os.path.join(home, ".darklang"))
+        subprocess.run(["sqlite3", STORE, f".backup {home}/.darklang/data.db"], check=True)
+        subprocess.run(["sqlite3", f"{home}/.darklang/data.db", "DELETE FROM config_v0"], check=True)
+        print("A Dark of your own, on our machine, until you leave. Type `dark` to start, `exit` to go.")
+        print("Nothing you make here stays: `dark extensions enable sync` will keep it, once sync exists.")
+        while True:
+            try:
+                line = input("try$ ")
+            except EOFError:
+                print()
+                break
+            try:
+                words = shlex.split(line)
+            except ValueError as e:
+                print(f"could not read that: {e}")
+                continue
+            if not words:
+                continue
+            if words[0] in ("exit", "logout"):
+                break
+            if words[0] != "dark":
+                print("Only `dark` runs here. `dark help` says what it does.")
+                continue
+            words = words[1:]
+            why = refusal(words)
+            if why is None and words[:2] == ["extensions", "enable"]:
+                asking = [n for n in words[2:] if asks_anything(home, n)]
+                if asking:
+                    why = f"turning on {', '.join(asking)}, which asks for permissions"
+            if why:
+                print(f"Not here: {why} reaches past this session. On your own install it works.")
+                continue
+            run(home, words)
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

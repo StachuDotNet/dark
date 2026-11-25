@@ -3,7 +3,20 @@ module Darklang.Cli.Extensions.Compiler
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("compiler", "Compiler", "Build a function into a standalone executable") with
+  Darklang.Cli.Extensions.Extension
+    { name = "compiler"
+      title = "Compiler"
+      blurb = "Build a function into a standalone executable"
+      under = ""
+      needs = []
+      commands = []
+      adds = []
       asks = [ "file write $PWD" ]
+      settings = []
       installs = "darkc, from darklang/compiler"
+      guide = []
+      pane = ""
+      handlers = ""
+      tour = []
+      peeks = []
       fake = "nothing is downloaded; `dark compile` is not on main" }

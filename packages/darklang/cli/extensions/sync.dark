@@ -3,8 +3,20 @@ module Darklang.Cli.Extensions.Sync
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("sync", "Sync", "Your code and drafts on every machine, through one hub") with
+  Darklang.Cli.Extensions.Extension
+    { name = "sync"
+      title = "Sync"
+      blurb = "Your code and drafts on every machine, through one hub"
       under = "account"
       needs = [ "history" ]
+      commands = []
+      adds = []
       asks = [ "http https://darklang.com/*" ]
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = ""
+      tour = []
+      peeks = []
       fake = "sync is in later/; turning it on only records it" }

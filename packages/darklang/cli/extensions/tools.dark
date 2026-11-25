@@ -3,7 +3,12 @@ module Darklang.Cli.Extensions.Tools
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("tools", "More store tools", "Navigate, refactor, deprecate, check types, back up") with
+  Darklang.Cli.Extensions.Extension
+    { name = "tools"
+      title = "More store tools"
+      blurb = "Navigate, refactor, deprecate, check types, back up"
+      under = ""
+      needs = []
       commands =
         [ "nav"
           "back"
@@ -23,7 +28,20 @@ val extension: Darklang.Cli.Extensions.Extension =
           "backups"
           "config"
           "effects" ]
-      handlers = "Darklang.Cli.Extensions.Tools.commands" }
+      adds = []
+      asks = []
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = "Darklang.Cli.Extensions.Tools.commands"
+      tour =
+        [ Darklang.Cli.Extensions.Step { say = "`deps` says what uses a name, before you change it.", run = [ "deps", "usedby", "Stdlib.Option.map" ], expect = "Stdlib" }
+          Darklang.Cli.Extensions.Step { say = "`rename` moves a name and updates its callers; `deprecate` retires one without breaking them.", run = [], expect = "" } ]
+      peeks =
+        [ Darklang.Cli.Extensions.Peek { label = "rename", command = [ "help", "rename" ] }
+          Darklang.Cli.Extensions.Peek { label = "deprecate", command = [ "help", "deprecate" ] } ]
+      fake = "" }
 
 
 let acceptsConfig(): Darklang.Cli.Accepts.Accepts =

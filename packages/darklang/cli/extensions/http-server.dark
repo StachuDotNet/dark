@@ -3,9 +3,27 @@ module Darklang.Cli.Extensions.HttpServer
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("http-server", "HTTP server", "Serve your functions on a local port") with
+  Darklang.Cli.Extensions.Extension
+    { name = "http-server"
+      title = "HTTP server"
+      blurb = "Serve your functions on a local port"
+      under = ""
+      needs = []
       commands = [ "serve" ]
-      handlers = "Darklang.Cli.Extensions.HttpServer.commands" }
+      adds = []
+      asks = []
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = "Darklang.Cli.Extensions.HttpServer.commands"
+      tour =
+        [ Darklang.Cli.Extensions.Step { say = "`serve <router> --port 8080` serves a fn of yours. The command line is the consent for the port.", run = [], expect = "" }
+          Darklang.Cli.Extensions.Step { say = "A router turns a request into a response.", run = [], expect = "" } ]
+      peeks =
+        [ Darklang.Cli.Extensions.Peek { label = "serving", command = [ "docs", "http-server" ] }
+          Darklang.Cli.Extensions.Peek { label = "serve", command = [ "help", "serve" ] } ]
+      fake = "" }
 
 
 let acceptsServe(): Darklang.Cli.Accepts.Accepts =

@@ -3,6 +3,20 @@ module Darklang.Cli.Extensions.Account
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("account", "Account", "Log in to darklang.com") with
+  Darklang.Cli.Extensions.Extension
+    { name = "account"
+      title = "Account"
+      blurb = "Log in to darklang.com"
+      under = ""
+      needs = []
+      commands = []
+      adds = []
       asks = [ "http GET https://darklang.com/*" ]
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = ""
+      tour = []
+      peeks = []
       fake = "login is in later/; turning it on only records it" }

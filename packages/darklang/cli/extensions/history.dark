@@ -3,12 +3,28 @@ module Darklang.Cli.Extensions.History
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("history", "History", "Commit what you saved, see what changed, undo") with
-      commands =
-        [ "status", "commit", "commits", "show", "discard", "undo", "ops", "constraints", "ack" ]
+  Darklang.Cli.Extensions.Extension
+    { name = "history"
+      title = "History"
+      blurb = "Commit what you saved, see what changed, undo"
+      under = ""
+      needs = []
+      commands = [ "status", "commit", "commits", "show", "discard", "undo", "ops", "constraints", "ack" ]
+      adds = []
+      asks = []
+      settings = []
+      installs = ""
       guide = [ "dark status    dark commit \"what changed\"    dark commits    dark undo <name>" ]
       pane = "Darklang.Cli.Extensions.History.pane"
-      handlers = "Darklang.Cli.Extensions.History.commands" }
+      handlers = "Darklang.Cli.Extensions.History.commands"
+      tour =
+        [ Darklang.Cli.Extensions.Step { say = "What you save persists at once, as a draft. `status` says what is in it.", run = [ "status" ], expect = "main" }
+          Darklang.Cli.Extensions.Step { say = "`commit` turns the draft into a commit, after showing what changed; `commits` lists them.", run = [ "commits" ], expect = "" }
+          Darklang.Cli.Extensions.Step { say = "Changed your mind? `undo <name>` puts one name back; `discard` drops the whole draft.", run = [], expect = "" } ]
+      peeks =
+        [ Darklang.Cli.Extensions.Peek { label = "how source control works", command = [ "docs", "scm" ] }
+          Darklang.Cli.Extensions.Peek { label = "what status reports", command = [ "help", "status" ] } ]
+      fake = "" }
 
 
 let acceptsStatus(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.flagsOnly([ "--json" ])
@@ -141,5 +157,5 @@ let pane(_input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pan
   Darklang.Cli.Extensions.Pane
     { lines = [ line ]
       actions =
-        [ Darklang.Cli.Extensions.action("s", "what changed", [ "status" ])
-          Darklang.Cli.Extensions.action("l", "the last commits", [ "commits" ]) ] }
+        [ Darklang.Cli.Extensions.Action { key = "s", label = "what changed", command = [ "status" ] }
+          Darklang.Cli.Extensions.Action { key = "l", label = "the last commits", command = [ "commits" ] } ] }

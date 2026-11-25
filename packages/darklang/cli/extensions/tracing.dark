@@ -3,12 +3,27 @@ module Darklang.Cli.Extensions.Tracing
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("tracing", "Tracing", "Keep a record of every run, and read it back") with
+  Darklang.Cli.Extensions.Extension
+    { name = "tracing"
+      title = "Tracing"
+      blurb = "Keep a record of every run, and read it back"
+      under = ""
+      needs = []
       commands = [ "traces", "ps" ]
+      adds = []
+      asks = []
       settings = [ ("trace.record", "on") ]
+      installs = ""
       guide = [ "dark traces    dark traces show <id>    dark ps" ]
       pane = "Darklang.Cli.Extensions.Tracing.pane"
-      handlers = "Darklang.Cli.Extensions.Tracing.commands" }
+      handlers = "Darklang.Cli.Extensions.Tracing.commands"
+      tour =
+        [ Darklang.Cli.Extensions.Step { say = "Every run is kept now: its input, what it called, what it returned.", run = [ "traces" ], expect = "" }
+          Darklang.Cli.Extensions.Step { say = "`traces show <id>` opens one. `ps` lists what is running right now.", run = [ "ps" ], expect = "this instance" } ]
+      peeks =
+        [ Darklang.Cli.Extensions.Peek { label = "processes and traces", command = [ "docs", "traces" ] }
+          Darklang.Cli.Extensions.Peek { label = "traces", command = [ "help", "traces" ] } ]
+      fake = "" }
 
 
 let acceptsTraces(): Darklang.Cli.Accepts.Accepts =
@@ -91,5 +106,5 @@ let pane(input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pane
   Darklang.Cli.Extensions.Pane
     { lines = [ recording ]
       actions =
-        [ Darklang.Cli.Extensions.action("t", "the newest runs", [ "traces" ])
-          Darklang.Cli.Extensions.action("d", "keep only the newest 20", [ "traces", "delete", "--keep", "20" ]) ] }
+        [ Darklang.Cli.Extensions.Action { key = "t", label = "the newest runs", command = [ "traces" ] }
+          Darklang.Cli.Extensions.Action { key = "d", label = "keep only the newest 20", command = [ "traces", "delete", "--keep", "20" ] } ] }

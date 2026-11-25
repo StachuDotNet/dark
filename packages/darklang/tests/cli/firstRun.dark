@@ -10,9 +10,20 @@ val steps: List<List<String>> =
     [ "commit", "my first function", "-y" ]
     [ "extensions", "enable", "history" ]
     [ "commit", "my first function", "-y" ]
+    [ "extensions", "enable", "branches" ]
+    [ "extensions", "explain", "branches" ]
     [ "extensions", "enable", "recommended" ]
     [ "extensions" ]
     [ "help" ] ]
+
+
+/// What a person types for <param path>: each command, `dark ` included, and enter.
+let keysTyped(path: List<List<String>>): Int64 =
+  path
+  |> Stdlib.List.map(fun args ->
+    let typed = args |> Stdlib.List.map(quoted) |> Stdlib.String.join(" ")
+    Stdlib.String.length(Stdlib.String.trimEnd("dark " + typed)) + 1)
+  |> Stdlib.List.fold(0, fun(a, b) -> a + b)
 
 
 /// A commit id differs every run.
@@ -50,7 +61,7 @@ let transcript(i: Instance.T): String =
 
 
 val expected =
-  """$ dark 
+  """$ dark
 Darklang: a small language that keeps your code in one store, on this machine.
 Write a script, or save functions and run them by name. Everything else is an
 extension you turn on when you want it.
@@ -66,12 +77,13 @@ Keep code
   dark ls Me    dark view Me.Hi.greet    dark search "split a string"
 Learn
   dark docs syntax    dark docs for-ai    dark help <command>
+  peek: dark docs signatures Stdlib.String    dark view Stdlib.List.map
 Grow
-  dark extensions                      what you can turn on (0 of 14 on)
+  dark extensions                      what you can turn on (0 of 15 on)
 This install
   dark permissions    dark update    dark uninstall    dark version
 
-Off: account, ai, compiler, history, http-server, recommended, tests, tools, tracing, workbench
+Off: account, agent, ai, compiler, history, http-server, recommended, tests, tools, tracing, workbench
 `dark extensions show <name>` says what one adds.
 [exit 0]
 $ dark eval '1 + 2'
@@ -97,6 +109,24 @@ $ dark commit 'my first function' -y
   CHANGED (1)
     + fn    Me.Hi.greet  new
 [exit 0]
+$ dark extensions enable branches
+  branches on
+    adds branch, branches, switch, merge, rebase, diff, log, resolve, conflicts
+[exit 0]
+$ dark extensions explain branches
+Branches: Try an idea on a line of its own, then merge it
+
+1/2  A branch is a line of work of its own: main can't see it until you merge.
+  $ dark branches
+    on main. branches:
+    no branches -- `dark switch -c <name>` starts one.
+
+2/2  `switch -c idea` starts one and moves you onto it; `merge idea` brings it back.
+
+Peek at
+  1  dark docs scm    branches, merging, conflicts
+  2  dark help merge    what merge takes
+[exit 0]
 $ dark extensions enable recommended
   tests on
     adds test
@@ -107,16 +137,17 @@ $ dark extensions enable recommended
   recommended on
 [exit 0]
 $ dark extensions
-Turn on what you want (5 of 14 on)
+Turn on what you want (6 of 15 on)
 Each one adds commands to `dark help`. Turning one off deletes nothing.
 
+  [ ] agent            turns on history, tests, tools
   [x] recommended      turns on history, tests, tracing, workbench
   [ ] account          Log in to darklang.com                          not built
   [ ]   sync           Your code and drafts on every machine, throug…  not built
   [ ] ai               Ask a model from your code, or let an agent w…  not built
   [ ] compiler         Build a function into a standalone executable   not built
   [x] history          Commit what you saved, see what changed, undo
-  [ ]   branches       Try an idea on a line of its own, then merge it
+  [x]   branches       Try an idea on a line of its own, then merge it
   [ ] http-server      Serve your functions on a local port
   [x] tests            Tests saved beside your code, run by name
   [ ]   tests-on-save  Run the tests each save touches, in the backg…  not built
@@ -144,12 +175,14 @@ Keep code
   dark ls Me    dark view Me.Hi.greet    dark search "split a string"
 Learn
   dark docs syntax    dark docs for-ai    dark help <command>
+  peek: dark docs signatures Stdlib.String    dark view Stdlib.List.map
 Grow
-  dark extensions                      what you can turn on (5 of 14 on)
+  dark extensions                      what you can turn on (6 of 15 on)
 This install
   dark permissions    dark update    dark uninstall    dark version
 
 From your extensions
+  branches      branch branches switch merge rebase diff log resolve conflicts
   history       status commit commits show discard undo ops constraints ack
                 dark status    dark commit "what changed"    dark commits    dark undo <name>
   tests         test
@@ -159,10 +192,16 @@ From your extensions
                 dark traces    dark traces show <id>    dark ps
   workbench     workbench clear quit
 
-Off: account, ai, compiler, http-server, tools
+Off: account, agent, ai, compiler, http-server, tools
 `dark extensions show <name>` says what one adds.
 [exit 0]"""
 
 
 test theFirstMinutes = Instance.withKernelOnly(fun i ->
   Stdlib.Test.equal(transcript(i), expected))
+
+
+/// The keys typed for the whole first-minutes path. If this grows, the first run got slower to
+/// type; change it only on purpose.
+test theFirstMinutesAreFewKeys =
+  Stdlib.Test.equal(keysTyped(steps), 341)

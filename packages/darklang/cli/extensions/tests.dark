@@ -3,12 +3,29 @@ module Darklang.Cli.Extensions.Testing
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("tests", "Tests", "Tests saved beside your code, run by name") with
+  Darklang.Cli.Extensions.Extension
+    { name = "tests"
+      title = "Tests"
+      blurb = "Tests saved beside your code, run by name"
+      under = ""
+      needs = []
       commands = [ "test" ]
-      guide = [ "dark test add Me.Hi.greets 'Me.Hi.greet(\"Ada\") |> Stdlib.Test.equal(\"hi Ada\")'"
-                "dark test run Me" ]
+      adds = []
+      asks = []
+      settings = []
+      installs = ""
+      guide =
+        [ "dark test add Me.Hi.greets 'Me.Hi.greet(\"Ada\") |> Stdlib.Test.equal(\"hi Ada\")'"
+          "dark test run Me" ]
       pane = "Darklang.Cli.Extensions.Testing.pane"
-      handlers = "Darklang.Cli.Extensions.Testing.commands" }
+      handlers = "Darklang.Cli.Extensions.Testing.commands"
+      tour =
+        [ Darklang.Cli.Extensions.Step { say = "A test is saved beside your code, like a fn: `test add Me.Hi.greets '<expression>'`.", run = [], expect = "" }
+          Darklang.Cli.Extensions.Step { say = "`test run Me` runs yours. A rerun skips what didn't change.", run = [ "test", "count" ], expect = "" } ]
+      peeks =
+        [ Darklang.Cli.Extensions.Peek { label = "what a test can check", command = [ "docs", "signatures", "Stdlib.Test" ] }
+          Darklang.Cli.Extensions.Peek { label = "test", command = [ "help", "test" ] } ]
+      fake = "" }
 
 
 let acceptsTest(): Darklang.Cli.Accepts.Accepts =
@@ -39,4 +56,4 @@ let commands(): List<Darklang.Cli.Registry.CommandHandler> =
 let pane(_input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pane =
   Darklang.Cli.Extensions.Pane
     { lines = [ "Tests live beside your code; a change reruns only what it touches." ]
-      actions = [ Darklang.Cli.Extensions.action("r", "run yours", [ "test", "run", "Me" ]) ] }
+      actions = [ Darklang.Cli.Extensions.Action { key = "r", label = "run yours", command = [ "test", "run", "Me" ] } ] }

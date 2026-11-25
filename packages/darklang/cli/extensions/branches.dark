@@ -3,8 +3,12 @@ module Darklang.Cli.Extensions.Branches
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("branches", "Branches", "Try an idea on a line of its own, then merge it") with
+  Darklang.Cli.Extensions.Extension
+    { name = "branches"
+      title = "Branches"
+      blurb = "Try an idea on a line of its own, then merge it"
       under = "history"
+      needs = []
       commands =
         [ "branch"
           "branches"
@@ -15,7 +19,20 @@ val extension: Darklang.Cli.Extensions.Extension =
           "log"
           "resolve"
           "conflicts" ]
-      handlers = "Darklang.Cli.Extensions.Branches.commands" }
+      adds = []
+      asks = []
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = "Darklang.Cli.Extensions.Branches.commands"
+      tour =
+        [ Darklang.Cli.Extensions.Step { say = "A branch is a line of work of its own: main can't see it until you merge.", run = [ "branches" ], expect = "" }
+          Darklang.Cli.Extensions.Step { say = "`switch -c idea` starts one and moves you onto it; `merge idea` brings it back.", run = [], expect = "" } ]
+      peeks =
+        [ Darklang.Cli.Extensions.Peek { label = "branches, merging, conflicts", command = [ "docs", "scm" ] }
+          Darklang.Cli.Extensions.Peek { label = "what merge takes", command = [ "help", "merge" ] } ]
+      fake = "" }
 
 
 let acceptsBranch(): Darklang.Cli.Accepts.Accepts =

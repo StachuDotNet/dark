@@ -3,7 +3,20 @@ module Darklang.Cli.Extensions.Outliner
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("outliner", "Outliner", "Notes as a folding tree, in the terminal") with
+  Darklang.Cli.Extensions.Extension
+    { name = "outliner"
+      title = "Outliner"
+      blurb = "Notes as a folding tree, in the terminal"
       under = "workbench"
+      needs = []
+      commands = []
+      adds = []
       asks = [ "file write ~/.darklang/outliner.json" ]
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = ""
+      tour = []
+      peeks = []
       fake = "the outliner is in later/; turning it on only records it" }

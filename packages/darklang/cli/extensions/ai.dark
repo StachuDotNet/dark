@@ -3,6 +3,20 @@ module Darklang.Cli.Extensions.Ai
 
 
 val extension: Darklang.Cli.Extensions.Extension =
-  { Darklang.Cli.Extensions.named("ai", "AI", "Ask a model from your code, or let an agent work in the store") with
+  Darklang.Cli.Extensions.Extension
+    { name = "ai"
+      title = "AI"
+      blurb = "Ask a model from your code, or let an agent work in the store"
+      under = ""
+      needs = []
+      commands = []
+      adds = []
       asks = [ "http POST https://api.anthropic.com/*" ]
+      settings = []
+      installs = ""
+      guide = []
+      pane = ""
+      handlers = ""
+      tour = []
+      peeks = []
       fake = "the agent and LLM packages are in later/; turning it on only records it" }
