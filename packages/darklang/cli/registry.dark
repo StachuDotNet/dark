@@ -42,8 +42,8 @@ module Registry =
     Accepts.subcommands(
       [ ("list", Accepts.nothing())
         ("show", Accepts.between(1, 1, []))
-        ("enable", Accepts.between(1, 1, []))
-        ("disable", Accepts.between(1, 1, [])) ],
+        ("enable", Accepts.between(1, 99, []))
+        ("disable", Accepts.between(1, 99, [])) ],
       Accepts.nothing())
 
 
@@ -1044,15 +1044,11 @@ module Registry =
 
     // An unknown name has no help to show; `dark frobnicate --help` is refused like `dark frobnicate`.
     let known = Stdlib.List.any(state.allCommandsCache, fun cmd -> cmd.name == handler.name)
-    let added =
-      if known then
-        Option.None
-      else
-        Extensions.addedCommand(state.currentBranchId, name)
-
-    match added with
-    | Some(cmd) -> Run.execute(state, [ cmd.run, ...args ])
-    | None -> executeKnown(name, handler, known, asksForHelp, args, state)
+    match Extensions.home(state.currentBranchId, handler.name, known) with
+    | Runs(e, cmd) -> Extensions.runAdded(state, e, cmd, args)
+    | Off(e) when Stdlib.Bool.not(asksForHelp && known) ->
+      Extensions.refuseOff(state, handler.name, e)
+    | _ -> executeKnown(name, handler, known, asksForHelp, args, state)
 
 
   let executeKnown(
@@ -1142,7 +1138,7 @@ module Registry =
       && Stdlib.Bool.not(Stdlib.String.startsWith(firstLine, "dark "))
 
     let summarised = if alreadySummarised then body else $"{handler.description}\n{body}"
-    summarised + aliasSuffix
+    summarised + aliasSuffix + Extensions.offNote(state.currentBranchId, handler.name)
 
 
   // Command groups organized by category, for `dark help`.

@@ -346,6 +346,7 @@ let instancePolicyLines(): List<String> =
   Stdlib.List.flatten(
     [ [ "Instance defaults:" ]
       policyLines(currentPolicy())
+      Extensions.grantLines()
       [ "Unlisted access needs a remembered approval or --allow. Explicit denies win." ] ])
 
 

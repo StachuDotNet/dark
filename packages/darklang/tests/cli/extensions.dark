@@ -18,7 +18,7 @@ test everyCommandHasOneHome =
   |> Stdlib.Test.equal([])
 
 
-test turningOnTurnsOnWhatItNeeds = Instance.withInstance(fun i ->
+test turningOnTurnsOnWhatItNeeds = Instance.withKernelOnly(fun i ->
   let output = Instance.output(i, [ "extensions", "enable", "sync" ])
   Stdlib.Test.all(
     [ Instance.says(output, "account on", "the extension it sits under")
@@ -26,7 +26,154 @@ test turningOnTurnsOnWhatItNeeds = Instance.withInstance(fun i ->
       Instance.says(output, "  sync on", "itself") ]))
 
 
-test turningOffTurnsOffWhatNeedsIt = Instance.withInstance(fun i ->
+test turningOffTurnsOffWhatNeedsIt = Instance.withKernelOnly(fun i ->
   let _ = Instance.output(i, [ "extensions", "enable", "branches" ])
   let output = Instance.output(i, [ "extensions", "disable", "history" ])
   Instance.says(output, "  branches off", "branches, which needs history"))
+
+
+test aCommandWhoseExtensionIsOffSaysHowToTurnItOn = Instance.withKernelOnly(fun i ->
+  let (code, out) = Instance.ran(i, [ "commit", "x", "-y" ])
+  Stdlib.Test.all(
+    [ Stdlib.Test.equal(code, 1)
+      Instance.says(out, "`commit` comes with history, which is off.", "names its extension")
+      Instance.says(out, "dark extensions enable history", "and the one command") ]))
+
+
+test itsHelpStillShows = Instance.withKernelOnly(fun i ->
+  let out = Instance.said(i, [ "help", "commit" ])
+  Stdlib.Test.all(
+    [ Instance.says(out, "Usage", "the help itself")
+      Instance.says(out, "Comes with history, which is off", "where it lives") ]))
+
+
+test turnedOnItRuns = Instance.withKernelOnly(fun i ->
+  let _ = Instance.output(i, [ "extensions", "enable", "history" ])
+  let (code, _) = Instance.ran(i, [ "status" ])
+  Stdlib.Test.equal(code, 0))
+
+
+test theKernelRunsWithNothingOn = Instance.withKernelOnly(fun i ->
+  Instance.expectContains(i, [ "eval", "1 + 2" ], "3"))
+
+
+val askerSource =
+  """let main(_args: List<String>): Int64 =
+  match Stdlib.Cli.FileSystem.readFileAsString("/etc/hostname") with
+  | Ok(_) ->
+    Stdlib.printLine("read it")
+    0
+  | Error(_) -> 2
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.simple(
+      "asker",
+      "Reads a file",
+      [ Darklang.Cli.Extensions.command("asker", "Read /etc/hostname", "Me.Asker.main") ]) with
+      asks = [ "file read /etc/hostname" ] }
+"""
+
+
+let withAsker(f: Instance.T -> Stdlib.Test.Result): Stdlib.Test.Result =
+  Instance.withKernelOnly(fun i ->
+    let (code, out) = Instance.runWithStdin(i, [ "module", "/Me.Asker", "-" ], askerSource)
+    if code == 0 then f(i) else Stdlib.Test.fail($"could not save the extension: {out}"))
+
+
+/// <param args> at a terminal, with <param typed> typed into it: the pipe goes into `script`, so
+/// the CLI's stdin is the terminal.
+let atTerminal(i: Instance.T, args: List<String>, typed: String): String =
+  let line =
+    Stdlib.List.flatten(
+      [ [ "/usr/bin/env", "TERM=xterm-256color" ]
+        Instance.env(i) |> Stdlib.List.map(fun((k, v)) -> $"{k}={v}")
+        [ i.cli ]
+        args ])
+    |> Stdlib.List.map(Stdlib.Cli.Process.shellQuote)
+    |> Stdlib.String.join(" ")
+
+  let shell =
+    "printf '%s' "
+    + Stdlib.Cli.Process.shellQuote(typed)
+    + " | script -qec "
+    + Stdlib.Cli.Process.shellQuote("stty cols 100 rows 30; " + line)
+    + " /dev/null"
+
+  match Stdlib.Cli.Process.runWithTimeout(Instance.commandTimeoutMs, "/bin/sh", [ "-c", shell ]) with
+  | Ok(out) -> Stdlib.Cli.Tui.Text.stripSgr(out.stdout + out.stderr)
+  | Error(e) -> $"could not run: {e}"
+
+
+/// Nobody at a terminal can say yes, so turning one on allows nothing.
+test withoutATerminalNothingIsAllowed = withAsker(fun i ->
+  let enabled = Instance.said(i, [ "extensions", "enable", "asker" ])
+  let (code, _) = Instance.ran(i, [ "asker" ])
+  Stdlib.Test.all(
+    [ Instance.says(enabled, "asker on", "it is on")
+      Instance.says(enabled, "not allowed", "what it asks for is not")
+      (if code != 0 then Stdlib.Test.Result.Pass else Stdlib.Test.fail("it read the file")) ]))
+
+
+test aYesAllowsItsOwnCommandAndDisableTakesItBack = withAsker(fun i ->
+  let enabled = atTerminal(i, [ "extensions", "enable", "asker" ], "y\n")
+  let ran = Instance.said(i, [ "asker" ])
+  let listed = Instance.said(i, [ "permissions", "list" ])
+  let others = Instance.ran(i, [ "eval", "Stdlib.Cli.FileSystem.readFileAsString(\"/etc/hostname\")" ])
+  let disabled = Instance.said(i, [ "extensions", "disable", "asker" ])
+  let (after, _) = Instance.ran(i, [ "asker" ])
+  Stdlib.Test.all(
+    [ Instance.says(enabled, "allowed, for its own commands only", "the yes")
+      Instance.says(ran, "read it", "its command reads the file")
+      Instance.says(listed, "asker: file read /etc/hostname", "permissions list shows it")
+      Instance.says(
+        Stdlib.Tuple2.second(others),
+        "file read",
+        "other code still needs its own grant")
+      Instance.says(disabled, "no longer allowed: file read /etc/hostname", "disable says so")
+      Stdlib.Test.equal(after, 1) ]))
+
+
+test aPaneShowsWhatItsExtensionIsDoing = Instance.withKernelOnly(fun i ->
+  let _ = Instance.output(i, [ "extensions", "enable", "tracing" ])
+  let out = Instance.said(i, [ "extensions", "show", "tracing" ])
+  Stdlib.Test.all(
+    [ Instance.says(out, "Every run is recorded.", "its state")
+      Instance.says(out, "t  the newest runs  (dark traces)", "a key and the command it runs") ]))
+
+
+test helpShowsHowAnExtensionsCommandsGoTogether = Instance.withKernelOnly(fun i ->
+  let _ = Instance.output(i, [ "extensions", "enable", "history" ])
+  Instance.says(Instance.said(i, [ "help" ]), "dark status    dark commit", "history's guide"))
+
+
+val paneSource =
+  """let pane(input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pane =
+  Darklang.Cli.Extensions.Pane
+    { lines = [ "on: " + Stdlib.display(input.on) ]
+      actions = [ Darklang.Cli.Extensions.action("v", "the version", [ "version", "--local" ]) ] }
+
+let sneaky(_input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pane =
+  let found = Darklang.Cli.Extensions.all(Darklang.SCM.Branches.current())
+  Darklang.Cli.Extensions.Pane { lines = [ Stdlib.display(Stdlib.List.length(found)) ], actions = [] }
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("paned", "Paned", "Has a pane") with pane = "Me.Paned.pane" }
+
+val sneakyExtension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("sneaky", "Sneaky", "Reads what it may not") with
+      pane = "Me.Paned.sneaky" }
+"""
+
+
+/// A user's pane is called the same way as ours, and runs as ordinary code: one that tries to read
+/// what only the CLI may is refused, in its place.
+test yourPaneRunsAsYourCode = Instance.withKernelOnly(fun i ->
+  let (code, saved) = Instance.runWithStdin(i, [ "module", "/Me.Paned", "-" ], paneSource)
+  let _ = Instance.output(i, [ "extensions", "enable", "paned", "sneaky" ])
+  let paned = Instance.said(i, [ "extensions", "show", "paned" ])
+  let sneaky = Instance.said(i, [ "extensions", "show", "sneaky" ])
+  Stdlib.Test.all(
+    [ Stdlib.Test.equal((code, ""), (0, if code == 0 then "" else saved))
+      Instance.says(paned, "on: true", "what it was given")
+      Instance.says(paned, "v  the version  (dark version --local)", "its key")
+      Instance.says(sneaky, "its pane failed", "the refused read") ]))

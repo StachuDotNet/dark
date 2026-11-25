@@ -149,7 +149,7 @@ gate_perf_probes_run() {
   rm -rf "$work"
   mkdir -p "$work/logs"
   scripts/testing/_copy-store "$work/data.db"
-  sqlite3 "$work/data.db" "DELETE FROM config_v0;"
+  sqlite3 "$work/data.db" "DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*');"
   out=$(HOME="${work%/.darklang}" scripts/perf/http --cli "$(realpath "$CLI")" -n 20 -c 2 -p 1 < /dev/null 2>&1)
   rc=$?
   elapsed=$(( SECONDS - started ))

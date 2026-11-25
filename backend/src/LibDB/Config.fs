@@ -77,10 +77,16 @@ let settings : List<string> =
     "trace.maxMb"
     "instance.name" ]
 
-/// The settings that open HTTP's network guard or decide what traces record. They are the
+/// The settings that open HTTP's network guard, decide what traces record, or say which
+/// extensions are on and what each was allowed. They are the
 /// person's to change, like the permission policy: `dark config set` or the `DARK_CONFIG_*`
 /// variables, never code Dark runs, whatever that code was granted.
-let personOnly : List<string> = [ "http.loopback"; "http.private"; "trace.record" ]
+let personOnly : List<string> =
+  [ "http.loopback"
+    "http.private"
+    "trace.record"
+    "extensions.on"
+    "extensions.granted" ]
 
 /// Every key `dark config` answers for: the settings, and `instance.id`, which is read but
 /// never set.
@@ -88,7 +94,8 @@ let readable : List<string> = settings @ [ "instance.id" ]
 
 /// Keys Dark code keeps for itself, with any value: which live view is showing, which function
 /// `traces watch` follows. Nobody types these.
-let private internalKeys = [ "live.show"; "traces.watch.fn"; "extensions.on" ]
+let private internalKeys =
+  [ "live.show"; "traces.watch.fn"; "extensions.on"; "extensions.granted" ]
 
 /// Scratch keys for tests. Nothing in the product reads a key under this prefix.
 let private testPrefix = "test."

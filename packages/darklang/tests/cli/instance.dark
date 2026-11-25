@@ -77,7 +77,9 @@ let create(): Stdlib.Result.Result<T, String> =
       //
       // Then clear the copy's config. It would otherwise inherit the dev store's current
       // branch and identity, so if the dev store is on a branch, every test instance
-      // starts there instead of on main. Clear all of it, not just the branch keys.
+      // starts there instead of on main. Clear all of it, not just the branch keys, then turn
+      // every extension on: a test of a command is not a test of turning it on.
+      // `withKernelOnly` starts with none.
       //
       // And clear its traces: the source store holds other tests' runs, some still going,
       // so an instance would otherwise start with traces it never made.
@@ -96,7 +98,7 @@ let create(): Stdlib.Result.Result<T, String> =
       let copy =
         Stdlib.Cli.Unix.executeInDirectoryWithOutput(
           ".",
-          $"if [ -s {src}-wal ]; then sqlite3 -cmd '.timeout 10000' {src} '.backup {db}'; else cp {src} {db} && chmod u+w {db}; fi && clear=$({traceTables}) && sqlite3 -cmd 'PRAGMA synchronous=OFF' {db} \"PRAGMA journal_mode=WAL; DELETE FROM config_v0; $clear\" >/dev/null")
+          $"if [ -s {src}-wal ]; then sqlite3 -cmd '.timeout 10000' {src} '.backup {db}'; else cp {src} {db} && chmod u+w {db}; fi && clear=$({traceTables}) && sqlite3 -cmd 'PRAGMA synchronous=OFF' {db} \"PRAGMA journal_mode=WAL; DELETE FROM config_v0; INSERT INTO config_v0 (key, value) VALUES ('extensions.on', '*'); $clear\" >/dev/null")
 
       if copy.exitCode != 0 then
         Stdlib.Result.Result.Error(
@@ -266,6 +268,27 @@ let withInstance(f: T -> Stdlib.Test.Result): Stdlib.Test.Result =
 
     let _ = dispose(i)
     result
+
+
+/// `withInstance` on a fresh install: no extension on, as a new user starts.
+let withKernelOnly(f: T -> Stdlib.Test.Result): Stdlib.Test.Result =
+  withInstance(fun i ->
+    let off =
+      Stdlib.Cli.Unix.executeInDirectoryWithOutput(
+        ".",
+        $"sqlite3 {i.dir}/data.db \"DELETE FROM config_v0 WHERE key = 'extensions.on'\"")
+
+    if off.exitCode == 0 then
+      let result = f(i)
+      // The bindings check after it runs the CLI on this store, and needs its commands.
+      let _ =
+        Stdlib.Cli.Unix.executeInDirectoryWithOutput(
+          ".",
+          $"sqlite3 {i.dir}/data.db \"INSERT OR REPLACE INTO config_v0 (key, value) VALUES ('extensions.on', '*')\"")
+
+      result
+    else
+      Stdlib.Test.fail($"could not turn the extensions off: {off.stderr}"))
 
 
 /// Asserts a command's output contains `needle`.

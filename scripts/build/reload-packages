@@ -49,4 +49,8 @@ if ! ./scripts/run-local-exec $PUBLISHED_FLAG reload-packages > "$LOG_PACKAGES" 
   exit 1
 fi
 
+# A dev store has every extension on. A person's install starts with none (`dark extensions`).
+sqlite3 "${HOME}/.darklang/${DARK_CONFIG_DB_NAME:-data.db}" \
+  "INSERT OR IGNORE INTO config_v0 (key, value) VALUES ('extensions.on', '*')"
+
 echo "Done reloading packages"

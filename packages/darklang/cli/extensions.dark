@@ -29,8 +29,35 @@ type Extension =
     settings: List<(String * String)>
     /// What turning it on downloads or builds; "" for nothing.
     installs: String
+    /// Lines `dark help` shows under it while it is on: how its commands go together.
+    guide: List<String>
+    /// A fn `(PaneInput) -> Pane` the extensions app shows for it; "" for none.
+    pane: String
     /// What this prototype does not do for it yet; "" when it is all real.
     fake: String }
+
+
+/// What the kernel hands a pane. A pane is ordinary code: it reads what it is given, and what any
+/// code may read by default (the store, traces), never config or the policy.
+type PaneInput =
+  { on: Bool
+    /// The value each config key it sets has now, "" when unset.
+    settings: List<(String * String)>
+    /// What it was allowed.
+    granted: List<String> }
+
+
+/// A key the person can press on a pane, and the command it runs: the same as typing it. A pane
+/// does nothing itself; it proposes, and the person's key press is the yes.
+type Action =
+  { key: String
+    label: String
+    command: List<String> }
+
+
+type Pane =
+  { lines: List<String>
+    actions: List<Action> }
 
 
 /// An extension that adds commands and nothing else: the usual shape for your own.
@@ -46,6 +73,8 @@ let simple(name: String, title: String, adds: List<Command>): Extension =
       asks = []
       settings = []
       installs = ""
+      guide = []
+      pane = ""
       fake = "" }
 
 
@@ -58,12 +87,18 @@ let command(name: String, description: String, run: String): Command =
   Command { name = name, description = description, run = run }
 
 
+let action(key: String, label: String, command: List<String>): Action =
+  Action { key = key, label = label, command = command }
+
+
 // --- what ships ---
 
 val history: Extension =
   { named("history", "History", "Commit what you saved, see what changed, undo") with
       commands =
-        [ "status", "commit", "commits", "show", "discard", "undo", "ops", "constraints", "ack" ] }
+        [ "status", "commit", "commits", "show", "discard", "undo", "ops", "constraints", "ack" ]
+      guide = [ "dark status    dark commit \"what changed\"    dark commits    dark undo <name>" ]
+      pane = "Darklang.Cli.Extensions.Panes.history" }
 
 
 val branches: Extension =
@@ -90,10 +125,6 @@ val tools: Extension =
           "find-values"
           "deps"
           "typecheck"
-          "val"
-          "type"
-          "trait"
-          "impl"
           "impls"
           "edit"
           "rename"
@@ -110,7 +141,10 @@ val tools: Extension =
 
 val tests: Extension =
   { named("tests", "Tests", "Tests saved beside your code, run by name") with
-      commands = [ "test" ] }
+      commands = [ "test" ]
+      guide = [ "dark test add Me.Hi.greets 'Me.Hi.greet(\"Ada\") |> Stdlib.Test.equal(\"hi Ada\")'"
+                "dark test run Me" ]
+      pane = "Darklang.Cli.Extensions.Panes.tests" }
 
 
 val testsOnSave: Extension =
@@ -125,14 +159,14 @@ val testsOnSave: Extension =
 val tracing: Extension =
   { named("tracing", "Tracing", "Keep a record of every run, and read it back") with
       commands = [ "traces", "ps" ]
-      settings = [ ("trace.record", "on") ] }
+      settings = [ ("trace.record", "on") ]
+      guide = [ "dark traces    dark traces show <id>    dark ps" ]
+      pane = "Darklang.Cli.Extensions.Panes.tracing" }
 
 
 val httpServer: Extension =
   { named("http-server", "HTTP server", "Serve your functions on a local port") with
-      commands = [ "serve" ]
-      asks = [ "http-server 127.0.0.1 *" ]
-      fake = "the rule it asks for is shown, not granted" }
+      commands = [ "serve" ] }
 
 
 val workbench: Extension =
@@ -218,29 +252,99 @@ let isSet(e: Extension): Bool =
   Stdlib.List.isEmpty(e.commands) && Stdlib.List.isEmpty(e.adds) && e.needs != []
 
 
-// --- what is on ---
+// --- what is on, and what each was allowed ---
+// Both keys are the person's (`personOnly` in LibDB/Config.fs): code Dark runs can't change them.
 
-val configKey = "extensions.on"
+val onKey = "extensions.on"
+
+val grantsKey = "extensions.granted"
 
 
-let onNames(): List<String> =
-  match LanguageTools.LocalStore.configGet(configKey) with
+/// What config says is on. `*` is every extension, found or still to be: the dev store and the
+/// test instances start that way.
+let chosen(): List<String> =
+  match LanguageTools.LocalStore.configGet(onKey) with
   | Some(s) -> Stdlib.String.split(s, ",") |> Stdlib.List.filter(fun n -> n != "")
   | None -> []
+
+
+let everythingOn(): Bool =
+  chosen() == [ "*" ]
+
+
+let onNames(exts: List<Extension>): List<String> =
+  if everythingOn() then Stdlib.List.map(exts, fun e -> e.name) else chosen()
 
 
 let saveOn(names: List<String>): Unit =
   let _ =
     if Stdlib.List.isEmpty(names) then
-      LanguageTools.LocalStore.configUnset(configKey)
+      LanguageTools.LocalStore.configUnset(onKey)
     else
-      LanguageTools.LocalStore.configSet(configKey, Stdlib.String.join(names, ","))
+      LanguageTools.LocalStore.configSet(onKey, Stdlib.String.join(names, ","))
 
   ()
 
 
-let isOn(name: String): Bool =
-  Stdlib.List.contains(onNames(), name)
+/// Every rule an extension was allowed when it was turned on, as `(extension, rule)`.
+let grantRows(): List<(String * String)> =
+  match LanguageTools.LocalStore.configGet(grantsKey) with
+  | None -> []
+  | Some(s) ->
+    Stdlib.String.splitOnNewline(s)
+    |> Stdlib.List.filterMap(fun line ->
+      match Stdlib.String.split(line, "\t") with
+      | [name, rule] -> Option.Some((name, rule))
+      | _ -> Option.None)
+
+
+let saveGrants(rows: List<(String * String)>): Unit =
+  let _ =
+    if Stdlib.List.isEmpty(rows) then
+      LanguageTools.LocalStore.configUnset(grantsKey)
+    else
+      let value =
+        rows
+        |> Stdlib.List.map(fun ((name, rule)) -> name + "\t" + rule)
+        |> Stdlib.String.join("\n")
+
+      LanguageTools.LocalStore.configSet(grantsKey, value)
+
+  ()
+
+
+let granted(name: String): List<String> =
+  grantRows()
+  |> Stdlib.List.filter(fun ((n, _)) -> n == name)
+  |> Stdlib.List.map(fun ((_, rule)) -> rule)
+
+
+/// What <param e> asks for and has not been allowed.
+let ungranted(e: Extension): List<String> =
+  let given = granted(e.name)
+  e.asks |> Stdlib.List.filter(fun a -> Stdlib.Bool.not(Stdlib.List.contains(given, a)))
+
+
+let grant(e: Extension, rules: List<String>): Unit =
+  saveGrants(Stdlib.List.concat(grantRows(), Stdlib.List.map(rules, fun r -> (e.name, r))))
+
+
+let revoke(name: String): List<String> =
+  let rows = grantRows()
+  saveGrants(rows |> Stdlib.List.filter(fun ((n, _)) -> n != name))
+  rows
+  |> Stdlib.List.filter(fun ((n, _)) -> n == name)
+  |> Stdlib.List.map(fun ((_, rule)) -> rule)
+
+
+/// The run grants an extension's own commands run with: what it was allowed, and nothing else.
+let grantsFor(name: String): LanguageTools.Permissions.Policy =
+  let rules =
+    granted(name)
+    |> Stdlib.List.filterMap(fun r -> LanguageTools.Permissions.parseRuleText(r))
+    |> Stdlib.List.flatten
+
+  LanguageTools.Permissions.Policy { allow = rules, deny = [] }
 
 
 /// <param name> and everything it needs, the needed ones first.
@@ -265,32 +369,79 @@ let commandNames(e: Extension): List<String> =
   Stdlib.List.concat(e.commands, Stdlib.List.map(e.adds, fun c -> c.name))
 
 
-/// The fn behind <param name> when an extension that is on adds it.
-let addedCommand(branchId: Uuid, name: String): Option<Command> =
-  let on = onNames()
-  if Stdlib.List.isEmpty(on) then
-    Option.None
+// --- where a command lives ---
+
+type Home =
+  /// The kernel's, or nobody's: dispatch goes on as usual.
+  | Free
+  /// A command an extension that is on adds.
+  | Runs(Extension, Command)
+  /// A command of an extension that is off.
+  | Off(Extension)
+
+
+/// Where <param name> lives. <param known> is whether the CLI has a command by that name; one an
+/// extension adds never shadows it.
+let home(branchId: Uuid, name: String, known: Bool): Home =
+  if known && (Stdlib.List.contains(kernel, name) || everythingOn()) then
+    Home.Free
   else
-    all(branchId)
-    |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name))
-    |> Stdlib.List.map(fun e -> e.adds)
-    |> Stdlib.List.flatten
-    |> Stdlib.List.findFirst(fun c -> c.name == name)
+    let exts = all(branchId)
+    let on = onNames(exts)
+    let claims = exts |> Stdlib.List.filter(fun e -> Stdlib.List.contains(commandNames(e), name))
+    match Stdlib.List.findFirst(claims, fun e -> Stdlib.List.contains(on, e.name)) with
+    | Some(e) ->
+      match Stdlib.List.findFirst(e.adds, fun c -> c.name == name) with
+      | Some(c) when Stdlib.Bool.not(known) -> Home.Runs(e, c)
+      | _ -> Home.Free
+    | None ->
+      match Stdlib.List.head(claims) with
+      | Some(e) -> Home.Off(e)
+      | None -> Home.Free
+
+
+let refuseOff(state: AppState, command: String, e: Extension): AppState =
+  printErr($"`{command}` comes with {e.name}, which is off.")
+  printHint($"  dark extensions enable {e.name}")
+  failed(state)
+
+
+/// What `dark <command> --help` adds for a command whose extension is off.
+let offNote(branchId: Uuid, command: String): String =
+  match home(branchId, command, true) with
+  | Off(e) -> $"\n\nComes with {e.name}, which is off: `dark extensions enable {e.name}`."
+  | _ -> ""
+
+
+/// Run a command an extension adds, the way `dark run <fn>` runs one, with that extension's grants.
+let runAdded(state: AppState, e: Extension, c: Command, args: List<String>): AppState =
+  Run.executeOptions(
+    state,
+    [],
+    [ c.run, ...args ],
+    Run.Options { allowHarmful = false, sandbox = false, grants = grantsFor(e.name) },
+    false)
 
 
 // --- turning on and off ---
 
 let describe(e: Extension): List<String> =
   let names = commandNames(e)
+  let given = granted(e.name)
+  let asks =
+    e.asks
+    |> Stdlib.List.map(fun a ->
+      if Stdlib.List.contains(given, a) then a + " (allowed)" else a)
+
   [ if Stdlib.List.isEmpty(names) then
       ""
     else
       "adds " + Stdlib.String.join(names, ", ")
 
-    if Stdlib.List.isEmpty(e.asks) then
+    if Stdlib.List.isEmpty(asks) then
       ""
     else
-      "asks for " + Stdlib.String.join(e.asks, "; ")
+      "asks for " + Stdlib.String.join(asks, "; ")
 
     if e.installs == "" then "" else "installs " + e.installs
 
@@ -311,35 +462,35 @@ let applySettings(e: Extension, turningOn: Bool): Unit =
     ())
 
 
-/// Turn <param name> on, with what it needs. The lines say what changed.
-let enable(exts: List<Extension>, name: String): Result<List<String>, String> =
+/// Turn <param name> on, with what it needs: the ones that were off, in the order they went on.
+/// What they ask for is not allowed here; see <fn allowAsked>.
+let turnOn(exts: List<Extension>, name: String): Result<List<Extension>, String> =
   match find(exts, name) with
   | None -> Result.Error($"No extension called `{name}`.")
   | Some(_) ->
-    let on = onNames()
+    let on = onNames(exts)
     let turning =
       withNeeds(exts, name, [])
       |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(on, n)))
+      |> Stdlib.List.filterMap(fun n -> find(exts, n))
 
-    if Stdlib.List.isEmpty(turning) then
-      Result.Ok([ $"{name} is already on." ])
-    else
-      let turned = turning |> Stdlib.List.filterMap(fun n -> find(exts, n))
-      turned |> Stdlib.List.iter(fun e -> applySettings(e, true))
-      saveOn(Stdlib.List.concat(on, turning))
-      let lines =
-        turned
-        |> Stdlib.List.map(fun e ->
-          let details = describe(e) |> Stdlib.List.map(fun d -> "    " + d)
-          [ $"  {e.name} on", ...details ])
-        |> Stdlib.List.flatten
-
-      Result.Ok(lines)
+    turning |> Stdlib.List.iter(fun e -> applySettings(e, true))
+    saveOn(Stdlib.List.concat(on, Stdlib.List.map(turning, fun e -> e.name)))
+    Result.Ok(turning)
 
 
-/// Turn <param name> off, with what needs it. Nothing it made is deleted.
-let disable(exts: List<Extension>, name: String): Result<List<String>, String> =
-  let on = onNames()
+let onLines(turned: List<Extension>): List<String> =
+  turned
+  |> Stdlib.List.map(fun e ->
+    let details = describe(e) |> Stdlib.List.map(fun d -> "    " + d)
+    [ $"  {e.name} on", ...details ])
+  |> Stdlib.List.flatten
+
+
+/// Turn <param name> off, with what needs it, and forget what each was allowed. Nothing they made
+/// is deleted.
+let turnOff(exts: List<Extension>, name: String): Result<List<String>, String> =
+  let on = onNames(exts)
   if Stdlib.Bool.not(Stdlib.List.contains(on, name)) then
     match find(exts, name) with
     | None -> Result.Error($"No extension called `{name}`.")
@@ -351,7 +502,158 @@ let disable(exts: List<Extension>, name: String): Result<List<String>, String> =
     |> Stdlib.List.iter(fun e -> applySettings(e, false))
 
     saveOn(on |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(turning, n))))
-    Result.Ok(turning |> Stdlib.List.map(fun n -> $"  {n} off"))
+    let lines =
+      turning
+      |> Stdlib.List.map(fun n ->
+        let taken =
+          revoke(n) |> Stdlib.List.map(fun rule -> $"    no longer allowed: {rule}")
+
+        [ $"  {n} off", ...taken ])
+      |> Stdlib.List.flatten
+
+    Result.Ok(lines)
+
+
+/// Ask the person to allow what <param e> asks for and was not given. Only a person at a terminal
+/// can say yes, so an agent turning an extension on never widens what it may do.
+let allowAsked(e: Extension): Unit =
+  let missing = ungranted(e)
+  if Stdlib.List.isEmpty(missing) then
+    ()
+  else if Stdlib.Cli.UI.Prompt.canAsk() then
+    Stdlib.printLine($"  {e.name} asks for:")
+    missing |> Stdlib.List.iter(fun r -> Stdlib.printLine("    " + r))
+    if Prompt.confirmExplicit(Confirm.Ask, "  Allow it? [y/N]: ") then
+      grant(e, missing)
+      Stdlib.printLine("  allowed, for its own commands only")
+    else
+      Stdlib.printLine($"  not allowed. `dark extensions enable {e.name}` asks again.")
+  else
+    Stdlib.printLine(
+      $"  {e.name} asks for {Stdlib.String.join(missing, "; ")}: not allowed, since only a person at a terminal can allow it.")
+    Stdlib.printLine($"  At a terminal: dark extensions enable {e.name}")
+
+
+/// `dark extensions enable <name>`: what went on and what it adds, then the question about what
+/// each one asks for.
+let enable(exts: List<Extension>, name: String): Result<Unit, String> =
+  match turnOn(exts, name) with
+  | Error(e) -> Result.Error(e)
+  | Ok(turned) ->
+    if Stdlib.List.isEmpty(turned) then
+      Stdlib.printLine($"{name} is already on.")
+    else
+      Stdlib.printLines(onLines(turned))
+
+    let asking =
+      match find(exts, name) with
+      | Some(e) when Stdlib.List.isEmpty(turned) -> [ e ]
+      | _ -> turned
+
+    asking |> Stdlib.List.iter(fun e -> allowAsked(e))
+    Result.Ok(())
+
+
+// --- panes ---
+
+let settingNow(key: String): String =
+  LanguageTools.LocalStore.configGet(key) |> Stdlib.Option.withDefault("")
+
+
+let paneInput(e: Extension, on: List<String>): PaneInput =
+  PaneInput
+    { on = Stdlib.List.contains(on, e.name)
+      settings = e.settings |> Stdlib.List.map(fun ((key, _)) -> (key, settingNow(key)))
+      granted = granted(e.name) }
+
+
+/// Run <param e>'s pane by name, as any code is called: ours and yours alike. A pane that fails
+/// says why, in its place.
+let runPane(branchId: Uuid, e: Extension, input: PaneInput): Result<Pane, String> =
+  match LanguageTools.Live.applicableByName(branchId, e.pane) with
+  | Error(msg) -> Result.Error(msg)
+  | Ok(f) -> LanguageTools.Live.apply(f, input)
+
+
+let paneOf(branchId: Uuid, e: Extension, on: List<String>): Option<Pane> =
+  if e.pane == "" then
+    Option.None
+  else
+    match runPane(branchId, e, paneInput(e, on)) with
+    | Ok(p) -> Option.Some(p)
+    | Error(msg) -> Option.Some(Pane { lines = [ $"its pane failed: {msg}" ], actions = [] })
+
+
+let paneLines(p: Pane): List<String> =
+  let actions =
+    p.actions
+    |> Stdlib.List.map(fun a ->
+      let cmd = Stdlib.String.join(a.command, " ")
+      $"{a.key}  {a.label}  (dark {cmd})")
+
+  Stdlib.List.concat(p.lines, actions)
+
+
+/// What a pane's key runs: the command it names, as if the person typed it. What it printed comes
+/// back as lines, since the extensions app owns the screen.
+let runAction(app: AppState, a: Action): List<String> =
+  match a.command with
+  | [] -> []
+  | [name, ...args] ->
+    let owned = Builtin.stdoutCaptureStart()
+    let _ = Registry.executeCommand(name, app, args)
+    let out = if owned then Builtin.stdoutCaptureStop() else ""
+    let printed =
+      Stdlib.String.splitOnNewline(Stdlib.Cli.Tui.Text.stripSgr(out))
+      |> Stdlib.List.filter(fun l -> Stdlib.String.trim(l) != "")
+      |> Stdlib.List.take(12)
+
+    [ "$ dark " + Stdlib.String.join(a.command, " "), ...printed ]
+
+
+/// The panes of the extensions we ship. Each is what a user's would be: a fn of its input.
+module Panes =
+  let setting(input: PaneInput, key: String): String =
+    input.settings
+    |> Stdlib.List.findFirst(fun ((k, _)) -> k == key)
+    |> Stdlib.Option.map(fun ((_, v)) -> v)
+    |> Stdlib.Option.withDefault("")
+
+
+  let tracing(input: PaneInput): Pane =
+    let recording =
+      if setting(input, "trace.record") == "on" then
+        "Every run is recorded."
+      else
+        "Runs are not recorded. Turning tracing off and on starts again."
+
+    Pane
+      { lines = [ recording ]
+        actions =
+          [ action("t", "the newest runs", [ "traces" ])
+            action("d", "keep only the newest 20", [ "traces", "delete", "--keep", "20" ]) ] }
+
+
+  let history(_input: PaneInput): Pane =
+    let draft = SCM.Draft.read()
+    let n = Stdlib.List.length(draft.bindings)
+    let line =
+      match n with
+      | 0 -> "Everything you saved is committed."
+      | 1 -> "1 item saved and not committed."
+      | _ -> $"{n} items saved and not committed."
+
+    Pane
+      { lines = [ line ]
+        actions =
+          [ action("s", "what changed", [ "status" ])
+            action("l", "the last commits", [ "commits" ]) ] }
+
+
+  let tests(_input: PaneInput): Pane =
+    Pane
+      { lines = [ "Tests live beside your code; a change reruns only what it touches." ]
+        actions = [ action("r", "run yours", [ "test", "run", "Me" ]) ] }
 
 
 // --- the tree ---
@@ -386,7 +688,7 @@ let rowLine(r: Row, on: List<String>): String =
 
 
 let listing(exts: List<Extension>): List<String> =
-  let on = onNames()
+  let on = onNames(exts)
   let count =
     Stdlib.List.length(Stdlib.List.filter(exts, fun e -> Stdlib.List.contains(on, e.name)))
 
@@ -400,7 +702,7 @@ let listing(exts: List<Extension>): List<String> =
 
 
 let plainRows(exts: List<Extension>): List<String> =
-  let on = onNames()
+  let on = onNames(exts)
   rows(exts)
   |> Stdlib.List.map(fun r ->
     let state = if Stdlib.List.contains(on, r.ext.name) then "on" else "off"
@@ -416,14 +718,23 @@ module Tree =
 
 
   type Model =
-    { exts: List<Extension>
+    { app: AppState
+      exts: List<Extension>
       on: List<String>
       cursor: Int64
-      note: List<String> }
+      note: List<String>
+      /// An extension that was just turned on and asks for something, waiting for y or n.
+      asking: Option<Extension> }
 
 
-  let init(exts: List<Extension>): Model =
-    Model { exts = exts, on = onNames(), cursor = 0, note = [] }
+  let init(app: AppState, exts: List<Extension>): Model =
+    Model
+      { app = app
+        exts = exts
+        on = onNames(exts)
+        cursor = 0
+        note = []
+        asking = Option.None }
 
 
   let selected(m: Model): Option<Extension> =
@@ -434,18 +745,35 @@ module Tree =
     match selected(m) with
     | None -> m
     | Some(e) ->
-      let result =
-        if Stdlib.List.contains(m.on, e.name) then
-          disable(m.exts, e.name)
-        else
-          enable(m.exts, e.name)
+      if Stdlib.List.contains(m.on, e.name) then
+        let note =
+          match turnOff(m.exts, e.name) with
+          | Ok(lines) -> lines
+          | Error(msg) -> [ msg ]
 
+        { m with on = onNames(m.exts), note = note }
+      else
+        match turnOn(m.exts, e.name) with
+        | Error(msg) -> { m with note = [ msg ] }
+        | Ok(turned) ->
+          let asking =
+            [ e, ...turned ] |> Stdlib.List.findFirst(fun t -> ungranted(t) != [])
+
+          { m with on = onNames(m.exts), note = onLines(turned), asking = asking }
+
+
+  let answer(m: Model, yes: Bool): Model =
+    match m.asking with
+    | None -> m
+    | Some(e) ->
       let note =
-        match result with
-        | Ok(lines) -> lines
-        | Error(e) -> [ e ]
+        if yes then
+          grant(e, ungranted(e))
+          [ $"  {e.name}: allowed, for its own commands only" ]
+        else
+          [ $"  {e.name}: not allowed. Space twice on it asks again." ]
 
-      { m with on = onNames(), note = note }
+      { m with asking = Option.None, note = note }
 
 
   let move(m: Model, by: Int64): Model =
@@ -466,12 +794,24 @@ module Tree =
           Stdlib.Cli.UI.Node.text("  " + line))
 
     let detail =
-      match selected(m) with
-      | None -> []
-      | Some(e) ->
+      match (m.asking, selected(m)) with
+      | (Some(e), _) ->
+        [ Stdlib.Cli.UI.Node.bold($"  {e.title} asks for")
+          ...Stdlib.List.map(ungranted(e), fun r -> Stdlib.Cli.UI.Node.text("    " + r))
+          Stdlib.Cli.UI.Node.text("  Allow it, for its own commands only?  y yes   n not now") ]
+      | (None, None) -> []
+      | (None, Some(e)) ->
         let words = if Stdlib.List.isEmpty(m.note) then describe(e) else m.note
-        [ Stdlib.Cli.UI.Node.bold("  " + e.title)
-          ...Stdlib.List.map(words, fun d -> Stdlib.Cli.UI.Node.dim("  " + d)) ]
+        let pane =
+          match paneOf(m.app.currentBranchId, e, m.on) with
+          | Some(p) when Stdlib.List.contains(m.on, e.name) ->
+            [ Stdlib.Cli.UI.Node.text(""), ...Stdlib.List.map(paneLines(p), fun l -> Stdlib.Cli.UI.Node.text("  " + l)) ]
+          | _ -> []
+
+        Stdlib.List.concat(
+          [ Stdlib.Cli.UI.Node.bold("  " + e.title)
+            ...Stdlib.List.map(words, fun d -> Stdlib.Cli.UI.Node.dim("  " + d)) ],
+          pane)
 
     let count = Stdlib.List.length(m.on)
     let head = $"  {count} on. Each one adds to `dark help`."
@@ -503,16 +843,40 @@ module Tree =
     _modifiers: Stdlib.Cli.Stdin.Modifiers.Modifiers,
     keyChar: Option<String>)
     : Component.Step<Model> =
-    match key with
-    | UpArrow -> Component.Step.Stay(move(m, -1))
-    | DownArrow -> Component.Step.Stay(move(m, 1))
-    | Spacebar -> Component.Step.Stay(toggle(m))
-    | Enter -> Component.Step.Stay(toggle(m))
-    | Escape -> Component.Step.Exit(m)
-    | _ ->
+    match m.asking with
+    | Some(_) ->
       match keyChar with
-      | Some("q") -> Component.Step.Exit(m)
-      | _ -> Component.Step.Stay(m)
+      | Some("y") -> Component.Step.Stay(answer(m, true))
+      | Some("n") -> Component.Step.Stay(answer(m, false))
+      | _ ->
+        match key with
+        | Escape -> Component.Step.Stay(answer(m, false))
+        | _ -> Component.Step.Stay(m)
+    | None ->
+      match key with
+      | UpArrow -> Component.Step.Stay(move(m, -1))
+      | DownArrow -> Component.Step.Stay(move(m, 1))
+      | Spacebar -> Component.Step.Stay(toggle(m))
+      | Enter -> Component.Step.Stay(toggle(m))
+      | Escape -> Component.Step.Exit(m)
+      | _ ->
+        match keyChar with
+        | Some("q") -> Component.Step.Exit(m)
+        | Some(k) -> Component.Step.Stay(press(m, k))
+        | None -> Component.Step.Stay(m)
+
+
+  /// A key a pane of the selected row offers runs its command; any other does nothing.
+  let press(m: Model, k: String): Model =
+    match selected(m) with
+    | Some(e) when Stdlib.List.contains(m.on, e.name) ->
+      match paneOf(m.app.currentBranchId, e, m.on) with
+      | Some(p) ->
+        match Stdlib.List.findFirst(p.actions, fun a -> a.key == k) with
+        | Some(a) -> { m with note = runAction(m.app, a) }
+        | None -> m
+      | None -> m
+    | _ -> m
 
 
   let component(): Component.Component<Model> =
@@ -521,21 +885,17 @@ module Tree =
 
 // --- the command ---
 
-let printLines(lines: List<String>): Unit =
-  lines |> Stdlib.List.iter(fun l -> Stdlib.printLine(l))
-
-
 let execute(state: AppState, args: List<String>): AppState =
   let exts = all(state.currentBranchId)
   match args with
   | [] ->
     match Stdlib.Cli.Tui.TerminalSupport.current() with
     | Available when Stdlib.Bool.not(state.output == Output.Mode.Plain) ->
-      Component.launch(state, Tree.component(), Tree.init(exts))
+      Component.launch(state, Tree.component(), Tree.init(state, exts))
     | _ -> execute(state, [ "list" ])
   | ["list"] ->
     let lines = if state.output == Output.Mode.Plain then plainRows(exts) else listing(exts)
-    printLines(lines)
+    Stdlib.printLines(lines)
     state
   | ["show", name] ->
     match find(exts, name) with
@@ -543,52 +903,73 @@ let execute(state: AppState, args: List<String>): AppState =
       printErr($"No extension called `{name}`.")
       failed(state)
     | Some(e) ->
-      let onOff = if isOn(e.name) then "on" else "off"
-      printLines([ $"{e.title} ({e.name}, {onOff})", e.blurb, ...describe(e) ])
+      let on = onNames(exts)
+      let onOff = if Stdlib.List.contains(on, e.name) then "on" else "off"
+      let pane =
+        match paneOf(state.currentBranchId, e, on) with
+        | Some(p) when Stdlib.List.contains(on, e.name) -> [ "", ...paneLines(p) ]
+        | _ -> []
+
+      Stdlib.printLines(
+        Stdlib.List.flatten([ [ $"{e.title} ({e.name}, {onOff})", e.blurb ], describe(e), pane ]))
+
       state
-  | ["enable", name] ->
-    match enable(exts, name) with
-    | Ok(lines) ->
-      printLines(lines)
-      state
-    | Error(e) ->
-      printErr(e)
-      printHint("  `dark extensions` lists them.")
-      failed(state)
-  | ["disable", name] ->
-    match disable(exts, name) with
-    | Ok(lines) ->
-      printLines(lines)
-      state
-    | Error(e) ->
-      printErr(e)
-      failed(state)
+  | ["enable", ...names] ->
+    names
+    |> Stdlib.List.fold(state, fun(st, name) ->
+      match enable(exts, name) with
+      | Ok(_) -> st
+      | Error(e) ->
+        printErr(e)
+        printHint("  `dark extensions` lists them.")
+        failed(st))
+  | ["disable", ...names] ->
+    names
+    |> Stdlib.List.fold(state, fun(st, name) ->
+      match turnOff(exts, name) with
+      | Ok(lines) ->
+        Stdlib.printLines(lines)
+        st
+      | Error(e) ->
+        printErr(e)
+        failed(st))
   | _ ->
-    printErr("Usage: extensions [list | show <name> | enable <name> | disable <name>]")
+    printErr("Usage: extensions [list | show <name> | enable <name>... | disable <name>...]")
     failed(state)
 
 
 let help(_state: AppState): String =
-  [ "Usage: extensions [list | show <name> | enable <name> | disable <name>]"
+  [ "Usage: extensions [list | show <name> | enable <name>... | disable <name>...]"
     "Everything past running and keeping code is an extension: turn on what you want."
     "At a terminal, bare `extensions` opens the tree; space turns the row on or off."
     ""
-    "  list             every extension, on or off, in its tree"
-    "  show <name>      what it adds, asks for and installs"
-    "  enable <name>    turn it on, and what it needs"
-    "  disable <name>   turn it off, and what needs it; nothing it made is deleted"
+    "  list               every extension, on or off, in its tree"
+    "  show <name>        what it adds, asks for and installs"
+    "  enable <name>...   turn it on, and what it needs; at a terminal, allow what it asks for"
+    "  disable <name>...  turn it off, and what needs it; nothing it made is deleted"
+    ""
+    "What an extension asks for is allowed for its own commands only, and only by a person at a"
+    "terminal. `dark permissions list` shows what each was allowed."
     ""
     "An extension is a value of type Darklang.Cli.Extensions.Extension anywhere in the store."
     "Save one under Me and it shows up here." ]
   |> Stdlib.String.join("\n")
 
 
+/// What `permissions list` adds: each extension's grants, which apply to its own commands only.
+let grantLines(): List<String> =
+  match grantRows() with
+  | [] -> []
+  | rows ->
+    [ "Allowed to extensions, for their own commands:"
+      ...Stdlib.List.map(rows, fun ((name, rule)) -> $"  {name}: {rule}") ]
+
+
 let complete(state: AppState, args: List<String>): List<Completion.CompletionItem> =
   match args with
   | [] | [_] ->
     [ "list", "show", "enable", "disable" ] |> Stdlib.List.map(fun s -> Completion.simple(s))
-  | [_, _] -> all(state.currentBranchId) |> Stdlib.List.map(fun e -> Completion.simple(e.name))
-  | _ -> []
+  | [_, ...] -> all(state.currentBranchId) |> Stdlib.List.map(fun e -> Completion.simple(e.name))
 
 
 // --- `dark help` ---
@@ -597,6 +978,10 @@ val kernel =
   [ "run-script"
     "eval"
     "fn"
+    "val"
+    "type"
+    "trait"
+    "impl"
     "module"
     "view"
     "ls"
@@ -614,7 +999,7 @@ val kernel =
 
 let helpText(state: AppState): String =
   let exts = all(state.currentBranchId)
-  let on = onNames()
+  let on = onNames(exts)
   let onExts = exts |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name))
   let onCount = Stdlib.List.length(onExts)
   let total = Stdlib.List.length(exts)
@@ -630,6 +1015,7 @@ let helpText(state: AppState): String =
       "  dark fn Me.Hi.greet '(name: String): String = \"hi \" + name'"
       "  dark eval 'Me.Hi.greet(\"Ada\")'       call what you saved"
       "  dark module Me.Hi - < hi.dark        save a whole module"
+      "  dark val, type, trait, impl          save one item of another kind, like fn"
       "  dark ls Me    dark view Me.Hi.greet    dark search \"split a string\""
       "Learn"
       "  dark docs syntax    dark docs for-ai    dark help <command>"
@@ -642,7 +1028,10 @@ let helpText(state: AppState): String =
     onExts
     |> Stdlib.List.filter(fun e -> Stdlib.Bool.not(Stdlib.List.isEmpty(commandNames(e))))
     |> Stdlib.List.map(fun e ->
-      "  " + Stdlib.String.padEnd(e.name, ' ', 14) + Stdlib.String.join(commandNames(e), " "))
+      let guide = e.guide |> Stdlib.List.map(fun g -> "                " + g)
+      [ "  " + Stdlib.String.padEnd(e.name, ' ', 14) + Stdlib.String.join(commandNames(e), " ")
+        ...guide ])
+    |> Stdlib.List.flatten
 
   let addedBlock =
     if Stdlib.List.isEmpty(added) then

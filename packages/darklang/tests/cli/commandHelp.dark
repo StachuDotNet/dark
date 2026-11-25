@@ -77,7 +77,7 @@ test descriptionsFitInEightyColumns =
   |> Stdlib.Test.equal([])
 
 
-test helpStartsWithRunningAndKeepingCode = Instance.withInstance(fun i ->
+test helpStartsWithRunningAndKeepingCode = Instance.withKernelOnly(fun i ->
   let output = Instance.output(i, [ "help" ])
   Stdlib.Test.all(
     [ Instance.says(output, "Run code", "running code")
@@ -86,7 +86,7 @@ test helpStartsWithRunningAndKeepingCode = Instance.withInstance(fun i ->
       Instance.says(output, "Off: ", "what is off") ]))
 
 
-test helpListsWhatAnExtensionAdds = Instance.withInstance(fun i ->
+test helpListsWhatAnExtensionAdds = Instance.withKernelOnly(fun i ->
   let _ = Instance.output(i, [ "extensions", "enable", "branches" ])
   let output = Instance.output(i, [ "help" ])
   Stdlib.Test.all(
