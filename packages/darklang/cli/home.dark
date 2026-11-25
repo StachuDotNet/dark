@@ -15,8 +15,11 @@ type Model =
     entries: List<Entry>
     /// How far back ↑ has gone into what was typed; 0 is the line being edited.
     back: Int64
-    /// The line enter runs when nothing is typed: the next step, shown dim after the prompt.
-    next: String }
+    /// The line enter runs when nothing is typed: the next step, shown dim after the prompt. One
+    /// that ends in `(` is a start: enter puts it on the line to finish.
+    next: String
+    /// The first session's lines, on a store with nothing of yours in it yet.
+    steps: List<String> }
 
 
 type Msg =
@@ -25,12 +28,27 @@ type Msg =
 
 let init(app: AppState): Model =
   let app = Registry.withAll(app)
+  let steps = if nothingYours(app) then firstSteps else []
   Model
     { app = app
       input = ""
       entries = []
       back = 0
-      next = Stdlib.List.head(firstSteps) |> Stdlib.Option.withDefault("") }
+      next = Stdlib.List.head(steps) |> Stdlib.Option.withDefault("")
+      steps = steps }
+
+
+let nothingYours(app: AppState): Bool =
+  let (modules, types, values, fns, traits, impls, tests) =
+    Packages.Query.allDirectDescendantNamesAndHashes(app.currentBranchId, [ "Me" ])
+
+  Stdlib.List.isEmpty(modules)
+  && Stdlib.List.isEmpty(types)
+  && Stdlib.List.isEmpty(values)
+  && Stdlib.List.isEmpty(fns)
+  && Stdlib.List.isEmpty(traits)
+  && Stdlib.List.isEmpty(impls)
+  && Stdlib.List.isEmpty(tests)
 
 
 /// A first session, one line at a time: each is offered once the one before it has run. Enter on an
@@ -39,17 +57,18 @@ val firstSteps =
   [ "1 + 2"
     "fn Me.Hi.greet '(name: String): String = \"hi \" + name'"
     "Me.Hi.greet(\"Ada\")"
-    "commit \"my first function\" -y"
-    "extensions" ]
+    "commit -y"
+    "ext" ]
 
 
 /// What to offer after <param line> printed <param said>: the command a refusal named, the line that
-/// was refused once its extension is on, or the next of `firstSteps`.
+/// was refused once its extension is on, the next first step, then a call of the fn just saved,
+/// then a commit of what was saved.
 let nextAfter(m: Model, line: String, said: List<String>): String =
   let named =
     said
     |> Stdlib.List.findFirst(fun l ->
-      Stdlib.String.startsWith(Stdlib.String.trim(l), "dark extensions enable "))
+      Stdlib.String.startsWith(Stdlib.String.trim(l), "dark ext on "))
     |> Stdlib.Option.map(fun l -> Stdlib.String.dropFirst(Stdlib.String.trim(l), 5))
 
   let refused =
@@ -63,12 +82,36 @@ let nextAfter(m: Model, line: String, said: List<String>): String =
   | Some(cmd) -> cmd
   | None ->
     match refused with
-    | Some(again) when Stdlib.String.startsWith(line, "extensions enable") -> again
+    | Some(again) when turnsOn(line) -> again
     | _ ->
       let done_ = Stdlib.List.append(Stdlib.List.map(m.entries, fun e -> e.typed), line)
-      firstSteps
-      |> Stdlib.List.findFirst(fun s -> Stdlib.Bool.not(Stdlib.List.contains(done_, s)))
-      |> Stdlib.Option.withDefault("")
+      match
+        m.steps
+        |> Stdlib.List.findFirst(fun s -> Stdlib.Bool.not(Stdlib.List.contains(done_, s)))
+      with
+      | Some(step) -> step
+      | None -> afterSave(m, said)
+
+
+let turnsOn(line: String): Bool =
+  match words(line) with
+  | ["ext", "on", ..._] | ["extensions", "on", ..._] -> true
+  | ["ext", "enable", ..._] | ["extensions", "enable", ..._] -> true
+  | _ -> false
+
+
+/// After a fn is saved, its name and `(`, to finish and call; after any other save, a commit, once
+/// history is on.
+let afterSave(m: Model, said: List<String>): String =
+  let created = "✓ Created function "
+  match said |> Stdlib.List.findFirst(fun l -> Stdlib.String.startsWith(l, created)) with
+  | Some(l) -> Stdlib.String.dropFirst(l, Stdlib.String.length(created)) + "("
+  | None ->
+    let saved = Stdlib.List.any(said, fun l -> Stdlib.String.startsWith(l, "✓ "))
+    if saved && Stdlib.Bool.not(Extensions.isOff(m.app.currentBranchId, "commit")) then
+      "commit -y"
+    else
+      ""
 
 
 /// A line split the way a shell splits it: spaces separate words, and quotes keep them together.
@@ -210,11 +253,18 @@ let onKey(
   keyChar: Option<String>)
   : Component.Step<Model> =
   match key with
-  | Enter -> run(m, if m.input == "" then m.next else m.input)
+  | Enter ->
+    if m.input == "" && Stdlib.String.endsWith(m.next, "(") then
+      Component.Step.Stay({ m with input = m.next })
+    else
+      run(m, if m.input == "" then m.next else m.input)
   | Escape -> Component.Step.Exit(m)
   | Backspace -> Component.Step.Stay({ m with input = Stdlib.String.dropLast(m.input, 1) })
   | Tab ->
-    Component.Step.Stay({ m with input = m.input + Registry.getCompletionHint(m.app, m.input) })
+    if m.input == "" then
+      Component.Step.Stay({ m with input = m.next })
+    else
+      Component.Step.Stay({ m with input = m.input + Registry.getCompletionHint(m.app, m.input) })
   | UpArrow ->
     let n = Stdlib.min(m.back + 1, Stdlib.List.length(m.entries))
     Component.Step.Stay({ m with back = n, input = typedBefore(m, n) })

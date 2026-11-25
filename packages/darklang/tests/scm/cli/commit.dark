@@ -237,7 +237,7 @@ test aCommitFollowsTheCommitMadeBeforeItWhateverItHolds = scenario(fun dark ->
         says(dark, [ "show", c ], $"follows {shortId(a)}", "C follows A") ] ]))
 
 
-test aCommitOnAPipeAsksAndNeedsAMessage = scenario(fun dark ->
+test aCommitOnAPipeAsksAndNamesItself = scenario(fun dark ->
   [ saveNumber(dark, "Tests.CommitGate.f", "11")
     // no -y, and stdin is a pipe: nobody can answer the prompt, so the answer is no
     refuses(
@@ -247,19 +247,9 @@ test aCommitOnAPipeAsksAndNeedsAMessage = scenario(fun dark ->
       "nothing commits without an answer")
 
     says(dark, [ "status" ], "1 item changed", "and the draft is still there")
-    refuses(
-      dark,
-      [ "commit", "-y" ],
-      "a commit needs a message",
-      "an empty message is refused, -y or not")
+    says(dark, [ "commit", "-y" ], "-- 2 ops", "with -y it lands")
 
-    says(
-      dark,
-      [ "commit", "gated for real", "-y" ],
-      "-- 2 ops",
-      "with a message and -y it lands")
-
-    same(commits(dark), [ "gated for real" ], "as one commit") ])
+    same(commits(dark), [ "Tests.CommitGate.f" ], "named for what it changes") ])
 
 
 /// The refusal names the item and the error, and only live items are checked: once the broken

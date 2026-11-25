@@ -69,7 +69,7 @@ def main():
         subprocess.run(["sqlite3", STORE, f".backup {home}/.darklang/data.db"], check=True)
         subprocess.run(["sqlite3", f"{home}/.darklang/data.db", "DELETE FROM config_v0"], check=True)
         print("A Dark of your own, on our machine, until you leave. Type `dark` to start, `exit` to go.")
-        print("Nothing you make here stays: `dark extensions enable sync` will keep it, once sync exists.")
+        print("Nothing you make here stays: `dark ext on sync` will keep it, once sync exists.")
         while True:
             try:
                 line = input("try$ ")
@@ -90,7 +90,7 @@ def main():
                 continue
             words = words[1:]
             why = refusal(words)
-            if why is None and words[:2] == ["extensions", "enable"]:
+            if why is None and len(words) > 1 and words[0] in ("ext", "extensions") and words[1] in ("on", "enable"):
                 asking = [n for n in words[2:] if asks_anything(home, n)]
                 if asking:
                     why = f"turning on {', '.join(asking)}, which asks for permissions"

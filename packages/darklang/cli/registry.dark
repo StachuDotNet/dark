@@ -29,6 +29,8 @@ module Registry =
     Accepts.subcommands(
       [ ("list", Accepts.nothing())
         ("show", Accepts.between(1, 1, []))
+        ("on", Accepts.between(1, 99, []))
+        ("off", Accepts.between(1, 99, []))
         ("enable", Accepts.between(1, 99, []))
         ("disable", Accepts.between(1, 99, []))
         ("explain", Accepts.between(1, 1, [])) ],

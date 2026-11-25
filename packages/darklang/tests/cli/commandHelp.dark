@@ -82,7 +82,7 @@ test helpStartsWithRunningAndKeepingCode = Instance.withKernelOnly(fun i ->
   Stdlib.Test.all(
     [ Instance.says(output, "Run code", "running code")
       Instance.says(output, "Keep code", "keeping code")
-      Instance.says(output, "  dark extensions ", "the way to grow it")
+      Instance.says(output, "  dark ext ", "the way to grow it")
       Instance.says(output, "Off: ", "what is off") ]))
 
 

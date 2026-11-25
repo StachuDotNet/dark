@@ -11,7 +11,7 @@ type Command =
 
 
 type Extension =
-  { /// What you type: `dark extensions enable <name>`.
+  { /// What you type: `dark ext on <name>`.
     name: String
     title: String
     blurb: String
@@ -359,14 +359,14 @@ let isOff(branchId: Uuid, command: String): Bool =
 
 let refuseOff(state: AppState, command: String, e: Extension): AppState =
   printErr($"`{command}` comes with {e.name}, which is off.")
-  printHint($"  dark extensions enable {e.name}")
+  printHint($"  dark ext on {e.name}")
   failed(state)
 
 
 /// What `dark <command> --help` adds for a command whose extension is off.
 let offNote(branchId: Uuid, command: String): String =
   match home(branchId, command, true) with
-  | Off(e) -> $"\n\nComes with {e.name}, which is off: `dark extensions enable {e.name}`."
+  | Off(e) -> $"\n\nComes with {e.name}, which is off: `dark ext on {e.name}`."
   | _ -> ""
 
 
@@ -378,7 +378,7 @@ let runAdded(state: AppState, e: Extension, c: Command, args: List<String>): App
       ()
     else
       printHint(
-        $"  {e.name} changed since you allowed {Stdlib.String.join(stale, "; ")}, so it runs without. `dark extensions enable {e.name}` at a terminal asks again.")
+        $"  {e.name} changed since you allowed {Stdlib.String.join(stale, "; ")}, so it runs without. `dark ext on {e.name}` at a terminal asks again.")
 
   Run.executeOptions(
     state,
@@ -489,15 +489,15 @@ let allowAsked(e: Extension): Unit =
       grant(e, missing)
       Stdlib.printLine("  allowed, for its own commands only")
     else
-      Stdlib.printLine($"  not allowed. `dark extensions enable {e.name}` asks again.")
+      Stdlib.printLine($"  not allowed. `dark ext on {e.name}` asks again.")
   else
     Stdlib.printLine(
       $"  {e.name} asks for {Stdlib.String.join(missing, "; ")}: not allowed, since only a person at a terminal can allow it.")
 
-    Stdlib.printLine($"  At a terminal: dark extensions enable {e.name}")
+    Stdlib.printLine($"  At a terminal: dark ext on {e.name}")
 
 
-/// `dark extensions enable <name>`: what went on and what it adds, then the question about what
+/// `dark ext on <name>`: what went on and what it adds, then the question about what
 /// each one asks for.
 let enable(exts: List<Extension>, name: String): Result<Unit, String> =
   match turnOn(exts, name) with
@@ -565,7 +565,7 @@ let peekLines(peeks: List<Peek>): List<String> =
     $"  {n}  {p.label}  (dark {cmd})")
 
 
-/// `dark extensions explain <name>`: every step, its command run so you see what it does, then
+/// `dark ext explain <name>`: every step, its command run so you see what it does, then
 /// what to peek at. Where nothing can be pressed (a pipe, an agent), this is the whole tour.
 let explain(app: AppState, exts: List<Extension>, e: Extension): Unit =
   let steps = tourOf(exts, e)
@@ -759,7 +759,7 @@ let facts(exts: List<Extension>, e: Extension): List<(String * String)> =
       if Stdlib.List.isEmpty(e.tour) then
         ""
       else
-        $"dark extensions explain {e.name}"
+        $"dark ext explain {e.name}"
         + (if Stdlib.List.contains(explained(), e.name) then " (seen)" else ""))
 
     ("not built", e.fake) ]
@@ -769,7 +769,7 @@ let facts(exts: List<Extension>, e: Extension): List<(String * String)> =
 let factLines(exts: List<Extension>, e: Extension, isOn: Bool): List<String> =
   let undo =
     if isOn then
-      [ ("undo", $"dark extensions disable {e.name}; nothing it made is deleted") ]
+      [ ("undo", $"dark ext off {e.name}; nothing it made is deleted") ]
     else
       []
 
@@ -797,8 +797,8 @@ let listing(exts: List<Extension>): List<String> =
     [ header(exts, on) |> Stdlib.List.map(fun((_, l)) -> l)
       lines
       [ ""
-        "`dark extensions show <name>` says what one adds."
-        "`dark extensions enable <name>` turns it on; `disable` turns it off." ] ])
+        "`dark ext show <name>` says what one adds."
+        "`dark ext on <name>` turns it on; `off` turns it off." ] ])
 
 
 let plainRows(exts: List<Extension>): List<String> =
@@ -850,10 +850,10 @@ module Tree =
         explaining = Option.None }
 
 
-  /// The walk-through, as `dark extensions explain <name>` prints it: the tree runs that command
+  /// The walk-through, as `dark ext explain <name>` prints it: the tree runs that command
   /// and shows what it said, so the same words are there without a screen.
   let explainHere(m: Model, e: Extension): Model =
-    let said = ran(m.app, [ "extensions", "explain", e.name ])
+    let said = ran(m.app, [ "ext", "explain", e.name ])
     { m with note = said, explaining = Option.Some(e) }
 
 
@@ -1144,16 +1144,16 @@ let execute(state: AppState, args: List<String>): AppState =
     | Some(e) ->
       explain(state, exts, e)
       state
-  | ["enable", ...names] ->
+  | ["on", ...names] | ["enable", ...names] ->
     names
     |> Stdlib.List.fold(state, fun(st, name) ->
       match enable(exts, name) with
       | Ok(_) -> st
       | Error(e) ->
         printErr(e)
-        printHint("  `dark extensions` lists them.")
+        printHint("  `dark ext` lists them.")
         failed(st))
-  | ["disable", ...names] ->
+  | ["off", ...names] | ["disable", ...names] ->
     names
     |> Stdlib.List.fold(state, fun(st, name) ->
       match turnOff(exts, name) with
@@ -1164,21 +1164,20 @@ let execute(state: AppState, args: List<String>): AppState =
         printErr(e)
         failed(st))
   | _ ->
-    printErr(
-      "Usage: extensions [list | show <name> | enable <name>... | disable <name>... | explain <name>]")
+    printErr("Usage: ext [list | show <name> | on <name>... | off <name>... | explain <name>]")
 
     failed(state)
 
 
 let help(_state: AppState): String =
-  [ "Usage: extensions [list | show <name> | enable <name>... | disable <name>... | explain <name>]"
+  [ "Usage: ext [list | show <name> | on <name>... | off <name>... | explain <name>]"
     "Everything past running and keeping code is an extension: turn on what you want."
-    "At a terminal, bare `extensions` opens the tree; space turns the row on or off."
+    "At a terminal, bare `ext` opens the tree; space turns the row on or off."
     ""
     "  list               every extension, on or off, in its tree"
     "  show <name>        what it adds, asks for and installs"
-    "  enable <name>...   turn it on, and what it needs; at a terminal, allow what it asks for"
-    "  disable <name>...  turn it off, and what needs it; nothing it made is deleted"
+    "  on <name>...       turn it on, and what it needs; at a terminal, allow what it asks for"
+    "  off <name>...      turn it off, and what needs it; nothing it made is deleted"
     "  explain <name>     walk through it: a few steps, each command run, then what to peek at"
     ""
     "What an extension asks for is allowed for its own commands only, and only by a person at a"
@@ -1210,7 +1209,7 @@ let forAI(): String =
   [ "## Extensions: more commands"
     "  on: " + (if onHere == "" then "none" else onHere + "; `help` has their commands")
     "  off: " + (if offHere == "" then "none" else offHere)
-    "  extensions enable agent   history, tests, tools; asks for nothing" ]
+    "  ext on agent   history, tests, tools; asks for nothing" ]
   |> Stdlib.String.join("\n")
   |> Stdlib.String.append("\n")
 
@@ -1228,7 +1227,7 @@ let grantLines(): List<String> =
 let complete(state: AppState, args: List<String>): List<Completion.CompletionItem> =
   match args with
   | [] | [_] ->
-    [ "list", "show", "enable", "disable", "explain" ]
+    [ "list", "show", "on", "off", "explain" ]
     |> Stdlib.List.map(fun s -> Completion.simple(s))
   | [_, ...] -> all(state.currentBranchId) |> Stdlib.List.map(fun e -> Completion.simple(e.name))
 
@@ -1282,7 +1281,7 @@ let helpText(state: AppState): String =
       "  dark docs syntax    dark docs for-ai    dark help <command>"
       "  peek: dark docs signatures Stdlib.String    dark view Stdlib.List.map"
       "Grow"
-      $"  dark extensions                      what you can turn on ({onCount} of {total} on)"
+      $"  dark ext                             what you can turn on ({onCount} of {total} on)"
       "This install"
       "  dark permissions    dark update    dark uninstall    dark version" ]
 
@@ -1313,6 +1312,6 @@ let helpText(state: AppState): String =
     else
       [ ""
         "Off: " + Stdlib.String.join(offNames, ", ")
-        "`dark extensions show <name>` says what one adds." ]
+        "`dark ext show <name>` says what one adds." ]
 
   Stdlib.String.join(Stdlib.List.flatten([ intro, addedBlock, offBlock ]), "\n")

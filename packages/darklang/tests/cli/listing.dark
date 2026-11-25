@@ -83,7 +83,7 @@ test referenceListingsAnswer =
 
         Instance.says(
           Stdlib.Cli.Tui.Text.stripSgr(Instance.said(i, [ "commands" ])),
-          "dark extensions",
+          "dark ext ",
           "commands is help") ]))
 
 

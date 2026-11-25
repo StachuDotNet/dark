@@ -544,9 +544,18 @@ let refuseTypeErrors(parsed: Args): Bool =
       true
 
 
+/// Without a message, a commit is named for what it changes.
+let defaultMessage(r: Review): String =
+  let names = r.items |> Stdlib.List.map(fun i -> i.name)
+  let more = Stdlib.List.length(names) - 3
+  let shown = Stdlib.String.join(Stdlib.List.take(names, 3), ", ")
+  if more > 0 then $"{shown} and {Stdlib.display(more)} more" else shown
+
+
 let executePretty(state: AppState, args: List<String>): AppState =
-  let parsed = parseArgs(args)
-  let r = selectedReview(state, review(state), parsed.include)
+  let given = parseArgs(args)
+  let r = selectedReview(state, review(state), given.include)
+  let parsed = if given.message == "" then { given with message = defaultMessage(r) } else given
   let changed = r.changed
 
   // Ask the DRAFT, not the changed-bindings list. A `Deprecate` op binds no name, so it never appears in
@@ -555,11 +564,6 @@ let executePretty(state: AppState, args: List<String>): AppState =
   // Nothing was committed, so it is a refusal: `dark commit -y && dark push` must not carry on.
   if SCM.PackageOps.draftOpCount() == 0 then
     printErr("nothing to commit -- your draft is empty.")
-    { state with exitCode = 1 }
-  // A commit is what other machines pull, and its message is the one sentence they get. An empty
-  // one is nearly always a slipped Enter, so it is refused rather than recorded forever.
-  else if parsed.message == "" then
-    printErr("a commit needs a message: `dark commit \"what changed\"`.")
     { state with exitCode = 1 }
   // An `--include` naming nothing in the draft is a typo, and the review screen would otherwise show
   // the WHOLE draft over a selection that commits none of it -- the one dishonesty a review screen
@@ -683,6 +687,8 @@ let execute(state: AppState, args: List<String>): AppState =
 let help(_state: AppState): String =
   [ ""
     "Usage: dark commit [message] [--include=names] [-y]"
+    ""
+    "Without a message, the commit is named for what it changes."
     ""
     "This is not a gate. Your edits are already live; commit is where"
     "you LOOK at them as one dep-closed change, let propagation run over"

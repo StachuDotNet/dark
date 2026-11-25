@@ -44,7 +44,7 @@ test aCommandWhoseExtensionIsOffSaysHowToTurnItOn =
 
         Instance.says(
           out,
-          "dark extensions enable history",
+          "dark ext on history",
           "and the one command") ]))
 
 
@@ -292,7 +292,7 @@ test bareDarkWithoutATerminalIsTheIntro = Instance.withKernelOnly(fun i ->
   Stdlib.Test.all(
     [ Stdlib.Test.equal(code, 0)
       Instance.says(out, "Darklang: a small language", "the intro")
-      Instance.says(out, "dark extensions ", "and how to grow it") ]))
+      Instance.says(out, "dark ext ", "and how to grow it") ]))
 
 
 /// Every tour step and peek of the extensions we ship runs on a fresh install with them on, and
@@ -341,7 +341,7 @@ test explainWalksThroughAndIsRemembered = Instance.withKernelOnly(fun i ->
 
       Instance.says(
         shown,
-        "dark extensions explain history (seen)",
+        "dark ext explain history (seen)",
         "remembered") ]))
 
 

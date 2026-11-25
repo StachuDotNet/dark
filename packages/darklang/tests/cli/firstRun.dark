@@ -7,13 +7,13 @@ val steps: List<List<String>> =
     [ "eval", "1 + 2" ]
     [ "fn", "Me.Hi.greet", "(name: String): String = \"hi \" + name" ]
     [ "eval", "Me.Hi.greet(\"Ada\")" ]
-    [ "commit", "my first function", "-y" ]
-    [ "extensions", "enable", "history" ]
-    [ "commit", "my first function", "-y" ]
-    [ "extensions", "enable", "branches" ]
-    [ "extensions", "explain", "branches" ]
-    [ "extensions", "enable", "recommended" ]
-    [ "extensions" ]
+    [ "commit", "-y" ]
+    [ "ext", "on", "history" ]
+    [ "commit", "-y" ]
+    [ "ext", "on", "branches" ]
+    [ "ext", "explain", "branches" ]
+    [ "ext", "on", "recommended" ]
+    [ "ext" ]
     [ "help" ] ]
 
 
@@ -90,12 +90,12 @@ Learn
   dark docs syntax    dark docs for-ai    dark help <command>
   peek: dark docs signatures Stdlib.String    dark view Stdlib.List.map
 Grow
-  dark extensions                      what you can turn on (0 of 15 on)
+  dark ext                             what you can turn on (0 of 15 on)
 This install
   dark permissions    dark update    dark uninstall    dark version
 
 Off: account, agent, ai, compiler, history, http-server, recommended, tests, tools, tracing, workbench
-`dark extensions show <name>` says what one adds.
+`dark ext show <name>` says what one adds.
 [exit 0]
 $ dark eval '1 + 2'
 3
@@ -107,24 +107,24 @@ $ dark fn Me.Hi.greet '(name: String): String = "hi " + name'
 $ dark eval 'Me.Hi.greet("Ada")'
 hi Ada
 [exit 0]
-$ dark commit 'my first function' -y
+$ dark commit -y
 `commit` comes with history, which is off.
-  dark extensions enable history
+  dark ext on history
 [exit 1]
-$ dark extensions enable history
+$ dark ext on history
   history on
     adds status, commit, commits, show, discard, undo, ops, constraints, ack
 [exit 0]
-$ dark commit 'my first function' -y
+$ dark commit -y
   commit <id> -- 2 ops.
   CHANGED (1)
     + fn    Me.Hi.greet  new
 [exit 0]
-$ dark extensions enable branches
+$ dark ext on branches
   branches on
     adds branch, branches, switch, merge, rebase, diff, log, resolve, conflicts
 [exit 0]
-$ dark extensions explain branches
+$ dark ext explain branches
 Branches: Try an idea on a line of its own, then merge it
 
 1/2  A branch is a line of work of its own: main can't see it until you merge.
@@ -138,7 +138,7 @@ Peek at
   1  dark docs scm    branches, merging, conflicts
   2  dark help merge    what merge takes
 [exit 0]
-$ dark extensions enable recommended
+$ dark ext on recommended
   tests on
     adds test
   tracing on
@@ -147,7 +147,7 @@ $ dark extensions enable recommended
     adds workbench, clear, quit
   recommended on
 [exit 0]
-$ dark extensions
+$ dark ext
 Turn on what you want (6 of 15 on)
 Each one adds commands to `dark help`. Turning one off deletes nothing.
 
@@ -167,8 +167,8 @@ Each one adds commands to `dark help`. Turning one off deletes nothing.
   [x] workbench        A full-screen home: browse, edit and run in one place
   [ ]   outliner       Notes as a folding tree, in the terminal        not built
 
-`dark extensions show <name>` says what one adds.
-`dark extensions enable <name>` turns it on; `disable` turns it off.
+`dark ext show <name>` says what one adds.
+`dark ext on <name>` turns it on; `off` turns it off.
 [exit 0]
 $ dark help
 Darklang: a small language that keeps your code in one store, on this machine.
@@ -188,7 +188,7 @@ Learn
   dark docs syntax    dark docs for-ai    dark help <command>
   peek: dark docs signatures Stdlib.String    dark view Stdlib.List.map
 Grow
-  dark extensions                      what you can turn on (6 of 15 on)
+  dark ext                             what you can turn on (6 of 15 on)
 This install
   dark permissions    dark update    dark uninstall    dark version
 
@@ -204,7 +204,7 @@ From your extensions
   workbench     workbench clear quit
 
 Off: account, agent, ai, compiler, http-server, tools
-`dark extensions show <name>` says what one adds.
+`dark ext show <name>` says what one adds.
 [exit 0]"""
 
 
@@ -214,7 +214,7 @@ test theFirstMinutes =
 
 /// The keys typed for the whole first-minutes path. If this grows, the first run got slower to
 /// type; change it only on purpose.
-test theFirstMinutesAreFewKeys = Stdlib.Test.equal(keysTyped(steps), 341)
+test theFirstMinutesAreFewKeys = Stdlib.Test.equal(keysTyped(steps), 254)
 
 
 /// The same first minutes at a terminal: `dark`, then enter on each suggested next line (a sum,
@@ -233,5 +233,5 @@ test homeTakesTheFirstRunInFewKeys = Instance.withKernelOnly(fun i ->
 
       Instance.says(
         commits,
-        "my first function",
+        "Me.Hi.greet",
         "and committed, with history turned on on the way") ]))
