@@ -351,7 +351,7 @@ val streamRows: List<(List<String> * Int64 * Stream * Stream)> =
 
     ([ "docs", "scm" ], 0, Stream.Says("# Source control"), Stream.Silent)
     ([ "docs", "zzznope" ], 1, Stream.Silent, Stream.Says("Unknown topic"))
-    ([ "help" ], 0, Stream.Says("Packages:"), Stream.Silent)
+    ([ "help" ], 0, Stream.Says("Run code"), Stream.Silent)
     ([ "help", "status" ], 0, Stream.Says("draft"), Stream.Silent)
     ([ "help", "zzznope" ], 1, Stream.Silent, Stream.Says("No command called"))
     ([ "version", "--local" ], 0, Stream.Says("Darklang CLI"), Stream.Silent)

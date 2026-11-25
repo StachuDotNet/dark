@@ -3,7 +3,7 @@ module Darklang.Cli.Help
 let execute(state: AppState, args: List<String>): AppState =
   match args with
   | [] ->
-    Stdlib.printLine(Registry.getDetailedCommandList())
+    Stdlib.printLine(Extensions.helpText(state))
     state
   | [commandName] ->
     let known =

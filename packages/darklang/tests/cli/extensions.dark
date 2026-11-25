@@ -1,0 +1,32 @@
+module Darklang.Cli.Tests.Extensions
+
+/// Every command is the kernel's or exactly one extension's, so `dark help` can say where each lives.
+test everyCommandHasOneHome =
+  let exts = Cli.Extensions.all(SCM.Branches.current())
+  Cli.Registry.allCommands()
+  |> Stdlib.List.map(fun c -> c.name)
+  |> Stdlib.List.filter(fun name ->
+    let homes =
+      exts
+      |> Stdlib.List.filter(fun e -> Stdlib.List.contains(e.commands, name))
+      |> Stdlib.List.length
+
+    let kernel =
+      if Stdlib.List.contains(Cli.Extensions.kernel, name) then 1 else 0
+
+    homes + kernel != 1)
+  |> Stdlib.Test.equal([])
+
+
+test turningOnTurnsOnWhatItNeeds = Instance.withInstance(fun i ->
+  let output = Instance.output(i, [ "extensions", "enable", "sync" ])
+  Stdlib.Test.all(
+    [ Instance.says(output, "account on", "the extension it sits under")
+      Instance.says(output, "  history on", "the extension it needs")
+      Instance.says(output, "  sync on", "itself") ]))
+
+
+test turningOffTurnsOffWhatNeedsIt = Instance.withInstance(fun i ->
+  let _ = Instance.output(i, [ "extensions", "enable", "branches" ])
+  let output = Instance.output(i, [ "extensions", "disable", "history" ])
+  Instance.says(output, "  branches off", "branches, which needs history"))

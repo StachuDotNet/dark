@@ -38,6 +38,15 @@ module Registry =
       Accepts.flagsOnly([ "--json" ]))
 
 
+  let acceptsExtensions(): Accepts.Accepts =
+    Accepts.subcommands(
+      [ ("list", Accepts.nothing())
+        ("show", Accepts.between(1, 1, []))
+        ("enable", Accepts.between(1, 1, []))
+        ("disable", Accepts.between(1, 1, [])) ],
+      Accepts.nothing())
+
+
   let acceptsInstall(): Accepts.Accepts =
     Accepts.flagsOnly([ "-y", "--yes" ])
 
@@ -430,6 +439,15 @@ module Registry =
         Config.execute,
         Config.help,
         Config.complete)
+
+      (
+        "extensions",
+        "Turn on what you want past running and keeping code",
+        [ "ext" ],
+        acceptsExtensions,
+        Extensions.execute,
+        Extensions.help,
+        Extensions.complete)
 
       (
         "install",
@@ -1026,6 +1044,26 @@ module Registry =
 
     // An unknown name has no help to show; `dark frobnicate --help` is refused like `dark frobnicate`.
     let known = Stdlib.List.any(state.allCommandsCache, fun cmd -> cmd.name == handler.name)
+    let added =
+      if known then
+        Option.None
+      else
+        Extensions.addedCommand(state.currentBranchId, name)
+
+    match added with
+    | Some(cmd) -> Run.execute(state, [ cmd.run, ...args ])
+    | None -> executeKnown(name, handler, known, asksForHelp, args, state)
+
+
+  let executeKnown(
+    name: String,
+    handler: CommandHandler,
+    known: Bool,
+    asksForHelp: Bool,
+    args: List<String>,
+    state: AppState)
+    : AppState =
+    let options = args |> Stdlib.List.takeWhile(fun a -> a != "--")
     if asksForHelp && known then
       executeCommandHelp(name, state)
     else
@@ -1159,7 +1197,15 @@ module Registry =
       ("Security", [ "effects", "permissions" ])
       (
         "Utilities",
-        [ "clear", "help", "docs", "quit", "builtins", "workbench", "backups", "config" ]) ]
+        [ "clear"
+          "help"
+          "docs"
+          "quit"
+          "builtins"
+          "workbench"
+          "backups"
+          "config"
+          "extensions" ]) ]
 
 
   let formatCommandGroup(

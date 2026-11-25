@@ -83,8 +83,8 @@ test referenceListingsAnswer =
 
         Instance.says(
           Stdlib.Cli.Tui.Text.stripSgr(Instance.said(i, [ "commands" ])),
-          "nav",
-          "commands lists the registry") ]))
+          "dark extensions",
+          "commands is help") ]))
 
 
 /// A full name means the same thing wherever you stand, and a miss names what was typed.
