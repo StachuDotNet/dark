@@ -1,0 +1,11 @@
+/// TestsOnSave: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.TestsOnSave
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named(
+      "tests-on-save",
+      "Tests as you save",
+      "Run the tests each save touches, in the background") with
+      under = "tests"
+      fake = "the watcher is on the bg-tests-proto branch (W714); turning it on only records it" }

@@ -1,0 +1,95 @@
+/// Tracing: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Tracing
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("tracing", "Tracing", "Keep a record of every run, and read it back") with
+      commands = [ "traces", "ps" ]
+      settings = [ ("trace.record", "on") ]
+      guide = [ "dark traces    dark traces show <id>    dark ps" ]
+      pane = "Darklang.Cli.Extensions.Tracing.pane"
+      handlers = "Darklang.Cli.Extensions.Tracing.commands" }
+
+
+let acceptsTraces(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.everywhere(
+    [ "-y", "--yes", "--json", "--inspect", "--full" ],
+    [ "--iteration" ],
+    Darklang.Cli.Accepts.subcommands(
+      [ ("list", Darklang.Cli.Accepts.withValues([ "--fn", "--route" ], Darklang.Cli.Accepts.upTo(1, [])))
+        ("follow", Darklang.Cli.Accepts.withValues([ "--route" ], Darklang.Cli.Accepts.nothing()))
+        ("stats", Darklang.Cli.Accepts.upTo(1, []))
+        ("tail", Darklang.Cli.Accepts.withValues([ "--route" ], Darklang.Cli.Accepts.upTo(1, [])))
+        ("find", Darklang.Cli.Accepts.text(1))
+        ("fns", Darklang.Cli.Accepts.upTo(1, [ "--all" ]))
+        ("hotspots", Darklang.Cli.Accepts.upTo(1, []))
+        ("view", Darklang.Cli.Accepts.between(1, 2, [ "--watch" ]))
+        (
+          "details",
+          Darklang.Cli.Accepts.withValues(
+            [ "--filter", "--exclude", "--slow-ms", "--depth" ],
+            Darklang.Cli.Accepts.between(1, 1, [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib" ])))
+
+        ("log", Darklang.Cli.Accepts.text(0))
+        ("record", Darklang.Cli.Accepts.upTo(1, []))
+        (
+          "inspect",
+          Darklang.Cli.Accepts.withValues(
+            [ "--filter", "--exclude", "--slow-ms", "--depth" ],
+            Darklang.Cli.Accepts.between(1, 1, [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib" ])))
+
+        ("resume", Darklang.Cli.Accepts.between(1, 1, []))
+        ("fork", Darklang.Cli.Accepts.withValues([ "--at" ], Darklang.Cli.Accepts.between(1, 1, [])))
+        ("pin", Darklang.Cli.Accepts.between(1, 1, []))
+        ("unpin", Darklang.Cli.Accepts.between(1, 1, []))
+        ("calls", Darklang.Cli.Accepts.between(1, 1, []))
+        ("show", Darklang.Cli.Accepts.between(1, 2, [ "--watch" ]))
+        ("values", Darklang.Cli.Accepts.text(0))
+        ("rerun", Darklang.Cli.Accepts.between(1, 1, []))
+        ("delete", Darklang.Cli.Accepts.withValues([ "--keep", "--before" ], Darklang.Cli.Accepts.upTo(1, [ "--all" ]))) ],
+      Darklang.Cli.Accepts.nothing()))
+
+
+let acceptsPs(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.everywhere(
+    [ "--json" ],
+    [],
+    Darklang.Cli.Accepts.subcommands(
+      [ ("show", Darklang.Cli.Accepts.between(1, 1, [ "--full" ]))
+        ("cancel", Darklang.Cli.Accepts.between(1, 1, []))
+        ("kill", Darklang.Cli.Accepts.between(1, 1, [])) ],
+      Darklang.Cli.Accepts.flagsOnly([ "--watch" ])))
+
+
+let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+  [ (
+      "traces",
+      "The runs this instance has kept: what ran, what it did, and resuming one",
+      [ "trace", "exec", "runs" ],
+      acceptsTraces,
+      Darklang.Cli.Tracing.execute,
+      Darklang.Cli.Tracing.help,
+      Darklang.Cli.Tracing.complete)
+    (
+      "ps",
+      "What is running: this instance's processes, then other Darks on this machine",
+      [ "processes" ],
+      acceptsPs,
+      Darklang.Cli.Ps.execute,
+      Darklang.Cli.Ps.help,
+      Darklang.Cli.Ps.complete) ]
+  |> Stdlib.List.map(Darklang.Cli.Registry.handler)
+
+
+let pane(input: Darklang.Cli.Extensions.PaneInput): Darklang.Cli.Extensions.Pane =
+  let recording =
+    if Darklang.Cli.Extensions.setting(input, "trace.record") == "on" then
+      "Every run is recorded."
+    else
+      "Runs are not recorded. Turning tracing off and on starts again."
+
+  Darklang.Cli.Extensions.Pane
+    { lines = [ recording ]
+      actions =
+        [ Darklang.Cli.Extensions.action("t", "the newest runs", [ "traces" ])
+          Darklang.Cli.Extensions.action("d", "keep only the newest 20", [ "traces", "delete", "--keep", "20" ]) ] }

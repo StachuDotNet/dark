@@ -1,0 +1,26 @@
+/// HttpServer: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.HttpServer
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("http-server", "HTTP server", "Serve your functions on a local port") with
+      commands = [ "serve" ]
+      handlers = "Darklang.Cli.Extensions.HttpServer.commands" }
+
+
+let acceptsServe(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.withValues(
+    [ "--bind", "--port", "--max-body-bytes" ],
+    Darklang.Cli.Accepts.between(1, 1, [ "--live", "--no-live", "--dev" ]))
+
+
+let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+  [ (
+      "serve",
+      "Start an HTTP server",
+      [ "http-server" ],
+      acceptsServe,
+      Darklang.Cli.Http.Serve.execute,
+      Darklang.Cli.Http.Serve.help,
+      Darklang.Cli.Http.Serve.complete) ]
+  |> Stdlib.List.map(Darklang.Cli.Registry.handler)

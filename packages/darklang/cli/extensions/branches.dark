@@ -1,0 +1,148 @@
+/// Branches: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Branches
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("branches", "Branches", "Try an idea on a line of its own, then merge it") with
+      under = "history"
+      commands =
+        [ "branch"
+          "branches"
+          "switch"
+          "merge"
+          "rebase"
+          "diff"
+          "log"
+          "resolve"
+          "conflicts" ]
+      handlers = "Darklang.Cli.Extensions.Branches.commands" }
+
+
+let acceptsBranch(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.subcommands(
+    [ ("list", Darklang.Cli.Accepts.flagsOnly([ "--all" ]))
+      ("current", Darklang.Cli.Accepts.nothing())
+      ("switch", Darklang.Cli.Accepts.between(1, 1, []))
+      ("new", Darklang.Cli.Accepts.between(1, 1, []))
+      ("create", Darklang.Cli.Accepts.between(1, 1, []))
+      ("archive", Darklang.Cli.Accepts.between(1, 1, [ "-y", "--yes" ]))
+      ("rename", Darklang.Cli.Accepts.between(2, 2, []))
+      ("diff", Darklang.Cli.Accepts.between(1, 1, [ "--source" ]))
+      ("log", Darklang.Cli.Accepts.between(1, 1, []))
+      ("merge", Darklang.Cli.Accepts.between(1, 1, [ "-y", "--yes", "--allow-type-errors", "--dry-run" ]))
+      ("rebase", Darklang.Cli.Accepts.between(1, 1, []))
+      ("resolve", Darklang.Cli.Accepts.between(3, 3, [])) ],
+    Darklang.Cli.Accepts.upTo(1, []))
+
+
+let acceptsRebase(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.upTo(1, [ "--dry-run" ])
+
+
+let acceptsMerge(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.upTo(1, [ "-y", "--yes", "--allow-type-errors", "--dry-run" ])
+
+
+let acceptsBranches(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.flagsOnly([ "--all", "--json" ])
+
+
+let acceptsSwitch(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.upTo(1, [ "-c", "--create" ])
+
+
+let acceptsDiff(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.upTo(1, [ "--source", "--json" ])
+
+
+let acceptsLog(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.upTo(1, [ "--json" ])
+
+
+let acceptsResolve(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.between(3, 3, [])
+
+
+let acceptsConflicts(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.everywhere(
+    [ "--json" ],
+    [],
+    Darklang.Cli.Accepts.subcommands(
+      [ ("list", Darklang.Cli.Accepts.nothing())
+        ("walk", Darklang.Cli.Accepts.nothing())
+        ("show", Darklang.Cli.Accepts.between(1, 1, []))
+        ("ack", Darklang.Cli.Accepts.freeText(1, []))
+        ("override", Darklang.Cli.Accepts.between(2, 2, []))
+        ("branch", Darklang.Cli.Accepts.between(1, 1, [])) ],
+      Darklang.Cli.Accepts.nothing()))
+
+
+let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+  [ (
+      "branch",
+      "Work on an isolated line of work (create / switch / inspect)",
+      [ "br" ],
+      acceptsBranch,
+      Darklang.Cli.Branch.execute,
+      Darklang.Cli.Branch.help,
+      Darklang.Cli.Branch.complete)
+    (
+      "rebase",
+      "Accept the parent's changes into a branch",
+      [],
+      acceptsRebase,
+      Branch.executeRebaseCmd,
+      Darklang.Cli.Branch.help,
+      Darklang.Cli.Branch.complete)
+    (
+      "merge",
+      "Merge a branch into its parent",
+      [],
+      acceptsMerge,
+      Branch.executeMergeCmd,
+      Branch.mergeHelp,
+      Darklang.Cli.Branch.complete)
+    (
+      "branches",
+      "List your branches",
+      [],
+      acceptsBranches,
+      Branch.executeBranchesCmd,
+      Darklang.Cli.Branch.help,
+      Darklang.Cli.Branch.complete)
+    (
+      "switch",
+      "Move onto a branch (`switch main` returns)",
+      [ "checkout" ],
+      acceptsSwitch,
+      Branch.executeSwitchCmd,
+      Darklang.Cli.Branch.help,
+      Darklang.Cli.Branch.complete)
+    (
+      "diff",
+      "What a branch changes vs its parent",
+      [],
+      acceptsDiff,
+      Branch.executeDiffCmd,
+      Darklang.Cli.Branch.help,
+      Darklang.Cli.Branch.complete)
+    (
+      "log",
+      "History: commits on main, a branch's ops on a branch",
+      [],
+      acceptsLog,
+      Branch.executeLogCmd,
+      Darklang.Cli.Branch.help,
+      Darklang.Cli.Branch.complete)
+    (
+      "resolve",
+      "Settle one conflicted name on a branch",
+      [],
+      acceptsResolve,
+      Branch.executeResolveCmd,
+      Darklang.Cli.Branch.help,
+      Darklang.Cli.Branch.complete)
+    (
+      "conflicts",
+      "Review what a merge or rebase auto-resolved",
+      [],
+      acceptsConflicts,
+      Darklang.Cli.Conflicts.execute,
+      Darklang.Cli.Conflicts.help,
+      Darklang.Cli.Conflicts.complete) ]
+  |> Stdlib.List.map(Darklang.Cli.Registry.handler)

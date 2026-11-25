@@ -1,0 +1,9 @@
+/// Compiler: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Compiler
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("compiler", "Compiler", "Build a function into a standalone executable") with
+      asks = [ "file write $PWD" ]
+      installs = "darkc, from darklang/compiler"
+      fake = "nothing is downloaded; `dark compile` is not on main" }

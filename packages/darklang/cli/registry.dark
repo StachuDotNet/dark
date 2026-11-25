@@ -21,21 +21,8 @@ module Registry =
   // What each command takes on the command line, one function per command, referenced by its row in
   // `allCommands` the way `execute`, `help` and `complete` are. Functions rather than values, because
   // every start builds the table and only the command being run should pay for its declaration.
-  let acceptsQuit(): Accepts.Accepts =
-    Accepts.nothing()
-
-
   let acceptsHelp(): Accepts.Accepts =
     Accepts.textBetween(0, 1)
-
-
-  let acceptsConfig(): Accepts.Accepts =
-    Accepts.subcommands(
-      [ ("get", Accepts.between(1, 1, []))
-        ("set", Accepts.textBetween(2, 2))
-        ("unset", Accepts.between(1, 1, []))
-        ("list", Accepts.flagsOnly([ "--json" ])) ],
-      Accepts.flagsOnly([ "--json" ]))
 
 
   let acceptsExtensions(): Accepts.Accepts =
@@ -61,18 +48,9 @@ module Registry =
 
   let acceptsVersion(): Accepts.Accepts = Accepts.flagsOnly([ "--local" ])
 
-  let acceptsNav(): Accepts.Accepts = Accepts.upTo(1, [])
-
-
   let acceptsLs(): Accepts.Accepts =
     Accepts.upTo(1, [ "--include-deprecated", "--include-internal", "--versions", "--json" ])
 
-
-  let acceptsBack(): Accepts.Accepts = Accepts.nothing()
-
-  let acceptsClear(): Accepts.Accepts = Accepts.nothing()
-
-  let acceptsFormat(): Accepts.Accepts = Accepts.freeText(1, [ "--check", "--as-written" ])
 
   let acceptsRunScript(): Accepts.Accepts = Accepts.text(1)
 
@@ -81,12 +59,6 @@ module Registry =
 
   let acceptsView(): Accepts.Accepts =
     Accepts.freeText(0, [ "--raw", "--ast", "--instructions", "--instrs", "--include-tests" ])
-
-
-  let acceptsTree(): Accepts.Accepts =
-    Accepts.withValues(
-      [ "--depth" ],
-      Accepts.upTo(1, [ "--toc", "--include-deprecated", "--include-internal", "--json" ]))
 
 
   let acceptsSearch(): Accepts.Accepts =
@@ -113,32 +85,6 @@ module Registry =
           "--json" ]))
 
 
-  let acceptsTypecheck(): Accepts.Accepts =
-    Accepts.upTo(1, [ "--failed", "--incomplete", "--all", "--json" ])
-
-
-  let acceptsTest(): Accepts.Accepts =
-    Accepts.subcommands(
-      [ (
-          "run",
-          Accepts.withValues(
-            [ "--jobs", "--seed" ],
-            Accepts.freeText(0, [ "--force", "--brief", "--verbose", "--json" ])))
-
-        ("count", Accepts.withValues([ "--for" ], Accepts.freeText(0, [])))
-        ("add", Accepts.text(2)) ],
-      Accepts.nothing())
-
-
-  let acceptsDeps(): Accepts.Accepts =
-    Accepts.everywhere(
-      [ "--json", "--deep", "--all" ],
-      [],
-      Accepts.subcommands(
-        [ ("uses", Accepts.between(1, 1, [])), ("usedby", Accepts.between(1, 1, [])) ],
-        Accepts.between(1, 1, [])))
-
-
   let acceptsVal(): Accepts.Accepts = Accepts.text(2)
 
   let acceptsFn(): Accepts.Accepts = Accepts.text(2)
@@ -150,112 +96,6 @@ module Registry =
   let acceptsImpl(): Accepts.Accepts = Accepts.text(2)
 
   let acceptsModule(): Accepts.Accepts = Accepts.between(2, 2, [])
-
-  let acceptsEdit(): Accepts.Accepts = Accepts.between(1, 2, [ "--patch" ])
-
-  let acceptsRename(): Accepts.Accepts = Accepts.between(2, 2, [])
-
-  let acceptsHash(): Accepts.Accepts = Accepts.between(1, 1, [ "--long", "--full" ])
-
-  let acceptsStatus(): Accepts.Accepts = Accepts.flagsOnly([ "--json" ])
-
-  let acceptsCommits(): Accepts.Accepts = Accepts.upTo(1, [ "--json", "--detailed", "--all" ])
-
-
-  let acceptsCommit(): Accepts.Accepts =
-    Accepts.withValues(
-      [ "--include" ],
-      Accepts.freeText(
-        0,
-        [ "-y"
-          "--yes"
-          "-m"
-          "--message"
-          "--allow-unresolved"
-          "--allow-type-errors"
-          "--json" ]))
-
-
-  let acceptsDiscard(): Accepts.Accepts =
-    Accepts.upTo(1, [ "-y", "--yes" ])
-
-
-  let acceptsShow(): Accepts.Accepts =
-    Accepts.between(1, 1, [])
-
-
-  let acceptsBranch(): Accepts.Accepts =
-    Accepts.subcommands(
-      [ ("list", Accepts.flagsOnly([ "--all" ]))
-        ("current", Accepts.nothing())
-        ("switch", Accepts.between(1, 1, []))
-        ("new", Accepts.between(1, 1, []))
-        ("create", Accepts.between(1, 1, []))
-        ("archive", Accepts.between(1, 1, [ "-y", "--yes" ]))
-        ("rename", Accepts.between(2, 2, []))
-        ("diff", Accepts.between(1, 1, [ "--source" ]))
-        ("log", Accepts.between(1, 1, []))
-        ("merge", Accepts.between(1, 1, [ "-y", "--yes", "--allow-type-errors", "--dry-run" ]))
-        ("rebase", Accepts.between(1, 1, []))
-        ("resolve", Accepts.between(3, 3, [])) ],
-      Accepts.upTo(1, []))
-
-
-  let acceptsRebase(): Accepts.Accepts =
-    Accepts.upTo(1, [ "--dry-run" ])
-
-
-  let acceptsMerge(): Accepts.Accepts =
-    Accepts.upTo(1, [ "-y", "--yes", "--allow-type-errors", "--dry-run" ])
-
-
-  let acceptsBranches(): Accepts.Accepts = Accepts.flagsOnly([ "--all", "--json" ])
-
-  let acceptsSwitch(): Accepts.Accepts = Accepts.upTo(1, [ "-c", "--create" ])
-
-  let acceptsDiff(): Accepts.Accepts = Accepts.upTo(1, [ "--source", "--json" ])
-
-  let acceptsLog(): Accepts.Accepts = Accepts.upTo(1, [ "--json" ])
-
-  let acceptsResolve(): Accepts.Accepts = Accepts.between(3, 3, [])
-
-
-  let acceptsConstraints(): Accepts.Accepts =
-    Accepts.subcommands(
-      [ ("resolve", Accepts.withValues([ "--as" ], Accepts.freeText(0, [ "--all", "--why" ])))
-        ("ack", Accepts.freeText(0, [ "--all", "--why" ])) ],
-      Accepts.withValues([ "--kind" ], Accepts.flagsOnly([ "--json" ])))
-
-
-  let acceptsAck(): Accepts.Accepts =
-    Accepts.freeText(0, [ "--all", "--why" ])
-
-
-  let acceptsUndeprecate(): Accepts.Accepts =
-    Accepts.between(1, 1, [ "-y", "--yes" ])
-
-
-  let acceptsBackups(): Accepts.Accepts =
-    Accepts.subcommands(
-      [ ("list", Accepts.nothing())
-        ("now", Accepts.nothing())
-        ("prune", Accepts.between(1, 1, [ "-y", "--yes" ]))
-        ("restore", Accepts.between(1, 1, [ "-y", "--yes" ])) ],
-      Accepts.nothing())
-
-
-  let acceptsBuiltins(): Accepts.Accepts = Accepts.upTo(1, [ "--with-sigs", "--with-purity" ])
-
-  let acceptsFindValues(): Accepts.Accepts = Accepts.between(1, 2, [])
-
-  let acceptsImpls(): Accepts.Accepts = Accepts.between(1, 1, [ "--json" ])
-
-
-  let acceptsServe(): Accepts.Accepts =
-    Accepts.withValues(
-      [ "--bind", "--port", "--max-body-bytes" ],
-      Accepts.between(1, 1, [ "--live", "--no-live", "--dev" ]))
-
 
   let acceptsDocs(): Accepts.Accepts =
     Accepts.subcommands(
@@ -303,82 +143,6 @@ module Registry =
       Accepts.freeText(0, []))
 
 
-  let acceptsUndo(): Accepts.Accepts =
-    Accepts.between(1, 1, [])
-
-
-  let acceptsDeprecate(): Accepts.Accepts =
-    Accepts.withValues(
-      [ "--replacement", "--reason", "-m" ],
-      Accepts.between(1, 2, [ "--block-execution", "-y", "--yes", "--dry-run", "--json" ]))
-
-
-  let acceptsDelete(): Accepts.Accepts =
-    Accepts.withValues(
-      [ "--reason", "-m" ],
-      Accepts.between(
-        1,
-        2,
-        [ "-y", "--yes", "--ignore-dependents", "--force", "--dry-run", "--json" ]))
-
-
-  let acceptsTraces(): Accepts.Accepts =
-    Accepts.everywhere(
-      [ "-y", "--yes", "--json", "--inspect", "--full" ],
-      [ "--iteration" ],
-      Accepts.subcommands(
-        [ ("list", Accepts.withValues([ "--fn", "--route" ], Accepts.upTo(1, [])))
-          ("follow", Accepts.withValues([ "--route" ], Accepts.nothing()))
-          ("stats", Accepts.upTo(1, []))
-          ("tail", Accepts.withValues([ "--route" ], Accepts.upTo(1, [])))
-          ("find", Accepts.text(1))
-          ("fns", Accepts.upTo(1, [ "--all" ]))
-          ("hotspots", Accepts.upTo(1, []))
-          ("view", Accepts.between(1, 2, [ "--watch" ]))
-          (
-            "details",
-            Accepts.withValues(
-              [ "--filter", "--exclude", "--slow-ms", "--depth" ],
-              Accepts.between(1, 1, [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib" ])))
-
-          ("log", Accepts.text(0))
-          ("record", Accepts.upTo(1, []))
-          (
-            "inspect",
-            Accepts.withValues(
-              [ "--filter", "--exclude", "--slow-ms", "--depth" ],
-              Accepts.between(1, 1, [ "--all", "--slow", "-d", "--no-builtins", "--no-stdlib" ])))
-
-          ("resume", Accepts.between(1, 1, []))
-          ("fork", Accepts.withValues([ "--at" ], Accepts.between(1, 1, [])))
-          ("pin", Accepts.between(1, 1, []))
-          ("unpin", Accepts.between(1, 1, []))
-          ("calls", Accepts.between(1, 1, []))
-          ("show", Accepts.between(1, 2, [ "--watch" ]))
-          ("values", Accepts.text(0))
-          ("rerun", Accepts.between(1, 1, []))
-          ("delete", Accepts.withValues([ "--keep", "--before" ], Accepts.upTo(1, [ "--all" ]))) ],
-        Accepts.nothing()))
-
-
-  let acceptsConflicts(): Accepts.Accepts =
-    Accepts.everywhere(
-      [ "--json" ],
-      [],
-      Accepts.subcommands(
-        [ ("list", Accepts.nothing())
-          ("walk", Accepts.nothing())
-          ("show", Accepts.between(1, 1, []))
-          ("ack", Accepts.freeText(1, []))
-          ("override", Accepts.between(2, 2, []))
-          ("branch", Accepts.between(1, 1, [])) ],
-        Accepts.nothing()))
-
-
-  let acceptsEffects(): Accepts.Accepts =
-    Accepts.between(1, 1, [])
-
-
   let acceptsPermissions(): Accepts.Accepts =
     Accepts.subcommands(
       [ ("list", Accepts.nothing())
@@ -399,30 +163,9 @@ module Registry =
       Accepts.nothing())
 
 
-  let acceptsOps(): Accepts.Accepts =
-    Accepts.subcommands(
-      [ ("list", Accepts.upTo(1, [])), ("show", Accepts.between(1, 1, [])) ],
-      Accepts.upTo(1, []))
-
-
-  let acceptsPs(): Accepts.Accepts =
-    Accepts.everywhere(
-      [ "--json" ],
-      [],
-      Accepts.subcommands(
-        [ ("show", Accepts.between(1, 1, [ "--full" ]))
-          ("cancel", Accepts.between(1, 1, []))
-          ("kill", Accepts.between(1, 1, [])) ],
-        Accepts.flagsOnly([ "--watch" ])))
-
-
-  let acceptsWorkbench(): Accepts.Accepts =
-    Accepts.flagsOnly([ "--live" ])
-
-
-  let allCommands(): List<CommandHandler> =
-    [ ("quit", "Exit the CLI", [ "exit", "q" ], acceptsQuit, Quit.execute, Quit.help, Quit.complete)
-      (
+  /// The commands the kernel has. Each extension's come from its `handlers` fn.
+  let kernelCommands(): List<CommandHandler> =
+    [ (
         "help",
         "Show help for commands",
         [ "commands", "?", "--help", "-h" ],
@@ -430,15 +173,6 @@ module Registry =
         Help.execute,
         Help.help,
         Help.complete)
-
-      (
-        "config",
-        "Manage CLI configuration",
-        [],
-        acceptsConfig,
-        Config.execute,
-        Config.help,
-        Config.complete)
 
       (
         "extensions",
@@ -495,15 +229,6 @@ module Registry =
         Installation.Version.complete)
 
       (
-        "nav",
-        "Navigate between owners, modules, and items",
-        [ "cd" ],
-        acceptsNav,
-        Packages.Nav.execute,
-        Packages.Nav.help,
-        Packages.Nav.complete)
-
-      (
         "ls",
         "List package contents",
         [ "dir" ],
@@ -511,33 +236,6 @@ module Registry =
         Packages.Listing.execute,
         Packages.Listing.help,
         Packages.Listing.complete)
-
-      (
-        "back",
-        "Go back to previous location",
-        [],
-        acceptsBack,
-        Packages.Back.execute,
-        Packages.Back.help,
-        Packages.Back.complete)
-
-      (
-        "clear",
-        "Clear the screen",
-        [ "cls" ],
-        acceptsClear,
-        Clear.execute,
-        Clear.help,
-        Clear.complete)
-
-      (
-        "format",
-        "Format .dark files",
-        [ "fmt" ],
-        acceptsFormat,
-        Format.execute,
-        Format.help,
-        Format.complete)
 
       (
         "run-script",
@@ -567,15 +265,6 @@ module Registry =
         Packages.View.complete)
 
       (
-        "tree",
-        "Display package hierarchy in tree format",
-        [ "packages" ],
-        acceptsTree,
-        Packages.Tree.execute,
-        Packages.Tree.help,
-        Packages.Tree.complete)
-
-      (
         "search",
         "Search modules, types, functions, values, traits, impls and tests",
         [],
@@ -583,33 +272,6 @@ module Registry =
         Packages.Search.execute,
         Packages.Search.help,
         Packages.Search.complete)
-
-      (
-        "typecheck",
-        "Audit package declarations without changing them",
-        [],
-        acceptsTypecheck,
-        Packages.Typecheck.execute,
-        Packages.Typecheck.help,
-        Packages.Typecheck.complete)
-
-      (
-        "test",
-        "Run package tests",
-        [ "tests" ],
-        acceptsTest,
-        Packages.Test.execute,
-        Packages.Test.help,
-        Packages.Test.complete)
-
-      (
-        "deps",
-        "Show dependencies and dependents",
-        [ "dependencies" ],
-        acceptsDeps,
-        Deps.execute,
-        Deps.help,
-        Deps.complete)
 
       (
         "val",
@@ -666,226 +328,6 @@ module Registry =
         Packages.ModuleCommand.complete)
 
       (
-        "edit",
-        "Change an item without retyping it",
-        [],
-        acceptsEdit,
-        Packages.Edit.execute,
-        Packages.Edit.help,
-        Packages.Edit.complete)
-
-      (
-        "rename",
-        "Give an item a different name (its content and callers are untouched)",
-        [],
-        acceptsRename,
-        Packages.Rename.execute,
-        Packages.Rename.help,
-        Packages.Rename.complete)
-
-      (
-        "hash",
-        "Show hash of a package item",
-        [],
-        acceptsHash,
-        Packages.Hash.execute,
-        Packages.Hash.help,
-        Packages.Hash.complete)
-
-      // SCM commands
-      (
-        "status",
-        "What's in your draft, in one line",
-        [ "wip", "changes" ],
-        acceptsStatus,
-        Status.execute,
-        Status.help,
-        Status.complete)
-
-      // `commits`, not `log`: every noun in this CLI says what it lists (`ops`, `branches`, `conflicts`), and
-      // `log` only reads as "commits" if you've used git. `log` is its own command, meaning whichever
-      // history you're standing in.
-      (
-        "commits",
-        "Your commits, newest first",
-        [ "history" ],
-        acceptsCommits,
-        Commits.execute,
-        Commits.help,
-        Commits.complete)
-
-      (
-        "commit",
-        "Review your draft, propagate, and commit it",
-        [],
-        acceptsCommit,
-        Commit.execute,
-        Commit.help,
-        Commit.complete)
-
-      (
-        "discard",
-        "Drop your draft: everything authored since the last commit",
-        [ "reset" ],
-        acceptsDiscard,
-        Discard.execute,
-        Discard.help,
-        Discard.complete)
-
-      (
-        "show",
-        "Show what a commit contains, or what one op does",
-        [],
-        acceptsShow,
-        Commits.executeShow,
-        Commits.helpShow,
-        Commits.complete)
-
-      (
-        "branch",
-        "Work on an isolated line of work (create / switch / inspect)",
-        [ "br" ],
-        acceptsBranch,
-        Branch.execute,
-        Branch.help,
-        Branch.complete)
-
-      (
-        "rebase",
-        "Accept the parent's changes into a branch",
-        [],
-        acceptsRebase,
-        Branch.executeRebaseCmd,
-        Branch.help,
-        Branch.complete)
-
-      (
-        "merge",
-        "Merge a branch into its parent",
-        [],
-        acceptsMerge,
-        Branch.executeMergeCmd,
-        Branch.mergeHelp,
-        Branch.complete)
-
-      (
-        "branches",
-        "List your branches",
-        [],
-        acceptsBranches,
-        Branch.executeBranchesCmd,
-        Branch.help,
-        Branch.complete)
-
-      (
-        "switch",
-        "Move onto a branch (`switch main` returns)",
-        [ "checkout" ],
-        acceptsSwitch,
-        Branch.executeSwitchCmd,
-        Branch.help,
-        Branch.complete)
-
-      (
-        "diff",
-        "What a branch changes vs its parent",
-        [],
-        acceptsDiff,
-        Branch.executeDiffCmd,
-        Branch.help,
-        Branch.complete)
-
-      (
-        "log",
-        "History: commits on main, a branch's ops on a branch",
-        [],
-        acceptsLog,
-        Branch.executeLogCmd,
-        Branch.help,
-        Branch.complete)
-
-      (
-        "resolve",
-        "Settle one conflicted name on a branch",
-        [],
-        acceptsResolve,
-        Branch.executeResolveCmd,
-        Branch.help,
-        Branch.complete)
-
-      (
-        "constraints",
-        "Standing findings: stale usages, kind changes, rival impls",
-        [],
-        acceptsConstraints,
-        ConstraintsCmd.execute,
-        ConstraintsCmd.help,
-        ConstraintsCmd.complete)
-
-      (
-        "ack",
-        "Leave a constraint finding for now (`dark ack --all`)",
-        [],
-        acceptsAck,
-        ConstraintsCmd.executeAckCmd,
-        ConstraintsCmd.help,
-        ConstraintsCmd.complete)
-
-      (
-        "undeprecate",
-        "Put a deprecated fn/type/value/trait/impl/test back on the shelf",
-        [ "restore" ],
-        acceptsUndeprecate,
-        Packages.Deprecate.executeUndeprecate,
-        Packages.Deprecate.undeprecateHelp,
-        (fun(_, args) -> Packages.Deprecate.completeItemTypes(args)))
-
-      (
-        "backups",
-        "Copies of the store: what exists, take one, prune",
-        [],
-        acceptsBackups,
-        Backups.execute,
-        Backups.help,
-        Backups.complete)
-
-      (
-        "builtins",
-        "List all builtin functions and values",
-        [],
-        acceptsBuiltins,
-        Builtins.execute,
-        Builtins.help,
-        Builtins.complete)
-
-      (
-        "find-values",
-        "Find values of a given type",
-        [],
-        acceptsFindValues,
-        Packages.FindValues.execute,
-        Packages.FindValues.help,
-        Packages.FindValues.complete)
-
-      (
-        "impls",
-        "List the implementations of a trait on this branch",
-        [],
-        acceptsImpls,
-        Packages.Impls.execute,
-        Packages.Impls.help,
-        Packages.Impls.complete)
-
-      (
-        "serve",
-        "Start an HTTP server",
-        [ "http-server" ],
-        acceptsServe,
-        Http.Serve.execute,
-        Http.Serve.help,
-        Http.Serve.complete)
-
-      (
         "docs",
         "Browse in-CLI documentation",
         [ "doc", "man" ],
@@ -895,95 +337,33 @@ module Registry =
         Docs.Command.complete)
 
       (
-        "undo",
-        "Step an item back to its previous version",
-        [],
-        acceptsUndo,
-        Undo.execute,
-        Undo.help,
-        Undo.complete)
-
-      (
-        "deprecate",
-        "Mark a fn/type/value/trait/impl/test as deprecated",
-        [],
-        acceptsDeprecate,
-        Packages.Deprecate.execute,
-        Packages.Deprecate.help,
-        Packages.Deprecate.complete)
-
-      (
-        "delete",
-        "Deprecate items with a live-dependents check",
-        [],
-        acceptsDelete,
-        Packages.Delete.execute,
-        Packages.Delete.help,
-        Packages.Delete.complete)
-
-      (
-        "traces",
-        "The runs this instance has kept: what ran, what it did, and resuming one",
-        [ "trace", "exec", "runs" ],
-        acceptsTraces,
-        Tracing.execute,
-        Tracing.help,
-        Tracing.complete)
-
-      (
-        "conflicts",
-        "Review what a merge or rebase auto-resolved",
-        [],
-        acceptsConflicts,
-        Conflicts.execute,
-        Conflicts.help,
-        Conflicts.complete)
-
-      (
-        "effects",
-        "See what code might do and why",
-        [],
-        acceptsEffects,
-        Effects.execute,
-        Effects.help,
-        Effects.complete)
-
-      (
         "permissions",
         "Review effects and runtime permission policies",
         [ "perms" ],
         acceptsPermissions,
         Permissions.Command.execute,
         Permissions.Command.help,
-        Permissions.Command.complete)
+        Permissions.Command.complete) ]
+    |> Stdlib.List.map(handler)
 
-      ("ops", "Read this instance's op log", [], acceptsOps, Ops.execute, Ops.help, Ops.complete)
-      (
-        "ps",
-        "What is running: this instance's processes, then other Darks on this machine",
-        [ "processes" ],
-        acceptsPs,
-        Ps.execute,
-        Ps.help,
-        Ps.complete)
 
-      (
-        "workbench",
-        "Open the workbench -- a framed, navigable package tree",
-        [ "wb" ],
-        acceptsWorkbench,
-        Workbench.execute,
-        Workbench.help,
-        Workbench.complete) ]
-    |> Stdlib.List.map(fun((name, desc, aliases, accepts, execute, help, complete)) ->
-      CommandHandler
-        { name = name
-          description = desc
-          aliases = aliases
-          accepts = accepts
-          execute = execute
-          help = help
-          complete = complete })
+  let allCommands(): List<CommandHandler> =
+    Stdlib.List.concat(kernelCommands(), Extensions.handlers(resolveStartingBranch()))
+
+
+  /// A row of the command table, as `kernelCommands` and each extension's `handlers` write it.
+  let handler(
+    row: (String * String * List<String> * (Unit -> Accepts.Accepts) * ((AppState, List<String>) -> AppState) * (AppState -> String) * ((AppState, List<String>) -> List<Completion.CompletionItem>)))
+    : CommandHandler =
+    let (name, desc, aliases, accepts, execute, help, complete) = row
+    CommandHandler
+      { name = name
+        description = desc
+        aliases = aliases
+        accepts = accepts
+        execute = execute
+        help = help
+        complete = complete }
 
 
   let findCommandIn(commands: List<CommandHandler>, name: String): CommandHandler =

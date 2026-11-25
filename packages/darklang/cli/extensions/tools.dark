@@ -1,0 +1,261 @@
+/// Tools: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Tools
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("tools", "More store tools", "Navigate, refactor, deprecate, check types, back up") with
+      commands =
+        [ "nav"
+          "back"
+          "tree"
+          "find-values"
+          "deps"
+          "typecheck"
+          "impls"
+          "edit"
+          "rename"
+          "hash"
+          "deprecate"
+          "delete"
+          "undeprecate"
+          "format"
+          "builtins"
+          "backups"
+          "config"
+          "effects" ]
+      handlers = "Darklang.Cli.Extensions.Tools.commands" }
+
+
+let acceptsConfig(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.subcommands(
+    [ ("get", Darklang.Cli.Accepts.between(1, 1, []))
+      ("set", Darklang.Cli.Accepts.textBetween(2, 2))
+      ("unset", Darklang.Cli.Accepts.between(1, 1, []))
+      ("list", Darklang.Cli.Accepts.flagsOnly([ "--json" ])) ],
+    Darklang.Cli.Accepts.flagsOnly([ "--json" ]))
+
+
+let acceptsNav(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.upTo(1, [])
+
+
+let acceptsBack(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.nothing()
+
+
+let acceptsFormat(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.freeText(1, [ "--check", "--as-written" ])
+
+
+let acceptsTree(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.withValues(
+    [ "--depth" ],
+    Darklang.Cli.Accepts.upTo(1, [ "--toc", "--include-deprecated", "--include-internal", "--json" ]))
+
+
+let acceptsTypecheck(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.upTo(1, [ "--failed", "--incomplete", "--all", "--json" ])
+
+
+let acceptsDeps(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.everywhere(
+    [ "--json", "--deep", "--all" ],
+    [],
+    Darklang.Cli.Accepts.subcommands(
+      [ ("uses", Darklang.Cli.Accepts.between(1, 1, [])), ("usedby", Darklang.Cli.Accepts.between(1, 1, [])) ],
+      Darklang.Cli.Accepts.between(1, 1, [])))
+
+
+let acceptsEdit(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.between(1, 2, [ "--patch" ])
+
+
+let acceptsRename(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.between(2, 2, [])
+
+
+let acceptsHash(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.between(1, 1, [ "--long", "--full" ])
+
+
+let acceptsUndeprecate(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.between(1, 1, [ "-y", "--yes" ])
+
+
+let acceptsBackups(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.subcommands(
+    [ ("list", Darklang.Cli.Accepts.nothing())
+      ("now", Darklang.Cli.Accepts.nothing())
+      ("prune", Darklang.Cli.Accepts.between(1, 1, [ "-y", "--yes" ]))
+      ("restore", Darklang.Cli.Accepts.between(1, 1, [ "-y", "--yes" ])) ],
+    Darklang.Cli.Accepts.nothing())
+
+
+let acceptsBuiltins(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.upTo(1, [ "--with-sigs", "--with-purity" ])
+
+
+let acceptsFindValues(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.between(1, 2, [])
+
+
+let acceptsImpls(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.between(1, 1, [ "--json" ])
+
+
+let acceptsDeprecate(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.withValues(
+    [ "--replacement", "--reason", "-m" ],
+    Darklang.Cli.Accepts.between(1, 2, [ "--block-execution", "-y", "--yes", "--dry-run", "--json" ]))
+
+
+let acceptsDelete(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.withValues(
+    [ "--reason", "-m" ],
+    Darklang.Cli.Accepts.between(
+      1,
+      2,
+      [ "-y", "--yes", "--ignore-dependents", "--force", "--dry-run", "--json" ]))
+
+
+let acceptsEffects(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.between(1, 1, [])
+
+
+let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+  [ (
+      "config",
+      "Manage CLI configuration",
+      [],
+      acceptsConfig,
+      Darklang.Cli.Config.execute,
+      Darklang.Cli.Config.help,
+      Darklang.Cli.Config.complete)
+    (
+      "nav",
+      "Navigate between owners, modules, and items",
+      [ "cd" ],
+      acceptsNav,
+      Darklang.Cli.Packages.Nav.execute,
+      Darklang.Cli.Packages.Nav.help,
+      Darklang.Cli.Packages.Nav.complete)
+    (
+      "back",
+      "Go back to previous location",
+      [],
+      acceptsBack,
+      Darklang.Cli.Packages.Back.execute,
+      Darklang.Cli.Packages.Back.help,
+      Darklang.Cli.Packages.Back.complete)
+    (
+      "format",
+      "Format .dark files",
+      [ "fmt" ],
+      acceptsFormat,
+      Darklang.Cli.Format.execute,
+      Darklang.Cli.Format.help,
+      Darklang.Cli.Format.complete)
+    (
+      "tree",
+      "Display package hierarchy in tree format",
+      [ "packages" ],
+      acceptsTree,
+      Darklang.Cli.Packages.Tree.execute,
+      Darklang.Cli.Packages.Tree.help,
+      Darklang.Cli.Packages.Tree.complete)
+    (
+      "typecheck",
+      "Audit package declarations without changing them",
+      [],
+      acceptsTypecheck,
+      Darklang.Cli.Packages.Typecheck.execute,
+      Darklang.Cli.Packages.Typecheck.help,
+      Darklang.Cli.Packages.Typecheck.complete)
+    (
+      "deps",
+      "Show dependencies and dependents",
+      [ "dependencies" ],
+      acceptsDeps,
+      Darklang.Cli.Deps.execute,
+      Darklang.Cli.Deps.help,
+      Darklang.Cli.Deps.complete)
+    (
+      "edit",
+      "Change an item without retyping it",
+      [],
+      acceptsEdit,
+      Darklang.Cli.Packages.Edit.execute,
+      Darklang.Cli.Packages.Edit.help,
+      Darklang.Cli.Packages.Edit.complete)
+    (
+      "rename",
+      "Give an item a different name (its content and callers are untouched)",
+      [],
+      acceptsRename,
+      Darklang.Cli.Packages.Rename.execute,
+      Darklang.Cli.Packages.Rename.help,
+      Darklang.Cli.Packages.Rename.complete)
+    (
+      "hash",
+      "Show hash of a package item",
+      [],
+      acceptsHash,
+      Darklang.Cli.Packages.Hash.execute,
+      Darklang.Cli.Packages.Hash.help,
+      Darklang.Cli.Packages.Hash.complete)
+    (
+      "undeprecate",
+      "Put a deprecated fn/type/value/trait/impl/test back on the shelf",
+      [ "restore" ],
+      acceptsUndeprecate,
+      Packages.Deprecate.executeUndeprecate,
+      Packages.Deprecate.undeprecateHelp,
+      (fun(_, args) -> Packages.Deprecate.completeItemTypes(args)))
+    (
+      "backups",
+      "Copies of the store: what exists, take one, prune",
+      [],
+      acceptsBackups,
+      Darklang.Cli.Backups.execute,
+      Darklang.Cli.Backups.help,
+      Darklang.Cli.Backups.complete)
+    (
+      "builtins",
+      "List all builtin functions and values",
+      [],
+      acceptsBuiltins,
+      Darklang.Cli.Builtins.execute,
+      Darklang.Cli.Builtins.help,
+      Darklang.Cli.Builtins.complete)
+    (
+      "find-values",
+      "Find values of a given type",
+      [],
+      acceptsFindValues,
+      Darklang.Cli.Packages.FindValues.execute,
+      Darklang.Cli.Packages.FindValues.help,
+      Darklang.Cli.Packages.FindValues.complete)
+    (
+      "impls",
+      "List the implementations of a trait on this branch",
+      [],
+      acceptsImpls,
+      Darklang.Cli.Packages.Impls.execute,
+      Darklang.Cli.Packages.Impls.help,
+      Darklang.Cli.Packages.Impls.complete)
+    (
+      "deprecate",
+      "Mark a fn/type/value/trait/impl/test as deprecated",
+      [],
+      acceptsDeprecate,
+      Darklang.Cli.Packages.Deprecate.execute,
+      Darklang.Cli.Packages.Deprecate.help,
+      Darklang.Cli.Packages.Deprecate.complete)
+    (
+      "delete",
+      "Deprecate items with a live-dependents check",
+      [],
+      acceptsDelete,
+      Darklang.Cli.Packages.Delete.execute,
+      Darklang.Cli.Packages.Delete.help,
+      Darklang.Cli.Packages.Delete.complete)
+    (
+      "effects",
+      "See what code might do and why",
+      [],
+      acceptsEffects,
+      Darklang.Cli.Effects.execute,
+      Darklang.Cli.Effects.help,
+      Darklang.Cli.Effects.complete) ]
+  |> Stdlib.List.map(Darklang.Cli.Registry.handler)

@@ -1,0 +1,168 @@
+/// A new user's first minutes, from a fresh install, as one transcript. A change to any of it shows
+/// here as a diff: that is the point. Update the expected text when the change is meant.
+module Darklang.Cli.Tests.FirstRun
+
+val steps: List<List<String>> =
+  [ []
+    [ "eval", "1 + 2" ]
+    [ "fn", "Me.Hi.greet", "(name: String): String = \"hi \" + name" ]
+    [ "eval", "Me.Hi.greet(\"Ada\")" ]
+    [ "commit", "my first function", "-y" ]
+    [ "extensions", "enable", "history" ]
+    [ "commit", "my first function", "-y" ]
+    [ "extensions", "enable", "recommended" ]
+    [ "extensions" ]
+    [ "help" ] ]
+
+
+/// A commit id differs every run.
+let steady(line: String): String =
+  if Stdlib.String.startsWith(line, "  commit ") then
+    match Stdlib.String.split(line, " -- ") with
+    | [_, rest] -> "  commit <id> -- " + rest
+    | _ -> line
+  else
+    line
+
+
+/// An argument as a person would type it at a shell.
+let quoted(arg: String): String =
+  if Stdlib.List.any([ " ", "(", "\"" ], fun c -> Stdlib.String.contains(arg, c)) then
+    "'" + arg + "'"
+  else
+    arg
+
+
+let transcript(i: Instance.T): String =
+  steps
+  |> Stdlib.List.map(fun args ->
+    let (code, out) = Instance.ran(i, args)
+    let shown =
+      Stdlib.String.splitOnNewline(out)
+      |> Stdlib.List.map(fun l -> steady(Stdlib.String.trimEnd(Stdlib.Cli.Tui.Text.stripSgr(l))))
+      |> Stdlib.String.join("\n")
+      |> Stdlib.String.trimEnd
+
+    let typed = args |> Stdlib.List.map(quoted) |> Stdlib.String.join(" ")
+    let prompt = Stdlib.String.trimEnd("$ dark " + typed)
+    $"{prompt}\n{shown}\n[exit {Stdlib.display(code)}]")
+  |> Stdlib.String.join("\n")
+
+
+val expected =
+  """$ dark 
+Darklang: a small language that keeps your code in one store, on this machine.
+Write a script, or save functions and run them by name. Everything else is an
+extension you turn on when you want it.
+
+Run code
+  dark run hello.dark                  a script file
+  dark eval '1 + 2'                    one expression
+Keep code
+  dark fn Me.Hi.greet '(name: String): String = "hi " + name'
+  dark eval 'Me.Hi.greet("Ada")'       call what you saved
+  dark module Me.Hi - < hi.dark        save a whole module
+  dark val, type, trait, impl          save one item of another kind, like fn
+  dark ls Me    dark view Me.Hi.greet    dark search "split a string"
+Learn
+  dark docs syntax    dark docs for-ai    dark help <command>
+Grow
+  dark extensions                      what you can turn on (0 of 14 on)
+This install
+  dark permissions    dark update    dark uninstall    dark version
+
+Off: account, ai, compiler, history, http-server, recommended, tests, tools, tracing, workbench
+`dark extensions show <name>` says what one adds.
+[exit 0]
+$ dark eval '1 + 2'
+3
+[exit 0]
+$ dark fn Me.Hi.greet '(name: String): String = "hi " + name'
+✓ Created function Me.Hi.greet
+  effects: none
+[exit 0]
+$ dark eval 'Me.Hi.greet("Ada")'
+hi Ada
+[exit 0]
+$ dark commit 'my first function' -y
+`commit` comes with history, which is off.
+  dark extensions enable history
+[exit 1]
+$ dark extensions enable history
+  history on
+    adds status, commit, commits, show, discard, undo, ops, constraints, ack
+[exit 0]
+$ dark commit 'my first function' -y
+  commit <id> -- 2 ops.
+  CHANGED (1)
+    + fn    Me.Hi.greet  new
+[exit 0]
+$ dark extensions enable recommended
+  tests on
+    adds test
+  tracing on
+    adds traces, ps
+  workbench on
+    adds workbench, clear, quit
+  recommended on
+[exit 0]
+$ dark extensions
+Turn on what you want (5 of 14 on)
+Each one adds commands to `dark help`. Turning one off deletes nothing.
+
+  [x] recommended      turns on history, tests, tracing, workbench
+  [ ] account          Log in to darklang.com                          not built
+  [ ]   sync           Your code and drafts on every machine, throug…  not built
+  [ ] ai               Ask a model from your code, or let an agent w…  not built
+  [ ] compiler         Build a function into a standalone executable   not built
+  [x] history          Commit what you saved, see what changed, undo
+  [ ]   branches       Try an idea on a line of its own, then merge it
+  [ ] http-server      Serve your functions on a local port
+  [x] tests            Tests saved beside your code, run by name
+  [ ]   tests-on-save  Run the tests each save touches, in the backg…  not built
+  [ ] tools            Navigate, refactor, deprecate, check types, back up
+  [x] tracing          Keep a record of every run, and read it back
+  [x] workbench        A full-screen home: browse, edit and run in one place
+  [ ]   outliner       Notes as a folding tree, in the terminal        not built
+
+`dark extensions show <name>` says what one adds.
+`dark extensions enable <name>` turns it on; `disable` turns it off.
+[exit 0]
+$ dark help
+Darklang: a small language that keeps your code in one store, on this machine.
+Write a script, or save functions and run them by name. Everything else is an
+extension you turn on when you want it.
+
+Run code
+  dark run hello.dark                  a script file
+  dark eval '1 + 2'                    one expression
+Keep code
+  dark fn Me.Hi.greet '(name: String): String = "hi " + name'
+  dark eval 'Me.Hi.greet("Ada")'       call what you saved
+  dark module Me.Hi - < hi.dark        save a whole module
+  dark val, type, trait, impl          save one item of another kind, like fn
+  dark ls Me    dark view Me.Hi.greet    dark search "split a string"
+Learn
+  dark docs syntax    dark docs for-ai    dark help <command>
+Grow
+  dark extensions                      what you can turn on (5 of 14 on)
+This install
+  dark permissions    dark update    dark uninstall    dark version
+
+From your extensions
+  history       status commit commits show discard undo ops constraints ack
+                dark status    dark commit "what changed"    dark commits    dark undo <name>
+  tests         test
+                dark test add Me.Hi.greets 'Me.Hi.greet("Ada") |> Stdlib.Test.equal("hi Ada")'
+                dark test run Me
+  tracing       traces ps
+                dark traces    dark traces show <id>    dark ps
+  workbench     workbench clear quit
+
+Off: account, ai, compiler, http-server, tools
+`dark extensions show <name>` says what one adds.
+[exit 0]"""
+
+
+test theFirstMinutes = Instance.withKernelOnly(fun i ->
+  Stdlib.Test.equal(transcript(i), expected))

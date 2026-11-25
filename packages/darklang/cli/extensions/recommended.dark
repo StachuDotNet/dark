@@ -1,0 +1,10 @@
+/// Recommended: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Recommended
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named(
+      "recommended",
+      "The usual set",
+      "History, tests, tracing and the workbench, in one step") with
+      needs = [ "history", "tests", "tracing", "workbench" ] }

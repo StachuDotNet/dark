@@ -1,0 +1,8 @@
+/// Account: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Account
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("account", "Account", "Log in to darklang.com") with
+      asks = [ "http GET https://darklang.com/*" ]
+      fake = "login is in later/; turning it on only records it" }

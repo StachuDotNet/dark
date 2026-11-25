@@ -33,6 +33,9 @@ type Extension =
     guide: List<String>
     /// A fn `(PaneInput) -> Pane` the extensions app shows for it; "" for none.
     pane: String
+    /// A fn `() -> List<Registry.CommandHandler>`: commands with their own flags, help and
+    /// completion, for an extension that needs more than `adds`. "" for none.
+    handlers: String
     /// What this prototype does not do for it yet; "" when it is all real.
     fake: String }
 
@@ -75,6 +78,7 @@ let simple(name: String, title: String, adds: List<Command>): Extension =
       installs = ""
       guide = []
       pane = ""
+      handlers = ""
       fake = "" }
 
 
@@ -89,131 +93,6 @@ let command(name: String, description: String, run: String): Command =
 
 let action(key: String, label: String, command: List<String>): Action =
   Action { key = key, label = label, command = command }
-
-
-// --- what ships ---
-
-val history: Extension =
-  { named("history", "History", "Commit what you saved, see what changed, undo") with
-      commands =
-        [ "status", "commit", "commits", "show", "discard", "undo", "ops", "constraints", "ack" ]
-      guide = [ "dark status    dark commit \"what changed\"    dark commits    dark undo <name>" ]
-      pane = "Darklang.Cli.Extensions.Panes.history" }
-
-
-val branches: Extension =
-  { named("branches", "Branches", "Try an idea on a line of its own, then merge it") with
-      under = "history"
-      commands =
-        [ "branch"
-          "branches"
-          "switch"
-          "merge"
-          "rebase"
-          "diff"
-          "log"
-          "resolve"
-          "conflicts" ] }
-
-
-val tools: Extension =
-  { named("tools", "More store tools", "Navigate, refactor, deprecate, check types, back up") with
-      commands =
-        [ "nav"
-          "back"
-          "tree"
-          "find-values"
-          "deps"
-          "typecheck"
-          "impls"
-          "edit"
-          "rename"
-          "hash"
-          "deprecate"
-          "delete"
-          "undeprecate"
-          "format"
-          "builtins"
-          "backups"
-          "config"
-          "effects" ] }
-
-
-val tests: Extension =
-  { named("tests", "Tests", "Tests saved beside your code, run by name") with
-      commands = [ "test" ]
-      guide = [ "dark test add Me.Hi.greets 'Me.Hi.greet(\"Ada\") |> Stdlib.Test.equal(\"hi Ada\")'"
-                "dark test run Me" ]
-      pane = "Darklang.Cli.Extensions.Panes.tests" }
-
-
-val testsOnSave: Extension =
-  { named(
-      "tests-on-save",
-      "Tests as you save",
-      "Run the tests each save touches, in the background") with
-      under = "tests"
-      fake = "the watcher is on the bg-tests-proto branch (W714); turning it on only records it" }
-
-
-val tracing: Extension =
-  { named("tracing", "Tracing", "Keep a record of every run, and read it back") with
-      commands = [ "traces", "ps" ]
-      settings = [ ("trace.record", "on") ]
-      guide = [ "dark traces    dark traces show <id>    dark ps" ]
-      pane = "Darklang.Cli.Extensions.Panes.tracing" }
-
-
-val httpServer: Extension =
-  { named("http-server", "HTTP server", "Serve your functions on a local port") with
-      commands = [ "serve" ] }
-
-
-val workbench: Extension =
-  { named("workbench", "Workbench", "A full-screen home: browse, edit and run in one place") with
-      commands = [ "workbench", "clear", "quit" ] }
-
-
-val outliner: Extension =
-  { named("outliner", "Outliner", "Notes as a folding tree, in the terminal") with
-      under = "workbench"
-      asks = [ "file write ~/.darklang/outliner.json" ]
-      fake = "the outliner is in later/; turning it on only records it" }
-
-
-val compiler: Extension =
-  { named("compiler", "Compiler", "Build a function into a standalone executable") with
-      asks = [ "file write $PWD" ]
-      installs = "darkc, from darklang/compiler"
-      fake = "nothing is downloaded; `dark compile` is not on main" }
-
-
-val ai: Extension =
-  { named("ai", "AI", "Ask a model from your code, or let an agent work in the store") with
-      asks = [ "http POST https://api.anthropic.com/*" ]
-      fake = "the agent and LLM packages are in later/; turning it on only records it" }
-
-
-val account: Extension =
-  { named("account", "Account", "Log in to darklang.com") with
-      asks = [ "http GET https://darklang.com/*" ]
-      fake = "login is in later/; turning it on only records it" }
-
-
-val sync: Extension =
-  { named("sync", "Sync", "Your code and drafts on every machine, through one hub") with
-      under = "account"
-      needs = [ "history" ]
-      asks = [ "http https://darklang.com/*" ]
-      fake = "sync is in later/; turning it on only records it" }
-
-
-val recommended: Extension =
-  { named(
-      "recommended",
-      "The usual set",
-      "History, tests, tracing and the workbench, in one step") with
-      needs = [ "history", "tests", "tracing", "workbench" ] }
 
 
 // --- finding them ---
@@ -243,19 +122,51 @@ let all(branchId: Uuid): List<Extension> =
   | Error(_) -> []
 
 
+/// The fn bound at <param name> now, by a store lookup: no eval, so no trace, on every start.
+let fnNamed(branchId: Uuid, name: String): Result<'a -> 'b, String> =
+  match LanguageTools.Live.locationOfName(name) with
+  | None -> Result.Error($"Not a package function name: {name}")
+  | Some(loc) ->
+    match LanguageTools.PackageManager.Function.find(branchId, loc) with
+    | None -> Result.Error($"No function named {name}")
+    | Some(hash) -> Builtin.applicableByHash(LanguageTools.ProgramTypes.hashToString(hash), name)
+
+
+/// Every command the extensions in the store bring, on or off: dispatch refuses the ones that are
+/// off by name, and help for them still shows.
+let handlers(branchId: Uuid): List<Registry.CommandHandler> =
+  all(branchId)
+  |> Stdlib.List.filter(fun e -> e.handlers != "")
+  |> Stdlib.List.map(fun e -> handlersOf(branchId, e))
+  |> Stdlib.List.flatten
+
+
+/// Ours are CLI code, as every command was before extensions, so they are called directly and
+/// keep the CLI's access. Anyone else's go through `Live.apply`, which makes the fn the root of
+/// the call: its commands run as that code, under the policy, and a broken one fails alone.
+let handlersOf(branchId: Uuid, e: Extension): List<Registry.CommandHandler> =
+  match fnNamed(branchId, e.handlers) with
+  | Ok(f) ->
+    if Stdlib.String.startsWith(e.handlers, "Darklang.") then
+      f(())
+    else
+      LanguageTools.Live.apply(f, ()) |> Stdlib.Result.withDefault([])
+  | Error(_) -> []
+
+
 let find(exts: List<Extension>, name: String): Option<Extension> =
   Stdlib.List.findFirst(exts, fun e -> e.name == name)
 
 
 /// A set: an extension that only turns others on.
 let isSet(e: Extension): Bool =
-  Stdlib.List.isEmpty(e.commands) && Stdlib.List.isEmpty(e.adds) && e.needs != []
+  Stdlib.List.isEmpty(e.commands) && Stdlib.List.isEmpty(e.adds) && e.fake == "" && e.needs != []
 
 
 // --- what is on, and what each was allowed ---
 // Both keys are the person's (`personOnly` in LibDB/Config.fs): code Dark runs can't change them.
 
-val onKey = "extensions.on"
+val onSetting = "extensions.on"
 
 val grantsKey = "extensions.granted"
 
@@ -263,7 +174,7 @@ val grantsKey = "extensions.granted"
 /// What config says is on. `*` is every extension, found or still to be: the dev store and the
 /// test instances start that way.
 let chosen(): List<String> =
-  match LanguageTools.LocalStore.configGet(onKey) with
+  match LanguageTools.LocalStore.configGet(onSetting) with
   | Some(s) -> Stdlib.String.split(s, ",") |> Stdlib.List.filter(fun n -> n != "")
   | None -> []
 
@@ -279,9 +190,9 @@ let onNames(exts: List<Extension>): List<String> =
 let saveOn(names: List<String>): Unit =
   let _ =
     if Stdlib.List.isEmpty(names) then
-      LanguageTools.LocalStore.configUnset(onKey)
+      LanguageTools.LocalStore.configUnset(onSetting)
     else
-      LanguageTools.LocalStore.configSet(onKey, Stdlib.String.join(names, ","))
+      LanguageTools.LocalStore.configSet(onSetting, Stdlib.String.join(names, ","))
 
   ()
 
@@ -320,9 +231,13 @@ let granted(name: String): List<String> =
 
 
 /// What <param e> asks for and has not been allowed.
+/// Nothing for one that is not built yet: there is nothing to allow it for.
 let ungranted(e: Extension): List<String> =
   let given = granted(e.name)
-  e.asks |> Stdlib.List.filter(fun a -> Stdlib.Bool.not(Stdlib.List.contains(given, a)))
+  if e.fake != "" then
+    []
+  else
+    e.asks |> Stdlib.List.filter(fun a -> Stdlib.Bool.not(Stdlib.List.contains(given, a)))
 
 
 let grant(e: Extension, rules: List<String>): Unit =
@@ -398,6 +313,13 @@ let home(branchId: Uuid, name: String, known: Bool): Home =
       match Stdlib.List.head(claims) with
       | Some(e) -> Home.Off(e)
       | None -> Home.Free
+
+
+/// Whether the extension that brings <param command> is off.
+let isOff(branchId: Uuid, command: String): Bool =
+  match home(branchId, command, true) with
+  | Off(_) -> true
+  | _ -> false
 
 
 let refuseOff(state: AppState, command: String, e: Extension): AppState =
@@ -570,7 +492,7 @@ let paneInput(e: Extension, on: List<String>): PaneInput =
 /// Run <param e>'s pane by name, as any code is called: ours and yours alike. A pane that fails
 /// says why, in its place.
 let runPane(branchId: Uuid, e: Extension, input: PaneInput): Result<Pane, String> =
-  match LanguageTools.Live.applicableByName(branchId, e.pane) with
+  match fnNamed(branchId, e.pane) with
   | Error(msg) -> Result.Error(msg)
   | Ok(f) -> LanguageTools.Live.apply(f, input)
 
@@ -611,49 +533,12 @@ let runAction(app: AppState, a: Action): List<String> =
     [ "$ dark " + Stdlib.String.join(a.command, " "), ...printed ]
 
 
-/// The panes of the extensions we ship. Each is what a user's would be: a fn of its input.
-module Panes =
-  let setting(input: PaneInput, key: String): String =
-    input.settings
-    |> Stdlib.List.findFirst(fun ((k, _)) -> k == key)
-    |> Stdlib.Option.map(fun ((_, v)) -> v)
-    |> Stdlib.Option.withDefault("")
-
-
-  let tracing(input: PaneInput): Pane =
-    let recording =
-      if setting(input, "trace.record") == "on" then
-        "Every run is recorded."
-      else
-        "Runs are not recorded. Turning tracing off and on starts again."
-
-    Pane
-      { lines = [ recording ]
-        actions =
-          [ action("t", "the newest runs", [ "traces" ])
-            action("d", "keep only the newest 20", [ "traces", "delete", "--keep", "20" ]) ] }
-
-
-  let history(_input: PaneInput): Pane =
-    let draft = SCM.Draft.read()
-    let n = Stdlib.List.length(draft.bindings)
-    let line =
-      match n with
-      | 0 -> "Everything you saved is committed."
-      | 1 -> "1 item saved and not committed."
-      | _ -> $"{n} items saved and not committed."
-
-    Pane
-      { lines = [ line ]
-        actions =
-          [ action("s", "what changed", [ "status" ])
-            action("l", "the last commits", [ "commits" ]) ] }
-
-
-  let tests(_input: PaneInput): Pane =
-    Pane
-      { lines = [ "Tests live beside your code; a change reruns only what it touches." ]
-        actions = [ action("r", "run yours", [ "test", "run", "Me" ]) ] }
+/// The value of <param key> a pane was handed, "" when it was not.
+let setting(input: PaneInput, key: String): String =
+  input.settings
+  |> Stdlib.List.findFirst(fun ((k, _)) -> k == key)
+  |> Stdlib.Option.map(fun ((_, v)) -> v)
+  |> Stdlib.Option.withDefault("")
 
 
 // --- the tree ---
@@ -677,28 +562,94 @@ let rows(exts: List<Extension>): List<Row> =
   rowsBelow(exts, "", 0)
 
 
-let mark(on: Bool): String =
-  if on then "[x]" else "[ ]"
+/// The word at the end of a row: what to know before turning it on.
+let tag(e: Extension): String =
+  if e.fake != "" then
+    "not built"
+  else if Stdlib.List.isEmpty(e.asks) then
+    ""
+  else if Stdlib.List.isEmpty(ungranted(e)) then
+    "allowed"
+  else
+    "asks"
 
 
-let rowLine(r: Row, on: List<String>): String =
+let rowLine(r: Row, on: List<String>, width: Int64): String =
+  let mark = if Stdlib.List.contains(on, r.ext.name) then "[x]" else "[ ]"
   let indent = Stdlib.String.repeat("  ", r.depth)
   let name = Stdlib.String.padEnd(indent + r.ext.name, ' ', 16)
-  $"{mark(Stdlib.List.contains(on, r.ext.name))} {name} {r.ext.blurb}"
+  let blurb = if isSet(r.ext) then "turns on " + Stdlib.String.join(r.ext.needs, ", ") else r.ext.blurb
+  let t = tag(r.ext)
+  let prefix = $"{mark} {name} "
+  let room = width - Stdlib.String.length(prefix) - (if t == "" then 0 else Stdlib.String.length(t) + 2)
+  let fitted =
+    if Stdlib.String.length(blurb) <= room then
+      blurb
+    else
+      let cut = Stdlib.String.slice(blurb, 0, Stdlib.max(0, room - 1)) |> Stdlib.Result.withDefault(blurb)
+      cut + "…"
+
+  if t == "" then
+    prefix + fitted
+  else
+    Stdlib.String.padEnd(prefix + fitted, ' ', width - Stdlib.String.length(t)) + t
 
 
+/// How a line of the picture is drawn. The same lines print through a pipe without the styles.
+type Ink =
+  | Plain
+  | Dim
+  | Bold
+  | Cursor
+
+
+/// What one extension adds, needs, asks for and sets, and how to undo it, as label and value.
+let facts(exts: List<Extension>, e: Extension): List<(String * String)> =
+  let needs = withNeeds(exts, e.name, []) |> Stdlib.List.filter(fun n -> n != e.name)
+  let given = granted(e.name)
+  let asks =
+    e.asks
+    |> Stdlib.List.map(fun a -> if Stdlib.List.contains(given, a) then a + " (allowed)" else a)
+
+  let sets = e.settings |> Stdlib.List.map(fun ((k, v)) -> $"{k} {v}")
+  [ ("adds", Stdlib.String.join(commandNames(e), " "))
+    ("needs", Stdlib.String.join(needs, ", "))
+    ("asks for", Stdlib.String.join(asks, "; "))
+    ("sets", Stdlib.String.join(sets, ", "))
+    ("installs", e.installs)
+    ("not built", e.fake) ]
+  |> Stdlib.List.filter(fun ((_, v)) -> v != "")
+
+
+let factLines(exts: List<Extension>, e: Extension, isOn: Bool): List<String> =
+  let undo =
+    if isOn then
+      [ ("undo", $"dark extensions disable {e.name}; nothing it made is deleted") ]
+    else
+      []
+
+  Stdlib.List.concat(facts(exts, e), undo)
+  |> Stdlib.List.map(fun ((label, value)) -> "  " + Stdlib.String.padEnd(label, ' ', 11) + value)
+
+
+let header(exts: List<Extension>, on: List<String>): List<(Ink * String)> =
+  let count = exts |> Stdlib.List.filter(fun e -> Stdlib.List.contains(on, e.name)) |> Stdlib.List.length
+  let total = Stdlib.List.length(exts)
+  [ (Ink.Bold, $"Turn on what you want ({count} of {total} on)")
+    (Ink.Dim, "Each one adds commands to `dark help`. Turning one off deletes nothing.")
+    (Ink.Plain, "") ]
+
+
+/// The tree without a cursor: what `dark extensions` prints when there is no screen to draw on.
 let listing(exts: List<Extension>): List<String> =
   let on = onNames(exts)
-  let count =
-    Stdlib.List.length(Stdlib.List.filter(exts, fun e -> Stdlib.List.contains(on, e.name)))
-
-  let total = Stdlib.List.length(exts)
-  let tree = rows(exts) |> Stdlib.List.map(fun r -> "  " + rowLine(r, on))
-  [ $"Extensions: {count} of {total} on"
-    ""
-    ...tree
-    ""
-    "`dark extensions enable <name>` turns one on; `disable` turns it off." ]
+  let lines = rows(exts) |> Stdlib.List.map(fun r -> "  " + rowLine(r, on, 78))
+  Stdlib.List.flatten(
+    [ header(exts, on) |> Stdlib.List.map(fun ((_, l)) -> l)
+      lines
+      [ ""
+        "`dark extensions show <name>` says what one adds."
+        "`dark extensions enable <name>` turns it on; `disable` turns it off." ] ])
 
 
 let plainRows(exts: List<Extension>): List<String> =
@@ -707,11 +658,12 @@ let plainRows(exts: List<Extension>): List<String> =
   |> Stdlib.List.map(fun r ->
     let state = if Stdlib.List.contains(on, r.ext.name) then "on" else "off"
     let parent = if r.ext.under == "" then "-" else r.ext.under
-    $"{r.ext.name}\t{state}\t{parent}\t{r.ext.blurb}")
+    let t = if tag(r.ext) == "" then "-" else tag(r.ext)
+    $"{r.ext.name}\t{state}\t{parent}\t{t}\t{r.ext.blurb}")
 
 
-/// The tree at a terminal. It runs as CLI code, as the workbench does: it reads the store and
-/// writes config, which a live view's guest code may not.
+/// The tree at a terminal. It runs as CLI code, as the workbench does: it writes config and asks for
+/// grants. What each extension shows of itself is its pane, which runs as that extension's code.
 module Tree =
   type Msg =
     | Nothing
@@ -724,7 +676,9 @@ module Tree =
       cursor: Int64
       note: List<String>
       /// An extension that was just turned on and asks for something, waiting for y or n.
-      asking: Option<Extension> }
+      asking: Option<Extension>
+      /// What was on before each change here, newest first, for `u`.
+      past: List<List<String>> }
 
 
   let init(app: AppState, exts: List<Extension>): Model =
@@ -734,7 +688,8 @@ module Tree =
         on = onNames(exts)
         cursor = 0
         note = []
-        asking = Option.None }
+        asking = Option.None
+        past = [] }
 
 
   let selected(m: Model): Option<Extension> =
@@ -745,13 +700,14 @@ module Tree =
     match selected(m) with
     | None -> m
     | Some(e) ->
+      let past = [ m.on, ...m.past ]
       if Stdlib.List.contains(m.on, e.name) then
         let note =
           match turnOff(m.exts, e.name) with
           | Ok(lines) -> lines
           | Error(msg) -> [ msg ]
 
-        { m with on = onNames(m.exts), note = note }
+        { m with on = onNames(m.exts), note = note, past = past }
       else
         match turnOn(m.exts, e.name) with
         | Error(msg) -> { m with note = [ msg ] }
@@ -759,7 +715,38 @@ module Tree =
           let asking =
             [ e, ...turned ] |> Stdlib.List.findFirst(fun t -> ungranted(t) != [])
 
-          { m with on = onNames(m.exts), note = onLines(turned), asking = asking }
+          { m with
+              on = onNames(m.exts)
+              note = onLines(turned)
+              asking = asking
+              past = past }
+
+
+  /// Back to what was on before the last change: what went on goes off, and what went off comes
+  /// back on. A grant that went with it is asked for again.
+  let undo(m: Model): Model =
+    match m.past with
+    | [] -> { m with note = [ "Nothing to undo." ] }
+    | [before, ...older] ->
+      let offNow = m.on |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(before, n)))
+      let onNow = before |> Stdlib.List.filter(fun n -> Stdlib.Bool.not(Stdlib.List.contains(m.on, n)))
+      let offLines =
+        offNow
+        |> Stdlib.List.map(fun n -> turnOff(m.exts, n) |> Stdlib.Result.withDefault([]))
+        |> Stdlib.List.flatten
+
+      let onLines =
+        onNow
+        |> Stdlib.List.map(fun n ->
+          match turnOn(m.exts, n) with
+          | Ok(turned) -> Stdlib.List.map(turned, fun t -> $"  {t.name} on")
+          | Error(msg) -> [ msg ])
+        |> Stdlib.List.flatten
+
+      { m with
+          on = onNames(m.exts)
+          note = [ "Undone:", ...Stdlib.List.concat(offLines, onLines) ]
+          past = older }
 
 
   let answer(m: Model, yes: Bool): Model =
@@ -781,46 +768,58 @@ module Tree =
     { m with cursor = Stdlib.max(0, Stdlib.min(last, m.cursor + by)), note = [] }
 
 
-  let body(m: Model): Stdlib.Cli.UI.Node.Node<Msg> =
-    let lines =
+  let paneHere(m: Model, e: Extension): Option<Pane> =
+    if Stdlib.List.contains(m.on, e.name) then paneOf(m.app.currentBranchId, e, m.on) else Option.None
+
+
+  /// The whole screen as lines, at <param width> columns: the tree, a rule, then the selected row.
+  let picture(m: Model, width: Int64): List<(Ink * String)> =
+    let tree =
       rows(m.exts)
       |> Stdlib.List.indexedMap(fun(i, r) ->
-        let line = rowLine(r, m.on)
-        if i == m.cursor then
-          Stdlib.Cli.UI.Node.styled(
-            Stdlib.Cli.UI.Node.Style.Highlight,
-            Stdlib.Cli.UI.Node.text("> " + line))
-        else
-          Stdlib.Cli.UI.Node.text("  " + line))
+        let line = rowLine(r, m.on, width - 4)
+        if i == m.cursor then (Ink.Cursor, "> " + line) else (Ink.Plain, "  " + line))
 
+    let rule = (Ink.Dim, Stdlib.String.repeat("─", width))
     let detail =
       match (m.asking, selected(m)) with
       | (Some(e), _) ->
-        [ Stdlib.Cli.UI.Node.bold($"  {e.title} asks for")
-          ...Stdlib.List.map(ungranted(e), fun r -> Stdlib.Cli.UI.Node.text("    " + r))
-          Stdlib.Cli.UI.Node.text("  Allow it, for its own commands only?  y yes   n not now") ]
+        Stdlib.List.flatten(
+          [ [ (Ink.Bold, $"{e.title} asks for") ]
+            ungranted(e) |> Stdlib.List.map(fun r -> (Ink.Plain, "  " + r))
+            [ (Ink.Plain, "")
+              (Ink.Plain, "Allow it, for its own commands only?   y yes   n not now") ] ])
       | (None, None) -> []
       | (None, Some(e)) ->
-        let words = if Stdlib.List.isEmpty(m.note) then describe(e) else m.note
+        let isOn = Stdlib.List.contains(m.on, e.name)
+        let state = if isOn then "on" else "off"
+        let body =
+          if Stdlib.List.isEmpty(m.note) then
+            factLines(m.exts, e, isOn) |> Stdlib.List.map(fun l -> (Ink.Plain, l))
+          else
+            m.note |> Stdlib.List.map(fun l -> (Ink.Plain, l))
+
         let pane =
-          match paneOf(m.app.currentBranchId, e, m.on) with
-          | Some(p) when Stdlib.List.contains(m.on, e.name) ->
-            [ Stdlib.Cli.UI.Node.text(""), ...Stdlib.List.map(paneLines(p), fun l -> Stdlib.Cli.UI.Node.text("  " + l)) ]
-          | _ -> []
+          match paneHere(m, e) with
+          | Some(p) -> [ (Ink.Plain, ""), ...Stdlib.List.map(paneLines(p), fun l -> (Ink.Plain, "  " + l)) ]
+          | None -> []
 
-        Stdlib.List.concat(
-          [ Stdlib.Cli.UI.Node.bold("  " + e.title)
-            ...Stdlib.List.map(words, fun d -> Stdlib.Cli.UI.Node.dim("  " + d)) ],
-          pane)
+        Stdlib.List.flatten(
+          [ [ (Ink.Bold, $"{e.title} · {state}"), (Ink.Dim, "  " + e.blurb) ], body, pane ])
 
-    let count = Stdlib.List.length(m.on)
-    let head = $"  {count} on. Each one adds to `dark help`."
-    Stdlib.Cli.UI.Node.column(
-      Stdlib.List.flatten(
-        [ [ Stdlib.Cli.UI.Node.dim(head), Stdlib.Cli.UI.Node.text("") ]
-          lines
-          [ Stdlib.Cli.UI.Node.text("") ]
-          detail ]))
+    Stdlib.List.flatten([ header(m.exts, m.on), tree, [ rule ], detail ])
+
+
+  let body(m: Model, width: Int64): Stdlib.Cli.UI.Node.Node<Msg> =
+    picture(m, width)
+    |> Stdlib.List.map(fun ((ink, line)) ->
+      match ink with
+      | Plain -> Stdlib.Cli.UI.Node.text(line)
+      | Dim -> Stdlib.Cli.UI.Node.dim(line)
+      | Bold -> Stdlib.Cli.UI.Node.bold(line)
+      | Cursor ->
+        Stdlib.Cli.UI.Node.styled(Stdlib.Cli.UI.Node.Style.Highlight, Stdlib.Cli.UI.Node.text(line)))
+    |> Stdlib.Cli.UI.Node.column
 
 
   let view(m: Model, size: Stdlib.Cli.Tui.Size): Stdlib.Cli.Tui.View =
@@ -828,13 +827,26 @@ module Tree =
       Stdlib.Cli.UI.Chrome.frame(
         "extensions",
         "",
-        "up/down move  |  space turn on/off  |  esc done")
+        "↑↓ move   space on/off   u undo   a pane's letter runs it   esc done")
 
     Stdlib.Cli.UI.Chrome.view(frame, size, fun region ->
-      Stdlib.Cli.UI.Node.toRows(body(m), region.cols, "")
+      Stdlib.Cli.UI.Node.toRows(body(m, region.cols), region.cols, "")
       |> Stdlib.List.take(region.rows)
       |> Stdlib.List.indexedMap(fun(i, row) -> Stdlib.Cli.UI.Layout.at(region, i, 0, row))
       |> Stdlib.List.flatten)
+
+
+  /// A key a pane of the selected row offers runs its command; any other does nothing.
+  let press(m: Model, k: String): Model =
+    match selected(m) with
+    | Some(e) ->
+      match paneHere(m, e) with
+      | Some(p) ->
+        match Stdlib.List.findFirst(p.actions, fun a -> a.key == k) with
+        | Some(a) -> { m with note = runAction(m.app, a) }
+        | None -> m
+      | None -> m
+    | None -> m
 
 
   let onKey(
@@ -845,13 +857,10 @@ module Tree =
     : Component.Step<Model> =
     match m.asking with
     | Some(_) ->
+      // Only y allows; any other key is "not now", so nothing can get stuck on the question.
       match keyChar with
       | Some("y") -> Component.Step.Stay(answer(m, true))
-      | Some("n") -> Component.Step.Stay(answer(m, false))
-      | _ ->
-        match key with
-        | Escape -> Component.Step.Stay(answer(m, false))
-        | _ -> Component.Step.Stay(m)
+      | _ -> Component.Step.Stay(answer(m, false))
     | None ->
       match key with
       | UpArrow -> Component.Step.Stay(move(m, -1))
@@ -862,21 +871,11 @@ module Tree =
       | _ ->
         match keyChar with
         | Some("q") -> Component.Step.Exit(m)
+        | Some("u") -> Component.Step.Stay(undo(m))
+        | Some("k") -> Component.Step.Stay(move(m, -1))
+        | Some("j") -> Component.Step.Stay(move(m, 1))
         | Some(k) -> Component.Step.Stay(press(m, k))
         | None -> Component.Step.Stay(m)
-
-
-  /// A key a pane of the selected row offers runs its command; any other does nothing.
-  let press(m: Model, k: String): Model =
-    match selected(m) with
-    | Some(e) when Stdlib.List.contains(m.on, e.name) ->
-      match paneOf(m.app.currentBranchId, e, m.on) with
-      | Some(p) ->
-        match Stdlib.List.findFirst(p.actions, fun a -> a.key == k) with
-        | Some(a) -> { m with note = runAction(m.app, a) }
-        | None -> m
-      | None -> m
-    | _ -> m
 
 
   let component(): Component.Component<Model> =
@@ -905,13 +904,15 @@ let execute(state: AppState, args: List<String>): AppState =
     | Some(e) ->
       let on = onNames(exts)
       let onOff = if Stdlib.List.contains(on, e.name) then "on" else "off"
+      let isOn = Stdlib.List.contains(on, e.name)
       let pane =
         match paneOf(state.currentBranchId, e, on) with
-        | Some(p) when Stdlib.List.contains(on, e.name) -> [ "", ...paneLines(p) ]
+        | Some(p) when isOn -> [ "", ...Stdlib.List.map(paneLines(p), fun l -> "  " + l) ]
         | _ -> []
 
       Stdlib.printLines(
-        Stdlib.List.flatten([ [ $"{e.title} ({e.name}, {onOff})", e.blurb ], describe(e), pane ]))
+        Stdlib.List.flatten(
+          [ [ $"{e.title} · {onOff}", "  " + e.blurb ], factLines(exts, e, isOn), pane ]))
 
       state
   | ["enable", ...names] ->

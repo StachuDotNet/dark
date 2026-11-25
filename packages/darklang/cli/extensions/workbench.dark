@@ -1,0 +1,40 @@
+/// Workbench: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Workbench
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("workbench", "Workbench", "A full-screen home: browse, edit and run in one place") with
+      commands = [ "workbench", "clear", "quit" ]
+      handlers = "Darklang.Cli.Extensions.Workbench.commands" }
+
+
+let acceptsQuit(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.nothing()
+
+
+let acceptsClear(): Darklang.Cli.Accepts.Accepts = Darklang.Cli.Accepts.nothing()
+
+
+let acceptsWorkbench(): Darklang.Cli.Accepts.Accepts =
+  Darklang.Cli.Accepts.flagsOnly([ "--live" ])
+
+
+let commands(): List<Darklang.Cli.Registry.CommandHandler> =
+  [ ("quit", "Exit the CLI", [ "exit", "q" ], acceptsQuit, Darklang.Cli.Quit.execute, Darklang.Cli.Quit.help, Darklang.Cli.Quit.complete)
+    (
+      "clear",
+      "Clear the screen",
+      [ "cls" ],
+      acceptsClear,
+      Darklang.Cli.Clear.execute,
+      Darklang.Cli.Clear.help,
+      Darklang.Cli.Clear.complete)
+    (
+      "workbench",
+      "Open the workbench -- a framed, navigable package tree",
+      [ "wb" ],
+      acceptsWorkbench,
+      Darklang.Cli.Workbench.execute,
+      Darklang.Cli.Workbench.help,
+      Darklang.Cli.Workbench.complete) ]
+  |> Stdlib.List.map(Darklang.Cli.Registry.handler)

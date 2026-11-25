@@ -1,0 +1,9 @@
+/// Outliner: one extension, built the way a user would build theirs.
+module Darklang.Cli.Extensions.Outliner
+
+
+val extension: Darklang.Cli.Extensions.Extension =
+  { Darklang.Cli.Extensions.named("outliner", "Outliner", "Notes as a folding tree, in the terminal") with
+      under = "workbench"
+      asks = [ "file write ~/.darklang/outliner.json" ]
+      fake = "the outliner is in later/; turning it on only records it" }

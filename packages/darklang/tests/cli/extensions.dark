@@ -177,3 +177,24 @@ test yourPaneRunsAsYourCode = Instance.withKernelOnly(fun i ->
       Instance.says(paned, "on: true", "what it was given")
       Instance.says(paned, "v  the version  (dark version --local)", "its key")
       Instance.says(sneaky, "its pane failed", "the refused read") ]))
+
+
+/// What an extension lists is what its `handlers` give: help and the tree can name its commands
+/// without running any of its code.
+test eachExtensionsCommandsAreItsHandlers =
+  let branch = SCM.Branches.current()
+  Cli.Extensions.all(branch)
+  |> Stdlib.List.filter(fun e -> e.handlers != "")
+  |> Stdlib.List.filter(fun e ->
+    let names = Cli.Extensions.handlersOf(branch, e) |> Stdlib.List.map(fun h -> h.name)
+    Stdlib.List.sort(names) != Stdlib.List.sort(e.commands))
+  |> Stdlib.List.map(fun e -> e.name)
+  |> Stdlib.Test.equal([])
+
+
+test bareDarkIsTheIntroUntilTheWorkbenchIsOn = Instance.withKernelOnly(fun i ->
+  let (code, out) = Instance.ran(i, [])
+  Stdlib.Test.all(
+    [ Stdlib.Test.equal(code, 0)
+      Instance.says(out, "Darklang: a small language", "the intro")
+      Instance.says(out, "dark extensions ", "and how to grow it") ]))
