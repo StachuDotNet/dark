@@ -134,7 +134,7 @@ gate_first_day() {
   # 1. First run at all. This is where the seed is unpacked and the package DB grown from ops. A new
   # install is the kernel: history and the rest are extensions, off until turned on.
   want "first run is the kernel"        "comes with history, which is off" status
-  want "turning extensions on"          "^  branches on" extensions enable history branches tools
+  want "turning extensions on"          "^  branches on" ext on history branches tools
   want "first run reports a clean tree" "^(clean:|draft:)" status
 
   # 2. Author something and run it. The thing the language is for.

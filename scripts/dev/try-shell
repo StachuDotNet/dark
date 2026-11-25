@@ -57,7 +57,7 @@ def run(home, words):
 
 def asks_anything(home, name):
     env = {"HOME": home, "PATH": "/usr/bin:/bin", "DARK_CONFIG_DB_NAME": "data.db"}
-    out = subprocess.run([CLI, "extensions", "show", name], env=env, cwd=home,
+    out = subprocess.run([CLI, "ext", "show", name], env=env, cwd=home,
                          capture_output=True, text=True).stdout
     return any(line.strip().startswith("asks for") for line in out.splitlines())
 
@@ -90,7 +90,7 @@ def main():
                 continue
             words = words[1:]
             why = refusal(words)
-            if why is None and len(words) > 1 and words[0] in ("ext", "extensions") and words[1] in ("on", "enable"):
+            if why is None and len(words) > 1 and words[0] == "ext" and words[1] == "on":
                 asking = [n for n in words[2:] if asks_anything(home, n)]
                 if asking:
                     why = f"turning on {', '.join(asking)}, which asks for permissions"

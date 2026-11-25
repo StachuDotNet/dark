@@ -87,7 +87,7 @@ test helpStartsWithRunningAndKeepingCode = Instance.withKernelOnly(fun i ->
 
 
 test helpListsWhatAnExtensionAdds = Instance.withKernelOnly(fun i ->
-  let _ = Instance.output(i, [ "extensions", "enable", "branches" ])
+  let _ = Instance.output(i, [ "ext", "on", "branches" ])
   let output = Instance.output(i, [ "help" ])
   Stdlib.Test.all(
     [ Instance.says(output, "From your extensions", "the extensions block")

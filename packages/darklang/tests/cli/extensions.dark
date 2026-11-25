@@ -19,7 +19,7 @@ test everyCommandHasOneHome =
 
 
 test turningOnTurnsOnWhatItNeeds = Instance.withKernelOnly(fun i ->
-  let output = Instance.output(i, [ "extensions", "enable", "sync" ])
+  let output = Instance.output(i, [ "ext", "on", "sync" ])
   Stdlib.Test.all(
     [ Instance.says(output, "account on", "the extension it sits under")
       Instance.says(output, "  history on", "the extension it needs")
@@ -27,8 +27,8 @@ test turningOnTurnsOnWhatItNeeds = Instance.withKernelOnly(fun i ->
 
 
 test turningOffTurnsOffWhatNeedsIt = Instance.withKernelOnly(fun i ->
-  let _ = Instance.output(i, [ "extensions", "enable", "branches" ])
-  let output = Instance.output(i, [ "extensions", "disable", "history" ])
+  let _ = Instance.output(i, [ "ext", "on", "branches" ])
+  let output = Instance.output(i, [ "ext", "off", "history" ])
   Instance.says(output, "  branches off", "branches, which needs history"))
 
 
@@ -59,7 +59,7 @@ test itsHelpStillShows = Instance.withKernelOnly(fun i ->
 
 
 test turnedOnItRuns = Instance.withKernelOnly(fun i ->
-  let _ = Instance.output(i, [ "extensions", "enable", "history" ])
+  let _ = Instance.output(i, [ "ext", "on", "history" ])
   let (code, _) = Instance.ran(i, [ "status" ])
   Stdlib.Test.equal(code, 0))
 
@@ -138,7 +138,7 @@ let atTerminal(i: Instance.T, args: List<String>, typed: String): String =
 
 /// Nobody at a terminal can say yes, so turning one on allows nothing.
 test withoutATerminalNothingIsAllowed = withAsker(fun i ->
-  let enabled = Instance.said(i, [ "extensions", "enable", "asker" ])
+  let enabled = Instance.said(i, [ "ext", "on", "asker" ])
   let (code, _) = Instance.ran(i, [ "asker" ])
   Stdlib.Test.all(
     [ Instance.says(enabled, "asker on", "it is on")
@@ -150,7 +150,7 @@ test withoutATerminalNothingIsAllowed = withAsker(fun i ->
 
 
 test aYesAllowsItsOwnCommandAndDisableTakesItBack = withAsker(fun i ->
-  let enabled = atTerminal(i, [ "extensions", "enable", "asker" ], "y\n")
+  let enabled = atTerminal(i, [ "ext", "on", "asker" ], "y\n")
   let ran = Instance.said(i, [ "asker" ])
   let listed = Instance.said(i, [ "permissions", "list" ])
   let others =
@@ -158,7 +158,7 @@ test aYesAllowsItsOwnCommandAndDisableTakesItBack = withAsker(fun i ->
       i,
       [ "eval", "Stdlib.Cli.FileSystem.readFileAsString(\"/etc/hostname\")" ])
 
-  let disabled = Instance.said(i, [ "extensions", "disable", "asker" ])
+  let disabled = Instance.said(i, [ "ext", "off", "asker" ])
   let (after, _) = Instance.ran(i, [ "asker" ])
   Stdlib.Test.all(
     [ Instance.says(enabled, "allowed, for its own commands only", "the yes")
@@ -184,8 +184,8 @@ test aYesAllowsItsOwnCommandAndDisableTakesItBack = withAsker(fun i ->
 
 
 test aPaneShowsWhatItsExtensionIsDoing = Instance.withKernelOnly(fun i ->
-  let _ = Instance.output(i, [ "extensions", "enable", "tracing" ])
-  let out = Instance.said(i, [ "extensions", "show", "tracing" ])
+  let _ = Instance.output(i, [ "ext", "on", "tracing" ])
+  let out = Instance.said(i, [ "ext", "show", "tracing" ])
   Stdlib.Test.all(
     [ Instance.says(out, "Every run is recorded.", "its state")
 
@@ -197,7 +197,7 @@ test aPaneShowsWhatItsExtensionIsDoing = Instance.withKernelOnly(fun i ->
 
 test helpShowsHowAnExtensionsCommandsGoTogether =
   Instance.withKernelOnly(fun i ->
-    let _ = Instance.output(i, [ "extensions", "enable", "history" ])
+    let _ = Instance.output(i, [ "ext", "on", "history" ])
     Instance.says(
       Instance.said(i, [ "help" ]),
       "dark status    dark commit",
@@ -261,9 +261,9 @@ test yourPaneRunsAsYourCode = Instance.withKernelOnly(fun i ->
   let (code, saved) =
     Instance.runWithStdin(i, [ "module", "/Me.Paned", "-" ], paneSource)
 
-  let _ = Instance.output(i, [ "extensions", "enable", "paned", "sneaky" ])
-  let paned = Instance.said(i, [ "extensions", "show", "paned" ])
-  let sneaky = Instance.said(i, [ "extensions", "show", "sneaky" ])
+  let _ = Instance.output(i, [ "ext", "on", "paned", "sneaky" ])
+  let paned = Instance.said(i, [ "ext", "show", "paned" ])
+  let sneaky = Instance.said(i, [ "ext", "show", "sneaky" ])
   Stdlib.Test.all(
     [ Stdlib.Test.equal((code, ""), (0, if code == 0 then "" else saved))
       Instance.says(paned, "on: true", "what it was given")
@@ -327,9 +327,9 @@ test toursAndPeeksStillRun = Instance.withInstance(fun i ->
 
 
 test explainWalksThroughAndIsRemembered = Instance.withKernelOnly(fun i ->
-  let _ = Instance.output(i, [ "extensions", "enable", "history" ])
-  let walked = Instance.said(i, [ "extensions", "explain", "history" ])
-  let shown = Instance.said(i, [ "extensions", "show", "history" ])
+  let _ = Instance.output(i, [ "ext", "on", "history" ])
+  let walked = Instance.said(i, [ "ext", "explain", "history" ])
+  let shown = Instance.said(i, [ "ext", "show", "history" ])
   Stdlib.Test.all(
     [ Instance.says(walked, "1/3  What you save persists", "the first step")
 
@@ -383,8 +383,8 @@ let pressing(i: Instance.T, args: List<String>, keys: List<String>): Unit =
 
 
 test historyOnAndExplainedInSevenKeys = Instance.withKernelOnly(fun i ->
-  pressing(i, [ "extensions" ], keysToExplainHistory)
-  let shown = Instance.said(i, [ "extensions", "show", "history" ])
+  pressing(i, [ "ext" ], keysToExplainHistory)
+  let shown = Instance.said(i, [ "ext", "show", "history" ])
   Stdlib.Test.all(
     [ Stdlib.Test.equal(Stdlib.List.length(keysToExplainHistory), 7)
       Instance.says(shown, "History · on", "it is on")

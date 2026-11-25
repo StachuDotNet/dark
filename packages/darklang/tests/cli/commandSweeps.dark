@@ -440,7 +440,7 @@ let knownGood(
   [ ("help", [ "status" ])
     // `config set` writes keys the boot reads at startup.
     ("config", [ "list" ])
-    ("extensions", [ "list" ])
+    ("ext", [ "list" ])
     // Bare asks GitHub for the latest release.
     ("version", [ "--local" ])
     ("nav", [ "Darklang.Stdlib.List" ])

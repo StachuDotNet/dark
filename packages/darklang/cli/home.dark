@@ -95,8 +95,7 @@ let nextAfter(m: Model, line: String, said: List<String>): String =
 
 let turnsOn(line: String): Bool =
   match words(line) with
-  | ["ext", "on", ..._] | ["extensions", "on", ..._] -> true
-  | ["ext", "enable", ..._] | ["extensions", "enable", ..._] -> true
+  | ["ext", "on", ..._] -> true
   | _ -> false
 
 
@@ -161,7 +160,7 @@ let captured(m: Model, cmd: String, args: List<String>): List<String> =
 /// Commands that draw their own screen: the prompt hands them the terminal and comes back after.
 let ownsScreen(m: Model, cmd: String, args: List<String>): Bool =
   match cmd, args with
-  | ("extensions", []) | ("ext", []) | ("workbench", _) | ("wb", _) -> true
+  | ("ext", []) | ("workbench", _) | ("wb", _) -> true
   | _ -> Registry.needsTerminal(m.app.allCommandsCache, cmd, args)
 
 

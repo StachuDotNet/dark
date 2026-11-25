@@ -31,8 +31,6 @@ module Registry =
         ("show", Accepts.between(1, 1, []))
         ("on", Accepts.between(1, 99, []))
         ("off", Accepts.between(1, 99, []))
-        ("enable", Accepts.between(1, 99, []))
-        ("disable", Accepts.between(1, 99, []))
         ("explain", Accepts.between(1, 1, [])) ],
       Accepts.nothing())
 
@@ -183,9 +181,9 @@ module Registry =
         Help.complete)
 
       (
-        "extensions",
+        "ext",
         "Turn on what you want past running and keeping code",
-        [ "ext" ],
+        [],
         acceptsExtensions,
         Extensions.execute,
         Extensions.help,
@@ -617,7 +615,7 @@ module Registry =
           "workbench"
           "backups"
           "config"
-          "extensions" ]) ]
+          "ext" ]) ]
 
 
   let formatCommandGroup(

@@ -789,7 +789,7 @@ let header(exts: List<Extension>, on: List<String>): List<(Ink * String)> =
     (Ink.Plain, "") ]
 
 
-/// The tree without a cursor: what `dark extensions` prints when there is no screen to draw on.
+/// The tree without a cursor: what `dark ext` prints when there is no screen to draw on.
 let listing(exts: List<Extension>): List<String> =
   let on = onNames(exts)
   let lines = rows(exts) |> Stdlib.List.map(fun r -> "  " + rowLine(r, on, 78))
@@ -1144,7 +1144,7 @@ let execute(state: AppState, args: List<String>): AppState =
     | Some(e) ->
       explain(state, exts, e)
       state
-  | ["on", ...names] | ["enable", ...names] ->
+  | ["on", ...names] ->
     names
     |> Stdlib.List.fold(state, fun(st, name) ->
       match enable(exts, name) with
@@ -1153,7 +1153,7 @@ let execute(state: AppState, args: List<String>): AppState =
         printErr(e)
         printHint("  `dark ext` lists them.")
         failed(st))
-  | ["off", ...names] | ["disable", ...names] ->
+  | ["off", ...names] ->
     names
     |> Stdlib.List.fold(state, fun(st, name) ->
       match turnOff(exts, name) with
@@ -1248,7 +1248,7 @@ val kernel =
     "search"
     "docs"
     "help"
-    "extensions"
+    "ext"
     "permissions"
     "install"
     "update"
