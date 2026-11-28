@@ -229,20 +229,36 @@ type Source =
     /// whether a codepoint takes two UTF-16 units, so a column isn't just a count
     astral: Bool
     /// where each line ends: the index of its line break, or the length for the last
-    lineEnds: List<Int64> }
+    lineEnds: List<Int64>
+    /// a simple text cut into pieces of `chunkSize` characters, so cutting a token's text
+    /// costs the token, not its offset in the file
+    chunks: List<String> }
+
+
+val chunkSize = 128
 
 
 let source(text: String): Source =
   let cps = Stdlib.String.toCodepoints(text)
   let length = Stdlib.List.length(cps)
   let lineLengths = Stdlib.List.map(Stdlib.String.split(text, "\n"), fun line -> Stdlib.String.codepointLength(line))
+  let simple = Stdlib.String.length(text) == length
+  let chunks =
+    if simple then
+      Stdlib.String.toList(text)
+      |> Stdlib.List.chunkBySize(chunkSize)
+      |> Stdlib.Result.withDefault([])
+      |> Stdlib.List.map(fun cs -> Stdlib.String.fromList(cs))
+    else
+      []
   Source
     { text = text
       cps = cps
       length = length
-      simple = Stdlib.String.length(text) == length
+      simple = simple
       astral = Stdlib.List.any(cps, fun c -> c > 65535u32)
-      lineEnds = lineEndsFrom(lineLengths, 0, []) }
+      lineEnds = lineEndsFrom(lineLengths, 0, [])
+      chunks = chunks }
 
 
 let lineEndsFrom(lengths: List<Int64>, start: Int64, endsRev: List<Int64>): List<Int64> =
@@ -323,14 +339,30 @@ let isTypeVarChar(c: UInt32): Bool =
     Stdlib.Codepoint.isAlphanumeric(c)
 
 
+/// Characters [<param from>, <param to>) of the text <param chunks> were cut from
+/// (0 <= from <= to <= its length).
+let chunkText(chunks: List<String>, from: Int64, to: Int64): String =
+  if from >= to then
+    ""
+  else
+    let first = from / chunkSize
+    let last = (to - 1) / chunkSize
+    let piece = fun k ->
+      let chunk = Builtin.listGetAt(chunks, k) |> Stdlib.Option.withDefault("")
+      let a = if k == first then from - k * chunkSize else 0
+      let b = if k == last then to - k * chunkSize else chunkSize
+      Builtin.stringSlice(chunk, a, b) |> Stdlib.Option.withDefault("")
+    if first == last then
+      piece(first)
+    else
+      Stdlib.String.join(Stdlib.List.map(Stdlib.List.range(first, last), piece), "")
+
+
 /// The text of codepoints [<param from>, <param to>).
 let text(src: Source, from: Int64, to: Int64): String =
   if src.simple then
-    match Builtin.stringSlice(src.text, from, to) with
-    | Some(t) -> t
-    | None ->
-      let a = minI(maxI(0, from), src.length)
-      Builtin.stringSlice(src.text, a, minI(maxI(a, to), src.length)) |> Stdlib.Option.withDefault("")
+    let a = minI(maxI(0, from), src.length)
+    chunkText(src.chunks, a, minI(maxI(a, to), src.length))
   else
     src.cps
     |> Stdlib.List.drop(from)
