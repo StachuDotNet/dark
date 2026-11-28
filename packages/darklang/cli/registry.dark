@@ -797,12 +797,12 @@ module Registry =
 
       (
         "session",
-        "Sessions that keep a branch, a location and bindings across calls (`dark @s1`)",
+        "Sessions that keep a branch, a location and bindings across batches (`dark @s1`)",
         [],
-        Session.accepts,
-        Session.execute,
-        Session.help,
-        Session.complete)
+        Sessions.accepts,
+        Sessions.execute,
+        Sessions.help,
+        Sessions.complete)
 
       (
         "constraints",

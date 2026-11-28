@@ -207,8 +207,10 @@ Every test execution runs in its own disposable process with an isolated store.
 Ordinary `test name = ...` declarations provide isolation automatically, including
 for tests that change the local store, branches, or environment. Safe cached
 passes can still be reused. One starting snapshot per `test run` command is
-shared: each worker's store is a layer over it, with its own writes kept apart.
-A command answered entirely from cache creates no snapshot. Nested workers start from their calling test's current store.
+shared read-only; a test that writes to it reruns on a private copy and is marked
+`(reran on a copy)`, so anything it does outside its own home and temporary
+directory happens twice. A command answered entirely from cache creates no
+snapshot. Nested workers start from their calling test's current store.
 Use `Stdlib.Test.Process.run` only when a test needs custom process options or
 must inspect a child's output, result, or exit status.
 
@@ -627,37 +629,29 @@ Rules:
 """
 
 
-let sessions(): String =
-  """# Darklang AI: sessions
+let session(): String =
+  """# Darklang AI: session
 
-A session keeps a branch, a location and `let` bindings between calls, and takes
-many lines per call. Make one and name it for this directory once:
+A session keeps a branch, a location and `let` bindings across calls, and takes
+many lines per call. One numbered reply per line; it stops at the first failure.
 
-  dark session use $(dark session new)  writes .darklang/session; `dark @` means it
-  dark @ 'view Me.Demo.double'          one line as an argument
-  dark @ <<'END'                        or many on stdin
+  dark session new              prints its id, s1
+  dark @s1 <<'END'
   let xs = [1, 2, 3]
   fn Me.Demo.double '(a: Int64): Int64 = a * 2'
   Stdlib.List.map(xs, fun x -> Me.Demo.double(x))
   module /Me.Demo.Text -
     let shout(s: String): String = s + "!"
-  watch Me.Demo.double(4)
+  test run Me.Demo
   END
 
-`session new --branch b --at Acme` starts on a branch and module; both stick, and
-`switch` or `nav` in a batch moves the session, not the instance.
+Each line is a CLI command, `let`, `watch <expr>`, or a Dark expression. An
+indented line continues the one above; a command ending in `-` reads its
+indented lines as stdin. After the replies, `-- ` lines report the typecheck of
+every module the batch wrote to and each watched value, so no separate
+`typecheck` or `status` call is needed. `--continue` runs past failures, `--json`
+gives the same as JSON, `dark session show s1 3` prints reply 3 in full.
 
-A line is a command as typed after `dark` (no pipes or redirects), `let`,
-`watch <expr>`, or a Dark expression. An indented line continues the one above;
-a command ending in `-` reads its indented lines as stdin.
-
-Each line gets one reply: `<n> ok ...`, `<n> <value>` (a Dark literal you can
-paste back), `<n> error: <one line>` or `<n> skipped`; further lines of a reply
-start with two spaces. Then `-- ` lines: the counts, the typecheck of each module
-the batch wrote to, watched values, and where the session stands, so no separate
-`typecheck` call is needed.
-
-The first failure skips the rest; `--continue` runs every line. `--json` gives
-the same as one object. Exit 0 when every line worked, 1 when one failed, 2 when
-the batch could not start. A cut reply ends in `... <k> more lines: dark session
-show s1 <n>`. `dark session end s1` forgets it; its branch and code stay."""
+`dark session use s1` writes .darklang/session, so `dark @` in this directory
+means s1. `session new --at Me.Demo` starts there; expressions resolve names
+from the session's module first. `dark @s1 '<line>'` takes lines as arguments."""

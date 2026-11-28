@@ -26,12 +26,25 @@ let evaluateValueUnder(
   harmful: Harmful,
   grants: LanguageTools.Permissions.Policy)
   : Result<'a, ExecutionError.ExecutionError> =
+  evaluateValueFrom(accountID, branchId, [], expr, harmful, grants)
+
+
+/// <fn evaluateValueUnder>, with names resolved as code in the module <param location> would
+/// resolve them: that module first, then the usual rules. A session evaluates from where it stands.
+let evaluateValueFrom(
+  accountID: Option<Uuid>,
+  branchId: Uuid,
+  location: List<String>,
+  expr: String,
+  harmful: Harmful,
+  grants: LanguageTools.Permissions.Policy)
+  : Result<'a, ExecutionError.ExecutionError> =
   let allowHarmful =
     match harmful with
     | Allow -> true
     | Halt -> false
 
-  Builtin.cliEvaluateExpression(accountID, branchId, expr, allowHarmful, grants)
+  Builtin.cliEvaluateExpression(accountID, branchId, location, expr, allowHarmful, grants)
 
 
 let noGrants(): LanguageTools.Permissions.Policy =

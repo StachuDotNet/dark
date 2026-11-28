@@ -80,14 +80,13 @@ module ParseError =
 let private declarationsToModule
   (state : RT.ExecutionState)
   (owner : string)
-  (scriptName : string)
+  (baseModules : List<string>)
   (parameters : List<string>)
   (validated : Validation.ValidatedSourceFile)
   : Utils.CliScript.PTCliScriptModule =
   let sourceItems =
     validated |> Validation.ValidatedSourceFile.toWrittenTypes |> WTSourceFile.items
   let builtins = state.builtins
-  let baseModules = if scriptName = "" then [] else [ scriptName ]
 
   // Build WT package declarations + top-level expressions.
   let fnList =
@@ -468,7 +467,7 @@ let private callsToLaterNestedFns
 let private parseCliSource
   (state : RT.ExecutionState)
   (owner : string)
-  (scriptName : string)
+  (baseModules : List<string>)
   (parameters : List<string>)
   (code : string)
   : Result<Utils.CliScript.PTCliScriptModule, List<P.Diagnostic>> =
@@ -504,7 +503,7 @@ let private parseCliSource
     match reservedDeclarations with
     | _ :: _ -> Error reservedDeclarations
     | [] ->
-      let m = declarationsToModule state owner scriptName parameters validated
+      let m = declarationsToModule state owner baseModules parameters validated
       // Report unresolved traits and methods here; dispatch would otherwise skip
       // these impls and fail later at the call.
       let implDecls =
@@ -560,17 +559,22 @@ let parseCliScript
   (scriptName : string)
   (code : string)
   : Result<Utils.CliScript.PTCliScriptModule, List<P.Diagnostic>> =
-  parseCliSource state owner scriptName [ "args" ] code
+  let baseModules = if scriptName = "" then [] else [ scriptName ]
+  parseCliSource state owner baseModules [ "args" ] code
 
 
-/// Parse a single expression (the `eval` path): the script lowering with no
-/// module, so `let x = … in x` and short statement sequences also work; a
-/// bare expression is just `exprs`.
+/// Parse a single expression (the `eval` path): the script lowering, so
+/// `let x = … in x` and short statement sequences also work; a bare expression
+/// is just `exprs`. Names resolve as code in the module <param location> would
+/// see them; `[]` is no module.
 let parseCliExpr
   (state : RT.ExecutionState)
+  (location : List<string>)
   (expression : string)
   : Result<Utils.CliScript.PTCliScriptModule, List<P.Diagnostic>> =
-  parseCliSource state "" "" [] expression
+  match location with
+  | [] -> parseCliSource state "" [] [] expression
+  | owner :: modules -> parseCliSource state owner modules [] expression
 
 
 /// Parse the saved input as eval code or a script.
@@ -579,7 +583,7 @@ let parseScriptOrEvalInput
   (input : LibDB.Traces.ScriptOrEvalInput)
   =
   match input with
-  | LibDB.Traces.EvalExpression(source, _) -> parseCliExpr state source
+  | LibDB.Traces.EvalExpression(source, _) -> parseCliExpr state [] source
   | LibDB.Traces.RunScript(_, source, _, _) ->
     parseCliScript state "CliScript" "" source
 
@@ -2120,6 +2124,10 @@ let fns () : List<BuiltInFn> =
             "branchId"
             TUuid
             "the branch to resolve names against (main is `SCM.Branch.mainBranchId`). A parameter rather than ambient state so a caller can parse against a branch it isn't sitting on"
+          Param.make
+            "location"
+            (TList TString)
+            "the module names resolve from first, as code in it would; [] for none"
           Param.make "expression" TString ""
           Param.make
             "allowHarmful"
@@ -2152,11 +2160,17 @@ let fns () : List<BuiltInFn> =
           [],
           [| accountIDDval
              DUuid branchId
+             DList(_, Items(location))
              DString expression
              DBool allowHarmful
              runGrantsValue |] ->
           let runGrants = PolicyDT.Policy.fromDT runGrantsValue
           let grants, denies = Permission.Policy.rules runGrants
+          let location =
+            location
+            |> List.choose (function
+              | DString segment -> Some segment
+              | _ -> None)
           if
             not (List.isEmpty grants && List.isEmpty denies)
             && not exeState.canManagePolicies
@@ -2192,7 +2206,7 @@ let fns () : List<BuiltInFn> =
                     prepareGuest
                       branchState
                       input
-                      (parseScriptOrEvalInput branchState input)
+                      (parseCliExpr branchState location expression)
                       expression
 
                   match parsedScript with

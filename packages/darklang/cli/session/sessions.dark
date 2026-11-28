@@ -1,0 +1,622 @@
+/// Sessions that outlive one `dark` call: a named record of a branch, a place in the tree, `let`
+/// bindings and watched expressions. Kept in this
+/// instance's config under `session.<id>`. A batch (`dark @s1`) loads the record, runs, and saves it
+/// back. `docs/sessions.md` is the contract.
+module Darklang.Cli.Sessions
+
+type Watch =
+  { expr: String
+    /// What it showed after the last batch, so the report can say "unchanged".
+    last: String }
+
+
+type Reply =
+  { n: Int64
+    /// binding, expression, command or watch
+    kind: String
+    /// ok, error or skipped
+    status: String
+    /// The reply as printed, without its number. Never empty.
+    lines: List<String> }
+
+
+type Session =
+  { id: String
+    branchId: String
+    /// The module the session stands in, by segment; empty for the root.
+    location: List<String>
+    bindings: List<Repl.Binding>
+    watches: List<Watch>
+    /// Every reply of the last batch in full, for `session show`.
+    lastReplies: List<Reply>
+    /// When a batch last ran in it, in seconds since 1970.
+    lastUsed: Int64 }
+
+
+let key(id: String): String =
+  "session." + id
+
+
+let load(id: String): Option<Session> =
+  match LanguageTools.LocalStore.configGet(key(id)) with
+  | Some(text) ->
+    match Stdlib.Json.parse<Session>(text) with
+    | Ok(s) -> Option.Some(s)
+    | Error(_) -> Option.None
+  | None -> Option.None
+
+
+let save(s: Session): Result<Unit, String> =
+  match Stdlib.Json.checkedSerialize<Session>(s) with
+  | Ok(text) -> LanguageTools.LocalStore.configSet(key(s.id), text)
+  | Error(_) -> Result.Error($"could not save session {s.id}")
+
+
+let ids(): List<String> =
+  match LanguageTools.LocalStore.configGet("session.index") with
+  | Some(text) ->
+    match Stdlib.Json.parse<List<String>>(text) with
+    | Ok(xs) -> xs
+    | Error(_) -> []
+  | None -> []
+
+
+let setIds(xs: List<String>): Result<Unit, String> =
+  match Stdlib.Json.checkedSerialize<List<String>>(xs) with
+  | Ok(text) -> LanguageTools.LocalStore.configSet("session.index", text)
+  | Error(_) -> Result.Error("could not save the session list")
+
+
+/// The file that names a directory's session, so `dark @` there needs no id.
+val sessionFile = ".darklang/session"
+
+
+/// The session named by `.darklang/session` in <param dir> or the nearest directory above it.
+let namedIn(dir: String): Option<String> =
+  let path = dir + "/" + sessionFile
+  if Stdlib.Cli.File.exists(path) then
+    match Stdlib.Cli.File.readText(path) with
+    | Ok(text) when Stdlib.String.trim(text) != "" -> Option.Some(Stdlib.String.trim(text))
+    | _ -> Option.None
+  else
+    let up = Stdlib.Cli.Path.parent(dir)
+    if up == dir || up == "." then Option.None else namedIn(up)
+
+
+/// The session `.darklang/session` names for the working directory, else this instance's current
+/// one.
+let current(): Option<String> =
+  let here =
+    match Stdlib.Cli.Posix.getCwd() with
+    | Ok(cwd) -> namedIn(cwd)
+    | Error(_) -> Option.None
+
+  match here with
+  | Some(id) -> Option.Some(id)
+  | None ->
+    match LanguageTools.LocalStore.configGet("session.current") with
+    | Some(id) when id != "" -> Option.Some(id)
+    | _ -> Option.None
+
+
+/// The first `s<n>` past every id in use.
+let nextId(): String =
+  let highest =
+    ids()
+    |> Stdlib.List.fold(0, fun(acc, id) ->
+      match Stdlib.Int64.parse(Stdlib.String.dropFirst(id, 1)) with
+      | Ok(n) when n > acc -> n
+      | _ -> acc)
+
+  "s" + Stdlib.display(highest + 1)
+
+
+let branchOf(s: Session): Uuid =
+  Stdlib.Uuid.parse(s.branchId) |> Stdlib.Result.withDefault(SCM.Branch.mainBranchId)
+
+
+let modulePathOf(location: Packages.PackageLocation): List<String> =
+  match location with
+  | Module(path) -> path
+  | Type(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Value(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Function(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Trait(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Impl(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Test(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+
+
+let locationText(path: List<String>): String =
+  if Stdlib.List.isEmpty(path) then "/" else Stdlib.String.join(path, ".")
+
+
+let branchText(branchId: Uuid): String =
+  if SCM.Branch.isMain(branchId) then
+    SCM.Branch.mainBranchName
+  else
+    SCM.PackageOps.branchName(branchId)
+
+
+/// <param state> standing where <param s> stands.
+let enter(state: AppState, s: Session): AppState =
+  { state with
+      currentBranchId = branchOf(s)
+      packageData =
+        { state.packageData with currentLocation = Packages.PackageLocation.Module(s.location) } }
+
+
+/// A new, empty session <param id> on <param branchId>, at <param location>.
+let fresh(id: String, branchId: Uuid, location: List<String>): Session =
+  Session
+    { id = id
+      branchId = Stdlib.display(branchId)
+      location = location
+      bindings = []
+      watches = []
+      lastReplies = []
+      lastUsed = nowSeconds() }
+
+
+let nowSeconds(): Int64 =
+  Stdlib.DateTime.toSeconds(Stdlib.DateTime.now())
+
+
+/// A session unused this long is dropped the next time one is made.
+val keepSeconds = 7 * 24 * 60 * 60
+
+
+/// Save <param s>, list it, and make it current.
+let add(s: Session): Result<Unit, String> =
+  let listed = ids()
+  save(s)
+  |> Stdlib.Result.andThen(fun _ ->
+    if Stdlib.List.contains(listed, s.id) then
+      Result.Ok()
+    else
+      setIds(Stdlib.List.append(listed, s.id)))
+  |> Stdlib.Result.andThen(fun _ -> LanguageTools.LocalStore.configSet("session.current", s.id))
+
+
+/// A new session on a new branch off <param parent>'s, with its bindings and watches: what a
+/// subagent starts from. A new branch starts from its parent's commits, so the parent's draft is committed first, except
+/// on main, where a commit is the person's call.
+let fork(state: AppState, parent: Session): Result<Session, String> =
+  let newId = nextId()
+  let _ =
+    if SCM.Branch.isMain(branchOf(parent)) then
+      printHint(
+        $"{parent.id} is on main, so {newId} starts from main's last commit, without its draft.")
+    else
+      let _ = Batch.commitForFork(state, parent, newId)
+      ()
+
+  match SCM.PackageOps.resolveBranch($"session-{newId}", branchOf(parent)) with
+  | Error(_) -> Result.Error($"could not start a branch for {newId}")
+  | Ok((branchId, _created)) ->
+    Result.Ok(
+      { parent with
+          id = newId
+          branchId = Stdlib.display(branchId)
+          lastReplies = []
+          lastUsed = nowSeconds() })
+
+
+// ---- the log and the inbox, under keys of their own so a person and an agent writing to one
+// session at once do not overwrite each other
+
+/// One thing that happened in a session: a batch and its replies, or what its agent said.
+type Entry =
+  { n: Int64
+    /// who sent it: `shell` (`dark @`), `attach` or `agent`
+    by: String
+    /// the batch's lines, or the agent's words
+    text: String
+    /// empty for the agent's words
+    replies: List<Reply> }
+
+
+val logCap = 50
+
+
+let logKey(id: String): String =
+  "session." + id + ".log"
+
+
+let inboxKey(id: String): String =
+  "session." + id + ".inbox"
+
+
+let logOf(id: String): List<Entry> =
+  match LanguageTools.LocalStore.configGet(logKey(id)) with
+  | Some(text) -> Stdlib.Json.parse<List<Entry>>(text) |> Stdlib.Result.withDefault([])
+  | None -> []
+
+
+let addToLog(id: String, by: String, text: String, replies: List<Reply>): Unit =
+  let log = logOf(id)
+  let n =
+    match Stdlib.List.last(log) with
+    | Some(e) -> e.n + 1
+    | None -> 1
+
+  let entry = Entry { n = n, by = by, text = text, replies = replies }
+  let kept = Stdlib.List.append(log, entry)
+  let kept = Stdlib.List.drop(kept, Stdlib.List.length(kept) - logCap)
+  match Stdlib.Json.checkedSerialize<List<Entry>>(kept) with
+  | Ok(json) ->
+    let _ = LanguageTools.LocalStore.configSet(logKey(id), json)
+    ()
+  | Error(_) -> ()
+
+
+/// What people said to the session's agent that it has not heard yet.
+let inboxOf(id: String): List<String> =
+  match LanguageTools.LocalStore.configGet(inboxKey(id)) with
+  | Some(text) -> Stdlib.Json.parse<List<String>>(text) |> Stdlib.Result.withDefault([])
+  | None -> []
+
+
+let setInbox(id: String, notes: List<String>): Result<Unit, String> =
+  match Stdlib.Json.checkedSerialize<List<String>>(notes) with
+  | Ok(json) -> LanguageTools.LocalStore.configSet(inboxKey(id), json)
+  | Error(_) -> Result.Error($"could not save what was said to {id}")
+
+
+/// The inbox, emptied: the agent hears each note once.
+let takeInbox(id: String): List<String> =
+  match inboxOf(id) with
+  | [] -> []
+  | notes ->
+    let _ = LanguageTools.LocalStore.configUnset(inboxKey(id))
+    notes
+
+
+/// <param e> as `session watch` prints it.
+let entryLines(e: Entry): List<String> =
+  let indented(text: String, lead: String): List<String> =
+    Stdlib.String.splitOnNewline(text) |> Stdlib.List.map(fun l -> lead + l)
+
+  match e.replies with
+  | [] -> Stdlib.List.prepend(indented(e.text, "  "), $"-- {Stdlib.display(e.n)} {e.by} says:")
+  | replies ->
+    let shown =
+      replies
+      |> Stdlib.List.map(fun r ->
+        let (kept, more) = Batch.capped(Batch.replyCaps(), r)
+        let kept =
+          if more > 0 then
+            Stdlib.List.append(kept, $"... {Stdlib.display(more)} more lines")
+          else
+            kept
+
+        replyLines({ r with lines = kept }))
+      |> Stdlib.List.flatten
+
+    Stdlib.List.flatten(
+      [ [ $"-- {Stdlib.display(e.n)} {e.by}:" ], indented(e.text, "  > "), shown ])
+
+
+let printEntries(entries: List<Entry>): Unit =
+  entries
+  |> Stdlib.List.iter(fun e -> entryLines(e) |> Stdlib.List.iter(fun l -> Stdlib.printLine(l)))
+
+
+/// Print the last few entries of <param id>'s log; the number of the last one.
+let printRecent(id: String): Int64 =
+  let log = logOf(id)
+  let _ = printEntries(Stdlib.List.drop(log, Stdlib.List.length(log) - 5))
+  lastSeen(log, 0)
+
+
+let newerThan(id: String, seen: Int64): List<Entry> =
+  logOf(id) |> Stdlib.List.filter(fun e -> e.n > seen)
+
+
+let lastSeen(entries: List<Entry>, seen: Int64): Int64 =
+  match Stdlib.List.last(entries) with
+  | Some(e) -> e.n
+  | None -> seen
+
+
+let summaryLine(s: Session): String =
+  let marker = if current() == Option.Some(s.id) then "  (current)" else ""
+  let b = Stdlib.List.length(s.bindings)
+  let w = Stdlib.List.length(s.watches)
+  let used = Stdlib.DateTime.toStringISO8601BasicDateTime(Stdlib.DateTime.fromSeconds(s.lastUsed))
+  $"{s.id}  branch {branchText(branchOf(s))}  at {locationText(s.location)}  {Stdlib.display(b)} bindings  {Stdlib.display(w)} watches  used {used}{marker}"
+
+
+let unknown(state: AppState, id: String): AppState =
+  printErr($"no session {id}")
+  printHint("  `dark session ls` lists them; `dark session new` makes one.")
+  { state with exitCode = 2 }
+
+
+let added(state: AppState, s: Session): AppState =
+  match add(s) with
+  | Ok(_) ->
+    Stdlib.printLine(s.id)
+    state
+  | Error(message) ->
+    printErr(message)
+    failed(state)
+
+
+/// Forget <param id>: its record, log and inbox. Its branch and code stay.
+let forget(id: String): Unit =
+  let _ = LanguageTools.LocalStore.configUnset(key(id))
+  let _ = LanguageTools.LocalStore.configUnset(logKey(id))
+  let _ = LanguageTools.LocalStore.configUnset(inboxKey(id))
+  let _ = setIds(ids() |> Stdlib.List.filter(fun x -> x != id))
+  let _ =
+    if LanguageTools.LocalStore.configGet("session.current") == Option.Some(id) then
+      LanguageTools.LocalStore.configUnset("session.current")
+    else
+      Result.Ok()
+
+  ()
+
+
+let dropUnused(): Unit =
+  let cutoff = nowSeconds() - keepSeconds
+  ids()
+  |> Stdlib.List.filterMap(fun id -> load(id))
+  |> Stdlib.List.filter(fun s -> s.lastUsed < cutoff)
+  |> Stdlib.List.iter(fun s -> forget(s.id))
+
+
+/// `--at Acme.Demo` or `--at /Acme.Demo`: the module, by segment.
+let modulePathFrom(text: String): List<String> =
+  let text =
+    if Stdlib.String.startsWith(text, "/") then
+      Stdlib.String.dropFirst(text, 1)
+    else
+      text
+
+  Stdlib.String.split(text, ".") |> Stdlib.List.filter(fun p -> p != "")
+
+
+let executeNew(state: AppState, args: List<String>): AppState =
+  let flag(name: String): Option<String> =
+    args
+    |> Stdlib.List.dropWhile(fun a -> a != name)
+    |> Stdlib.List.drop(1)
+    |> Stdlib.List.head
+
+  let branch =
+    match flag("--branch") with
+    | Some(ref) -> Branch.resolveRef(ref)
+    | None -> Option.Some(state.currentBranchId)
+
+  let location =
+    match flag("--at") with
+    | Some(at) -> modulePathFrom(at)
+    | None -> modulePathOf(state.packageData.currentLocation)
+
+  match branch with
+  | None -> failed(state)
+  | Some(branchId) ->
+    dropUnused()
+    added(state, fresh(nextId(), branchId, location))
+
+
+let executeFork(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(parent) ->
+    match fork(state, parent) with
+    | Ok(s) -> added(state, s)
+    | Error(message) ->
+      printErr(message)
+      failed(state)
+
+
+let executeEnd(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(_) ->
+    forget(id)
+    state
+
+
+/// Make <param id> current, and write `.darklang/session` here so `dark @` in this directory, or
+/// one below it, means <param id> whatever else is current.
+let executeUse(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(_) ->
+    let written =
+      LanguageTools.LocalStore.configSet("session.current", id)
+      |> Stdlib.Result.andThen(fun _ ->
+        match Stdlib.Cli.Posix.getCwd() with
+        | Error(e) -> Result.Error(Stdlib.display(e))
+        | Ok(cwd) ->
+          Stdlib.Cli.Dir.createRecursive(cwd + "/.darklang")
+          |> Stdlib.Result.andThen(fun _ ->
+            Stdlib.Cli.File.writeText(cwd + "/" + sessionFile, id + "\n"))
+          |> Stdlib.Result.mapError(fun e -> $"could not write {sessionFile}: {Stdlib.display(e)}"))
+
+    match written with
+    | Ok(_) -> state
+    | Error(message) ->
+      printErr(message)
+      failed(state)
+
+
+let executeList(state: AppState): AppState =
+  let sessions = ids() |> Stdlib.List.filterMap(fun id -> load(id))
+  if Stdlib.List.isEmpty(sessions) then
+    printHint("no sessions; `dark session new` makes one.")
+    state
+  else
+    sessions |> Stdlib.List.iter(fun s -> Stdlib.printLine(summaryLine(s)))
+    state
+
+
+/// Follow the session: the last few entries, then each new one as it lands, until the session
+/// ends. State lives in config, so this re-reads it twice a second.
+let executeWatch(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(_) ->
+    let seen = printRecent(id)
+    let _ =
+      Stdlib.List.checkedRange(1, 200000)
+      |> Stdlib.Result.withDefault([])
+      |> Stdlib.List.fold(Option.Some(seen), fun(acc, _i) ->
+        match acc with
+        | None -> acc
+        | Some(seen) ->
+          let _ = Stdlib.Cli.Posix.sleep(500.0)
+          match load(id) with
+          | None -> Option.None
+          | Some(_) ->
+            let fresh = newerThan(id, seen)
+            let _ = printEntries(fresh)
+            Option.Some(lastSeen(fresh, seen)))
+
+    state
+
+
+/// A person in the session: the last few entries, then each line read is a batch of its own, run
+/// where the session stands, with whatever else landed in the log since printed first. An empty line or the end of input
+/// detaches.
+let executeAttach(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(s) ->
+    let _ =
+      Stdlib.printErrorLine(
+        $"attached to {id} on branch {branchText(branchOf(s))}; an empty line detaches")
+
+    let seen = printRecent(id)
+    let (_seen, _done, code) =
+      Stdlib.List.checkedRange(1, 100000)
+      |> Stdlib.Result.withDefault([])
+      |> Stdlib.List.fold((seen, false, 0), fun(acc, _i) ->
+        let (seen, finished, code) = acc
+        if finished then
+          acc
+        else
+          let _ = Stdlib.printError($"{id}› ")
+          match Stdlib.Cli.Stdin.checkedReadLine() with
+          | Ok(Some(line)) when Stdlib.String.trim(line) != "" ->
+            let others = newerThan(id, seen)
+            let _ = printEntries(others)
+            match load(id) with
+            | None -> (seen, true, 2)
+            | Some(here) ->
+              let (_after, s2, outcome) = Batch.run(state, here, line, Batch.OnFailure.Stop)
+              let _ = save({ s2 with lastUsed = nowSeconds() })
+              let _ = addToLog(id, "attach", line, outcome.replies)
+              let _ =
+                Batch.renderText(id, Batch.replyCaps(), outcome)
+                |> Stdlib.List.iter(fun l -> Stdlib.printLine(l))
+
+              let failedNow = if Batch.count(outcome, "error") > 0 then 1 else 0
+              (lastSeen(logOf(id), seen), false, failedNow)
+          | _ -> (seen, true, code))
+
+    { state with exitCode = code }
+
+
+let replyLines(reply: Reply): List<String> =
+  match reply.lines with
+  | [first, ...rest] ->
+    Stdlib.List.prepend(
+      rest |> Stdlib.List.map(fun l -> "  " + l),
+      Stdlib.display(reply.n) + " " + first)
+  | [] -> [ Stdlib.display(reply.n) ]
+
+
+let executeShow(state: AppState, id: String, which: Option<String>): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(s) ->
+    let chosen =
+      match which with
+      | None -> Result.Ok(s.lastReplies)
+      | Some(text) ->
+        match Stdlib.Int64.parse(text) with
+        | Ok(n) ->
+          match s.lastReplies |> Stdlib.List.filter(fun x -> x.n == n) with
+          | [] -> Result.Error($"the last batch in {id} has no reply {text}")
+          | found -> Result.Ok(found)
+        | Error(_) -> Result.Error($"{text} is not a reply number")
+
+    match chosen with
+    | Ok(replies) ->
+      replies
+      |> Stdlib.List.iter(fun reply ->
+        replyLines(reply) |> Stdlib.List.iter(fun l -> Stdlib.printLine(l)))
+
+      state
+    | Error(message) ->
+      printErr(message)
+      failed(state)
+
+
+let execute(state: AppState, args: List<String>): AppState =
+  match args with
+  | [] -> executeList(state)
+  | ["ls"] -> executeList(state)
+  | ["new", ...rest] -> executeNew(state, rest)
+  | ["use", id] -> executeUse(state, id)
+  | ["fork", id] -> executeFork(state, id)
+  | ["end", id] -> executeEnd(state, id)
+  | ["show", id] -> executeShow(state, id, Option.None)
+  | ["show", id, n] -> executeShow(state, id, Option.Some(n))
+  | ["watch", id] -> executeWatch(state, id)
+  | ["attach", id] -> executeAttach(state, id)
+  | _ ->
+    printErr(
+      "Usage: session new [--branch <name>] [--at <module>] | ls | use <id> | fork <id> | end <id> | show <id> [<n>] | watch <id> | attach <id>")
+
+    failed(state)
+
+
+let accepts(): Accepts.Accepts =
+  Accepts.subcommands(
+    [ ("new", Accepts.withValues([ "--branch", "--at" ], Accepts.nothing()))
+      ("ls", Accepts.nothing())
+      ("use", Accepts.between(1, 1, []))
+      ("fork", Accepts.between(1, 1, []))
+      ("end", Accepts.between(1, 1, []))
+      ("show", Accepts.between(1, 2, []))
+      ("watch", Accepts.between(1, 1, []))
+      ("attach", Accepts.between(1, 1, [])) ],
+    Accepts.nothing())
+
+
+let complete(_state: AppState, args: List<String>): List<Completion.CompletionItem> =
+  []
+
+
+let help(_state: AppState): String =
+  [ "Usage: session new [--branch <name>] [--at <module>]   make a session, print its id, make it current"
+    "       session ls                       the sessions, one per line, with when each was last used"
+    "       session use <id>                 make <id> current, here and below (.darklang/session)"
+    "       session fork <id>                a new session on a branch off <id>'s, with its bindings"
+    "       session end <id>                 forget a session; its branch and code stay"
+    "       session show <id> [<n>]          the last batch's replies in full"
+    "       session watch <id>               follow what is sent to <id> and what it answers"
+    "       session attach <id>              type lines into <id>, seeing what else lands there"
+    ""
+    "Run a batch with `dark @<id>` (or `dark @` for the current session), lines as arguments or on stdin:"
+    ""
+    "  dark @s1 <<'EOF'"
+    "  let xs = [1, 2, 3]"
+    "  Stdlib.List.map(xs, fun x -> x * 2)"
+    "  fn Me.Demo.double '(a: Int64): Int64 = a * 2'"
+    "  watch Me.Demo.double(4)"
+    "  EOF"
+    ""
+    "  --continue   run every line even after one fails"
+    "  --json       the replies and report as one JSON object"
+    ""
+    "One numbered reply per line, then `-- ` lines: a summary, the typecheck of every module the"
+    "batch wrote to, and the watched values. A line indented under another continues it; a command"
+    "ending in `-` reads its indented lines as stdin. Branch and location stick to the session, and"
+    "expressions resolve names from its location first. A session unused for 7 days is dropped"
+    "when the next one is made." ]
+  |> Stdlib.String.join("\n")

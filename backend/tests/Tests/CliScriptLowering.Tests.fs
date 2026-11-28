@@ -216,7 +216,7 @@ let private testTopLevelSequencing =
         let state = executionStateFor pmPT false
         let parsed =
           (if isEval then
-             Cli.parseCliExpr state code
+             Cli.parseCliExpr state [] code
            else
              Cli.parseCliScript state "Tests" "sequence" code)
         let mod' =
@@ -393,7 +393,7 @@ let private testScriptInputNamesAreReserved =
         "qualified args declarations coexist with script input"
 
     for code in [ "val args = 42\nargs"; "let args(): Int64 = 42\nargs()" ] do
-      let parsed = Cli.parseCliExpr state code
+      let parsed = Cli.parseCliExpr state [] code
       Expect.isOk parsed "eval may declare values and functions named args"
   }
 

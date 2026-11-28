@@ -282,10 +282,10 @@ module Topics =
         ForAIParts.syntax)
 
       subtopic(
-        "sessions",
-        "Many lines per call, numbered replies, state kept between calls",
-        [ "session" ],
-        ForAIParts.sessions) ]
+        "session",
+        "Many commands per call, numbered replies, a report",
+        [ "batch" ],
+        ForAIParts.session) ]
 
 
   let subtopic(
