@@ -62,8 +62,10 @@ module NameResolutionError =
 type KnownBindings =
   { /// The names that were read. A name in here with no entry in `bound` is bound nowhere.
     names: Dict<String, Unit>
+
     /// Each binding found, by `bindingKey`.
     bound: Dict<String, Unit>
+
     /// What `referenceSegments` answers, worked out once per file for the references in it, by
     /// `segmentsKey`.
     segments: Dict<String, List<String>> }
@@ -101,26 +103,32 @@ let knownBindings(branchId: Uuid, names: List<String>): KnownBindings =
 // we can shorten names that share the same prefix
 type Context =
   { branchId: Uuid
+
     /// The module we're printing from, owner-first (`["Darklang", "Stdlib", "Option"]`), or empty for
     /// "no context". A path rather than a dotted string, because shortening compares segments and
     /// `PickContext` wants a path too; the two used to disagree and be converted by splitting on ".".
     currentModule: List<String>
+
     /// Used to resolve ESelf and EArg expressions when pretty-printing function bodies.
     /// When Some, contains (functionName, argMap) where argMap maps parameter names to indices.
     currentFunction: Option<(String * Dict<String, Int64>)>
+
     /// Columns available. Layout decisions are made against this; it is a field rather than something
     /// looked up so that printing stays reproducible and a caller can print for a pane.
     width: Int64
+
     /// The location this definition is being shown under, when the caller knows it.
     ///
     /// Only `FQ*.Package.atDefinition` can use it: that is the one lookup whose hash
     /// is the subject's own. A name inside the body resolves against its own
     /// candidates, where this location does not appear.
     preferredLocation: Option<LanguageTools.ProgramTypes.PackageLocation>
+
     /// Live values: what a call produced the last time this code ran, keyed by the call's
     /// expression id (as text), already rendered. A call with an entry prints with `// = <value>`
     /// after it. Empty everywhere but the editor's panes.
     liveValues: Dict<String, String>
+
     /// May a live value change the LAYOUT?
     ///
     /// A comment cannot sit in the middle of a line, so showing what each stage of a
@@ -130,34 +138,46 @@ type Context =
     /// and zipping the two line for line, so a print that gains LINES when it gains
     /// values yields no hints at all.
     breakForValues: Bool
+
     /// The `//` comments of the file `dark format` is printing, by the line of code each belongs
     /// with (as text). Empty everywhere else.
     comments: Dict<String, List<LanguageTools.Formatter.Comment>>
+
     /// The comments that go after a node, at the end of its line, by the node's id (as text).
     trailingComments: Dict<String, List<LanguageTools.Formatter.Comment>>
+
     /// The signature of each local fn in it, by the id of its lambda.
     localFns: Dict<String, LanguageTools.Formatter.LocalFn>
+
     /// Printing something that has to stay on one line: a `when` guard, an interpolation. An
     /// `if` there goes on one line however long it is.
     oneLine: Bool
+
     /// Whether a fn's body may stay on its header's line. Only `dark format` sets it, for a run of
     /// short fns that reads as a list; anywhere else a body has its own line.
     compactFnBody: Bool
+
     /// Whether `comments` or `trailingComments` holds anything; checked first, since mostly
     /// neither does.
     hasComments: Bool
+
     /// The ids of the strings the source wrote between triple quotes, which print that way again.
     tripleQuoted: Dict<String, Unit>
+
     /// What lowering a list written with `...` left, by node id: the `call` it became, and each
     /// `element` written after a `...`, or `alone` when it was alone in its brackets.
     spreads: Dict<String, String>
+
     /// How each plain string and char literal was written, quotes included, by node id.
     spellings: Dict<String, String>
+
     /// The text between the interpolations of each `$"..."`, as written, by node id.
     textParts: Dict<String, List<String>>
+
     /// The names the declaration being printed binds locally: its parameters and every `let`,
     /// lambda and pattern variable. A fn or value can't be written bare as one of these.
     localNames: Dict<String, Unit>
+
     /// The bindings of every name the file being printed uses, when `dark format` has read them.
     knownBindings: Option<KnownBindings> }
 
@@ -2185,6 +2205,13 @@ let commentedKey(
     build(ctx)
 
 
+/// Whether a comment goes on a line of its own above what <param key> names.
+let commentAboveAt(ctx: Context, key: String): Bool =
+  match Stdlib.Dict.get(ctx.comments, key) with
+  | Some(cs) -> Stdlib.List.any(cs, fun c -> Stdlib.Bool.not(c.trailing))
+  | None -> false
+
+
 /// `commented`, for the nodes <param ids>, which all start where one piece of code does: a
 /// statement and the sequence it opens, say.
 let commentedAt(
@@ -3011,7 +3038,9 @@ let customTypeDoc(
     let fieldsPart =
       fields
       |> Stdlib.List.map(fun field ->
-        ($"field {field.name}", (fun ctx -> TypeDeclaration.recordFieldDoc(ctx, field))))
+        ($"field {field.name}",
+         field.description,
+         (fun ctx -> TypeDeclaration.recordFieldDoc(ctx, field))))
       |> typeParts(ctx)
 
     Stdlib.Pretty.Doc.Concat(
@@ -3020,23 +3049,31 @@ let customTypeDoc(
   | Enum(cases) ->
     cases
     |> Stdlib.List.map(fun case ->
-      ($"case {case.name}", (fun ctx -> TypeDeclaration.enumCaseDoc(ctx, case))))
+      ($"case {case.name}",
+       case.description,
+       (fun ctx -> TypeDeclaration.enumCaseDoc(ctx, case))))
     |> typeParts(ctx)
 
 
 /// A type's fields or cases, one per line, each with its comments, keyed as <fn commentedKey>
-/// says. A comment the source set off with a blank line keeps it.
+/// says, and its description. A doc or comment above any of them puts a blank line between every
+/// two; otherwise only a comment the source set off with a blank line keeps one.
 let typeParts(
-  parts: List<(String * (Context -> Stdlib.Pretty.Doc))>,
+  parts: List<(String * String * (Context -> Stdlib.Pretty.Doc))>,
   ctx: Context)
   : Stdlib.Pretty.Doc =
+  let spaced =
+    Stdlib.List.any(parts, fun part ->
+      let (key, description, _) = part
+      description != "" || commentAboveAt(ctx, key))
+
   parts
   |> Stdlib.List.indexedMap(fun(i, part) ->
-    let (key, build) = part
+    let (key, _, build) = part
     let doc = commentedKey(ctx, key, build)
     if i == 0 then
       doc
-    else if blankBeforeCommentsAt(ctx, key) then
+    else if spaced || blankBeforeCommentsAt(ctx, key) then
       Stdlib.Pretty.concatAll([ Stdlib.Pretty.Doc.HardLine, Stdlib.Pretty.Doc.HardLine, doc ])
     else
       Stdlib.Pretty.Doc.Concat(Stdlib.Pretty.Doc.HardLine, doc))

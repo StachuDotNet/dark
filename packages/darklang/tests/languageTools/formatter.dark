@@ -104,6 +104,7 @@ val typeBodyComments =
 type Shape =
   // the empty one
   | Dot  // a point
+
   | Box(
     // the width
     Int64,
@@ -116,6 +117,7 @@ type Shape =
 type Point =
   { // across
     x: Int64  // right
+
     // down
     y: Int64 }
 
@@ -128,7 +130,6 @@ test placesCommentsInTypeBodies =
   LanguageTools.Formatter.source(SCM.Branch.mainBranchId, 100, typeBodyComments)
   |> Stdlib.Result.map(fun f -> (f.text, f.asWritten))
   |> Stdlib.Test.equal(Ok((typeBodyComments, [])))
-
 
 
 // A record's first field takes its `///` onto the `{` line.
@@ -151,6 +152,7 @@ val firstFieldDocFormatted =
 type Person =
   { /// the name
     name: String
+
     /// the age
     age: Int64 }
 """
@@ -163,6 +165,69 @@ test movesTheFirstFieldsDocOntoTheBrace =
     |> Stdlib.Result.map(fun f -> (f.text, f.asWritten)))
   |> Stdlib.Test.equal(
     [ Ok((firstFieldDocFormatted, [])), Ok((firstFieldDocFormatted, [])) ])
+
+
+// A comment on one field of a record puts a blank line between all of them.
+val commentAboveOneMember =
+  """module Darklang.Tests.FormatSample
+
+type Point =
+  { x: Int64
+    // down
+    y: Int64
+    z: Int64 }
+
+type Shape =
+  | Dot
+  /// four sides
+  | Box
+  | Ring
+
+type Size =
+  { w: Int64  // across
+
+    h: Int64 }
+
+type Turn =
+  | Left  // anticlockwise
+  | Right
+"""
+
+
+test aCommentAboveOneMemberSpacesThemAll =
+  LanguageTools.Formatter.source(SCM.Branch.mainBranchId, 100, commentAboveOneMember)
+  |> Stdlib.Result.map(fun f -> f.text)
+  |> Stdlib.Test.equal(
+    Ok(
+      """module Darklang.Tests.FormatSample
+
+type Point =
+  { x: Int64
+
+    // down
+    y: Int64
+
+    z: Int64 }
+
+
+type Shape =
+  | Dot
+
+  /// four sides
+  | Box
+
+  | Ring
+
+
+type Size =
+  { w: Int64  // across
+    h: Int64 }
+
+
+type Turn =
+  | Left  // anticlockwise
+  | Right
+"""))
 
 
 // A `let` inside a list keeps its parentheses, or the items after it would be lines of its block.

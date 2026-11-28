@@ -84,6 +84,21 @@ test typeDeclarationsUnit =
         "type Person = {name: String, age: Int64, hasPet: Bool}",
         "type Person =\n  { name: String\n    age: Int64\n    hasPet: Bool }")
 
+      roundTrip(
+        "record, one field doc spaces every field",
+        "type Person =\n  { name: String\n    /// in years\n    age: Int64\n    hasPet: Bool }",
+        "type Person =\n  { name: String\n\n    /// in years\n    age: Int64\n\n    hasPet: Bool }")
+
+      roundTrip(
+        "record, blank lines and no docs",
+        "type Person =\n  { name: String\n\n    age: Int64 }",
+        "type Person =\n  { name: String\n    age: Int64 }")
+
+      roundTrip(
+        "enum, one case doc spaces every case",
+        "type Shape =\n  | Dot\n  /// four sides\n  | Box(Int64, Int64)\n  | Ring",
+        "type Shape =\n  | Dot\n\n  /// four sides\n  | Box(Int64, Int64)\n\n  | Ring")
+
       roundTripWith(
         pet,
         "record, 4 fields",
