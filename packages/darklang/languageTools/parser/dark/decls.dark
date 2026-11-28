@@ -122,7 +122,6 @@ let testDecl(inp: Input, st: St): (Item * St) =
   let (body, st4) = Exprs.block(inp, st3)
   let afterBody = st4.index
   let isOutcome = Exprs.isOutcomeArrow(inp, afterBody)
-  let none = Stdlib.Option.Option.None
   let (symbolOutcome, errorKindRange, expectedError, endRange, st5) =
     if isOutcome then
       let outcome = Core.span(Core.rng(inp, afterBody), Core.rng(inp, afterBody + 1))
@@ -137,17 +136,17 @@ let testDecl(inp: Input, st: St): (Item * St) =
       | (TIdent("raises"), _) ->
         (Stdlib.Option.Option.Some(outcome),
          Stdlib.Option.Option.Some(Core.rng(inp, afterBody + 2)),
-         none,
+         Stdlib.Option.Option.None,
          outcome,
          Core.at(Core.errExpected(inp, st4, afterBody + 3, "an expected error string"), afterBody + 3))
       | _ ->
         (Stdlib.Option.Option.Some(outcome),
-         none,
-         none,
+         Stdlib.Option.Option.None,
+         Stdlib.Option.Option.None,
          outcome,
          Core.at(Core.errExpected(inp, st4, afterBody + 2, "'raises' after '=>'"), afterBody + 2))
     else
-      (none, none, none, Exprs.exprRange(body), st4)
+      (Stdlib.Option.Option.None, Stdlib.Option.Option.None, Stdlib.Option.Option.None, Exprs.exprRange(body), st4)
   (Item.Test(
     WrittenTypes.TestDeclaration.TestDeclaration
       { range = Core.span(keywordTest, endRange)
