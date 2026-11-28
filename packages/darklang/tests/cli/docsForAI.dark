@@ -53,7 +53,7 @@ test unknownPartIsRefused = Instance.withInstance(fun i ->
     [ Instance.exitedWith(code, 1, "an unknown part fails")
       plain(out)
       |> Stdlib.Test.equal(
-        "Unknown part of docs for-ai: zzz\n\n  docs for-ai packages - Saving and changing declarations, the type checker, a command-line tool\n  docs for-ai tests - Package tests in full\n  docs for-ai permissions - Rules, profiles and package approvals\n  docs for-ai traces - What a run did, and things that run at once\n  docs for-ai scm - Drafts, commits, branches, deprecation\n  docs for-ai syntax - The full syntax notes and name resolution\nAny other topic from `docs` can be added too.")
+        "Unknown part of docs for-ai: zzz\n\n  docs for-ai packages - Saving and changing declarations, the type checker, a command-line tool\n  docs for-ai tests - Package tests in full\n  docs for-ai permissions - Rules, profiles and package approvals\n  docs for-ai traces - What a run did, and things that run at once\n  docs for-ai scm - Drafts, commits, branches, deprecation\n  docs for-ai syntax - The full syntax notes and name resolution\n  docs for-ai sessions - Many lines per call, numbered replies, state kept between calls\nAny other topic from `docs` can be added too.")
 
       Instance.says(
         Instance.said(i, [ "docs", "for-ai", "tests" ]),
@@ -127,7 +127,7 @@ test unknownPartsAreNamed = Instance.withInstance(fun i ->
       // and prints none of the parts it does know
       plain(out)
       |> Stdlib.Test.equal(
-        "Unknown parts of docs for-ai: zzz, yyy\n\n  docs for-ai packages - Saving and changing declarations, the type checker, a command-line tool\n  docs for-ai tests - Package tests in full\n  docs for-ai permissions - Rules, profiles and package approvals\n  docs for-ai traces - What a run did, and things that run at once\n  docs for-ai scm - Drafts, commits, branches, deprecation\n  docs for-ai syntax - The full syntax notes and name resolution\nAny other topic from `docs` can be added too.") ]))
+        "Unknown parts of docs for-ai: zzz, yyy\n\n  docs for-ai packages - Saving and changing declarations, the type checker, a command-line tool\n  docs for-ai tests - Package tests in full\n  docs for-ai permissions - Rules, profiles and package approvals\n  docs for-ai traces - What a run did, and things that run at once\n  docs for-ai scm - Drafts, commits, branches, deprecation\n  docs for-ai syntax - The full syntax notes and name resolution\n  docs for-ai sessions - Many lines per call, numbered replies, state kept between calls\nAny other topic from `docs` can be added too.") ]))
 
 
 // `docs for-ai` says which values `Stdlib.display` takes, that interpolation falls back to

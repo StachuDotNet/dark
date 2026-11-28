@@ -625,3 +625,39 @@ Rules:
   - Cross-owner: must use full path
     (from Tests.*, write `Darklang.SCM.PackageOps.currentBranch`)
 """
+
+
+let sessions(): String =
+  """# Darklang AI: sessions
+
+A session keeps a branch, a location and `let` bindings between calls, and takes
+many lines per call. Make one and name it for this directory once:
+
+  dark session use $(dark session new)  writes .darklang/session; `dark @` means it
+  dark @ 'view Me.Demo.double'          one line as an argument
+  dark @ <<'END'                        or many on stdin
+  let xs = [1, 2, 3]
+  fn Me.Demo.double '(a: Int64): Int64 = a * 2'
+  Stdlib.List.map(xs, fun x -> Me.Demo.double(x))
+  module /Me.Demo.Text -
+    let shout(s: String): String = s + "!"
+  watch Me.Demo.double(4)
+  END
+
+`session new --branch b --at Acme` starts on a branch and module; both stick, and
+`switch` or `nav` in a batch moves the session, not the instance.
+
+A line is a command as typed after `dark` (no pipes or redirects), `let`,
+`watch <expr>`, or a Dark expression. An indented line continues the one above;
+a command ending in `-` reads its indented lines as stdin.
+
+Each line gets one reply: `<n> ok ...`, `<n> <value>` (a Dark literal you can
+paste back), `<n> error: <one line>` or `<n> skipped`; further lines of a reply
+start with two spaces. Then `-- ` lines: the counts, the typecheck of each module
+the batch wrote to, watched values, and where the session stands, so no separate
+`typecheck` call is needed.
+
+The first failure skips the rest; `--continue` runs every line. `--json` gives
+the same as one object. Exit 0 when every line worked, 1 when one failed, 2 when
+the batch could not start. A cut reply ends in `... <k> more lines: dark session
+show s1 <n>`. `dark session end s1` forgets it; its branch and code stay."""

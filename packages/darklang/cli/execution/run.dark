@@ -170,7 +170,7 @@ let executeStdinScript(
   options: Options,
   stats: Bool)
   : AppState =
-  match Stdlib.Cli.Stdin.readAll() with
+  match readStdin(state) with
   | Error(message) ->
     printErr(message)
     failed(state)

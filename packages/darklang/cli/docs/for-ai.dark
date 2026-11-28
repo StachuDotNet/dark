@@ -112,4 +112,5 @@ Logs in ~/.darklang/logs/: cli.log (errors that ended a command), host-audit.jso
 ## More
   docs for-ai packages | tests | permissions | traces | scm | syntax
   docs for-ai tests http-server   several parts and topics in one call
+  dark session use $(dark session new)   then `dark @ <<'END'`, state kept: docs for-ai sessions
   help <command>"""

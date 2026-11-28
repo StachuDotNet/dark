@@ -279,7 +279,13 @@ module Topics =
         "syntax",
         "The full syntax notes and name resolution",
         [ "names" ],
-        ForAIParts.syntax) ]
+        ForAIParts.syntax)
+
+      subtopic(
+        "sessions",
+        "Many lines per call, numbered replies, state kept between calls",
+        [ "session" ],
+        ForAIParts.sessions) ]
 
 
   let subtopic(

@@ -58,21 +58,37 @@ let isSimpleName(name: String): Bool =
 ///   Stdlib.List.map xs                 -> ["Stdlib.List.map xs\n  (fun x -> x * 2)"]
 ///     (fun x -> x * 2)
 ///
-/// Indentation is the only signal available without parsing, and it matches how Dark is written. Blank lines
-/// separate statements rather than joining them.
+/// Indentation is the only signal available without parsing, and it matches how Dark is written. A blank line
+/// separates statements, unless the next line that isn't blank is indented: a module body keeps its blank
+/// lines between declarations.
 let splitStatements(text: String): List<String> =
   let lines = Stdlib.String.split(text, "\n")
+  let isBlank = fun l -> Stdlib.String.trim(l) == ""
   let isContinuation = fun l ->
-    Stdlib.String.trim(l) != ""
+    Stdlib.Bool.not(isBlank(l))
     && (Stdlib.String.startsWith(l, " ") || Stdlib.String.startsWith(l, "\t"))
 
-  let (acc, current) =
+  // for each line, whether the next line that isn't blank is indented
+  let (_, indentedNext) =
     lines
-    |> Stdlib.List.fold(([], ""), fun(state_, line) ->
+    |> Stdlib.List.reverse
+    |> Stdlib.List.fold((false, []), fun(acc, l) ->
+      let (nextIndented, out) = acc
+      let here = if isBlank(l) then nextIndented else isContinuation(l)
+      (here, Stdlib.List.prepend(out, nextIndented)))
+
+  let (acc, current) =
+    Stdlib.List.zipShortest(lines, indentedNext)
+    |> Stdlib.List.fold(([], ""), fun(state_, pair) ->
       let (acc, current) = state_
-      if Stdlib.String.trim(line) == "" then
-        // A blank line closes whatever was open.
-        if current == "" then (acc, "") else (Stdlib.List.append(acc, current), "")
+      let (line, nextIndented) = pair
+      if isBlank(line) then
+        if current == "" then
+          (acc, "")
+        else if nextIndented then
+          (acc, current + "\n")
+        else
+          (Stdlib.List.append(acc, current), "")
       else if isContinuation(line) && current != "" then
         (acc, current + "\n" + line)
       else if current == "" then

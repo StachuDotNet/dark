@@ -1,0 +1,153 @@
+/// `dark session` and `dark @s1`, run as an outside agent runs them.
+module Darklang.Cli.Tests.Session
+
+test aBatchAnswersEachLineByNumber = Instance.withInstance(fun i ->
+  let (newCode, id) = Instance.ran(i, [ "session", "new" ])
+  let batch =
+    "let xs = [1, 2]\nStdlib.List.length(xs)\nfn Me.T.double '(a: Int64): Int64 = a * 2'\nMe.T.double(4)\n"
+
+  let (code, out) = Instance.runWithStdin(i, [ "@s1" ], batch)
+  Stdlib.Test.all(
+    [ Instance.exitedWith(newCode, 0, "session new")
+      Instance.says(id, "s1", "the first session is s1")
+      Instance.exitedWith(code, 0, "a batch that all works")
+      Instance.says(out, "1 ok xs = ", "a binding replies with its value")
+      Instance.says(out, "\n2 2\n", "an expression replies with its value")
+      Instance.says(out, "\n3 ok ", "a command replies ok")
+      Instance.says(out, "\n4 8\n", "the new function runs")
+      Instance.says(out, "-- 4 ok, 0 failed, 0 skipped, ", "the summary")
+      Instance.says(out, "-- typecheck Me.T: 1 checked, 0 failed", "the report")
+      Instance.says(out, "-- s1 on main, at /", "where the session stands")
+      Instance.doesNotSay(out, "\u001b[", "no colour when piped") ]))
+
+
+test linesCanBeArguments = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+
+  let (code, out) =
+    Instance.ran(i, [ "@s1", "1 + 1", "Stdlib.String.length(\"abc\")" ])
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "lines as arguments")
+      Instance.says(out, "1 2\n2 3\n", "one reply per argument") ]))
+
+
+test aFailureSkipsTheRest = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let (code, out) = Instance.runWithStdin(i, [ "@s1" ], "1 + \"a\"\n2 + 2\n")
+
+  let (keepCode, kept) =
+    Instance.runWithStdin(i, [ "@s1", "--continue" ], "1 + \"a\"\n2 + 2\n")
+
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 1, "a failed line fails the batch")
+      Instance.says(out, "1 error: ", "the failure, on one line")
+      Instance.doesNotSay(out, "\n  at ", "no stack")
+      Instance.says(out, "\n2 skipped\n", "the line after it")
+      Instance.exitedWith(keepCode, 1, "--continue still fails the batch")
+      Instance.says(kept, "\n2 4\n", "--continue runs the line after it") ]))
+
+
+test aSessionCannotChangePermissions = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+
+  let (code, out) =
+    Instance.ran(i, [ "@s1", "permissions allow 'file read /tmp'" ])
+
+  let (_, listed) = Instance.ran(i, [ "@s1", "permissions list" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 1, "refused")
+      Instance.says(
+        out,
+        "1 error: a session cannot change permissions",
+        "says why")
+
+      Instance.says(listed, "1 ok", "reading them is fine") ]))
+
+
+test jsonHasTheSameNumbering = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let (code, out) = Instance.ran(i, [ "@s1", "--json", "1 + 1" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "--json")
+      Instance.says(
+        out,
+        "\"n\":1,\"kind\":\"expression\",\"status\":\"ok\",\"text\":\"2\"",
+        "the reply") ]))
+
+
+/// `session use` and `dark @` run in <param dir>, which `Instance` calls cannot set.
+let inDir(i: Instance.T, dir: String, args: List<String>): (Int64 * String) =
+  let quote = Stdlib.Cli.Process.shellQuote
+  let envArgs =
+    Instance.env(i)
+    |> Stdlib.List.map(fun((k, v)) -> quote($"{k}={v}"))
+    |> Stdlib.String.join(" ")
+
+  let cmd = Stdlib.List.map(args, quote) |> Stdlib.String.join(" ")
+  let line =
+    $"mkdir -p {quote(dir)} && cd {quote(dir)} && env {envArgs} {quote(i.cli)} {cmd}"
+
+  match Stdlib.Cli.Process.run("/bin/sh", [ "-c", line ]) with
+  | Ok(out) -> (out.exitCode, out.stdout + out.stderr)
+  | Error(e) -> (-1, Stdlib.display(e))
+
+
+test aDirectoryNamesItsSession = Instance.withInstance(fun i ->
+  let project = Instance.home(i) + "/project"
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let (useCode, _) = inDir(i, project, [ "session", "use", "s1" ])
+  let (code, out) = inDir(i, project + "/sub", [ "@", "1 + 2" ])
+  let (elsewhere, said) = inDir(i, Instance.home(i) + "/other", [ "@", "1" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(useCode, 0, "session use")
+      Instance.exitedWith(code, 0, "dark @ below the directory")
+      Instance.says(out, "1 3\n", "ran in s1")
+      Instance.says(out, "-- s1 on main", "the session it used")
+      Instance.exitedWith(elsewhere, 2, "no session named elsewhere")
+      Instance.says(said, "no session here", "says so") ]))
+
+
+test bindingsLastBetweenBatches = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let _ = Instance.ran(i, [ "@s1", "let n = 20" ])
+  let (_code, out) = Instance.ran(i, [ "@s1", "n + 1" ])
+  Instance.says(out, "1 21", "a binding from the batch before"))
+
+
+test anIndentedBlockIsTheCommandsStdin = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let batch =
+    "module /Me.Greet -\n  let greeting(name: String): String = \"Hello, \" + name\n\n  let bye(): String = \"Bye\"\nMe.Greet.greeting(\"Ada\")\n"
+
+  let (code, out) = Instance.runWithStdin(i, [ "@s1" ], batch)
+  Stdlib.Test.all(
+    [ Instance.exitedWith(
+        code,
+        0,
+        "module from an indented block with a blank line")
+
+      Instance.says(out, "\n2 \"Hello, Ada\"", "the module's function runs") ]))
+
+
+test showGivesAReplyInFull = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let _ = Instance.ran(i, [ "@s1", "let n = 2", "n * 3" ])
+  let (code, out) = Instance.ran(i, [ "session", "show", "s1", "2" ])
+  let (_, all) = Instance.ran(i, [ "session", "show", "s1" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "show one reply")
+      Instance.says(out, "2 6", "reply 2")
+      Instance.says(all, "-- let n = 2", "show lists the bindings") ]))
+
+
+test anEndedSessionIsGoneAndItsIdIsNotReused = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let (endCode, _) = Instance.ran(i, [ "session", "end", "s1" ])
+  let (code, out) = Instance.ran(i, [ "@s1", "1" ])
+  let (_, next) = Instance.ran(i, [ "session", "new" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(endCode, 0, "session end")
+      Instance.exitedWith(code, 2, "no such session")
+      Instance.says(out, "no session s1", "says which")
+      Instance.says(next, "s2", "the next session gets a new id") ]))

@@ -27,6 +27,16 @@ let executeCliCommand(args: List<String>): Int64 =
       workbenchState.exitCode
     else
       runInteractiveLoop(workbenchState, watch)
+  // `dark @s1 ...` runs lines in a session
+  | [commandName, ...commandArgs] when Stdlib.String.startsWith(commandName, "@") ->
+    let nonInteractiveState = { initialState with nonInteractive = true }
+    let resultState =
+      Session.Batch.executeCli(
+        nonInteractiveState,
+        Stdlib.String.dropFirst(commandName, 1),
+        commandArgs)
+
+    resultState.exitCode
   // Otherwise, execute command directly (shell already split args correctly)
   | [commandName, ...commandArgs] ->
     let nonInteractiveState = { initialState with nonInteractive = true }

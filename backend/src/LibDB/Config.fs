@@ -93,6 +93,9 @@ let private internalKeys = [ "live.show"; "traces.watch.fn" ]
 /// Scratch keys for tests. Nothing in the product reads a key under this prefix.
 let private testPrefix = "test."
 
+/// `dark session` keeps its records here, one key per session.
+let private sessionPrefix = "session."
+
 /// Why a value will not do, or Ok. The boot falls back silently on a value it cannot read, so the
 /// refusal has to happen here. <param policyResolves> says whether `exec.policy` names a package
 /// function the boot can find; it is passed in because the package manager is built after this.
@@ -153,7 +156,11 @@ let check
     Error "instance.id is made once for this install, and cannot be set"
   elif key = "current_branch" || key = "current_branch_name" then
     Error $"{key} follows `dark switch`, and cannot be set directly"
-  elif List.contains key internalKeys || key.StartsWith testPrefix then
+  elif
+    List.contains key internalKeys
+    || key.StartsWith testPrefix
+    || key.StartsWith sessionPrefix
+  then
     Ok()
   else
     Error $"{key} is not a config key"
@@ -170,6 +177,7 @@ let checkUnset (key : string) : Result<unit, string> =
     List.contains key settings
     || List.contains key internalKeys
     || key.StartsWith testPrefix
+    || key.StartsWith sessionPrefix
   then
     Ok()
   else

@@ -796,6 +796,15 @@ module Registry =
         Branch.complete)
 
       (
+        "session",
+        "Sessions that keep a branch, a location and bindings across calls (`dark @s1`)",
+        [],
+        Session.accepts,
+        Session.execute,
+        Session.help,
+        Session.complete)
+
+      (
         "constraints",
         "Standing findings: stale usages, kind changes, rival impls",
         [],
@@ -1154,7 +1163,7 @@ module Registry =
           "ops" ])
 
       ("Branches", [ "branch", "branches", "switch", "merge", "rebase", "diff", "log", "resolve" ])
-      ("Execution", [ "run-script", "eval", "ps", "traces", "serve", "format" ])
+      ("Execution", [ "run-script", "eval", "session", "ps", "traces", "serve", "format" ])
       ("Installation", [ "install", "update", "uninstall", "version", "install-status" ])
       ("Security", [ "effects", "permissions" ])
       (

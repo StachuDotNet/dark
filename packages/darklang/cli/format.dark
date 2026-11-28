@@ -91,7 +91,7 @@ let execute(state: AppState, args: List<String>): AppState =
   match paths with
   | ["-"] ->
     let result =
-      Stdlib.Cli.Stdin.readAll()
+      readStdin(state)
       |> Stdlib.Result.andThen(fun text ->
         LanguageTools.Formatter.source(
           state.currentBranchId,
