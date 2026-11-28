@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# experiment: send a test's plain CLI command to one long-lived CLI per install, environment and
+# directory (`--command-worker`); anything else runs the CLI as usual
+real="$(dirname "$0")/Cli.real"
+case "${1:-}" in
+  --process-launch | --command-worker | serve | nav | workbench | ps) exec "$real" "$@" ;;
+esac
+[[ -n "${DARK_TEST_WORKER:-}" || -n "${DARK_NO_REUSE:-}" || -t 0 || -t 1 || -t 2 ]] && exec "$real" "$@"
+
+root=/tmp/dark-reuse
+mkdir -p "$root"
+input=$(mktemp "$root/in.XXXXXX")
+cat > "$input"
+if [[ -s "$input" ]]; then
+  "$real" "$@" < "$input"; rc=$?; rm -f "$input"; exit $rc
+fi
+rm -f "$input"
+
+# the store's inode too: a worker must never outlive the store it opened
+key=$( { pwd; stat -c %i "${HOME}/.darklang/${DARK_CONFIG_DB_NAME:-data.db}" 2> /dev/null; env | grep -v -E '^(_|SHLVL|OLDPWD)=' | sort; } | md5sum | cut -c1-16)
+d="$root/$key"
+mkdir -p "$d"
+exec 8> "$d/lock"
+flock 8
+if ! [[ -p "$d/requests" && -f "$d/pid" ]] || ! kill -0 "$(cat "$d/pid")" 2> /dev/null; then
+  rm -f "$d/requests"; mkfifo "$d/requests"
+  "$real" --command-worker "$d/requests" < /dev/null > "$d/worker.log" 2>&1 8>&- &
+  echo $! > "$d/pid"
+  echo start >> "$root/count"
+fi
+echo command >> "$root/count"
+reply="$d/reply.$$"
+rm -f "$reply"; mkfifo "$reply"
+line="$reply"
+for a in "$@"; do
+  if [[ -z "$a" ]]; then line+=" -"; else line+=" $(printf '%s' "$a" | base64 -w0)"; fi
+done
+exec 9<> "$reply"
+printf '%s\n' "$line" > "$d/requests"
+pid=$(cat "$d/pid")
+code=
+until IFS= read -r -t 2 code <&9; do
+  kill -0 "$pid" 2> /dev/null || break
+done
+[[ -n "$code" ]] && { IFS= read -r out <&9; IFS= read -r err <&9; }
+exec 9<&-
+rm -f "$reply"
+if [[ -z "$code" ]]; then
+  flock -u 8
+  exec "$real" "$@" < /dev/null
+fi
+[[ "$code" == X* ]] && rm -f "$d/pid"
+flock -u 8
+printf '%s' "$out" | base64 -d
+printf '%s' "$err" | base64 -d >&2
+exit "${code#X}"

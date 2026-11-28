@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Experiment: put the reuse client (scripts/testing/_reuse-shim) in front of the ReadyToRun CLI the
+# suites start, or take it out. Run in the container, from the clone's root.
+#
+#   scripts/testing/cli-reuse on | off
+set -euo pipefail
+F=$(dirname "$(scripts/testing/_fast-cli --make)")
+case "${1:-}" in
+  on)
+    [[ -f $F/Cli.real ]] || mv "$F/Cli" "$F/Cli.real"
+    cp scripts/testing/_reuse-shim "$F/Cli"
+    chmod +x "$F/Cli"
+    ;;
+  off)
+    [[ -f $F/Cli.real ]] && mv -f "$F/Cli.real" "$F/Cli"
+    pkill -f "[c]ommand-worker /tmp/dark-reuse" || true
+    rm -rf /tmp/dark-reuse
+    ;;
+  *) echo "usage: $0 on | off" >&2; exit 2 ;;
+esac

@@ -379,6 +379,8 @@ let startUndrainedWithEnv
   psi.RedirectStandardOutput <- true
   psi.RedirectStandardError <- true
   childEnv i.dir psi
+  // a process the test holds (to kill, to read as it goes) is a process of its own
+  psi.Environment["DARK_NO_REUSE"] <- "1"
   for (name, value) in env do
     psi.Environment[name] <- value
   let p = System.Diagnostics.Process.Start psi

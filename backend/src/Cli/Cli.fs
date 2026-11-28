@@ -1079,6 +1079,77 @@ module private StaticOpenSsl =
 #endif
 
 
+/// Experiment: one process runs many commands, for one install, environment and directory.
+///
+/// Each line read from the FIFO <param requests> is `<reply FIFO> <arg>...`, the args base64;
+/// the answer, written to the reply FIFO, is three lines: the exit code, then stdout and stderr in
+/// base64. Stdin is never read. A command that calls `exit` still answers, with its code marked
+/// `X`, and takes the worker with it. Caches are dropped before each command, since other
+/// processes write the same store, unless DARK_REUSE_KEEP_CACHES=1. Exits when idle for
+/// DARK_REUSE_IDLE_S seconds (default 30) or when its install is gone.
+let private commandWorker (requests : string) : int =
+  let decode (s : string) = Text.Encoding.UTF8.GetString(Convert.FromBase64String s)
+  let encode (s : string) = Convert.ToBase64String(Text.Encoding.UTF8.GetBytes s)
+  let keepCaches = Environment.GetEnvironmentVariable "DARK_REUSE_KEEP_CACHES" = "1"
+  let idle =
+    match Environment.GetEnvironmentVariable "DARK_REUSE_IDLE_S" with
+    | null
+    | "" -> TimeSpan.FromSeconds 30.0
+    | s -> TimeSpan.FromSeconds(float s)
+  let reset =
+    [ "DARK_NO_INPUT"; "NO_COLOR" ]
+    |> List.map (fun n -> n, Environment.GetEnvironmentVariable n)
+  // Read and write, so the FIFO never reads as closed between clients.
+  use stream = new IO.FileStream(requests, IO.FileMode.Open, IO.FileAccess.ReadWrite)
+  use reader = new IO.StreamReader(stream)
+  let stdErr = Console.Error
+  let answer
+    (reply : string)
+    (mark : string)
+    (code : int)
+    (direct : IO.StringWriter)
+    =
+    NonBlockingConsole.wait ()
+    let (_, out, err) = NonBlockingConsole.stopCaptureEach ()
+    Console.SetError stdErr
+    // the client is never a terminal (it runs those itself), so it gets what a pipe would
+    let plain = NonBlockingConsole.Ansi.decide true
+    use w = new IO.StreamWriter(reply)
+    w.Write
+      $"{mark}{code}\n{encode (plain out)}\n{encode (plain err + string direct)}\n"
+  let one (line : string) =
+    for (name, value) in reset do
+      Environment.SetEnvironmentVariable(name, value)
+    if not keepCaches then LibDB.Caching.invalidateAll ()
+    let parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+    let reply = parts[0]
+    let args = parts[1..] |> Array.map (fun a -> if a = "-" then "" else decode a)
+    let direct = new IO.StringWriter()
+    Console.SetError direct
+    NonBlockingConsole.startCapture () |> ignore<bool>
+    use _exit =
+      AppDomain.CurrentDomain.ProcessExit.Subscribe(fun _ ->
+        answer reply "X" Environment.ExitCode direct)
+    answer reply "" (runCli args) direct
+  let next (waited : TimeSpan) : Option<string> =
+    let read = reader.ReadLineAsync()
+    let tick = TimeSpan.FromSeconds 2.0
+    let rec poll (waited : TimeSpan) =
+      if read.Wait tick then
+        Option.ofObj read.Result
+      elif
+        waited + tick >= idle || not (IO.Directory.Exists LibConfig.Config.runDir)
+      then
+        None
+      else
+        poll (waited + tick)
+    poll waited
+  Seq.initInfinite (fun _ -> next TimeSpan.Zero)
+  |> Seq.takeWhile Option.isSome
+  |> Seq.iter (Option.iter one)
+  0
+
+
 [<EntryPoint>]
 let main (args : string[]) : int =
 #if DARK_STATIC_OPENSSL
@@ -1110,6 +1181,7 @@ let main (args : string[]) : int =
         exitCode <-
           try
             match Array.toList args with
+            | [ "--command-worker"; requests ] -> commandWorker requests
             | "--process-launch" :: program :: workerArgs ->
               LibExecution.HostProcess.launchOwnedProcess program workerArgs
             | _ -> runCli args
