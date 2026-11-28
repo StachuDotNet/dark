@@ -775,6 +775,7 @@ let executeCli(state: AppState, target: String, args: List<String>): AppState =
 
         let (_after, r2, outcome) = run(state, r, text, onFailure)
         let saved = save(r2)
+        let _ = addToLog(id, "shell", Stdlib.String.trimEnd(text), outcome.replies)
         let _ =
           if Stdlib.List.contains(args, "--json") then
             let _ = printJson(Stdlib.Json.checkedSerialize<JsonBatch>(toJson(r2, outcome)))

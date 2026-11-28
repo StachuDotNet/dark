@@ -102,3 +102,29 @@ test aForkKeepsTheBindingsOnItsOwnBranch = Instance.withInstance(fun i ->
       Instance.says(listed, "s2  branch session-s2", "on a branch of its own")
       Instance.says(listed, "(current)", "and current")
       Instance.doesNotSay(ended, "s1  branch", "an ended session is gone") ]))
+
+
+test attachRunsEachLineAndShowsWhatElseLanded = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let _ = Instance.runWithStdin(i, [ "@s1" ], "let n = 4\n")
+
+  let (code, out) =
+    Instance.runWithStdin(i, [ "session", "attach", "s1" ], "n + 1\n\n")
+
+  let (_l, log) = Instance.runWithStdin(i, [ "session", "attach", "s1" ], "n\n")
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 0, "session attach")
+      Instance.says(out, "1 5", "a line runs with the session's bindings")
+
+      Instance.says(
+        log,
+        "-- 2 attach:\n  > n + 1\n1 5",
+        "the last attach's line, shown to the next") ]))
+
+
+test sayNeedsAnAgent = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let (code, out) = Instance.ran(i, [ "session", "say", "s1", "hello" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(code, 1, "say with no agent")
+      Instance.says(out, "no agent works in s1", "says why") ]))

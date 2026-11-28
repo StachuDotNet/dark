@@ -336,6 +336,14 @@ let save(run: Run): Run =
   { run with conversation = conversation, ctx = { run.ctx with session = session } }
 
 
+/// What people said with `dark session say` since the last look, fed to the loop.
+let listen(run: Run): Run =
+  Sessions.takeInbox(run.ctx.session.id)
+  |> Stdlib.List.fold(run, fun(r, note) ->
+    let (loop, more) = Agent.step(r.loop, Agent.Event.Heard(note))
+    { r with loop = loop, queue = Stdlib.List.concat(r.queue, more) })
+
+
 /// Carry out one command; what it produced goes back through `step`.
 let perform(run: Run, command: Agent.Command): Run =
   let feed(r: Run, e: Agent.Event): Run =
@@ -345,12 +353,19 @@ let perform(run: Run, command: Agent.Command): Run =
   match command with
   | CallModel(messages) ->
     let (r, e) = callModel(run, messages)
-    feed(r, e)
+    feed(listen(r), e)
   | RunTool(id, name, input) ->
     let (ctx, output) = Tools.runTool(run.ctx, run.tools, name, input)
-    feed({ run with ctx = ctx }, Agent.Event.ToolFinished(id, output))
+    feed(listen({ run with ctx = ctx }), Agent.Event.ToolFinished(id, output))
   | Show(m) ->
     let _ = show(run, m)
+    let said = Agent.textOf(m.content)
+    let _ =
+      if m.role == Agent.Role.Assistant && said != "" then
+        Sessions.addToLog(run.ctx.session.id, "agent", said, [])
+      else
+        ()
+
     run
   | Save -> save(run)
   | Check(_answer) -> feed(run, Agent.Event.Checked(Store.doneCheck(run.ctx)))
@@ -500,8 +515,8 @@ let openSession(
     | Some(s) ->
       Sessions.fork(state, s)
       |> Stdlib.Result.map(fun f ->
-        let c = f.conversation |> Stdlib.Option.withDefault({ started with parent = id })
-        (f, { c with model = o.model }))
+        let c = s.conversation |> Stdlib.Option.withDefault(started)
+        (f, { c with parent = id, model = o.model, usage = Agent.noUsage() }))
     | None -> Result.Error($"no session {id}")
   | None, None ->
     let id = Sessions.nextId()

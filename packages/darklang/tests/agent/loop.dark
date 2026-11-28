@@ -399,3 +399,36 @@ test aLargeContextIsCompactedBeforeTheNextCall =
       replaced,
       0,
       [ "save", "call" ]))
+
+
+test whatAPersonSaysGoesWithTheToolResults =
+  let (s, _commands) =
+    Agent.replay(
+      Agent.start([], 10),
+      [ Agent.Event.Prompt("go")
+        reply([ toolUse("t1", "dark") ])
+        Agent.Event.Heard("use Int64")
+        Agent.Event.ToolFinished("t1", output("1 ok")) ])
+
+  (
+    Stdlib.List.last(s.messages) |> Stdlib.Option.map(fun m -> m.content),
+    s.heard)
+  |> Stdlib.Test.equal(
+    (
+      Option.Some(
+        [ Agent.Block.ToolResult("t1", "1 ok", false)
+          Agent.Block.Text(
+            "The person watching this session says: use Int64") ]),
+      []))
+
+
+test whatAPersonSaysDuringAnAnswerIsAnsweredFirst =
+  let (s, commands) =
+    Agent.replay(
+      Agent.start([], 10),
+      [ Agent.Event.Prompt("go")
+        Agent.Event.Heard("stop")
+        reply([ Agent.Block.Text("done") ]) ])
+
+  (Stdlib.List.length(s.messages), s.status, Stdlib.List.last(kinds(commands)))
+  |> Stdlib.Test.equal((3, Agent.Status.WaitingForModel, Option.Some("call")))

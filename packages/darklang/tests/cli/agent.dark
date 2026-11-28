@@ -43,3 +43,45 @@ test aRecordedSessionBuildsOnItsOwnBranch = Instance.withInstance(fun i ->
       Instance.says(onBranch, "1 6", "the function is on the session's branch")
 
       Instance.says(main, "clean", "main is untouched") ]))
+
+
+test whatAPersonSaysReachesTheAgent = Instance.withInstance(fun i ->
+  let path = Instance.home(i) + "/session.replay"
+  let _ = Stdlib.Cli.File.writeText(path, recorded)
+  let agent = fun prompt ->
+    Instance.ran(
+      i,
+      [ "agent"
+        "--continue"
+        "-p"
+        prompt
+        "--replay"
+        path
+        "--output-format"
+        "stream-json" ])
+
+  let _ = Instance.ran(i, [ "agent", "-p", "make triple", "--replay", path ])
+
+  let (sayCode, _) =
+    Instance.ran(i, [ "session", "say", "s1", "name it thrice" ])
+
+  let (code, out) = agent("again")
+  let (_l, listed) = Instance.ran(i, [ "session", "ls" ])
+  let (_w, log) = Instance.runWithStdin(i, [ "session", "attach", "s1" ], "")
+  Stdlib.Test.all(
+    [ Instance.exitedWith(sayCode, 0, "session say")
+      Instance.exitedWith(code, 0, "the resumed session answers")
+      Instance.says(
+        out,
+        "The person watching this session says: name it thrice",
+        "the note went with the next tool results")
+
+      Instance.says(
+        listed,
+        "agent: make triple",
+        "session ls shows the agent's task")
+
+      Instance.says(
+        log,
+        "agent says:\n  Made Me.Agent.Test.triple.",
+        "the log has what it said") ]))

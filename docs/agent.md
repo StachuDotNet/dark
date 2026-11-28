@@ -89,7 +89,9 @@ use, with the conversation and its usage added. A new one gets a branch of its o
 `--continue` picks up the current session and `--resume <id>` any other; a session no agent has
 driven yet starts a conversation there. `--fork <id>` starts a new session from another's
 conversation and bindings on a branch off its branch; the parent's draft is committed first,
-because a new branch starts from commits. `dark session ls` lists them all.
+because a new branch starts from commits. `dark session ls` lists them all, `dark session watch`
+follows one, and `dark session say <id> <words>` reaches the agent with its next tool results
+(`Agent.Event.Heard`).
 
 ## The prompt
 

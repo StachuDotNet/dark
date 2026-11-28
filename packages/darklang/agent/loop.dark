@@ -64,6 +64,8 @@ type Event =
   | Checked(problem: Option<String>)
   /// The conversation that replaces the current one after a compaction.
   | Compacted(messages: List<Message>)
+  /// A person said something to the session (`dark session say`): it goes with the next message.
+  | Heard(String)
 
 
 /// How the session ended, for the runner's last word and its exit code.
@@ -109,7 +111,9 @@ type State =
     /// compact once a call's input passes this many tokens; 0 never
     compactAt: Int64
     /// the input tokens of the last call, cached or not
-    lastInput: Int64 }
+    lastInput: Int64
+    /// what a person said to the session that the model has not been sent yet
+    heard: List<String> }
 
 
 let noUsage(): Usage =
@@ -125,7 +129,8 @@ let start(messages: List<Message>, maxTurns: Int64): State =
       usage = noUsage()
       checksLeft = 0
       compactAt = 0
-      lastInput = 0 }
+      lastInput = 0
+      heard = [] }
 
 
 let addUsage(a: Usage, b: Usage): Usage =
@@ -175,6 +180,15 @@ let userText(text: String): Message =
   Message { role = Role.User, content = [ Block.Text(text) ] }
 
 
+/// <param blocks>, then what was heard since the last message, which is now sent.
+let withHeard(state: State, blocks: List<Block>): (State * List<Block>) =
+  let notes =
+    state.heard
+    |> Stdlib.List.map(fun n -> Block.Text($"The person watching this session says: {n}"))
+
+  ({ state with heard = [] }, Stdlib.List.concat(blocks, notes))
+
+
 /// The model's turn is over and every tool result is in: compact first when the context has grown
 /// past `compactAt`, otherwise ask the model again.
 let continueAfterTools(state: State): (State * List<Command>) =
@@ -188,8 +202,10 @@ let continueAfterTools(state: State): (State * List<Command>) =
 /// idle) leaves it as it was: replaying a log must not crash on one stray entry.
 let step(state: State, event: Event): (State * List<Command>) =
   match state.status, event with
+  | _, Heard(text) -> ({ state with heard = Stdlib.List.append(state.heard, text) }, [])
   | Idle, Prompt(text) ->
-    let m = Message { role = Role.User, content = [ Block.Text(text) ] }
+    let (state, content) = withHeard(state, [ Block.Text(text) ])
+    let m = Message { role = Role.User, content = content }
     let (s, commands) = callModel(append(state, m))
     (s, Stdlib.List.prepend(commands, Command.Save))
   | Done(_), Prompt(text) -> step({ state with status = Status.Idle }, Event.Prompt(text))
@@ -205,6 +221,12 @@ let step(state: State, event: Event): (State * List<Command>) =
 
     let shown = [ Command.Show(m), Command.Save ]
     match toolUses(reply.content) with
+    | [] when Stdlib.Bool.not(Stdlib.List.isEmpty(state.heard)) ->
+      // a person spoke while the model was answering: it answers them before it is done
+      let (state, content) = withHeard(state, [])
+      let said = Message { role = Role.User, content = content }
+      let (s, commands) = callModel(append(state, said))
+      (s, Stdlib.List.concat(shown, Stdlib.List.prepend(commands, Command.Show(said))))
     | [] when state.checksLeft > 0 ->
       let answer = textOf(reply.content)
       (
@@ -224,7 +246,8 @@ let step(state: State, event: Event): (State * List<Command>) =
     let pending = pending |> Stdlib.List.filter(fun p -> p != id)
     if Stdlib.List.isEmpty(pending) then
       // every result goes back in one message, in the order the model asked
-      let m = Message { role = Role.User, content = results }
+      let (state, content) = withHeard(state, results)
+      let m = Message { role = Role.User, content = content }
       let (s, commands) = continueAfterTools(append(state, m))
       (s, Stdlib.List.concat([ Command.Show(m), Command.Save ], commands))
     else

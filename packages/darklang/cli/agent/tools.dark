@@ -595,6 +595,7 @@ let runBatch(ctx: Context, text: String): (Context * Sessions.Batch.Outcome * Ag
   let (app, record, outcome) =
     Sessions.Batch.run(ctx.app, ctx.session, text, Sessions.Batch.OnFailure.Stop)
 
+  let _ = Sessions.addToLog(record.id, "agent", text, outcome.replies)
   let written = outcome.checks |> Stdlib.List.map(fun c -> c.name)
   let touched =
     Stdlib.List.concat(

@@ -35,10 +35,16 @@ change here is a breaking change and goes in this file first.
                                         watches, and for an agent's its first prompt
     dark session use <id>               make <id> the current session
     dark session fork <id>              a new session on a new branch off <id>'s, with its bindings
+                                        and watches but no conversation: what a subagent starts from
     dark session end <id>               forget a session (its branch and its code stay)
     dark session show <id> [<n>]        the last batch's replies in full, or reply <n> in full
     dark @<id> [--continue] [--json]    run the batch on stdin in <id>
     dark @ [--continue] [--json]        the same, in the current session
+    dark session watch <id>             the last few entries of <id>'s log, then each new one
+    dark session attach <id>            the same, and each line you type runs as a batch in <id>;
+                                        an empty line detaches
+    dark session say <id> <words>       tell the agent working in <id>; it hears it with its next
+                                        tool results, or before it may finish
 
 `--branch` takes an existing branch; without it the session starts on the branch `dark` is on. A
 new branch (`session-s2`) starts from its parent's commits, so `fork` first commits the parent's
@@ -48,6 +54,23 @@ you: its fork starts from main's last commit, and `fork` says so.
 `dark agent` runs in a session too: a new one on its own branch, or the one `--resume <id>` or
 `--continue` (the current session) names. `dark @s1` then works in what the agent built, and
 `dark agent --resume s1` talks to the agent in a session a person started (`docs/agent.md`).
+
+## Watching and steering
+
+Each session keeps a log of its last 50 entries: every batch, from `dark @` (`shell`), `session
+attach` (`attach`) or the agent (`agent`), with its replies, and everything the agent said. `watch`
+prints entries as they land:
+
+    -- 3 agent:
+      > fn Acme.double '(a: Int64): Int64 = a * 2'
+    1 ok Created function Acme.double
+    -- 4 agent says:
+      Made Acme.double.
+
+The log and what `say` sends wait under keys of their own (`session.<id>.log`,
+`session.<id>.inbox`), so a person writing while the agent works loses neither. The session
+record itself is not merged: a batch from `attach` while the agent runs can lose its bindings to
+the agent's next save. Watching re-reads config twice a second; there is no resident process.
 
 ## Lines
 
