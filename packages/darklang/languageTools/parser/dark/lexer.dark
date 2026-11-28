@@ -1090,7 +1090,7 @@ let problemMessage(p: Problem): String =
   | UnterminatedInterpolatedString -> "unterminated interpolated string"
   | EscapedQuoteInInterpolation ->
     "inside `{…}` in an interpolated string, write a string as plain \"…\", not \\\"…\\\""
-  | UnterminatedBacktick -> "unterminated backtick identifier"
+  | UnterminatedBacktick -> "unterminated backtick name"
   | SpacedName(words) ->
     let message = "a name can't hold spaces"
     match words with

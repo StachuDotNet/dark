@@ -25,6 +25,13 @@ let head(list: List<'a>): Option<'a> =
   | [head, ...] -> Option.Some(head)
 
 
+/// The second value of a list, or {{None}} if it has fewer than two.
+let bootProbe(list: List<'a>): Option<'a> =
+  match list with
+  | [_, second, ...] -> Option.Some(second)
+  | _ -> Option.None
+
+
 /// If <param list> contains at least one value, returns {{Some}} with a list of
 /// every value other than the first. Otherwise, returns {{None}}.
 /// Takes O(1) time.
