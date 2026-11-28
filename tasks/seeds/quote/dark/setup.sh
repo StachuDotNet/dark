@@ -3,7 +3,7 @@
 # DARK is the attempt's own dark binary; HOME (or the runner's wrapper) points it at the attempt's private store.
 # The five runs stand in for yesterday's customers; the instance records them as traces.
 set -e
-"$DARK" module /Bench.Quote - < quote.dark
+"$DARK" import quote.dark /Bench.Quote
 "$DARK" commit "Seed: Bench.Quote" -y
 "$DARK" traces record on
 "$DARK" run Bench.Quote.main A-1:2:1250 B-7:1:899 > /dev/null

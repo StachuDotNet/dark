@@ -2,7 +2,7 @@
 const DARK = String.raw`(?:\$\{?D\w*\}?|\bdark|\$\{?DARK\}?)`;
 const darkCall = new RegExp(`${DARK}\\s`);
 const runCall = new RegExp(String.raw`(?:\brun\b [^|]*\.dark\b|${DARK}\s+run\s+(?:\S+\s+)*Me\.[A-Z]\w*(?:\.\w+)*)`);
-const storeCall = new RegExp(`${DARK}\\s+(?:module|fn|val|type)\\b`);
+const storeCall = new RegExp(`${DARK}\\s+(?:import|module|fn|val|type)\\b`);
 // mistakes an F#-style draft makes, as Dark reports them
 const fsharpism = /separates [a-z -]+ with commas|a pair is one argument|a triple is one argument|invalid number literal: \d+L|Invalid name: [A-Z]\w*\b/;
 const bad = { lex: /error\[LEX\]/, parse: /error\[PARSE/, typecheck: /Static type check failed|type error/i, notFound: /Error: [\w.]+ not found|Not found: [\w.]+/, perm: /permission denied/i };

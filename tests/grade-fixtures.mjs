@@ -50,4 +50,12 @@ const T = (...steps) => steps.map(([cmd, out, isError = false]) => {
   assert.deepEqual(e.moduleSaves, ['Me.Dur']);
   assert.ok(!e.modules.some(m => m.startsWith('Stdlib')));
 }
-console.log('ok: grade fixtures (a) to (d)');
+// (e) `import <file> <module>` saves a module, from a file or stdin
+{
+  const e = entryFrom(T(
+    ['$D import d.dark /Me.Dur', '✓ Defined 4 declarations'],
+    ['$D import - Me.Dur.Tests <<EOF', '✓ Defined 2 declarations'],
+  ));
+  assert.deepEqual(e.moduleSaves, ['Me.Dur']);
+}
+console.log('ok: grade fixtures (a) to (e)');

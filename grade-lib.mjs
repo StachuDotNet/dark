@@ -32,9 +32,12 @@ export function entryFrom(transcript) {
       // a clean run: no Dark diagnostic (a refused rule is one); arguments and rules come only from those.
       // Not the exit code: a server run in the background ends killed, and its arguments are the ones to keep.
       const ok = !DARK_ERR.test(t);
-      // `module X` and `fn X` as commands, not as flags (`search --fn Stdlib.String.toList`)
+      // `module X`, `fn X` and `import <file> X` as commands, not as flags (`search --fn Stdlib.String.toList`)
       for (const m of cmd.matchAll(/(?<![-\w])(module|fn)\s+\/?([A-Z][\w.]*)/g)) if (!/^(Stdlib|Darklang)\b/.test(m[2])) {
         const name = m[2].replace(/\.Tests$/, ''); modules.add(name); if (m[1] === 'module') moduleSaves.add(name);
+      }
+      for (const m of cmd.matchAll(/(?<![-\w])import\s+(?:--skip-expressions\s+)?\S+\s+\/?([A-Z][\w.]*)/g)) if (!/^(Stdlib|Darklang)\b/.test(m[1])) {
+        const name = m[1].replace(/\.Tests$/, ''); modules.add(name); moduleSaves.add(name);
       }
       if (!ok) continue;
       for (const { fn, rest } of runsIn(cmd)) { runs.push(fn); argsOf[fn] = rest; }

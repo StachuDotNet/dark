@@ -4,7 +4,7 @@ B=${1:-/home/stachu/code/dark/bench-loop.bench/bins/w1/darklang}
 d=$(mktemp -d); export HOME=$d DARK_CONFIG_RUNDIR=$d/.darklang; cd $d
 $B version > /dev/null 2>&1
 echo hello > $d/data.txt
-$B module /Me.Srv - <<D > /dev/null
+$B import - /Me.Srv <<D > /dev/null
 let fileFn(req: Stdlib.Http.Request): Stdlib.Http.Response =
   match Stdlib.Cli.FileSystem.readFileAsString("$d/data.txt") with
   | Ok(s) -> Stdlib.Http.responseWithText(200, s)

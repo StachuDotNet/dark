@@ -28,7 +28,7 @@ const seqOut = args.includes('--seq') ? (args.splice(args.indexOf('--seq'), 1), 
 // ---- classifying one tool call ----
 const DARK = String.raw`(?:"?\$\{?D\w*\}?"?|\S*/dark|(?<![\w/-])dark)`;
 const darkSub = new RegExp(`${DARK}\\s+((?:-[-\\w]+(?:=\\S+)?\\s+)*)([a-z][\\w-]*)(?:\\s+([a-z][\\w-]*))?`, 'g');
-const SAVE = new Set(['module', 'fn', 'val', 'type', 'edit', 'patch', 'add', 'rename', 'move', 'mv', 'delete', 'rm', 'typecheck', 'check', 'deprecate', 'trait', 'impl']);
+const SAVE = new Set(['import', 'module', 'fn', 'val', 'type', 'edit', 'patch', 'add', 'rename', 'move', 'mv', 'delete', 'rm', 'typecheck', 'check', 'deprecate', 'trait', 'impl']);
 const PHASE_OF = sub => SAVE.has(sub) ? 'author'
   : sub === 'test' ? 'test'
   : ['run', 'serve', 'http-server', 'run-script'].includes(sub) ? 'run'
@@ -78,7 +78,7 @@ const ERR = [
   ['type', /\[TypeMismatch\]|Type check failed|Static type check failed|\[ArgumentCount|\[WrongArity|expected \d+ arguments?, got/],
   ['permission', /permission denied(?: by instance policy)?:|Explicitly denied:/],
   ['sandbox-net', /connect to [\d.]+ port \d+[^\n]*failed|Couldn't connect to server|Failed to connect to/],
-  ['cli-usage', /^Usage: (?:dark |run-script|module|serve|commit|test|fn|eval|search|view|docs|permissions|edit|delete|typecheck)\b/m],
+  ['cli-usage', /^Usage: (?:dark |run-script|import|module|serve|commit|test|fn|eval|search|view|docs|permissions|edit|delete|typecheck)\b/m],
   ['runtime', /Encountered a Runtime Error|Uncaught exception(?!: permission)|Script error:(?! permission)|\[HttpServer\] internal error/],
   ['test-fail', /\d+ tests?[^\n]*: \d+ passed, [1-9]\d* failed|failed [1-9]\d*, incomplete|^\s*FAIL Me\./m],
   ['harness', /bwrap: |Exit code 143|Command timed out|timed out after/],
