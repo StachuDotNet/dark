@@ -478,6 +478,9 @@ let private keywordTokens = readOnlyDict keywords
 let tokenize
   (input : string)
   : Result<List<SpannedToken> * List<TokenRange * string>, string> =
+  // bootstrap check: with this set, any use of the F# parser fails loudly
+  if System.Environment.GetEnvironmentVariable "DARK_NO_FSHARP_PARSER" = "1" then
+    failwith "the F# parser was called, and DARK_NO_FSHARP_PARSER=1"
   let inputLength = input.Length
 
   // `///` doc comments lex as trivia, but their text also lands on the next

@@ -24,7 +24,7 @@ DARK_CONFIG_TRACE_DETAIL=on
 
 # Package source: "disk" (reload from .dark files) or "seed" (fetch from R2)
 # Default: disk (set to "seed" to use the seed-based flow)
-DARK_CONFIG_PACKAGES_SOURCE=disk
+DARK_CONFIG_PACKAGES_SOURCE=seed
 
 ######################################
 # Changes won't take effect until you restart scripts/builder

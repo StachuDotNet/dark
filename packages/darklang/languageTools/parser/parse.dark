@@ -6,7 +6,7 @@ let parse(
   kind: FileKind,
   code: String)
   : (Option<WrittenTypes.ParsedFile> * List<(Range * String)>) =
-  Builtin.parse(kind, code)
+  Dark.parse(kind, code)
 
 
 /// The written-types tree for <param code>, or {{None}} if the tokenizer failed outright. Syntax errors
