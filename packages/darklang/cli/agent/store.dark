@@ -6,7 +6,7 @@ module Darklang.Cli.Agent.Store
 /// Run <param f> standing on the session's branch: names resolve on the process's branch.
 let onBranch(ctx: Tools.Context, f: AppState -> 'a): 'a =
   let stored = SCM.PackageOps.currentBranch()
-  let app = Repls.enter(ctx.app, ctx.repl)
+  let app = Sessions.enter(ctx.app, ctx.session)
   let _ = SCM.PackageOps.selectBranch(app.currentBranchId)
   let result = f(app)
   let _ = SCM.PackageOps.selectBranch(stored)
@@ -128,7 +128,7 @@ let effects(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Ag
 let discard(ctx: Tools.Context, input: Stdlib.AltJson.Json): (Tools.Context * Agent.ToolOutput) =
   Tools.needing(ctx, input, "name", fun name ->
     let path = Stdlib.String.split(name, ".")
-    let branch = Repls.branchOf(ctx.repl)
+    let branch = Sessions.branchOf(ctx.session)
     let items =
       itemsUnder(branch, path)
       |> Stdlib.List.map(fun n -> Stdlib.String.join(Stdlib.List.append(path, n), "."))
@@ -165,13 +165,10 @@ let itemsUnder(branch: Uuid, path: List<String>): List<String> =
 // ---- before a run
 
 /// The function a `run` statement runs, past its flags.
-let runTarget(statement: String): Option<String> =
-  let words =
-    LanguageTools.Permissions.tokens(Stdlib.String.trim(statement)) |> Stdlib.Option.withDefault([])
-
-  match words with
-  | ["run", ...rest] ->
-    rest
+let runTarget(statement: Sessions.Batch.Statement): Option<String> =
+  match statement with
+  | Command("run", args, _) ->
+    args
     |> Stdlib.List.fold((Option.None, false), fun(acc, w) ->
       let (found, skipNext) = acc
       match found with
@@ -191,7 +188,7 @@ let runTarget(statement: String): Option<String> =
 
 /// One line per `run` in <param text>: what the function may do, before it does it.
 let beforeRuns(ctx: Tools.Context, text: String): List<String> =
-  Repls.Batch.splitStatements(text)
+  Sessions.Batch.read(ctx.app, text)
   |> Stdlib.List.filterMap(fun st -> runTarget(st))
   |> Stdlib.List.filterMap(fun name ->
     match fnHash(ctx, name) with
@@ -203,14 +200,14 @@ let beforeRuns(ctx: Tools.Context, text: String): List<String> =
 
 /// Whether a `run` reply is a program that crashed, not one that chose its exit code: a crash
 /// prints its call stack.
-let crashed(r: Repls.Reply): Bool =
+let crashed(r: Sessions.Reply): Bool =
   Stdlib.List.any(r.lines, fun l ->
     let l = Stdlib.String.trim(l)
     Stdlib.String.startsWith(l, "Call stack") || Stdlib.String.startsWith(l, "Script error"))
 
 
 /// The trace ids a failed `run` reply names.
-let failedTraces(outcome: Repls.Batch.Outcome): List<String> =
+let failedTraces(outcome: Sessions.Batch.Outcome): List<String> =
   outcome.replies
   |> Stdlib.List.filter(fun r -> r.status == "error" || crashed(r))
   |> Stdlib.List.map(fun r -> r.lines)
@@ -235,7 +232,7 @@ let commandText(ctx: Tools.Context, name: String, args: List<String>): List<Stri
       Workbench.captureOutputAnd(fun () ->
         Registry.executeCommand(name, { app with exitCode = 0 }, args))
 
-    Stdlib.String.splitOnNewline(Repls.Batch.stripAnsi(text)))
+    Stdlib.String.splitOnNewline(Sessions.Batch.stripAnsi(text)))
 
 
 /// What the failed run did: the session's own functions it went through, each with that run's
@@ -274,14 +271,18 @@ val probeCap = 20
 
 
 /// An eval's answer, as the batch replied.
-let answerOf(outcome: Repls.Batch.Outcome): Option<String> =
+let answerOf(outcome: Sessions.Batch.Outcome): Option<String> =
   match outcome.replies with
   | [r] when r.status == "ok" -> Option.Some(Stdlib.String.join(r.lines, "\n"))
   | _ -> Option.None
 
 
 /// Keep <param expression>'s answer to compare after later saves.
-let remember(ctx: Tools.Context, expression: String, outcome: Repls.Batch.Outcome): Tools.Context =
+let remember(
+  ctx: Tools.Context,
+  expression: String,
+  outcome: Sessions.Batch.Outcome)
+  : Tools.Context =
   match answerOf(outcome) with
   | None -> ctx
   | Some(answer) ->
@@ -301,7 +302,7 @@ let rerunProbes(ctx: Tools.Context): (Tools.Context * Option<String>) =
       probes
       |> Stdlib.List.map(fun((expression, was)) ->
         let (_app, _record, outcome) =
-          Repls.Batch.run(ctx.app, ctx.repl, expression, Repls.Batch.OnFailure.Stop)
+          Sessions.Batch.run(ctx.app, ctx.session, expression, Sessions.Batch.OnFailure.Stop)
 
         let now =
           match outcome.replies with
@@ -334,14 +335,14 @@ let rerunProbes(ctx: Tools.Context): (Tools.Context * Option<String>) =
 
 /// What still fails in <param m>: its typecheck, and its tests (none is a failure too).
 let moduleProblems(ctx: Tools.Context, m: String): List<String> =
-  let check = Repls.Batch.checkModule(Repls.branchOf(ctx.repl), m)
+  let check = Sessions.Batch.checkModule(Sessions.branchOf(ctx.session), m)
   let typeProblems =
     check.failures
     |> Stdlib.List.map(fun((label, issues)) ->
       $"{label} does not typecheck: {Stdlib.String.join(Stdlib.List.take(issues, 2), " ")}")
 
   let (_app, _record, outcome) =
-    Repls.Batch.run(ctx.app, ctx.repl, $"test run {m}", Repls.Batch.OnFailure.Stop)
+    Sessions.Batch.run(ctx.app, ctx.session, $"test run {m}", Sessions.Batch.OnFailure.Stop)
 
   let testProblems =
     match outcome.replies with
@@ -362,7 +363,7 @@ let moduleProblems(ctx: Tools.Context, m: String): List<String> =
 /// The tests, anywhere, that use an item of <param m>: tests kept in a module of their own.
 let testsOf(ctx: Tools.Context, m: String): List<String> =
   let path = Stdlib.String.split(m, ".")
-  let branch = Repls.branchOf(ctx.repl)
+  let branch = Sessions.branchOf(ctx.session)
   let (_subs, types, values, fns, _traits, _impls, _tests) =
     Packages.Query.allDirectDescendantNamesAndHashes(branch, path)
 
@@ -381,11 +382,11 @@ let testsOf(ctx: Tools.Context, m: String): List<String> =
 /// What fails among <param tests>, the tests elsewhere that use <param m>.
 let testsElsewhere(ctx: Tools.Context, m: String, tests: List<String>): List<String> =
   let (_app, _record, outcome) =
-    Repls.Batch.run(
+    Sessions.Batch.run(
       ctx.app,
-      ctx.repl,
+      ctx.session,
       "test run " + Stdlib.String.join(tests, " "),
-      Repls.Batch.OnFailure.Stop)
+      Sessions.Batch.OnFailure.Stop)
 
   match outcome.replies with
   | [r] when r.status == "ok" -> []
@@ -404,7 +405,7 @@ let workModules(ctx: Tools.Context): List<String> =
 /// Whether <param m> holds a function, value, type or test that isn't deleted.
 let hasLiveItems(ctx: Tools.Context, m: String): Bool =
   let path = Stdlib.String.split(m, ".")
-  let branch = Repls.branchOf(ctx.repl)
+  let branch = Sessions.branchOf(ctx.session)
   let (_subs, types, values, fns, _traits, _impls, tests) =
     Packages.Query.allDirectDescendantNamesAndHashes(branch, path)
 
@@ -445,7 +446,7 @@ let stateBlock(ctx: Tools.Context): String =
       | problems -> $"- {m}: " + Stdlib.String.join(problems, "; "))
 
   let (_app, _record, outcome) =
-    Repls.Batch.run(ctx.app, ctx.repl, "status", Repls.Batch.OnFailure.Stop)
+    Sessions.Batch.run(ctx.app, ctx.session, "status", Sessions.Batch.OnFailure.Stop)
 
   let status =
     outcome.replies

@@ -3,7 +3,7 @@
 `dark agent -p "build me X"` builds X in Dark, on a branch of its own. With no prompt at a
 terminal it is a conversation. The agent is package code (`Darklang.Agent`, `Darklang.Cli.Agent`)
 around one pure function, and every part of it is something Dark already has: the store, branches,
-the repl, tests, traces and the effects policy.
+sessions, tests, traces and the effects policy.
 
 ## The loop
 
@@ -41,8 +41,8 @@ own unless `http` is allowed.
 and say so.
 
 The Dark tools (`dark`, `view`, `search`, `define_fn`, `define_module`, `edit_fn`, `eval`,
-`typecheck`, `test`) run batches in the session's repl, in-process, so every write answers with
-the typecheck it caused (`docs/repl.md`). A batch may not change the instance (`permissions`,
+`typecheck`, `test`) run batches in the session, in-process, so every write answers with the
+typecheck it caused (`docs/sessions.md`). A batch may not change the instance (`permissions`,
 `config`, `install`, ...) or move work off the branch (`merge`, `switch`, `rebase`), and a
 `run --allow` inside it may grant only what the session has.
 
@@ -83,11 +83,13 @@ binary, and turns the checks off: the comparison arm for measuring what the stor
 
 ## Sessions
 
-A session is a record in the store's config (`agent.session.a1`) holding the conversation, the
-branch and the usage. It has a branch of its own (`agent-a1`) and a repl of the same id, so
-`dark @a1` works in what the agent built and `dark merge` takes it. `--continue` and `--resume`
-pick a session up. `--fork <id>` starts a new session from another's conversation on a branch off
-its branch; the parent's draft is committed first, because a new branch starts from commits.
+The agent works in a session (`docs/sessions.md`), the same record `dark session` and `dark @s1`
+use, with the conversation and its usage added. A new one gets a branch of its own
+(`session-s1`), so `dark @s1` works in what the agent built and `dark merge` takes it.
+`--continue` picks up the current session and `--resume <id>` any other; a session no agent has
+driven yet starts a conversation there. `--fork <id>` starts a new session from another's
+conversation and bindings on a branch off its branch; the parent's draft is committed first,
+because a new branch starts from commits. `dark session ls` lists them all.
 
 ## The prompt
 

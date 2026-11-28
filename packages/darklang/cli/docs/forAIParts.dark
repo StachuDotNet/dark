@@ -627,14 +627,14 @@ Rules:
 """
 
 
-let repl(): String =
-  """# Darklang AI: repl
+let session(): String =
+  """# Darklang AI: session
 
-A repl keeps a branch, a location and `let` bindings across calls, and takes many
-lines per call. One numbered reply per line; it stops at the first failure.
+A session keeps a branch, a location and `let` bindings across calls, and takes
+many lines per call. One numbered reply per line; it stops at the first failure.
 
-  dark repl new                 prints its id, r1
-  dark @r1 <<'END'
+  dark session new              prints its id, s1
+  dark @s1 <<'END'
   let xs = [1, 2, 3]
   fn Me.Demo.double '(a: Int64): Int64 = a * 2'
   Stdlib.List.map(xs, fun x -> Me.Demo.double(x))
@@ -648,4 +648,4 @@ indented line continues the one above; a command ending in `-` reads its
 indented lines as stdin. After the replies, `-- ` lines report the typecheck of
 every module the batch wrote to and each watched value, so no separate
 `typecheck` or `status` call is needed. `--continue` runs past failures, `--json`
-gives the same as JSON, `dark repl show r1 3` prints reply 3 in full."""
+gives the same as JSON, `dark session show s1 3` prints reply 3 in full."""

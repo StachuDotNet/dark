@@ -1,5 +1,5 @@
 /// `dark agent` end to end on a recorded conversation: the model's turns come from a file, and
-/// everything else is real (the session's branch, the repl, the effects policy, stream-json).
+/// everything else is real (the session and its branch, the effects policy, stream-json).
 module Darklang.Cli.Tests.Agent
 
 val recorded =
@@ -21,7 +21,7 @@ test aRecordedSessionBuildsOnItsOwnBranch = Instance.withInstance(fun i ->
         "stream-json" ])
 
   let (_c, onBranch) =
-    Instance.runWithStdin(i, [ "@a1" ], "Me.Agent.Test.triple(2)\n")
+    Instance.runWithStdin(i, [ "@s1" ], "Me.Agent.Test.triple(2)\n")
 
   let (_m, main) = Instance.ran(i, [ "status" ])
   Stdlib.Test.all(
@@ -31,7 +31,7 @@ test aRecordedSessionBuildsOnItsOwnBranch = Instance.withInstance(fun i ->
         "\"type\":\"system\",\"subtype\":\"init\"",
         "stream-json starts with init")
 
-      Instance.says(out, "2 15", "the batch ran in the session's repl")
+      Instance.says(out, "2 15", "the batch ran in the session")
 
       Instance.says(
         out,

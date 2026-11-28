@@ -28,11 +28,11 @@ let executeCliCommand(args: List<String>): Int64 =
     else
       runInteractiveLoop(workbenchState, watch)
   // Otherwise, execute command directly (shell already split args correctly)
-  // `dark @r1` runs a batch in a repl; `dark @` in the current one.
+  // `dark @s1` runs a batch in a session; `dark @` in the current one.
   | [commandName, ...commandArgs] when Stdlib.String.startsWith(commandName, "@") ->
     let nonInteractiveState = { initialState with nonInteractive = true }
     let resultState =
-      Repls.Batch.executeCli(
+      Sessions.Batch.executeCli(
         nonInteractiveState,
         Stdlib.String.dropFirst(commandName, 1),
         commandArgs)

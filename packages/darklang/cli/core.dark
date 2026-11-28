@@ -85,7 +85,7 @@ type AppState =
     exitCode: Int64
     /// How the command being run prints its answer; `Registry.executeCommand` sets it per command.
     output: Output.Mode
-    /// What a command that reads stdin gets instead, when set: a repl statement's indented block.
+    /// What a command that reads stdin gets instead, when set: a batch statement's indented block.
     stdinText: Option<String> }
 
 
@@ -268,7 +268,7 @@ let initState(): AppState =
       stdinText = Option.None }
 
 
-/// All of stdin, or the text a repl statement handed the command in its place.
+/// All of stdin, or the text a batch statement handed the command in its place.
 let readStdin(state: AppState): Result<String, String> =
   match state.stdinText with
   | Some(text) -> Result.Ok(text)

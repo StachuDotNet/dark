@@ -1,0 +1,383 @@
+/// Sessions that outlive one `dark` call: a named record of a branch, a place in the tree, `let`
+/// bindings, watched expressions and, when an agent drives it, its conversation. Kept in this
+/// instance's config under `session.<id>`. A batch (`dark @s1`) loads the record, runs, and saves it
+/// back. `docs/sessions.md` is the contract.
+module Darklang.Cli.Sessions
+
+type Watch =
+  { expr: String
+    /// What it showed after the last batch, so the report can say "unchanged".
+    last: String }
+
+
+type Reply =
+  { n: Int64
+    /// binding, expression, command or watch
+    kind: String
+    /// ok, error or skipped
+    status: String
+    /// The reply as printed, without its number. Never empty.
+    lines: List<String> }
+
+
+/// What an agent driving the session said and spent.
+type Conversation =
+  { /// the session this one was forked from, or ""
+    parent: String
+    cwd: String
+    model: String
+    /// in the Messages API's JSON
+    messages: String
+    usage: Agent.Usage }
+
+
+type Session =
+  { id: String
+    branchId: String
+    /// The module the session stands in, by segment; empty for the root.
+    location: List<String>
+    bindings: List<Repl.Binding>
+    watches: List<Watch>
+    /// Every reply of the last batch in full, for `session show`.
+    lastReplies: List<Reply>
+    conversation: Option<Conversation> }
+
+
+let key(id: String): String =
+  "session." + id
+
+
+let load(id: String): Option<Session> =
+  match LanguageTools.LocalStore.configGet(key(id)) with
+  | Some(text) ->
+    match Stdlib.Json.parse<Session>(text) with
+    | Ok(s) -> Option.Some(s)
+    | Error(_) -> Option.None
+  | None -> Option.None
+
+
+let save(s: Session): Result<Unit, String> =
+  match Stdlib.Json.checkedSerialize<Session>(s) with
+  | Ok(text) -> LanguageTools.LocalStore.configSet(key(s.id), text)
+  | Error(_) -> Result.Error($"could not save session {s.id}")
+
+
+let ids(): List<String> =
+  match LanguageTools.LocalStore.configGet("session.index") with
+  | Some(text) ->
+    match Stdlib.Json.parse<List<String>>(text) with
+    | Ok(xs) -> xs
+    | Error(_) -> []
+  | None -> []
+
+
+let setIds(xs: List<String>): Result<Unit, String> =
+  match Stdlib.Json.checkedSerialize<List<String>>(xs) with
+  | Ok(text) -> LanguageTools.LocalStore.configSet("session.index", text)
+  | Error(_) -> Result.Error("could not save the session list")
+
+
+let current(): Option<String> =
+  match LanguageTools.LocalStore.configGet("session.current") with
+  | Some(id) when id != "" -> Option.Some(id)
+  | _ -> Option.None
+
+
+/// The first `s<n>` past every id in use.
+let nextId(): String =
+  let highest =
+    ids()
+    |> Stdlib.List.fold(0, fun(acc, id) ->
+      match Stdlib.Int64.parse(Stdlib.String.dropFirst(id, 1)) with
+      | Ok(n) when n > acc -> n
+      | _ -> acc)
+
+  "s" + Stdlib.display(highest + 1)
+
+
+let branchOf(s: Session): Uuid =
+  Stdlib.Uuid.parse(s.branchId) |> Stdlib.Result.withDefault(SCM.Branch.mainBranchId)
+
+
+let modulePathOf(location: Packages.PackageLocation): List<String> =
+  match location with
+  | Module(path) -> path
+  | Type(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Value(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Function(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Trait(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Impl(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+  | Test(loc) -> Stdlib.List.prepend(loc.modules, loc.owner)
+
+
+let locationText(path: List<String>): String =
+  if Stdlib.List.isEmpty(path) then "/" else Stdlib.String.join(path, ".")
+
+
+let branchText(branchId: Uuid): String =
+  if SCM.Branch.isMain(branchId) then
+    SCM.Branch.mainBranchName
+  else
+    SCM.PackageOps.branchName(branchId)
+
+
+/// <param state> standing where <param s> stands.
+let enter(state: AppState, s: Session): AppState =
+  { state with
+      currentBranchId = branchOf(s)
+      packageData =
+        { state.packageData with currentLocation = Packages.PackageLocation.Module(s.location) } }
+
+
+/// A new, empty session <param id> on <param branchId>, at <param location>.
+let fresh(id: String, branchId: Uuid, location: List<String>): Session =
+  Session
+    { id = id
+      branchId = Stdlib.display(branchId)
+      location = location
+      bindings = []
+      watches = []
+      lastReplies = []
+      conversation = Option.None }
+
+
+/// Save <param s>, list it, and make it current.
+let add(s: Session): Result<Unit, String> =
+  let listed = ids()
+  save(s)
+  |> Stdlib.Result.andThen(fun _ ->
+    if Stdlib.List.contains(listed, s.id) then
+      Result.Ok()
+    else
+      setIds(Stdlib.List.append(listed, s.id)))
+  |> Stdlib.Result.andThen(fun _ -> LanguageTools.LocalStore.configSet("session.current", s.id))
+
+
+/// A new session on a new branch off <param parent>'s, with its bindings, watches and conversation.
+/// A new branch starts from its parent's commits, so the parent's draft is committed first, except
+/// on main, where a commit is the person's call.
+let fork(state: AppState, parent: Session): Result<Session, String> =
+  let newId = nextId()
+  let _ =
+    if SCM.Branch.isMain(branchOf(parent)) then
+      printHint(
+        $"{parent.id} is on main, so {newId} starts from main's last commit, without its draft.")
+    else
+      let _ = Batch.commitForFork(state, parent, newId)
+      ()
+
+  match SCM.PackageOps.resolveBranch($"session-{newId}", branchOf(parent)) with
+  | Error(_) -> Result.Error($"could not start a branch for {newId}")
+  | Ok((branchId, _created)) ->
+    let conversation =
+      parent.conversation
+      |> Stdlib.Option.map(fun c -> { c with parent = parent.id, usage = Agent.noUsage() })
+
+    Result.Ok(
+      { parent with
+          id = newId
+          branchId = Stdlib.display(branchId)
+          lastReplies = []
+          conversation = conversation })
+
+
+let messagesOf(c: Conversation): List<Agent.Message> =
+  match Stdlib.AltJson.parse(c.messages) with
+  | Ok(j) -> Agent.Anthropic.messagesFromJson(j)
+  | Error(_) -> []
+
+
+/// The conversation's first message, on one line, cut to 60 characters.
+let firstPrompt(c: Conversation): String =
+  let first =
+    messagesOf(c)
+    |> Stdlib.List.head
+    |> Stdlib.Option.map(fun m -> Agent.textOf(m.content))
+    |> Stdlib.Option.withDefault("")
+
+  Stdlib.String.first(Stdlib.String.replaceAll(first, "\n", " "), 60)
+
+
+let summaryLine(s: Session): String =
+  let marker = if current() == Option.Some(s.id) then "  (current)" else ""
+  let b = Stdlib.List.length(s.bindings)
+  let w = Stdlib.List.length(s.watches)
+  let talk =
+    match s.conversation with
+    | None -> ""
+    | Some(c) ->
+      let from = if c.parent == "" then "" else $" from {c.parent}"
+      $"  agent{from}: {firstPrompt(c)}"
+
+  $"{s.id}  branch {branchText(branchOf(s))}  at {locationText(s.location)}  {Stdlib.display(b)} bindings  {Stdlib.display(w)} watches{talk}{marker}"
+
+
+let unknown(state: AppState, id: String): AppState =
+  printErr($"no session {id}")
+  printHint("  `dark session ls` lists them; `dark session new` makes one.")
+  { state with exitCode = 2 }
+
+
+let added(state: AppState, s: Session): AppState =
+  match add(s) with
+  | Ok(_) ->
+    Stdlib.printLine(s.id)
+    state
+  | Error(message) ->
+    printErr(message)
+    failed(state)
+
+
+let executeNew(state: AppState, branchRef: Option<String>): AppState =
+  let branch =
+    match branchRef with
+    | Some(ref) -> Branch.resolveRef(ref)
+    | None -> Option.Some(state.currentBranchId)
+
+  match branch with
+  | None -> failed(state)
+  | Some(branchId) ->
+    added(state, fresh(nextId(), branchId, modulePathOf(state.packageData.currentLocation)))
+
+
+let executeFork(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(parent) ->
+    match fork(state, parent) with
+    | Ok(s) -> added(state, s)
+    | Error(message) ->
+      printErr(message)
+      failed(state)
+
+
+let executeEnd(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(_) ->
+    let _ = LanguageTools.LocalStore.configUnset(key(id))
+    let _ = setIds(ids() |> Stdlib.List.filter(fun x -> x != id))
+    let _ =
+      if current() == Option.Some(id) then
+        LanguageTools.LocalStore.configUnset("session.current")
+      else
+        Result.Ok()
+
+    state
+
+
+let executeUse(state: AppState, id: String): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(_) ->
+    match LanguageTools.LocalStore.configSet("session.current", id) with
+    | Ok(_) -> state
+    | Error(message) ->
+      printErr(message)
+      failed(state)
+
+
+let executeList(state: AppState): AppState =
+  let sessions = ids() |> Stdlib.List.filterMap(fun id -> load(id))
+  if Stdlib.List.isEmpty(sessions) then
+    printHint("no sessions; `dark session new` makes one.")
+    state
+  else
+    sessions |> Stdlib.List.iter(fun s -> Stdlib.printLine(summaryLine(s)))
+    state
+
+
+let replyLines(reply: Reply): List<String> =
+  match reply.lines with
+  | [first, ...rest] ->
+    Stdlib.List.prepend(
+      rest |> Stdlib.List.map(fun l -> "  " + l),
+      Stdlib.display(reply.n) + " " + first)
+  | [] -> [ Stdlib.display(reply.n) ]
+
+
+let executeShow(state: AppState, id: String, which: Option<String>): AppState =
+  match load(id) with
+  | None -> unknown(state, id)
+  | Some(s) ->
+    let chosen =
+      match which with
+      | None -> Result.Ok(s.lastReplies)
+      | Some(text) ->
+        match Stdlib.Int64.parse(text) with
+        | Ok(n) ->
+          match s.lastReplies |> Stdlib.List.filter(fun x -> x.n == n) with
+          | [] -> Result.Error($"the last batch in {id} has no reply {text}")
+          | found -> Result.Ok(found)
+        | Error(_) -> Result.Error($"{text} is not a reply number")
+
+    match chosen with
+    | Ok(replies) ->
+      replies
+      |> Stdlib.List.iter(fun reply ->
+        replyLines(reply) |> Stdlib.List.iter(fun l -> Stdlib.printLine(l)))
+
+      state
+    | Error(message) ->
+      printErr(message)
+      failed(state)
+
+
+let execute(state: AppState, args: List<String>): AppState =
+  match args with
+  | [] -> executeList(state)
+  | ["ls"] -> executeList(state)
+  | ["new"] -> executeNew(state, Option.None)
+  | ["new", "--branch", b] -> executeNew(state, Option.Some(b))
+  | ["use", id] -> executeUse(state, id)
+  | ["fork", id] -> executeFork(state, id)
+  | ["end", id] -> executeEnd(state, id)
+  | ["show", id] -> executeShow(state, id, Option.None)
+  | ["show", id, n] -> executeShow(state, id, Option.Some(n))
+  | _ ->
+    printErr(
+      "Usage: session new [--branch <name>] | ls | use <id> | fork <id> | end <id> | show <id> [<n>]")
+
+    failed(state)
+
+
+let accepts(): Accepts.Accepts =
+  Accepts.subcommands(
+    [ ("new", Accepts.withValues([ "--branch" ], Accepts.nothing()))
+      ("ls", Accepts.nothing())
+      ("use", Accepts.between(1, 1, []))
+      ("fork", Accepts.between(1, 1, []))
+      ("end", Accepts.between(1, 1, []))
+      ("show", Accepts.between(1, 2, [])) ],
+    Accepts.nothing())
+
+
+let complete(_state: AppState, args: List<String>): List<Completion.CompletionItem> =
+  []
+
+
+let help(_state: AppState): String =
+  [ "Usage: session new [--branch <name>]   make a session, print its id, make it current"
+    "       session ls                       the sessions, one per line"
+    "       session use <id>                 make <id> current"
+    "       session fork <id>                a new session on a new branch off <id>'s, with its bindings"
+    "       session end <id>                 forget a session; its branch and code stay"
+    "       session show <id> [<n>]          the last batch's replies in full"
+    ""
+    "Run a batch with `dark @<id>` (or `dark @` for the current session), lines on stdin:"
+    ""
+    "  dark @s1 <<'EOF'"
+    "  let xs = [1, 2, 3]"
+    "  Stdlib.List.map(xs, fun x -> x * 2)"
+    "  fn Me.Demo.double '(a: Int64): Int64 = a * 2'"
+    "  watch Me.Demo.double(4)"
+    "  EOF"
+    ""
+    "  --continue   run every line even after one fails"
+    "  --json       the replies and report as one JSON object"
+    ""
+    "One numbered reply per line, then `-- ` lines: a summary, the typecheck of every module the"
+    "batch wrote to, and the watched values. A line indented under another continues it; a command"
+    "ending in `-` reads its indented lines as stdin. Branch and location stick to the session."
+    "`dark agent` works in a session too: `dark @<id>` opens what it built." ]
+  |> Stdlib.String.join("\n")

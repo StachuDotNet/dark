@@ -778,13 +778,13 @@ module Registry =
         Agent.complete)
 
       (
-        "repl",
-        "Repls that keep a branch, a location and bindings across batches (`dark @r1`)",
+        "session",
+        "Sessions that keep a branch, a location and bindings across batches (`dark @s1`)",
         [],
-        Repls.accepts,
-        Repls.execute,
-        Repls.help,
-        Repls.complete)
+        Sessions.accepts,
+        Sessions.execute,
+        Sessions.help,
+        Sessions.complete)
 
       (
         "diff",
@@ -1172,7 +1172,7 @@ module Registry =
           "ops" ])
 
       ("Branches", [ "branch", "branches", "switch", "merge", "rebase", "diff", "log", "resolve" ])
-      ("Execution", [ "run-script", "eval", "repl", "agent", "ps", "traces", "serve", "format" ])
+      ("Execution", [ "run-script", "eval", "session", "agent", "ps", "traces", "serve", "format" ])
       ("Installation", [ "install", "update", "uninstall", "version", "install-status" ])
       ("Security", [ "effects", "permissions" ])
       (

@@ -1,16 +1,16 @@
-/// `dark repl` and `dark @r1`, run as a person or an outside agent runs them: the reply framing in
-/// `docs/repl.md` is a contract, and these hold it.
-module Darklang.Cli.Tests.Repl
+/// `dark session` and `dark @s1`, run as a person or an outside agent runs them: the reply framing
+/// in `docs/sessions.md` is a contract, and these hold it.
+module Darklang.Cli.Tests.Session
 
 test aBatchAnswersEachLineByNumber = Instance.withInstance(fun i ->
-  let (newCode, id) = Instance.ran(i, [ "repl", "new" ])
+  let (newCode, id) = Instance.ran(i, [ "session", "new" ])
   let batch =
     "let xs = [1, 2]\nStdlib.List.length(xs)\nfn Me.T.double '(a: Int64): Int64 = a * 2'\nMe.T.double(4)\n"
 
-  let (code, out) = Instance.runWithStdin(i, [ "@r1" ], batch)
+  let (code, out) = Instance.runWithStdin(i, [ "@s1" ], batch)
   Stdlib.Test.all(
-    [ Instance.exitedWith(newCode, 0, "repl new")
-      Instance.says(id, "r1", "the first repl is r1")
+    [ Instance.exitedWith(newCode, 0, "session new")
+      Instance.says(id, "s1", "the first session is s1")
       Instance.exitedWith(code, 0, "a batch that all works")
       Instance.says(out, "1 ok xs = ", "a binding replies with its value")
       Instance.says(out, "\n2 2\n", "an expression replies with its value")
@@ -24,11 +24,11 @@ test aBatchAnswersEachLineByNumber = Instance.withInstance(fun i ->
 
 
 test aFailureSkipsTheRest = Instance.withInstance(fun i ->
-  let _ = Instance.ran(i, [ "repl", "new" ])
-  let (code, out) = Instance.runWithStdin(i, [ "@r1" ], "1 + \"a\"\n2\n")
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let (code, out) = Instance.runWithStdin(i, [ "@s1" ], "1 + \"a\"\n2\n")
 
   let (keepCode, kept) =
-    Instance.runWithStdin(i, [ "@r1", "--continue" ], "1 + \"a\"\n2\n")
+    Instance.runWithStdin(i, [ "@s1", "--continue" ], "1 + \"a\"\n2\n")
 
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 1, "a failed line fails the batch")
@@ -39,26 +39,26 @@ test aFailureSkipsTheRest = Instance.withInstance(fun i ->
 
 
 test bindingsLastBetweenBatches = Instance.withInstance(fun i ->
-  let _ = Instance.ran(i, [ "repl", "new" ])
-  let _ = Instance.runWithStdin(i, [ "@r1" ], "let n = 20\n")
-  let (_code, out) = Instance.runWithStdin(i, [ "@r1" ], "n + 1\n")
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let _ = Instance.runWithStdin(i, [ "@s1" ], "let n = 20\n")
+  let (_code, out) = Instance.runWithStdin(i, [ "@s1" ], "n + 1\n")
   Instance.says(out, "1 21", "a binding from the batch before"))
 
 
 test anIndentedBlockIsTheCommandsStdin = Instance.withInstance(fun i ->
-  let _ = Instance.ran(i, [ "repl", "new" ])
+  let _ = Instance.ran(i, [ "session", "new" ])
   let batch =
     "module /Me.Greet -\n  let greeting(name: String): String = \"Hello, \" + name\nMe.Greet.greeting(\"Ada\")\n"
 
-  let (code, out) = Instance.runWithStdin(i, [ "@r1" ], batch)
+  let (code, out) = Instance.runWithStdin(i, [ "@s1" ], batch)
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "module from an indented block")
       Instance.says(out, "2 \"Hello, Ada\"", "the module's function runs") ]))
 
 
 test jsonHasTheSameNumbering = Instance.withInstance(fun i ->
-  let _ = Instance.ran(i, [ "repl", "new" ])
-  let (code, out) = Instance.runWithStdin(i, [ "@r1", "--json" ], "1 + 1\n")
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let (code, out) = Instance.runWithStdin(i, [ "@s1", "--json" ], "1 + 1\n")
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "--json")
       Instance.says(
@@ -67,21 +67,38 @@ test jsonHasTheSameNumbering = Instance.withInstance(fun i ->
         "the reply") ]))
 
 
-test anUnknownReplExitsTwo = Instance.withInstance(fun i ->
-  let (code, out) = Instance.runWithStdin(i, [ "@r9" ], "1\n")
+test anUnknownSessionExitsTwo = Instance.withInstance(fun i ->
+  let (code, out) = Instance.runWithStdin(i, [ "@s9" ], "1\n")
   Stdlib.Test.all(
-    [ Instance.exitedWith(code, 2, "no such repl")
-      Instance.says(out, "no repl r9", "says which") ]))
+    [ Instance.exitedWith(code, 2, "no such session")
+      Instance.says(out, "no session s9", "says which") ]))
 
 
 test aShellStyleDarkPrefixIsTheSameCommand = Instance.withInstance(fun i ->
-  let _ = Instance.ran(i, [ "repl", "new" ])
+  let _ = Instance.ran(i, [ "session", "new" ])
   let (code, out) =
     Instance.runWithStdin(
       i,
-      [ "@r1" ],
+      [ "@s1" ],
       "dark fn Me.P.one '(): Int64 = 1'\nMe.P.one()\n")
 
   Stdlib.Test.all(
     [ Instance.exitedWith(code, 0, "dark-prefixed command")
       Instance.says(out, "\n2 1\n", "the function it made") ]))
+
+
+test aForkKeepsTheBindingsOnItsOwnBranch = Instance.withInstance(fun i ->
+  let _ = Instance.ran(i, [ "session", "new" ])
+  let _ = Instance.runWithStdin(i, [ "@s1" ], "let n = 5\n")
+  let (forkCode, forked) = Instance.ran(i, [ "session", "fork", "s1" ])
+  let (_c, out) = Instance.runWithStdin(i, [ "@s2" ], "n * 2\n")
+  let (_l, listed) = Instance.ran(i, [ "session", "ls" ])
+  let _ = Instance.ran(i, [ "session", "end", "s1" ])
+  let (_e, ended) = Instance.ran(i, [ "session", "ls" ])
+  Stdlib.Test.all(
+    [ Instance.exitedWith(forkCode, 0, "session fork")
+      Instance.says(forked, "s2", "the fork is s2")
+      Instance.says(out, "1 10", "the fork has the binding")
+      Instance.says(listed, "s2  branch session-s2", "on a branch of its own")
+      Instance.says(listed, "(current)", "and current")
+      Instance.doesNotSay(ended, "s1  branch", "an ended session is gone") ]))

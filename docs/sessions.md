@@ -1,17 +1,18 @@
-# The repl: batches, replies and the report
+# Sessions: batches, replies and the report
 
-A repl is a named working environment that outlives one `dark` call: a branch, a place in
-the package tree, `let` bindings and watched entries. You send it a batch of lines on stdin and
-get one numbered reply per line, then a short report on what the batch changed. Anything that
-drives Dark from a shell (a person, a script, Claude Code, the Dark agent) uses the same
-contract, and the Dark agent's own Dark tools are clients of it.
+A session is a named working place that outlives one `dark` call: a branch, a place in the
+package tree, `let` bindings and watched expressions, and, when an agent drives it, the
+conversation. You send it a batch of lines on stdin and get one numbered reply per line, then a
+short report on what the batch changed. Anything that drives Dark from a shell (a person, a
+script, Claude Code, the Dark agent) uses the same contract, and the Dark agent's own Dark tools
+are clients of it.
 
 This page is the contract. Once agents parse these replies the framing cannot change, so a
 change here is a breaking change and goes in this file first.
 
-    $ dark repl new
-    r1
-    $ dark @r1 <<'EOF'
+    $ dark session new
+    s1
+    $ dark @s1 <<'EOF'
     let xs = [1, 2, 3]
     Stdlib.List.map(xs, fun x -> x * 2)
     fn Acme.double '(a: Int64): Int64 = a * 2'
@@ -29,19 +30,24 @@ change here is a breaking change and goes in this file first.
 
 ## The commands
 
-    dark repl new [--branch <name>]   make a repl, print its id (r1, r2, ...), make it current
-    dark repl list                    one line per repl: id, branch, location, bindings, watches
-    dark repl use <id>                make <id> the current repl
-    dark repl fork <id>               a new repl on a new branch off <id>'s, with its bindings
-    dark repl kill <id>               forget a repl (its branch and its code stay)
-    dark repl show <id> [<n>]         the last batch's replies in full, or reply <n> in full
-    dark @<id> [--continue] [--json]  run the batch on stdin in <id>
-    dark @ [--continue] [--json]      the same, in the current repl
+    dark session new [--branch <name>]  make a session, print its id (s1, s2, ...), make it current
+    dark session ls                     one line per session: id, branch, location, bindings,
+                                        watches, and for an agent's its first prompt
+    dark session use <id>               make <id> the current session
+    dark session fork <id>              a new session on a new branch off <id>'s, with its bindings
+    dark session end <id>               forget a session (its branch and its code stay)
+    dark session show <id> [<n>]        the last batch's replies in full, or reply <n> in full
+    dark @<id> [--continue] [--json]    run the batch on stdin in <id>
+    dark @ [--continue] [--json]        the same, in the current session
 
-`--branch` takes an existing branch; without it the repl starts on the branch `dark` is on. A
-new branch starts from its parent's commits, so `fork` first commits the parent's draft on the
-parent's branch ("fork point for r2"). A repl on main is never committed for you: its fork starts
-from main's last commit, and `fork` says so.
+`--branch` takes an existing branch; without it the session starts on the branch `dark` is on. A
+new branch (`session-s2`) starts from its parent's commits, so `fork` first commits the parent's
+draft on the parent's branch ("fork point for s2"). A session on main is never committed for
+you: its fork starts from main's last commit, and `fork` says so.
+
+`dark agent` runs in a session too: a new one on its own branch, or the one `--resume <id>` or
+`--continue` (the current session) names. `dark @s1` then works in what the agent built, and
+`dark agent --resume s1` talks to the agent in a session a person started (`docs/agent.md`).
 
 ## Lines
 
@@ -59,13 +65,18 @@ continues the statement above it. A blank line ends the statement, unless the li
 
 - `watch <expression>` / `unwatch <expression>`: report the expression's value after every
   batch. A watch is evaluated with the bindings in scope.
-- Anything else is a Dark expression, evaluated with the bindings in scope on the repl's branch.
+- Anything else is a Dark expression, evaluated with the bindings in scope on the session's
+  branch.
 
 A leading `dark ` is dropped, so a line copied from a shell (`dark fn ...`) means `fn ...`.
 
 Commands that need a terminal (a `y/N` confirm, a secret, `$EDITOR`, a full-screen view) are
-refused with a pointer to their `-y` form or to running them outside the repl. `repl` and
+refused with a pointer to their `-y` form or to running them outside the session. `session` and
 `@<id>` are refused inside a batch.
+
+`Sessions.Batch.read` is the one reader of these lines: `dark @s1` and the agent's tools call it,
+and the TUI home prompt (on the `onboarding-proto` branch) should too, passing the typed line as
+a one-line text, so a line typed there means the same in a batch.
 
 ## Replies
 
@@ -101,10 +112,10 @@ raises or is refused. On the first failure the batch stops and every later state
 
 A reply keeps its first 20 lines and at most 2,000 characters. Past either, its last line is
 
-      ... <k> more lines: dark repl show <id> <n>
+      ... <k> more lines: dark session show <id> <n>
 
 The full text of every reply of the last batch is kept, so nothing is lost, only deferred. The
-report is at most 12 lines; past that it ends in a pointer to `dark repl show <id>`.
+report is at most 12 lines; past that it ends in a pointer to `dark session show <id>`.
 
 ## The summary and the report
 
@@ -129,7 +140,7 @@ named here. A write command also names the callers it broke anywhere, in its own
 
 The same content and the same numbering, as one JSON object on stdout:
 
-    { "repl": "r1",
+    { "session": "s1",
       "branch": "main",
       "location": "Acme",
       "replies": [
@@ -149,16 +160,16 @@ The same content and the same numbering, as one JSON object on stdout:
 ## Exit codes
 
 0 when every statement succeeded, 1 when one failed, 2 when the batch could not start (no such
-repl, stdin not UTF-8).
+session, stdin not UTF-8).
 
 ## Where it lives, and the trade-off
 
-A repl is a record in this instance's store config (`repl.<id>`): branch, location, bindings,
-watches and the last batch's full replies. `dark @r1` is an ordinary `dark` process that loads
-that record, runs the batch, and saves it back. There is no resident process yet. What that costs:
-each batch pays the CLI's start (about 0.4 s) and the package caches start cold; bindings with no
-literal form re-run every batch. What it buys: nothing to start, stop or leak, a crash loses at
-most the batch in flight, and two terminals on one repl see the same state.
+A session is a record in this instance's store config (`session.<id>`): branch, location,
+bindings, watches, the last batch's full replies and any conversation. `dark @s1` is an ordinary
+`dark` process that loads that record, runs the batch, and saves it back. There is no resident
+process yet. What that costs: each batch pays the CLI's start (about 0.4 s) and the package caches
+start cold; bindings with no literal form re-run every batch. What it buys: nothing to start, stop or leak, a crash loses at
+most the batch in flight, and two terminals on one session see the same state.
 
-Branch and location are sticky: `switch` and `nav` inside a batch move the repl, not the rest of
-the instance, and every batch runs where the last one left off.
+Branch and location are sticky: `switch` and `nav` inside a batch move the session, not the rest
+of the instance, and every batch runs where the last one left off.

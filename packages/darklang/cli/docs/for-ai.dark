@@ -111,6 +111,6 @@ Logs in ~/.darklang/logs/: cli.log (errors that ended a command), host-audit.jso
 
 ## More
   docs for-ai packages | tests | permissions | traces | scm | syntax
-  docs for-ai repl          many commands per call, with a report
+  docs for-ai session       many commands per call, with a report
   docs for-ai tests http-server   several parts and topics in one call
   help <command>"""

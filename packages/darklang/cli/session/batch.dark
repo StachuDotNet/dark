@@ -1,7 +1,7 @@
-/// Running one batch in a repl: split it into statements, run each, number the replies, and report
-/// what the batch changed. `docs/repl.md` is the contract; the agent's Dark tools call `run`
-/// directly.
-module Darklang.Cli.Repls.Batch
+/// Running one batch in a session: read it into statements, run each, number the replies, and
+/// report what the batch changed. `docs/sessions.md` is the contract; the agent's Dark tools call
+/// `run` directly.
+module Darklang.Cli.Sessions.Batch
 
 /// A batch's statements: a line, and the indented lines under it. As the workbench's
 /// `Repl.splitStatements`, except that a blank line stays inside an indented block when the
@@ -80,7 +80,7 @@ type Outcome =
     ms: Int64
     checks: List<ModuleCheck>
     watches: List<WatchResult>
-    /// Where the batch left the repl, when it moved: (branch, location).
+    /// Where the batch left the session, when it moved: (branch, location).
     moved: Option<(String * String)> }
 
 
@@ -101,13 +101,13 @@ val writeCommands =
     "test" ]
 
 
-/// How much of one reply is shown before it points to `dark repl show`.
+/// How much of one reply is shown before it points to `dark session show`.
 type Caps =
   { lines: Int64
     chars: Int64 }
 
 
-/// What a person or an outside agent reading `dark @r1` gets: the contract's caps.
+/// What a person or an outside agent reading `dark @s1` gets: the contract's caps.
 let replyCaps(): Caps =
   Caps { lines = 20, chars = 2000 }
 
@@ -191,7 +191,7 @@ let classify(state: AppState, text: String): Statement =
     else if word == "unwatch" then
       Statement.WatchRemove(
         Stdlib.String.trim(Stdlib.String.dropFirst(Stdlib.String.trim(text), 7)))
-    else if word == "repl" || Stdlib.String.startsWith(word, "@") then
+    else if word == "session" || Stdlib.String.startsWith(word, "@") then
       Statement.Refused($"`{word}` cannot run inside a batch")
     else if Stdlib.List.contains(commandNames(state), word) then
       let lines = Stdlib.String.split(text, "\n")
@@ -209,6 +209,12 @@ let classify(state: AppState, text: String): Statement =
           | Some(all) -> Statement.Command(word, Stdlib.List.drop(all, 1), Option.None)
     else
       Statement.Expression(text)
+
+
+/// The one reader of session lines: `dark @s1`, the agent's tools and the TUI home prompt (a typed
+/// line is a one-line text) all read lines through it.
+let read(state: AppState, text: String): List<Statement> =
+  splitStatements(text) |> Stdlib.List.map(fun s -> classify(state, s))
 
 
 /// A value as a Dark literal you can paste back, or as `eval` prints it when it has none. "" for
@@ -280,15 +286,15 @@ let reply(n: Int64, kind: String, status: String, lines: List<String>): Reply =
   Reply { n = n, kind = kind, status = status, lines = lines }
 
 
-let runBind(state: AppState, r: Record, n: Int64, name: String, rhs: String): (Record * Reply) =
+let runBind(state: AppState, r: Session, n: Int64, name: String, rhs: String): (Session * Reply) =
   let capture = Repl.captureExpr(r.bindings, state.currentBranchId, name, rhs)
   let (result, _stray) =
     Workbench.captureOutputAnd(fun () -> Eval.evaluate(state, capture, Eval.Harmful.Halt))
 
-  let keep(binding: Repl.Binding, shown: String): (Record * Reply) =
+  let keep(binding: Repl.Binding, shown: String): (Session * Reply) =
     ({ r with bindings = Repl.upsert(r.bindings, binding) }, reply(n, "binding", "ok", [ shown ]))
 
-  let uncaptured(): (Record * Reply) =
+  let uncaptured(): (Session * Reply) =
     keep(
       Repl.Binding { name = name, source = rhs, value = rhs, captured = false },
       $"ok {name} ~ {rhs}")
@@ -313,7 +319,7 @@ let runBind(state: AppState, r: Record, n: Int64, name: String, rhs: String): (R
     | None -> uncaptured()
 
 
-let runExpression(state: AppState, r: Record, n: Int64, expr: String): Reply =
+let runExpression(state: AppState, r: Session, n: Int64, expr: String): Reply =
   match evalLiteral(state, r.bindings, expr) with
   | Ok(value), printed ->
     let head = if value == "" then "ok" else value
@@ -380,7 +386,7 @@ let runCommand(
         n,
         "command",
         "error",
-        [ $"error: `{name}` asks a question here; add -y, or run it outside the repl" ]),
+        [ $"error: `{name}` asks a question here; add -y, or run it outside the session" ]),
       Option.None)
   else
     let here = modulePathOf(state.packageData.currentLocation)
@@ -421,10 +427,10 @@ let runCommand(
 /// Run one statement: the state and record after it, its reply, and the module it wrote to.
 let runStatement(
   state: AppState,
-  r: Record,
+  r: Session,
   n: Int64,
   statement: Statement)
-  : (AppState * Record * Reply * Option<String>) =
+  : (AppState * Session * Reply * Option<String>) =
   match statement with
   | Bind(name, rhs) ->
     let (r2, rep) = runBind(state, r, n, name, rhs)
@@ -473,7 +479,7 @@ let checkModule(branchId: Uuid, name: String): ModuleCheck =
     { name = name, checked = totals.checkedCount + totals.failedCount, failures = failures }
 
 
-let runWatches(state: AppState, r: Record): (Record * List<WatchResult>) =
+let runWatches(state: AppState, r: Session): (Session * List<WatchResult>) =
   let results =
     r.watches
     |> Stdlib.List.map(fun w ->
@@ -493,25 +499,25 @@ let runWatches(state: AppState, r: Record): (Record * List<WatchResult>) =
 
 
 /// Run <param text> in <param r>, starting from <param state>. Stops at the first failure unless
-/// <param keepGoing>. Returns the state and record afterwards; the caller saves the record.
+/// <param onFailure> says go on. Returns the state and session afterwards; the caller saves it.
 let run(
   state: AppState,
-  r: Record,
+  r: Session,
   text: String,
   onFailure: OnFailure)
-  : (AppState * Record * Outcome) =
+  : (AppState * Session * Outcome) =
   let started = Stdlib.DateTime.now()
   let stored = SCM.PackageOps.currentBranch()
   let startBranch = branchOf(r)
   let _ = SCM.PackageOps.selectBranch(startBranch)
   let state = enter(state, r)
-  let statements = splitStatements(text)
+  let statements = read(state, text)
   let (endState, endRecord, replies, _failed, touched) =
     statements
     |> Stdlib.List.indexedMap(fun(i, s) -> (i + 1, s))
     |> Stdlib.List.fold((state, r, [], false, []), fun(acc, numbered) ->
       let (st, rc, replies, failed, touched) = acc
-      let (n, text) = numbered
+      let (n, statement) = numbered
       if failed && onFailure == OnFailure.Stop then
         (
           st,
@@ -520,7 +526,7 @@ let run(
           failed,
           touched)
       else
-        let (st2, rec2, rep, wrote) = runStatement(st, rc, n, classify(st, text))
+        let (st2, rec2, rep, wrote) = runStatement(st, rc, n, statement)
         let touched =
           match wrote with
           | Some(m) ->
@@ -563,7 +569,7 @@ let run(
 /// Before a fork: commit what <param r> has drafted on its own branch, because a new branch
 /// starts from its parent's commits and would not see the draft. Never on main, where a commit is
 /// the person's call; there the fork goes without the draft, and the caller says so.
-let commitForFork(state: AppState, r: Record, forkId: String): Bool =
+let commitForFork(state: AppState, r: Session, forkId: String): Bool =
   let branch = branchOf(r)
   if SCM.Branch.isMain(branch) then
     false
@@ -639,7 +645,7 @@ let reportLines(id: String, outcome: Outcome): List<String> =
     if Stdlib.List.length(all) > reportLineCap then
       Stdlib.List.append(
         Stdlib.List.take(all, reportLineCap - 1),
-        $"... {Stdlib.display(Stdlib.List.length(all) - reportLineCap + 1)} more: dark repl show {id}")
+        $"... {Stdlib.display(Stdlib.List.length(all) - reportLineCap + 1)} more: dark session show {id}")
     else
       all
 
@@ -656,7 +662,7 @@ let renderText(id: String, caps: Caps, outcome: Outcome): List<String> =
         if more > 0 then
           Stdlib.List.append(
             kept,
-            $"... {Stdlib.display(more)} more lines: dark repl show {id} {Stdlib.display(reply.n)}")
+            $"... {Stdlib.display(more)} more lines: dark session show {id} {Stdlib.display(reply.n)}")
         else
           kept
 
@@ -696,7 +702,7 @@ type JsonSummary =
 
 
 type JsonBatch =
-  { repl: String
+  { session: String
     branch: String
     location: String
     replies: List<JsonReply>
@@ -705,9 +711,9 @@ type JsonBatch =
     watches: List<WatchResult> }
 
 
-let toJson(r: Record, outcome: Outcome): JsonBatch =
+let toJson(r: Session, outcome: Outcome): JsonBatch =
   JsonBatch
-    { repl = r.id
+    { session = r.id
       branch = branchText(branchOf(r))
       location = locationText(r.location)
       replies =
@@ -739,7 +745,7 @@ let toJson(r: Record, outcome: Outcome): JsonBatch =
       watches = outcome.watches }
 
 
-/// `dark @<id>`: read the batch on stdin, run it, print the replies, save the repl.
+/// `dark @<id>`: read the batch on stdin, run it, print the replies, save the session.
 let executeCli(state: AppState, target: String, args: List<String>): AppState =
   let id = if target == "" then current() |> Stdlib.Option.withDefault("") else target
   let badFlags = args |> Stdlib.List.filter(fun a -> a != "--continue" && a != "--json")
@@ -749,8 +755,8 @@ let executeCli(state: AppState, target: String, args: List<String>): AppState =
 
     { state with exitCode = 2 }
   else if id == "" then
-    printErr("no current repl")
-    printHint("  `dark repl new` makes one.")
+    printErr("no current session")
+    printHint("  `dark session new` makes one.")
     { state with exitCode = 2 }
   else
     match load(id) with

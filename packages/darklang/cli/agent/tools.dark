@@ -1,13 +1,13 @@
 /// The agent's tools. Each declares the effects it has, and runs only when the session's policy
 /// allows every one of them; a refusal goes back to the model as a failed tool call.
 ///
-/// The Dark tools run batches in the session's repl, in this process, and answer with the repl's
+/// The Dark tools run batches in the session, in this process, and answer with the batch's
 /// numbered replies and report: what typechecks and which callers broke come back with the edit.
 module Darklang.Cli.Agent.Tools
 
 type Context =
   { app: AppState
-    repl: Repls.Record
+    session: Sessions.Session
     cwd: String
     /// Files read this session: `edit` and `write` refuse to change a file the model has not seen.
     seen: List<String>
@@ -484,15 +484,12 @@ let sandboxAllows(ctx: Context, rule: String): Bool =
 /// Why a batch may not run in this session, or None. A grant in the batch (`run --allow ...`)
 /// must be one the session itself has: code the agent writes gets no more than the agent.
 let batchRefusal(ctx: Context, text: String): Option<String> =
-  let statements = Repls.Batch.splitStatements(text)
   let words =
-    statements
-    |> Stdlib.List.map(fun st ->
-      LanguageTools.Permissions.tokens(
-        Stdlib.String.split(st, "\n")
-        |> Stdlib.List.head
-        |> Stdlib.Option.withDefault(""))
-      |> Stdlib.Option.withDefault([]))
+    Sessions.Batch.read(ctx.app, text)
+    |> Stdlib.List.filterMap(fun st ->
+      match st with
+      | Command(name, args, _) -> Option.Some(Stdlib.List.prepend(args, name))
+      | _ -> Option.None)
 
   let forbidden =
     words
@@ -537,7 +534,7 @@ let batchRefusal(ctx: Context, text: String): Option<String> =
   | [], [], [] -> Option.None
 
 
-/// Run a repl batch in the session's repl: its numbered replies and report, as `dark @r1` prints them.
+/// Run a batch in the session: its numbered replies and report, as `dark @s1` prints them.
 /// A shell heredoc in a batch (`fn X - <<'EOF'` ... `EOF`) becomes the block the batch takes: the
 /// lines up to the marker, indented under the command.
 let heredocsToBlocks(text: String): String =
@@ -593,20 +590,22 @@ let batch(ctx: Context, text: String): (Context * Agent.ToolOutput) =
 /// Run a batch: the session after it, the batch's outcome, and what the model is told. With the
 /// store checks on, the reply also carries what each `run` may do, a failed run's values, and the
 /// earlier evals that answer differently after a write.
-let runBatch(ctx: Context, text: String): (Context * Repls.Batch.Outcome * Agent.ToolOutput) =
+let runBatch(ctx: Context, text: String): (Context * Sessions.Batch.Outcome * Agent.ToolOutput) =
   let before = if ctx.store then Store.beforeRuns(ctx, text) else []
-  let (app, record, outcome) = Repls.Batch.run(ctx.app, ctx.repl, text, Repls.Batch.OnFailure.Stop)
+  let (app, record, outcome) =
+    Sessions.Batch.run(ctx.app, ctx.session, text, Sessions.Batch.OnFailure.Stop)
+
   let written = outcome.checks |> Stdlib.List.map(fun c -> c.name)
   let touched =
     Stdlib.List.concat(
       ctx.touched,
       written |> Stdlib.List.filter(fun m -> Stdlib.Bool.not(Stdlib.List.contains(ctx.touched, m))))
 
-  let ctx = { ctx with app = app, repl = record, touched = touched }
-  // the model cannot run `dark repl show`, so it gets whole replies; `truncate` bounds the total
-  let caps = Repls.Batch.Caps { lines = 2000, chars = outputCap }
-  let lines = Repls.Batch.renderText(ctx.repl.id, caps, outcome)
-  let failed = Repls.Batch.count(outcome, "error") > 0
+  let ctx = { ctx with app = app, session = record, touched = touched }
+  // the model cannot run `dark session show`, so it gets whole replies; `truncate` bounds the total
+  let caps = Sessions.Batch.Caps { lines = 2000, chars = outputCap }
+  let lines = Sessions.Batch.renderText(ctx.session.id, caps, outcome)
+  let failed = Sessions.Batch.count(outcome, "error") > 0
   let traces =
     if ctx.store then
       Store.failedTraces(outcome) |> Stdlib.List.map(fun id -> Store.traceValues(ctx, id))
@@ -712,7 +711,7 @@ let rawSource(ctx: Context, name: String): Result<String, String> =
       Registry.executeCommand("view", { ctx.app with exitCode = 0 }, [ name, "--raw" ]))
 
   let _ = SCM.PackageOps.selectBranch(stored)
-  let out = Repls.Batch.stripAnsi(text)
+  let out = Sessions.Batch.stripAnsi(text)
   if after.exitCode == 0 then
     Result.Ok(out)
   else
@@ -723,7 +722,7 @@ let editFn(ctx: Context, input: Stdlib.AltJson.Json): (Context * Agent.ToolOutpu
   needing(ctx, input, "name", fun name ->
     needing(ctx, input, "old_string", fun old ->
       needing(ctx, input, "new_string", fun replacement ->
-        let app = Repls.enter(ctx.app, ctx.repl)
+        let app = Sessions.enter(ctx.app, ctx.session)
         match rawSource({ ctx with app = app }, name) with
         | Error(why) -> (ctx, fail(why))
         | Ok(source) ->
@@ -848,7 +847,7 @@ let all(): List<Tool> =
       { spec =
           spec(
             "dark",
-            "Run a batch of lines in this session's Dark repl, on the session's branch. One statement per line: a CLI command (fn, module, view, search, typecheck, test run, status, nav, ...), `let x = <expr>`, `watch <expr>`, or a Dark expression. Indented lines continue the line above; a command ending in `-` takes its indented lines as stdin. Answers one numbered reply per statement, stops at the first failure, then reports the typecheck of every module written and watched values.",
+            "Run a batch of lines in this Dark session, on its branch. One statement per line: a CLI command (fn, module, view, search, typecheck, test run, status, nav, ...), `let x = <expr>`, `watch <expr>`, or a Dark expression. Indented lines continue the line above; a command ending in `-` takes its indented lines as stdin. Answers one numbered reply per statement, stops at the first failure, then reports the typecheck of every module written and watched values.",
             [ param("command", "string", "the lines") ])
         effects =
           [ LanguageTools.Permissions.Effect.PackageRead

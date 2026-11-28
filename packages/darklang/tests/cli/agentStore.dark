@@ -80,7 +80,7 @@ test aFailedRunShowsItsValuesAndALongSessionIsCompacted =
           "--output-format"
           "stream-json" ])
 
-    let (_l, sessions) = Instance.ran(i, [ "agent", "--list" ])
+    let (_l, sessions) = Instance.ran(i, [ "session", "ls" ])
     Stdlib.Test.all(
       [ Instance.exitedWith(code, 0, "the session answers")
         Instance.says(
@@ -157,17 +157,17 @@ test anAttemptThatIsNotDoneStartsAgainOnAFreshBranch =
           "--output-format"
           "stream-json" ])
 
-    let (_a, first) = Instance.runWithStdin(i, [ "@a1" ], "Me.Halve.half(4)\n")
+    let (_a, first) = Instance.runWithStdin(i, [ "@s1" ], "Me.Halve.half(4)\n")
 
     let (_b, second) =
-      Instance.runWithStdin(i, [ "@a2" ], "Me.Halve.half(4)\nMe.Half.half(4)\n")
+      Instance.runWithStdin(i, [ "@s2" ], "Me.Halve.half(4)\nMe.Half.half(4)\n")
 
     let (_c, rerun) =
       Instance.ran(
         i,
         [ "agent"
           "--rerun"
-          "a2"
+          "s2"
           "--checks"
           "0"
           "--output-format"
@@ -176,18 +176,18 @@ test anAttemptThatIsNotDoneStartsAgainOnAFreshBranch =
     let (_d, generic) =
       Instance.ran(
         i,
-        [ "agent", "--rerun", "a2", "--checks", "0", "--tools", "generic" ])
+        [ "agent", "--rerun", "s2", "--checks", "0", "--tools", "generic" ])
 
     Stdlib.Test.all(
       [ Instance.exitedWith(code, 0, "the second attempt answers")
         Instance.says(
           out,
-          "attempt 1 (a1) is not done; attempt 2 on a fresh branch",
+          "attempt 1 (s1) is not done; attempt 2 on a fresh branch",
           "the first had no tests")
 
         Instance.says(
           out,
-          "\"session_id\":\"a2\"",
+          "\"session_id\":\"s2\"",
           "the second attempt is kept")
 
         Instance.says(
@@ -206,7 +206,7 @@ test anAttemptThatIsNotDoneStartsAgainOnAFreshBranch =
 
         Instance.says(
           rerun,
-          "rerun of a2 as a3: 1 tool results, 0 differ",
+          "rerun of s2 as s3: 1 tool results, 0 differ",
           "a rerun on today's code answers the same")
 
         Instance.says(
@@ -244,7 +244,7 @@ test mergeLandsOnlyTheKeptAttempt = Instance.withInstance(fun i ->
     [ Instance.exitedWith(code, 0, "the second attempt answers")
       Instance.says(
         out,
-        "merged agent-a2 into main",
+        "merged session-s2 into main",
         "the kept attempt is merged")
 
       Instance.says(kept, "4", "its work is on main")
@@ -402,7 +402,7 @@ test thePromptCarriesTheReferenceAndTheSandbox = Instance.withInstance(fun i ->
 
 test aFailedRunNamesTheTraceItLeft =
   let reply =
-    Cli.Repls.Reply
+    Cli.Sessions.Reply
       { n = 1
         kind = "command"
         status = "error"
@@ -411,7 +411,7 @@ test aFailedRunNamesTheTraceItLeft =
             "trace 827051ce: dark traces show Me.Tw.average 827051ce" ] }
 
   let outcome =
-    Cli.Repls.Batch.Outcome
+    Cli.Sessions.Batch.Outcome
       { replies = [ reply ]
         ms = 0
         checks = []

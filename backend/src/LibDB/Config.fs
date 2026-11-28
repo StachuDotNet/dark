@@ -90,8 +90,8 @@ let readable : List<string> = settings @ [ "instance.id" ]
 /// `traces watch` follows. Nobody types these.
 let private internalKeys = [ "live.show"; "traces.watch.fn" ]
 
-/// Namespaces Dark code keeps records under, with any key: a repl (`repl.r1`), an agent session.
-let private internalPrefixes = [ "repl."; "agent." ]
+/// Namespaces Dark code keeps records under, with any key: a session (`session.s1`).
+let private internalPrefixes = [ "session." ]
 
 let private isInternal (key : string) =
   List.contains key internalKeys

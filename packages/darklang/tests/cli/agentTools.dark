@@ -1,4 +1,4 @@
-// The agent's edit and truncation, and the repl's statement parsing: pure parts only.
+// The agent's edit and truncation, and the session's statement reading: pure parts only.
 module Darklang.Cli.Agent.Tools.Tests
 
 test editReplacesTheOneExactMatch =
@@ -53,12 +53,12 @@ test truncateKeepsHeadAndTail =
 
 
 test dedentRemovesTheCommonIndent =
-  Cli.Repls.Batch.dedent([ "  let a = 1", "    a + 1", "" ])
+  Cli.Sessions.Batch.dedent([ "  let a = 1", "    a + 1", "" ])
   |> Stdlib.Test.equal("let a = 1\n  a + 1\n")
 
 
 test aWriteNamesItsModule =
-  Cli.Repls.Batch.moduleOfWrite(
+  Cli.Sessions.Batch.moduleOfWrite(
     [],
     "fn",
     [ "Me.Demo.double", "(a: Int64): Int64 = a" ])
@@ -66,29 +66,29 @@ test aWriteNamesItsModule =
 
 
 test aModuleWriteNamesItself =
-  Cli.Repls.Batch.moduleOfWrite([], "module", [ "/Me.Greet", "-" ])
+  Cli.Sessions.Batch.moduleOfWrite([], "module", [ "/Me.Greet", "-" ])
   |> Stdlib.Test.equal(Option.Some("Me.Greet"))
 
 
 test aRelativeWriteResolvesAgainstTheLocation =
-  Cli.Repls.Batch.moduleOfWrite([ "Me", "Demo" ], "fn", [ "double", "x" ])
+  Cli.Sessions.Batch.moduleOfWrite([ "Me", "Demo" ], "fn", [ "double", "x" ])
   |> Stdlib.Test.equal(Option.Some("Me.Demo"))
 
 
 test aReadIsNotAWrite =
-  Cli.Repls.Batch.moduleOfWrite([], "view", [ "Me.Demo.double" ])
+  Cli.Sessions.Batch.moduleOfWrite([], "view", [ "Me.Demo.double" ])
   |> Stdlib.Test.equal(Option.None)
 
 
 test stripAnsiLeavesPlainText =
-  Cli.Repls.Batch.stripAnsi("\u001b[32mok\u001b[0m done")
+  Cli.Sessions.Batch.stripAnsi("\u001b[32mok\u001b[0m done")
   |> Stdlib.Test.equal("ok done")
 
 
 test errorLinesSkipTheBindings =
   (
-    Cli.Repls.Batch.shiftLine("error[PARSE] at 3:5: oops", 2),
-    Cli.Repls.Batch.shiftLine("    3 | x y", 2))
+    Cli.Sessions.Batch.shiftLine("error[PARSE] at 3:5: oops", 2),
+    Cli.Sessions.Batch.shiftLine("    3 | x y", 2))
   |> Stdlib.Test.equal(("error[PARSE] at 1:5: oops", "    1 | x y"))
 
 
@@ -97,14 +97,7 @@ let ctxAllowing(
   : Cli.Agent.Tools.Context =
   Cli.Agent.Tools.Context
     { app = Cli.initState()
-      repl =
-        Cli.Repls.Record
-          { id = "t"
-            branchId = ""
-            location = []
-            bindings = []
-            watches = []
-            lastReplies = [] }
+      session = Cli.Sessions.fresh("t", SCM.Branch.mainBranchId, [])
       cwd = "/"
       seen = []
       allowed = effects
@@ -142,23 +135,40 @@ test aBatchMayPassOnWhatTheSessionHas =
 
 
 test testRunIsNotAWrite =
-  Cli.Repls.Batch.moduleOfWrite([ "Me", "Demo" ], "test", [ "run", "Me.Demo" ])
+  Cli.Sessions.Batch.moduleOfWrite(
+    [ "Me", "Demo" ],
+    "test",
+    [ "run", "Me.Demo" ])
   |> Stdlib.Test.equal(Option.None)
 
 
 test runTargetSkipsFlags =
-  [ Cli.Agent.Store.runTarget("run --allow 'file read /d' Me.A.main x")
-    Cli.Agent.Store.runTarget("run Me.A.main")
-    Cli.Agent.Store.runTarget("view Me.A.main") ]
+  Cli.Sessions.Batch.read(
+    Cli.initState(),
+    "run --allow 'file read /d' Me.A.main x\nrun Me.A.main\nview Me.A.main")
+  |> Stdlib.List.map(fun st -> Cli.Agent.Store.runTarget(st))
   |> Stdlib.Test.equal(
     [ Option.Some("Me.A.main"), Option.Some("Me.A.main"), Option.None ])
 
 
+test oneReaderForEveryLine =
+  Cli.Sessions.Batch.read(
+    Cli.initState(),
+    "let x = 1\ndark status\nwatch x + 1\nx * 2\nsession ls")
+  |> Stdlib.Test.equal(
+    [ Cli.Sessions.Batch.Statement.Bind("x", "1")
+      Cli.Sessions.Batch.Statement.Command("status", [], Option.None)
+      Cli.Sessions.Batch.Statement.WatchAdd("x + 1")
+      Cli.Sessions.Batch.Statement.Expression("x * 2")
+      Cli.Sessions.Batch.Statement.Refused(
+        "`session` cannot run inside a batch") ])
+
+
 test aBlankLineInsideABlockKeepsTheBlock =
-  [ Cli.Repls.Batch.splitStatements(
+  [ Cli.Sessions.Batch.splitStatements(
       "module /Me.A -\n  let f() = 1\n\n  test t = f() |> Stdlib.Test.equal(1)\nMe.A.f()")
 
-    Cli.Repls.Batch.splitStatements("1 + 1\n\n2") ]
+    Cli.Sessions.Batch.splitStatements("1 + 1\n\n2") ]
   |> Stdlib.Test.equal(
     [ [ "module /Me.A -\n  let f() = 1\n\n  test t = f() |> Stdlib.Test.equal(1)"
         "Me.A.f()" ]

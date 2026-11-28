@@ -1,21 +1,8 @@
 /// `dark agent -p "build me X"`: the print-mode runner around the pure loop in `Darklang.Agent`.
 ///
-/// A session is a record in the store's config (`agent.session.<id>`) and has its own branch and
-/// its own repl (same id), so `dark @a1` shows what the agent built, and `--resume`/`--fork` pick a
-/// session up again.
+/// The agent works in a session (`Sessions`) on a branch of its own, and keeps its conversation
+/// there, so `dark @s1` works in what it built, and `--resume`/`--fork` pick it up again.
 module Darklang.Cli.Agent
-
-type Session =
-  { id: String
-    branchId: String
-    /// the session this one was forked from, or ""
-    parent: String
-    cwd: String
-    model: String
-    /// the conversation, in the Messages API's JSON
-    messages: String
-    usage: Agent.Usage }
-
 
 type Provider =
   | Live(Agent.Anthropic.Config)
@@ -77,7 +64,7 @@ type Run =
   { loop: Agent.State
     queue: List<Agent.Command>
     ctx: Tools.Context
-    session: Session
+    conversation: Sessions.Conversation
     provider: Provider
     system: String
     tools: List<Tools.Tool>
@@ -97,50 +84,12 @@ val defaultAllowed =
     LanguageTools.Permissions.Effect.PackageWrite ]
 
 
-let sessionKey(id: String): String =
-  "agent.session." + id
+let conversationOf(id: String): Option<Sessions.Conversation> =
+  Sessions.load(id) |> Stdlib.Option.andThen(fun s -> s.conversation)
 
 
-let loadSession(id: String): Option<Session> =
-  match LanguageTools.LocalStore.configGet(sessionKey(id)) with
-  | Some(text) ->
-    match Stdlib.Json.parse<Session>(text) with
-    | Ok(s) -> Option.Some(s)
-    | Error(_) -> Option.None
-  | None -> Option.None
-
-
-let saveSession(s: Session): Result<Unit, String> =
-  match Stdlib.Json.checkedSerialize<Session>(s) with
-  | Ok(text) -> LanguageTools.LocalStore.configSet(sessionKey(s.id), text)
-  | Error(_) -> Result.Error($"could not save session {s.id}")
-
-
-let sessionIds(): List<String> =
-  match LanguageTools.LocalStore.configGet("agent.sessions") with
-  | Some(text) -> Stdlib.Json.parse<List<String>>(text) |> Stdlib.Result.withDefault([])
-  | None -> []
-
-
-let nextSessionId(): String =
-  let highest =
-    Stdlib.List.concat(sessionIds(), Repls.ids())
-    |> Stdlib.List.fold(0, fun(acc, id) ->
-      match Stdlib.Int64.parse(Stdlib.String.dropFirst(id, 1)) with
-      | Ok(n) when n > acc -> n
-      | _ -> acc)
-
-  "a" + Stdlib.display(highest + 1)
-
-
-let messagesOf(s: Session): List<Agent.Message> =
-  match Stdlib.AltJson.parse(s.messages) with
-  | Ok(j) -> Agent.Anthropic.messagesFromJson(j)
-  | Error(_) -> []
-
-
-let withMessages(s: Session, messages: List<Agent.Message>): Session =
-  { s with messages = Stdlib.AltJson.format(Agent.Anthropic.messagesToJson(messages)) }
+let withMessages(c: Sessions.Conversation, messages: List<Agent.Message>): Sessions.Conversation =
+  { c with messages = Stdlib.AltJson.format(Agent.Anthropic.messagesToJson(messages)) }
 
 
 /// AGENTS.md or CLAUDE.md from the working directory up, nearest last, at most 8,000 characters.
@@ -262,13 +211,13 @@ let show(run: Run, m: Agent.Message): Unit =
       | User -> "user"
 
     // an id per message, which is how a stream-json reader counts model calls
-    let id = $"msg_{run.session.id}_{Stdlib.display(Stdlib.List.length(run.loop.messages))}"
+    let id = $"msg_{run.ctx.session.id}_{Stdlib.display(Stdlib.List.length(run.loop.messages))}"
     let message =
       match Agent.Anthropic.messageToJson(m, Agent.Anthropic.Breakpoint.NoBreakpoint) with
       | Object(fields) -> Stdlib.AltJson.Json.Object(Stdlib.List.prepend(fields, ("id", str(id))))
       | other -> other
 
-    emitJson([ ("type", str(kind)), ("message", message), ("session_id", str(run.session.id)) ])
+    emitJson([ ("type", str(kind)), ("message", message), ("session_id", str(run.ctx.session.id)) ])
   | PlainText ->
     // streamed text ends without a newline; the tool lines start on their own
     let _ =
@@ -375,13 +324,16 @@ let compact(run: Run, messages: List<Agent.Message>): (Run * List<Agent.Message>
 
 
 let save(run: Run): Run =
-  let withMsgs = withMessages(run.session, run.loop.messages)
-  let session =
-    { withMsgs with usage = run.loop.usage, branchId = Stdlib.display(run.ctx.app.currentBranchId) }
+  let conversation =
+    { withMessages(run.conversation, run.loop.messages) with usage = run.loop.usage }
 
-  let _ = saveSession(session)
-  let _ = Repls.save(run.ctx.repl)
-  { run with session = session }
+  let session =
+    { run.ctx.session with
+        branchId = Stdlib.display(run.ctx.app.currentBranchId)
+        conversation = Option.Some(conversation) }
+
+  let _ = Sessions.save(session)
+  { run with conversation = conversation, ctx = { run.ctx with session = session } }
 
 
 /// Carry out one command; what it produced goes back through `step`.
@@ -429,9 +381,9 @@ let parseArgs(args: List<String>, o: Options): Result<Options, String> =
   | ["--model", m, ...rest] -> parseArgs(rest, { o with model = m })
   | ["--resume", id, ...rest] -> parseArgs(rest, { o with resume = Option.Some(id) })
   | ["--continue", ...rest] ->
-    match LanguageTools.LocalStore.configGet("agent.last") with
+    match Sessions.current() with
     | Some(id) -> parseArgs(rest, { o with resume = Option.Some(id) })
-    | None -> Result.Error("no earlier session to continue")
+    | None -> Result.Error("no current session to continue; `dark session ls` lists them")
   | ["--fork", id, ...rest] -> parseArgs(rest, { o with fork = Option.Some(id) })
   | ["--branch", b, ...rest] -> parseArgs(rest, { o with branch = Option.Some(b) })
   | ["--max-turns", n, ...rest] ->
@@ -527,101 +479,51 @@ let defaultOptions(): Options =
       hosts = [] }
 
 
-/// The session to run in: a resumed one, a fork of one, or a new one on its own new branch.
-let openSession(state: AppState, o: Options, cwd: String): Result<Session, String> =
-  let fresh(
-    id: String,
-    parentBranch: Uuid,
-    parent: String,
-    messages: String)
-    : Result<Session, String> =
-    match o.branch with
-    | Some(name) ->
-      match SCM.PackageOps.resolveBranchRef(name) with
-      | Found(b) ->
-        Result.Ok(
-          Session
-            { id = id
-              branchId = Stdlib.display(b)
-              parent = parent
-              cwd = cwd
-              model = o.model
-              messages = messages
-              usage = Agent.noUsage() })
-      | _ -> Result.Error($"no branch {name}")
-    | None ->
-      match SCM.PackageOps.resolveBranch($"agent-{id}", parentBranch) with
-      | Ok((b, _created)) ->
-        Result.Ok(
-          Session
-            { id = id
-              branchId = Stdlib.display(b)
-              parent = parent
-              cwd = cwd
-              model = o.model
-              messages = messages
-              usage = Agent.noUsage() })
-      | Error(_) -> Result.Error($"could not start a branch for session {id}")
+/// The session to run in and its conversation: a resumed session, a fork of one, or a new one on
+/// its own new branch. A session no agent has driven yet starts a conversation.
+let openSession(
+  state: AppState,
+  o: Options,
+  cwd: String)
+  : Result<(Sessions.Session * Sessions.Conversation), String> =
+  let started =
+    Sessions.Conversation
+      { parent = "", cwd = cwd, model = o.model, messages = "[]", usage = Agent.noUsage() }
 
   match o.resume, o.fork with
   | Some(id), _ ->
-    match loadSession(id) with
-    | Some(s) -> Result.Ok(s)
+    match Sessions.load(id) with
+    | Some(s) -> Result.Ok((s, s.conversation |> Stdlib.Option.withDefault(started)))
     | None -> Result.Error($"no session {id}")
   | None, Some(id) ->
-    match loadSession(id) with
+    match Sessions.load(id) with
     | Some(s) ->
-      let parentBranch =
-        Stdlib.Uuid.parse(s.branchId) |> Stdlib.Result.withDefault(state.currentBranchId)
-
-      let forkId = nextSessionId()
-      // the fork's branch starts from the parent's commits, so the parent's draft is committed first
-      let _ = Repls.Batch.commitForFork(state, replFor(s), forkId)
-      fresh(forkId, parentBranch, s.id, s.messages)
+      Sessions.fork(state, s)
+      |> Stdlib.Result.map(fun f ->
+        let c = f.conversation |> Stdlib.Option.withDefault({ started with parent = id })
+        (f, { c with model = o.model }))
     | None -> Result.Error($"no session {id}")
-  | None, None -> fresh(nextSessionId(), state.currentBranchId, "", "[]")
+  | None, None ->
+    let id = Sessions.nextId()
+    let branch =
+      match o.branch with
+      | Some(name) ->
+        match SCM.PackageOps.resolveBranchRef(name) with
+        | Found(b) -> Result.Ok(b)
+        | _ -> Result.Error($"no branch {name}")
+      | None ->
+        SCM.PackageOps.resolveBranch($"session-{id}", state.currentBranchId)
+        |> Stdlib.Result.map(fun((b, _created)) -> b)
+        |> Stdlib.Result.mapError(fun _ -> $"could not start a branch for session {id}")
 
-
-/// The session's repl: the same id, on the session's branch, in the module it was in.
-let replFor(s: Session): Repls.Record =
-  match Repls.load(s.id) with
-  | Some(r) -> { r with branchId = s.branchId }
-  | None ->
-    Repls.Record
-      { id = s.id
-        branchId = s.branchId
-        location = []
-        bindings = []
-        watches = []
-        lastReplies = [] }
-
-
-let register(s: Session): Unit =
-  let ids = sessionIds()
-  let _ =
-    if Stdlib.List.contains(ids, s.id) then
-      Result.Ok()
-    else
-      match Stdlib.Json.checkedSerialize<List<String>>(Stdlib.List.append(ids, s.id)) with
-      | Ok(text) -> LanguageTools.LocalStore.configSet("agent.sessions", text)
-      | Error(_) -> Result.Error("could not save the session list")
-
-  let replIds = Repls.ids()
-  let _ =
-    if Stdlib.List.contains(replIds, s.id) then
-      Result.Ok()
-    else
-      Repls.setIds(Stdlib.List.append(replIds, s.id))
-
-  let _ = LanguageTools.LocalStore.configSet("agent.last", s.id)
-  ()
+    branch |> Stdlib.Result.map(fun b -> (Sessions.fresh(id, b, []), started))
 
 
 let providerFor(o: Options): Result<Provider, String> =
   match o.rerun with
   | Some(id) ->
-    match loadSession(id) with
-    | Some(s) -> Result.Ok(Provider.Recorded(repliesOf(messagesOf(s))))
+    match conversationOf(id) with
+    | Some(c) -> Result.Ok(Provider.Recorded(repliesOf(Sessions.messagesOf(c))))
     | None -> Result.Error($"no session {id}")
   | None -> replayOrLive(o)
 
@@ -736,35 +638,8 @@ let endingText(e: Agent.Ending): (String * Bool) =
   | Failed(why) -> (why, true)
 
 
-let listSessions(state: AppState): AppState =
-  let sessions = sessionIds() |> Stdlib.List.filterMap(fun id -> loadSession(id))
-  if Stdlib.List.isEmpty(sessions) then
-    printHint("no sessions yet; `dark agent -p \"...\"` starts one.")
-  else
-    sessions
-    |> Stdlib.List.iter(fun s ->
-      let messages = messagesOf(s)
-      let first =
-        messages
-        |> Stdlib.List.head
-        |> Stdlib.Option.map(fun m -> Agent.textOf(m.content))
-        |> Stdlib.Option.withDefault("")
-
-      let first = Stdlib.String.first(Stdlib.String.replaceAll(first, "\n", " "), 60)
-      let branch =
-        Stdlib.Uuid.parse(s.branchId)
-        |> Stdlib.Result.map(fun b -> Repls.branchText(b))
-        |> Stdlib.Result.withDefault(s.branchId)
-
-      let from = if s.parent == "" then "" else $"  from {s.parent}"
-      Stdlib.printLine(
-        $"{s.id}  {branch}  {Stdlib.display(Stdlib.List.length(messages))} messages{from}  {first}"))
-
-  state
-
-
 let execute(state: AppState, args: List<String>): AppState =
-  if args == [ "--list" ] then listSessions(state) else run(state, args)
+  run(state, args)
 
 
 let run(state: AppState, args: List<String>): AppState =
@@ -774,11 +649,10 @@ let run(state: AppState, args: List<String>): AppState =
     { state with exitCode = 2 }
   | Ok(o) when o.showPrompt -> showPrompt(state, o)
   | Ok(o) when o.prompt == "" && Stdlib.Option.isSome(o.rerun) ->
-    let old = o.rerun |> Stdlib.Option.andThen(fun id -> loadSession(id))
-    match old with
-    | Some(s) -> runWith(state, { o with prompt = taskOf(messagesOf(s)) })
+    match o.rerun |> Stdlib.Option.andThen(fun id -> conversationOf(id)) with
+    | Some(c) -> runWith(state, { o with prompt = taskOf(Sessions.messagesOf(c)) })
     | None ->
-      printErr("no such session to rerun; `dark agent --list` shows them")
+      printErr("no such session to rerun; `dark session ls` shows them")
       { state with exitCode = 2 }
   | Ok(o) when o.prompt == "" && Stdlib.Cli.Sys.isTerminal(0) -> chat(state, o)
   | Ok(o) when o.prompt == "" ->
@@ -834,7 +708,7 @@ let forAiPage(state: AppState): String =
       Registry.executeCommand("docs", { state with exitCode = 0 }, [ "for-ai" ]))
 
   if after.exitCode == 0 then
-    Stdlib.String.trim(Repls.Batch.stripAnsi(text))
+    Stdlib.String.trim(Sessions.Batch.stripAnsi(text))
   else
     ""
 
@@ -870,7 +744,7 @@ let systemPrompt(state: AppState, o: Options, cwd: String, branch: String): Stri
 let showPrompt(state: AppState, o: Options): AppState =
   let cwd = Stdlib.Cli.Posix.getCwd() |> Stdlib.Result.withDefault(".")
   let _ = Stdlib.printLine("=== system prompt")
-  let _ = Stdlib.printLine(systemPrompt(state, o, cwd, "agent-a1"))
+  let _ = Stdlib.printLine(systemPrompt(state, o, cwd, "session-s1"))
   let _ =
     toolsFor(o)
     |> Stdlib.List.iter(fun t ->
@@ -884,22 +758,22 @@ let showPrompt(state: AppState, o: Options): AppState =
   state
 
 
-/// Everything a run needs, before the first prompt: the session (new, resumed or forked), its
-/// repl, the tools and the system prompt.
+/// Everything a run needs, before the first prompt: the session (new, resumed or forked), the tools
+/// and the system prompt.
 let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
   let cwd = Stdlib.Cli.Posix.getCwd() |> Stdlib.Result.withDefault(".")
   match openSession(state, o, cwd), providerFor(o) with
   | Error(why), _ -> Result.Error(why)
   | _, Error(why) -> Result.Error(why)
-  | Ok(session), Ok(provider) ->
-    let _ = register(session)
-    let repl = replFor(session)
-    let branch = Repls.branchText(Repls.branchOf(repl))
+  | Ok((session, conversation)), Ok(provider) ->
+    let session = { session with conversation = Option.Some(conversation) }
+    let _ = Sessions.add(session)
+    let branch = Sessions.branchText(Sessions.branchOf(session))
     let system = systemPrompt(state, o, cwd, branch)
     let ctx =
       Tools.Context
-        { app = Repls.enter(state, repl)
-          repl = repl
+        { app = Sessions.enter(state, session)
+          session = session
           cwd = cwd
           seen = []
           allowed = o.allowed
@@ -913,13 +787,13 @@ let prepare(state: AppState, o: Options, text: TextShown): Result<Run, String> =
           writable = if o.sandbox then sandboxFolders(cwd) else []
           hosts = o.hosts }
 
-    let loop = Agent.start(messagesOf(session), o.maxTurns)
+    let loop = Agent.start(Sessions.messagesOf(conversation), o.maxTurns)
     Result.Ok(
       Run
         { loop = { loop with checksLeft = o.checks, compactAt = o.compactAt }
           queue = []
           ctx = ctx
-          session = session
+          conversation = conversation
           provider = provider
           system = system
           tools = toolsFor(o)
@@ -936,13 +810,13 @@ let turn(run: Run, prompt: String): Run =
 
 
 let branchOfRun(run: Run): String =
-  Repls.branchText(run.ctx.app.currentBranchId)
+  Sessions.branchText(run.ctx.app.currentBranchId)
 
 
 /// The session's draft in a line or two, for the person reading stderr.
 let draftLines(run: Run): List<String> =
   let (_app, _record, status) =
-    Repls.Batch.run(run.ctx.app, run.ctx.repl, "status", Repls.Batch.OnFailure.Stop)
+    Sessions.Batch.run(run.ctx.app, run.ctx.session, "status", Sessions.Batch.OnFailure.Stop)
 
   status.replies
   |> Stdlib.List.map(fun r -> r.lines)
@@ -955,14 +829,14 @@ let draftLines(run: Run): List<String> =
 let usageLine(run: Run, ms: Int64): String =
   let u = run.loop.usage
   let dollars =
-    match Agent.Anthropic.costNanos(run.session.model, u) with
+    match Agent.Anthropic.costNanos(run.conversation.model, u) with
     | Some(n) ->
       let cents = n / 10000000
       let rest = Stdlib.String.padStart(Stdlib.display(cents % 100), '0', 2)
       $", about ${Stdlib.display(cents / 100)}.{rest}"
     | None -> ""
 
-  $"session {run.session.id}: {Stdlib.display(run.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out{dollars}, {Stdlib.display(ms)} ms; `dark @{run.session.id}` opens its repl"
+  $"session {run.ctx.session.id}: {Stdlib.display(run.loop.turns)} model calls, {Stdlib.display(u.input + u.cacheRead + u.cacheWrite)} tokens in ({Stdlib.display(u.cacheRead)} cached), {Stdlib.display(u.output)} out{dollars}, {Stdlib.display(ms)} ms; `dark @{run.ctx.session.id}` works in it"
 
 
 let runWith(state: AppState, o: Options): AppState =
@@ -978,13 +852,14 @@ let runWith(state: AppState, o: Options): AppState =
         emitJson(
           [ ("type", str("system"))
             ("subtype", str("init"))
-            ("session_id", str(run.session.id))
+            ("session_id", str(run.ctx.session.id))
             ("model", str(o.model))
             ("cwd", str(run.ctx.cwd))
             (
               "tools",
               Stdlib.AltJson.Json.Array(run.tools |> Stdlib.List.map(fun t -> str(t.spec.name)))) ])
-      | PlainText -> Stdlib.printErrorLine($"session {run.session.id} on branch {branchOfRun(run)}")
+      | PlainText ->
+        Stdlib.printErrorLine($"session {run.ctx.session.id} on branch {branchOfRun(run)}")
 
     let (finished, usage, turns) = attempts(state, o, run)
     let run = finished
@@ -996,11 +871,11 @@ let runWith(state: AppState, o: Options): AppState =
     let _ =
       match o.rerun with
       | Some(id) ->
-        match loadSession(id) with
+        match conversationOf(id) with
         | Some(old) ->
-          let (total, rows) = rerunDiff(messagesOf(old), finished.loop.messages)
+          let (total, rows) = rerunDiff(Sessions.messagesOf(old), finished.loop.messages)
           let head =
-            $"rerun of {id} as {finished.session.id}: {Stdlib.display(total)} tool results, {Stdlib.display(Stdlib.List.length(rows))} differ"
+            $"rerun of {id} as {finished.ctx.session.id}: {Stdlib.display(total)} tool results, {Stdlib.display(Stdlib.List.length(rows))} differ"
 
           match o.format with
           | StreamJson ->
@@ -1032,7 +907,7 @@ let runWith(state: AppState, o: Options): AppState =
             ("result", str(text))
             ("num_turns", Stdlib.AltJson.Json.Integer(turns))
             ("duration_ms", Stdlib.AltJson.Json.Integer(ms))
-            ("session_id", str(run.session.id))
+            ("session_id", str(run.ctx.session.id))
             (
               "total_cost_usd",
               match Agent.Anthropic.cost(o.model, usage) with
@@ -1056,11 +931,11 @@ let runWith(state: AppState, o: Options): AppState =
 let mergeKept(state: AppState, run: Run): Unit =
   let branch = branchOfRun(run)
   let (_s, _r, committed) =
-    Repls.Batch.run(
+    Sessions.Batch.run(
       run.ctx.app,
-      run.ctx.repl,
-      $"commit \"agent session {run.session.id}\" -y",
-      Repls.Batch.OnFailure.Stop)
+      run.ctx.session,
+      $"commit \"agent session {run.ctx.session.id}\" -y",
+      Sessions.Batch.OnFailure.Stop)
 
   let (after, out) =
     Workbench.captureOutputAnd(fun () ->
@@ -1071,11 +946,11 @@ let mergeKept(state: AppState, run: Run): Unit =
 
   let said =
     if after.exitCode == 0 then
-      $"merged {branch} into {Repls.branchText(state.currentBranchId)}"
+      $"merged {branch} into {Sessions.branchText(state.currentBranchId)}"
     else
-      $"could not merge {branch}: {Stdlib.String.trim(Repls.Batch.stripAnsi(out))}"
+      $"could not merge {branch}: {Stdlib.String.trim(Sessions.Batch.stripAnsi(out))}"
 
-  let _ = Repls.Batch.count(committed, "error")
+  let _ = Sessions.Batch.count(committed, "error")
   Stdlib.printErrorLine(said)
 
 
@@ -1127,7 +1002,7 @@ let attempts(state: AppState, o: Options, first: Run): (Run * Agent.Usage * Int6
       else
         let _ =
           Stdlib.printErrorLine(
-            $"attempt {Stdlib.display(i - 1)} ({last.session.id}) is not done; attempt {Stdlib.display(i)} on a fresh branch")
+            $"attempt {Stdlib.display(i - 1)} ({last.ctx.session.id}) is not done; attempt {Stdlib.display(i)} on a fresh branch")
 
         match prepare(state, { o with prompt = "" }, first.text) with
         | Error(why) -> (best, bestD, last, Stdlib.List.append(failures, why), usage, turns)
@@ -1156,7 +1031,7 @@ let chat(state: AppState, o: Options): AppState =
   | Ok(run) ->
     let _ =
       Stdlib.printErrorLine(
-        $"session {run.session.id} on branch {branchOfRun(run)}; an empty line ends it")
+        $"session {run.ctx.session.id} on branch {branchOfRun(run)}; an empty line ends it")
 
     let (last, _done) =
       Stdlib.List.checkedRange(1, 100000)
@@ -1206,9 +1081,7 @@ let accepts(): Accepts.Accepts =
       "--attempts"
       "--rerun"
       "--hosts" ],
-    Accepts.freeText(
-      0,
-      [ "-p", "--print", "--continue", "--list", "--show-prompt", "--merge", "--sandbox" ]))
+    Accepts.freeText(0, [ "-p", "--print", "--continue", "--show-prompt", "--merge", "--sandbox" ]))
 
 
 let complete(_state: AppState, _args: List<String>): List<Completion.CompletionItem> =
@@ -1218,8 +1091,8 @@ let complete(_state: AppState, _args: List<String>): List<Completion.CompletionI
 let help(_state: AppState): String =
   [ "Usage: agent -p <prompt> [options]     (-p and --print are the same; the prompt may come on stdin)"
     ""
-    "Build what the prompt asks for, in Dark, and print the answer. Each session works on its own"
-    "branch (agent-a1, ...) with its own repl: `dark @a1` shows what it built, `dark merge` takes it."
+    "Build what the prompt asks for, in Dark, and print the answer. It works in a session on a branch"
+    "of its own (session-s1, ...): `dark @s1` works in what it built, `dark merge` takes it."
     ""
     "  --model <id>               default claude-opus-5-5"
     "  --effort <level>           how hard it thinks: low, medium, high (default), xhigh, max"
@@ -1228,8 +1101,7 @@ let help(_state: AppState): String =
     "                             its branch. Any other tool call is put to you at a terminal,"
     "                             and refused otherwise; the model is told why"
     "  (no prompt, at a terminal)   a conversation: one prompt per line, answers streamed"
-    "  --list                     the sessions so far"
-    "  --continue                 continue the last session"
+    "  --continue                 continue the current session (`dark session ls`)"
     "  --resume <id>              continue session <id>"
     "  --fork <id>                a new session from <id>'s conversation, on a branch off its branch"
     "  --branch <name>            work on this existing branch instead of a new one"
