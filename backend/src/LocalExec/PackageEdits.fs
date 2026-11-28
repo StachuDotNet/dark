@@ -499,3 +499,53 @@ let apply () : Result<unit, string> =
   with Refused reason ->
     print $"packages: full reload: {reason}"
     Error reason
+
+
+/// Prototype: save each of <param paths> whole through `dark module`'s own code, so the store's
+/// own parser reads it and the F# parser never runs. The module comes from the file's
+/// `module A.B` line, and the source is everything after it.
+let applyFiles (paths : List<string>) : Result<unit, string> =
+  try
+    let started = System.Diagnostics.Stopwatch.StartNew()
+    LibDB.PackageRefsGenerator.generate true
+    let state = exeState ()
+    let define =
+      match PM.resolveFnRef "Darklang.Cli.Packages.ModuleCommand.defineBundled" with
+      | Some fn -> fn
+      | None ->
+        refuse "the store has no Darklang.Cli.Packages.ModuleCommand.defineBundled"
+    for path in paths do
+      let lines = System.IO.File.ReadAllLines path
+      let header =
+        lines
+        |> Array.tryFindIndex (fun l ->
+          l.StartsWith "module " && not (l.Contains "="))
+      match header with
+      | None -> refuse $"{path} has no `module A.B` line"
+      | Some i ->
+        let modules = lines[i].Substring(7).Trim()
+        let source = lines |> Array.skip (i + 1) |> String.concat "\n"
+        let args = NEList.ofList (RT.DString("/" + modules)) [ RT.DString source ]
+        let t = System.Diagnostics.Stopwatch.StartNew()
+        match
+          LibExecution.HostEvents.runHere (fun () ->
+            Exe.executeFunction state define [] args)
+        with
+        | Ok(RT.DInt64 0L) -> print $"  saved {path} in {t.Elapsed.TotalSeconds:F1}s"
+        | Ok _ -> refuse $"`dark module` did not apply {path}"
+        | Error(rte, _) ->
+          let message =
+            LibExecution.HostEvents.runHere (fun () ->
+              Exe.runtimeErrorMessage state rte)
+          refuse $"`dark module` did not apply {path}: {message}"
+    let _ = LibDB.Inserts.commitAllAsBaseline "package files (baseline)"
+    LibDB.PackageRefsGenerator.generate true
+    match LibDB.Seed.evaluateAllValues (Builtins.all ()) PM.rt with
+    | Ok() -> ()
+    | Error _ -> refuse "some values failed to evaluate"
+    print
+      $"packages: applied {List.length paths} file(s) in {started.Elapsed.TotalSeconds:F1}s"
+    Ok()
+  with Refused reason ->
+    print $"packages: not applied: {reason}"
+    Error reason

@@ -701,6 +701,11 @@ let main (args : string[]) : int =
         "applying the edits to `packages` since the last reload"
         (PackageEdits.apply ())
 
+    | "apply-package-files" :: paths ->
+      handleCommand
+        "saving package files with the store's own parser"
+        (PackageEdits.applyFiles paths)
+
     | [ "migrations"; "run" ] ->
       // Not "deleting the database": an unchanged schema hash makes this a no-op, and even a
       // changed one only drops the regenerable projections. Nothing you authored is at risk, and

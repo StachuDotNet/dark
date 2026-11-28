@@ -1,24 +1,14 @@
 #!/usr/bin/env bash
 # Bring a store grown from a seed up to packages/ at HEAD using the store's own parser, so no
-# F# parser runs: each .dark file changed since <seed-commit> (the commit the seed was cut at) is
-# saved with `dark module`, and the result committed. Deleted files aren't handled yet.
+# F# parser runs: every .dark file changed since <seed-commit> (the commit the seed was cut at)
+# is saved whole through `dark module`'s code, then committed. Deleted files aren't handled yet.
 #
 #   scripts/packages/boot-from-seed <seed-commit>
 . ./scripts/devcontainer/_assert-in-container "$0" "$@"
 set -euo pipefail
 
 base="$1"
-export DARK_NO_FSHARP_PARSER=1
-body="$(mktemp)"
-start=$(date +%s%N)
-count=0
-while read -r f; do
-  if [[ ! -f "$f" ]]; then echo "skipped, deleted: $f"; continue; fi
-  modulePath=$(head -1 "$f" | sed -n 's/^module \(.*\)$/\1/p')
-  tail -n +2 "$f" > "$body"
-  echo "module /$modulePath  ($f)"
-  ./scripts/run-cli --no-trace module "/$modulePath" "$body" < /dev/null
-  count=$((count + 1))
-done < <(git diff --name-only "$base" HEAD -- 'packages/**.dark' | grep -v '_')
-./scripts/run-cli --no-trace commit "packages/ at $(git rev-parse --short HEAD)" -y < /dev/null
-echo "applied $count files in $(( ($(date +%s%N) - start) / 1000000 )) ms"
+mapfile -t files < <(git diff --name-only "$base" HEAD -- 'packages/**.dark' | grep -v '_' || true)
+for f in "${files[@]}"; do [[ -f "$f" ]] || echo "skipped, deleted: $f"; done
+mapfile -t present < <(for f in "${files[@]}"; do [[ -f "$f" ]] && echo "$f"; done)
+DARK_NO_FSHARP_PARSER=1 ./scripts/run-local-exec apply-package-files "${present[@]}"
