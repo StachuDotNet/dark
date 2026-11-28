@@ -26,6 +26,7 @@ type Constructor =
 type Missing =
   /// Leave this part unspecified, displayed as an ellipsis.
   | Anything
+
   /// Describe the outer shape and any missing values within its fields.
   | Built(Constructor, List<Missing>)
 

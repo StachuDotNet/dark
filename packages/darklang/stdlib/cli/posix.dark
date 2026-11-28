@@ -13,46 +13,67 @@ type Os =
 type ErrorKind =
   /// ENOENT
   | NotFound
+
   /// EPERM, EACCES
   | PermissionDenied
+
   /// EEXIST
   | AlreadyExists
+
   /// ENOTDIR
   | NotADirectory
+
   /// EISDIR
   | IsADirectory
+
   /// ENOTEMPTY
   | DirectoryNotEmpty
+
   /// EINVAL
   | InvalidInput
+
   /// Bytes that cannot be read as what they should be
   | InvalidData
+
   /// EINTR
   | Interrupted
+
   /// EAGAIN: nothing to read or no room to write yet
   | WouldBlock
+
   /// ETIMEDOUT
   | TimedOut
+
   /// ESRCH
   | NoSuchProcess
+
   /// ENOSYS, ENOTSUP, EOPNOTSUPP, ENODEV, ENOTTY
   | Unsupported
+
   /// EXDEV
   | CrossesDevices
+
   /// EPIPE
   | BrokenPipe
+
   /// ENOSPC, EDQUOT
   | StorageFull
+
   /// EROFS
   | ReadOnlyFilesystem
+
   /// ELOOP
   | FilesystemLoop
+
   /// ENAMETOOLONG
   | InvalidFilename
+
   /// EBUSY, ETXTBSY
   | ResourceBusy
+
   /// ENOMEM
   | OutOfMemory
+
   /// Any other error number
   | Other
 
@@ -68,10 +89,13 @@ type Errno =
 type Error =
   /// The kernel refused the call
   | Os(Errno)
+
   /// A file's contents are not valid UTF-8
   | InvalidUtf8
+
   /// The kernel answered with a record too short to read, or a write that made no progress
   | BadKernelReply
+
   /// The process ran past its timeout and was killed
   | ProcessTimedOut
 
@@ -414,6 +438,7 @@ let mkdtemp(prefix: String): Result<String, Error> =
 type Lock =
   /// Take the exclusive lock, waiting while another holder has it (LOCK_EX).
   | Exclusive
+
   /// Let go of the lock this fd holds (LOCK_UN).
   | Unlock
 
@@ -459,12 +484,16 @@ let uname(): Result<(String * String * String), Error> =
 type Signal =
   /// The terminal went away (1)
   | SIGHUP
+
   /// Ctrl-C (2)
   | SIGINT
+
   /// Quit, and dump core (3)
   | SIGQUIT
+
   /// Stop now; it cannot be caught or ignored (9)
   | SIGKILL
+
   /// Please stop; the polite one (15)
   | SIGTERM
 

@@ -23,8 +23,10 @@ module Darklang.Cli.LiveView.Host
 /// What a view's `update` receives.
 type Event<'msg> =
   | Key(Stdlib.Cli.UI.Widget.KeyPress)
+
   /// A `Button` was pressed, or an `Input` edited: the message the tree carried.
   | Msg('msg)
+
   /// The view's `every` interval passed: refresh whatever moves on its own.
   | Tick
 
@@ -38,30 +40,44 @@ type Updates =
 /// One running view.
 type Session<'model, 'msg> =
   { branchId: Uuid
+
     view: Model.View
+
     init: LanguageTools.Live.LastGood
+
     update: LanguageTools.Live.LastGood
+
     render: LanguageTools.Live.LastGood
+
     model: 'model
+
     /// The focused `Input` id or `Button` label, "" for none.
     focus: String
+
     /// The last tree that rendered clean. Painted again, under a band, when the newest one did not.
     lastFrame: Option<Stdlib.Cli.UI.Node.Node<'msg>>
+
     /// Why the screen is not the newest code, when it is not.
     band: Option<String>
+
     /// A one-frame note: what just changed.
     toast: Option<String>
+
     /// The first tree row on screen, when the tree is taller than the pane.
     scroll: Int64
+
     /// `Live`: a save repaints the view, and an agent pointing `Live.show` somewhere else
     /// switches it. `Pinned`: the view runs the version it resolved at start and a save changes
     /// nothing on screen, which is what you want when the thing on screen is running and you are
     /// editing something else.
     updates: Updates
+
     /// How far this view has looked at the op log, for `Stdlib.Host.await`. Its own, so a view
     /// opened from the CLI does not take changes the CLI's loop has not seen yet.
     watch: LanguageTools.Live.Watch
+
     terminal: Stdlib.Cli.Tui.TerminalSession.State
+
     exiting: Bool }
 
 

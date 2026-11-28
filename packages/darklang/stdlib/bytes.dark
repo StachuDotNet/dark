@@ -31,6 +31,7 @@ let getAt(bytes: Bytes, index: Int64): Result<UInt8, ReadOutOfRange> =
 type Endianness =
   /// Least significant byte first.
   | LittleEndian
+
   /// Most significant byte first.
   | BigEndian
 

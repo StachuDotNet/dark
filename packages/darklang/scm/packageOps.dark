@@ -202,30 +202,42 @@ let unbind(
 type OpFilter =
   /// Every op in the log, newest first by when it landed here.
   | Recent
+
   /// The ops whose id starts with this, newest first.
   | IdPrefix(prefix: String)
+
   /// The ops a commit holds, oldest first.
   | InCommit(hash: String)
+
   /// The ops a branch can SEE (its own and its ancestors', up to main's), newest first.
   | Visible(branchId: Uuid)
+
   /// The ops a branch can see that landed at or after <param since> (a `created_at`), oldest first:
   /// ids, with `ts` the `created_at`. See `landedSince`.
   | LandedSince(branchId: Uuid, since: String)
+
   /// The ops that landed at the newest `created_at` in the log, on any branch: ids, with `ts` that
   /// `created_at`. See `landedLast`.
   | LandedLast
+
   /// These ops, oldest first. An id the log does not hold is skipped.
   | Ids(ids: List<String>)
+
   /// A branch's draft: its uncommitted ops, oldest first.
   | Draft(branchId: Uuid)
+
   /// The draft's ids, sorted by id.
   | DraftIds(branchId: Uuid)
+
   /// A branch's own ops, committed or not, oldest first, with `source` filled.
   | Own(branchId: Uuid)
+
   /// The ops written on a branch that a merge has since moved to its parent.
   | MergedFrom(branchId: Uuid)
+
   /// Every op of main's, oldest first.
   | Main
+
   /// One row whose `ts` sorts after everything in the log: its latest stamp plus a second, or now
   /// for an empty log.
   | NextStamp
@@ -236,9 +248,13 @@ type OpFilter =
 /// blob; `source` is what put the op on the branch, for `Own` only.
 type OpRow =
   { id: String
+
     ts: String
+
     sizeBytes: Int64
+
     source: String
+
     /// The op, decoded. None where the case reads ids only, and for an op this build cannot read.
     op: Option<LanguageTools.ProgramTypes.PackageOp> }
 
@@ -282,8 +298,11 @@ let stampOf(filter: OpFilter): String =
 /// A lightweight op-log row for display (no op_blob decode): what `dark ops` shows.
 type OpSummary =
   { id: String
+
     sizeBytes: Int64
+
     ts: String
+
     /// The op itself, so a listing can say what the op DOES rather than how many bytes it
     /// is. `None` for an op this build's deserializer cannot read, which a store that has
     /// taken ops from elsewhere holds on purpose; the row still lists, it just cannot
@@ -295,11 +314,14 @@ type OpSummary =
 /// several branches" want different words from the caller, and an Option would flatten them into one.
 type BranchRefResult =
   | Found(Uuid)
+
   /// Not a live name, not an id, not a prefix: a name this store has never had. The ONE miss a write
   /// verb may answer by starting a branch.
   | NotFound
+
   /// A full id, and no branch here has it: a peer's, or a mispaste. Never something to start a branch
   /// named after.
   | UnknownId(Uuid)
+
   /// The prefix matched more than one branch.
   | Ambiguous

@@ -6,15 +6,21 @@ module Darklang.Cli
 module Registry =
   type CommandHandler =
     { name: String
+
       description: String
+
       aliases: List<String>
+
       /// What it takes on the command line, checked before `execute` is called (see `Accepts`). A
       /// function, not a value: every start builds this table, and only the command being run should
       /// pay for building its declaration.
       accepts: Unit -> Accepts.Accepts
+
       execute: (AppState, List<String>) -> AppState
+
       /// Pure: returns the help text; callers decide where it goes.
       help: AppState -> String
+
       complete: (AppState, List<String>) -> List<Completion.CompletionItem> }
 
 

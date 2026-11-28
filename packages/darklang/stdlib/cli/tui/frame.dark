@@ -10,6 +10,7 @@ module Darklang.Stdlib.Cli.Tui.Frame
 type RowChange =
   { /// Zero-based row in the logical view.
     row: Int64
+
     /// Complete styled content for the row, or an empty string to clear it.
     content: String }
 

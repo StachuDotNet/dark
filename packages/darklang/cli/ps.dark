@@ -509,13 +509,16 @@ module Watch =
   type Row =
     /// Another Dark process on this machine, by pid.
     | Machine(pid: Int64, cells: List<String>)
+
     /// A process in this instance, by id.
     | Local(id: Uuid, cells: List<String>)
 
 
   type Model =
     { rows: List<Row>
+
       cursor: Int64
+
       /// What the last `c`/`k` said, shown under the tables until the next key.
       note: String }
 

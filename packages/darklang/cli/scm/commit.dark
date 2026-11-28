@@ -13,11 +13,15 @@ module Darklang.Cli.Commit
 /// Parsed `dark commit` arguments: everything non-flag is the message.
 type Args =
   { message: String
+
     autoConfirm: Bool
+
     /// `--include=` names, empty when committing the whole draft.
     include: List<String>
+
     /// Commit even though something in the draft references a name that does not resolve.
     allowUnresolved: Bool
+
     /// Commit even though the at-rest type check found definite errors in the draft.
     allowTypeErrors: Bool }
 
@@ -240,14 +244,20 @@ let widest(names: List<String>): Int64 =
 /// a human are never looking at differently-derived versions of the same commit.
 type Review =
   { changed: List<SCM.Conflicts.Binding>
+
     withPrevious: List<(SCM.Conflicts.Binding * List<LanguageTools.ProgramTypes.Hash>)>
+
     items: List<ScmJson.ChangedItem>
+
     /// Fully-qualified names the draft removes.
     removed: List<String>
+
     propagates: List<SCM.PackageOps.Repoint>
+
     /// Names that reference an old version and WON'T follow, because they belong to another owner. An outcome, not a
     /// warning: leaving a reference behind is a thing you decide, and this is where you see you decided it.
     conflicts: List<SCM.Conflicts.Conflict>
+
     branch: String }
 
 

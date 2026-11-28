@@ -4,9 +4,12 @@ module Darklang.Stdlib.Test
 /// combines several checks into one; the test still runs and caches as a whole.
 type Result =
   | Pass
+
   | Fail(messages: List<String>)
+
   /// The failing checks of an `all`, each with its position in the list, from 1.
   | FailedChecks(checks: List<(Int64 * Result)>)
+
   /// Each row of a `table`, named by its arguments, with how it went.
   | Rows(rows: List<(String * Result)>)
 

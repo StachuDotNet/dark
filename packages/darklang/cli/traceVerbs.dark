@@ -136,17 +136,26 @@ type ForkJson =
 /// option-of-a-union.
 type TraceJson =
   { id: String
+
     /// `eval`, `run <file>`, `GET /path`.
     entry: String
+
     input: String
+
     /// What the trace answered. Absent while it is still going, and for one that failed.
     answered: Option<String>
+
     status: String
+
     pinned: Bool
+
     /// Wall clock for the whole trace, once it has finished. A run under a millisecond is 0.
     durationMs: Option<Int64>
+
     forkedFrom: Option<ForkJson>
+
     created: String
+
     updated: String }
 
 
@@ -154,10 +163,15 @@ type TraceJson =
 type CallJson =
   { /// Where the call sits in the trace's log: what `fork --at` takes.
     pos: Int64
+
     fn: String
+
     args: List<String>
+
     result: String
+
     durationMs: Int64
+
     /// The process that made the call, for a trace that spawned any.
     process: Option<String> }
 
@@ -172,8 +186,10 @@ type TraceWithCallsJson =
 type LoopIterationJson =
   { /// Which one this is, counting from 1.
     at: Int64
+
     /// `--iteration map:3`, ready to use.
     iteration: String
+
     /// What this iteration produced, by expression id. Everything at once, so an agent never
     /// has to walk in a step at a time the way a person does.
     values: Dict<String, String> }
@@ -198,10 +214,13 @@ type FnRef =
 type LoopJson =
   { /// `map`, `fold`, `map#2`. What `--iteration` takes.
     name: String
+
     /// The function this is a loop of. The short `name` above is unique on the page but does not
     /// say WHICH `map` it was.
     fn: FnRef
+
     count: Int64
+
     iterations: List<LoopIterationJson> }
 
 
@@ -212,9 +231,12 @@ type ProblemJson =
   { /// The error, rendered. For a drift stop this is about running code and may carry advice
     /// for `run`/`eval`, which is not what the reader is doing; `why` is the part that applies.
     message: String
+
     drift: Bool
+
     /// Why, when there is something to say beyond the error itself.
     why: Option<String>
+
     /// The next step, naming this trace, ready to run as printed.
     advice: Option<String> }
 
@@ -252,9 +274,12 @@ let problemJson(
 /// code evaluated to, keyed by the expression's id. `problem` is set when the replay stopped.
 type ValuesJson =
   { trace: String
+
     /// The function this page is of.
     fn: FnRef
+
     values: Dict<String, String>
+
     /// Everything that can be opened, with every iteration and its values.
     ///
     /// A person sees one value a line at a time, because several answers to one question on one
@@ -262,6 +287,7 @@ type ValuesJson =
     /// the bytes do, so the whole tree comes back in one call. `values` above is the flat view,
     /// one value per expression; these are what tells iteration 3 from iteration 7.
     loops: List<LoopJson>
+
     problem: Option<ProblemJson> }
 
 
@@ -435,6 +461,7 @@ let fork(prefix: String, at: Option<Int64>): Bool =
 type Pinning =
   /// Keep it when old traces are dropped to make room.
   | Pin
+
   | Unpin
 
 
@@ -536,8 +563,10 @@ let microsText(us: Int64): String =
 /// What one run spent in the function `traces calls --json` was asked about.
 type TimeInJson =
   { calls: Int64
+
     /// Wall clock inside it, counted from the outermost call only.
     totalUs: Int64
+
     slowestUs: Int64 }
 
 
@@ -706,15 +735,19 @@ type Loop =
     /// not a number from the rendering, so it survives another loop being added above it and
     /// means something without a legend. Two loops of one function are `map` and `map#2`.
     name: String
+
     /// The full name of the function this is a loop of: `Darklang.Stdlib.List.map`. `name` is
     /// its last segment, which is what reads well on a page and what someone types. Two modules
     /// can both hold a `map`; this is what says which one this was.
     fnName: String
+
     /// And its hash, which IS the function. The name can move; this cannot.
     fnHash: String
+
     /// One frame per iteration the REPLAY reached, in the order they ran. These are what carry the
     /// values, because values come from re-running.
     iterations: List<Tracing.Store.ViewFrame>
+
     /// How many iterations the RECORD says there were.
     ///
     /// Usually the same as `iterations`. It differs when the replay stopped early -- an effect the

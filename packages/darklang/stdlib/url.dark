@@ -32,15 +32,20 @@ type ParseError =
   /// No {{scheme:}} at the front, as in {{example.com}} or {{/a/b}}. Use
   /// <fn parseReference> for a relative reference.
   | MissingScheme
+
   | InvalidScheme(scheme: String)
+
   /// An IP address that does not parse, an unclosed {{[}}, or an empty host with
   /// a user or port attached.
   | InvalidHost(host: String)
+
   /// Not digits, or over 65535.
   | InvalidPort(port: String)
+
   /// A character that may not appear unescaped in that part, such as a space.
   /// Percent-encode it first (<fn percentEncode>).
   | InvalidCharacter(part: String, character: String)
+
   /// A {{%}} that is not followed by two hex digits.
   | InvalidPercentEncoding(part: String)
 

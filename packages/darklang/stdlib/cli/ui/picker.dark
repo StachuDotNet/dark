@@ -10,7 +10,9 @@ module Darklang.Stdlib.Cli.UI.Picker
 
 type State =
   { labels: List<String>
+
     selected: Int64
+
     /// First visible row. Carried on the state so the list doesn't jump when the selection moves back into
     /// a window it never left.
     scroll: Int64 }
@@ -19,6 +21,7 @@ type State =
 type Msg =
   /// Enter, with the index into the labels the parent handed in.
   | Chose(Int64)
+
   /// Escape.
   | Cancelled
 

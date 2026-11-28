@@ -41,62 +41,103 @@ type Verdict =
 
 type IssueCode =
   | TypeMismatch
+
   | OccursCheckFailed
+
   | UnknownVariable
+
   | InvalidArgumentIndex
+
   | NotCallable
+
   /// A call gives a function fewer arguments than it takes. Dark has no partial
   /// application; a lambda says which arguments come later.
   | TooFewArguments
+
   /// A call gives a function more arguments than it takes. A function that a call
   /// returns is called by a call of its own: `f(a)(b)`.
   | TooManyArguments
+
   | ExplicitTypeArgumentCountMismatch
+
   | InvalidPattern
+
   | DuplicatePatternBinding
+
   | UnknownRecordField
+
   | UnknownTupleElement
+
   | MissingRecordField
+
   | DuplicateRecordField
+
   | DuplicateDictKey
+
   | UnknownEnumCase
+
   | EnumFieldCountMismatch
+
   | InvalidInfixOperand
+
   | DuplicateTypeParameter
+
   | DuplicateTypeMember
+
   | UnsupportedDictKeyType
+
   | InvalidUnwrap
+
   /// A bound or trait method call at a concrete type with no impl visible for it
   | MissingImpl
+
   /// A bound at a type param of the enclosing fn that does not declare it
   | UnboundTypeParameter
+
   /// More than one impl fits
   | AmbiguousImpl
+
   /// An impl leaves out a trait method, or names one the trait lacks
   | ImplMethodSet
+
   /// An impl's method fn does not have the trait method's signature at the self type
   | ImplMethodSignature
+
   | UnresolvedTypeName
+
   | UnresolvedFunctionName
+
   | UnresolvedValueName
+
   /// `impl Show for Point` where nothing called `Show` is visible
   | UnresolvedTraitName
+
   | MissingTypeDeclaration
+
   | MissingFunctionSignature
+
   | MissingValueSignature
+
   | AliasCycle
+
   | UnknownDeclaredTypeVariable
+
   | AmbiguousType
+
   | NonExhaustiveMatch
+
   /// A match case that earlier cases already cover, so it never runs
   | UnreachableMatchCase
+
   | UnsupportedConstruct
 
 
 /// A function or value the checker names in an issue.
 type NameRef =
   | Builtin(String, Int64)
+
   | Package(ProgramTypes.Hash)
+
   /// A trait method, by the trait type's hash and the method name
   | TraitMethod(ProgramTypes.Hash, String)
 
@@ -104,36 +145,64 @@ type NameRef =
 /// Where in the item the checker was working when it found something.
 type Site =
   | LambdaReturnValue
+
   /// An impl's method fn against the trait method's signature at the self type
   | ImplMethodSignatureSite
+
   | FunctionReturnValue
+
   | UnwrappedError
+
   | ValueBody
+
   | TestBody
+
   | Expression
+
   | StatementBeforeFinalExpression
+
   | FunctionApplication
+
   /// An argument by its zero-based position, and the called function's name as written, when
   /// the call is to a name
   | FunctionArgument(Int64, Option<String>)
+
   | IfWithoutElse
+
   | RecordFieldAccess
+
   | InterpolatedSegment
+
   | UnitLetPattern
+
   | TupleLetPattern
+
   | MatchPattern
+
   | ListPattern
+
   | ListConsPattern
+
   | TupleMatchPattern
+
   | OrPatternBinding
+
   | PipelineInput
+
   | PipelineFunction
+
   | PipelineVariable
+
   | PipelineEnumInput
+
   | PipelineBooleanOperator
+
   | PipelineStringConcatenation
+
   | PipelineComparison
+
   | PipelineNumericOperator
+
   /// The right side of an operator, which must be the left side's type
   | OperatorOperand(ProgramTypes.InfixFnName)
 
@@ -151,14 +220,23 @@ type DuplicateSite =
 /// What the checker could not pin down when it reports an ambiguous type.
 type AmbiguousSubject =
   | NumericOperand
+
   | PipelineNumericOperand
+
   | UnaryMinusOperand
+
   | BitwiseNotOperand
+
   | RecordType
+
   | EnumPatternType
+
   | DictKeyType
+
   | CalleeType
+
   | ItemType
+
   /// A bound whose type is still unknown at the end of the item
   | ConstrainedType
 
@@ -179,50 +257,91 @@ type UntrustedBuiltin =
 /// look the hash up and say what the author called it.
 type Context =
   | InStringInterpolation(Context)
+
   | NoDetail
+
   | At(Site)
+
   | Unresolved(List<String>)
+
   | TypeUnavailable(ProgramTypes.Hash)
+
   | TraitUnavailable(ProgramTypes.Hash)
+
   /// The trait method an impl gets wrong, and what is wrong with it
   | ImplMethod(ProgramTypes.Hash, String, String)
+
   | FunctionUnavailable(NameRef)
+
   | ValueUnavailable(NameRef)
+
   | Identifier(String)
+
   | Identifiers(List<String>)
+
   | Duplicate(String, DuplicateSite)
+
   | Ambiguous(AmbiguousSubject)
+
   | Untrusted(NameRef, UntrustedBuiltin)
+
   /// The trait a bound or method call needed an impl of
   | TraitNeeded(ProgramTypes.Hash, Option<String>)
+
   /// A value used as a function, named as written when available.
   | NonCallableValue(Option<String>)
+
   | Arity(Int64, Int64)
+
   /// A call's source name, when available, and its expected and given counts.
   | FunctionArgumentCount(Option<String>, Int64, Int64)
+
   | NamedArity(String, Int64, Int64)
+
   | TypeArity(ProgramTypes.Hash, Int64, Int64)
+
   | ArgumentIndex(Int64)
+
   | UncoveredPattern(Option<String>)
+
   | UnreachableCase
+
   | InfixOperandUnsupported(ProgramTypes.InfixFnName)
+
   | RecordRequiredForConstruction
+
   | RecordRequiredForFieldAccess
+
   | RecordRequiredForUpdate
+
   | EnumRequiredForConstruction
+
   | EnumRequiredForPattern
+
   | SelfOutsideFunction
+
   | UnwrapRequiresFunction
+
   | UnwrapRequiresOptionOrResult
+
   | UnwrapRequiresMatchingReturnType
+
   | OrPatternBindingsDiffer
+
   | DuplicateBindingId
+
   | DuplicateInferenceId
+
   | ExplicitTypeArgumentsOnNonNamedFunction
+
   | AliasCycleReferenced
+
   | DeclarationTooDeep
+
   | UnaryMinusOperandNotSignedNumeric
+
   | BitwiseNotOperandNotInteger
+
   | CheckerUnavailable(String)
 
 
@@ -236,9 +355,13 @@ type Issue =
 
 type ItemReport =
   { item: ProgramTypes.Reference
+
     verdict: Verdict
+
     diagnostics: List<Issue>
+
     warnings: List<Issue>
+
     /// Which implementation each trait call in this item resolved to. Save-time resolution
     /// is the only caller that reads it; everything that reports to a PERSON reads the
     /// three fields above and ignores this one.
@@ -261,6 +384,7 @@ type Report =
 type CheckFailure =
   /// Nesting deep enough to exhaust the native stack.
   | TooDeep
+
   /// Any other runtime error, rendered.
   | Failed(message: String)
 

@@ -27,6 +27,7 @@ let counts(): Counts =
 type Damage =
   /// A projection: a reload rebuilds past it.
   | Projection
+
   /// The log: re-folding reproduces it.
   | Log
 

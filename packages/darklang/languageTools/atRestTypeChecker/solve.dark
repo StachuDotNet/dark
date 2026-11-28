@@ -7,21 +7,29 @@ module Darklang.LanguageTools.AtRestTypeChecker.Solve
 /// Each operation returns an updated copy with new type assignments or findings.
 type State =
   { env: Model.Environment
+
     /// Types assigned to inference variables; assignments may refer to other variables.
     subst: Dict<Model.Var, Model.Ty>
+
     /// Counter for Fresh variables, separate from unknowns identified by syntax nodes.
     nextVariableId: Int64
+
     /// Reusable local type schemes, keyed by the pattern node that introduced each name.
     schemes: Dict<Int64, Model.Scheme>
+
     /// Requirements waiting for more type information, most recently queued first.
     waiting: List<Model.Constraint>
+
     /// Match-coverage requirements saved for Items to check after type inference.
     /// Some may move into a generic scheme to be checked at each use instead.
     coverage: List<Model.Constraint>
+
     /// Set once the depth warning has been recorded, so siblings do not repeat it.
     gaveUpOnDepth: Bool
+
     /// Errors and warnings accumulated so far, with new findings prepended.
     findings: List<Model.Finding>
+
     /// Which implementation each trait call resolved to, most recent first. Unlike
     /// findings these do not affect the verdict: they are what the caller asked the
     /// check FOR, when that caller is save-time resolution rather than a person.
@@ -748,14 +756,19 @@ let solveOther(s: State, c: Model.Constraint): State =
 type DeferredRequirement =
   /// The subject is used in a record update.
   | RecordType
+
   /// The subject is called as a function; its parameter count is still unknown.
   | CallableType
+
   /// The subject is used by an operator that requires a numeric type.
   | NumericType
+
   /// Accessing or updating this field constrains its type.
   | FieldType(String, Model.Ty)
+
   /// A pattern names this enum case and constrains its payload types.
   | CaseFields(String, List<Model.Ty>)
+
   /// unwrap or ? extracts a payload of this type from the subject.
   | UnwrappedType(Model.Ty)
 
@@ -2404,8 +2417,10 @@ let unwrapUnknown(
 type UnwrapContainer =
   /// Some carries a value; None can be returned early without a payload.
   | OptionOf(value: Model.Ty)
+
   /// Ok carries a value; Error's payload must match the enclosing return type's error payload.
   | ResultOf(value: Model.Ty, error: Model.Ty)
+
   /// Not a standard Option or Result with the expected number of type arguments.
   | NotContainer
 

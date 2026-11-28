@@ -9,8 +9,11 @@ module Darklang.Cli.Packages.Test
 /// for display, while runtime failures are never stored.
 type Outcome =
   | Passed
+
   | Failed(messages: List<String>)
+
   | RuntimeFailed(message: String)
+
   /// A `Stdlib.Test.table`: each row is its own test, in a group named after the test.
   | Rows(rows: List<(String * Outcome)>)
 
@@ -50,12 +53,18 @@ type Timing =
 
 type Counts =
   { passed: Int64
+
     failed: Int64
+
     cached: Int64
+
     ran: Int64
+
     /// Of those that ran, how many needed their own process and store copy.
     isolated: Int64
+
     timings: List<Timing>
+
     /// Each test reported so far, latest first, for `--json`.
     results: List<TestJson> }
 
@@ -602,13 +611,18 @@ let freshSeed(): Int64 =
 
 type RunOptions =
   { force: Bool
+
     /// Print one JSON answer instead of a line per test.
     json: Bool
+
     /// Show failures and the final counts without progress or passing rows. On by default when
     /// stdout is not a terminal.
     brief: Bool
+
     jobs: Int64
+
     seed: Option<Int64>
+
     filters: List<String> }
 
 

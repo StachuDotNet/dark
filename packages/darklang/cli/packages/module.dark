@@ -101,10 +101,13 @@ let landDocEdits(branchId: Uuid, ops: List<LanguageTools.ProgramTypes.PackageOp>
 type SaveMode =
   /// `dark import` can save the declarations that passed parsing, and refuses a script.
   | Import
+
   /// `dark import --skip-expressions`, which leaves a script's expressions out.
   | ImportSkippingExpressions
+
   /// `dark edit`, which saves one declaration through its module.
   | Edit
+
   /// `defineBundled`, for the dev build.
   | DevBuild
 

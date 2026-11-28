@@ -16,14 +16,19 @@ module Darklang.Stdlib.Host
 type EventSpec =
   /// The next key press.
   | Key
+
   /// The package store changed: an op landed here, or was pulled.
   | StoreChanged
+
   /// Fires once, this many milliseconds from now.
   | Timer(ms: Int64)
+
   /// A process (`Exec.list` shows their ids) finished.
   | ExecDone(id: Uuid)
+
   /// The next line of stdin, without its line ending.
   | StdinLine
+
   /// The next this-many BYTES of stdin, as text: a body framed by a `Content-Length`. A wait for
   /// stdin that something else beat leaves its read outstanding, and the next stdin wait must
   /// ask for the same thing, since that read's answer is already on its way.
@@ -46,14 +51,19 @@ type Event =
   /// One read of the keyboard, as the runtime reads it: a key, a paste, or a coalesced burst with
   /// its repeat count. `Stdlib.Cli.UI.Widget.press` narrows it to a `KeyPress` for a widget.
   | Key(Cli.Stdin.KeyRead.KeyRead)
+
   /// What landed: the ops, the names they touched, or `unknown` when it will not say
   /// (`LanguageTools.Live.poll` describes it).
   | StoreChanged(LanguageTools.Live.Change)
+
   | Timer
+
   | ExecDone(id: Uuid)
+
   /// What a `StdinLine` or `StdinBytes` read. A stream that went out of step (a byte count that
   /// ends inside a character) raises rather than arriving here.
   | Stdin(text: String)
+
   /// Stdin ended: nothing more will arrive.
   | StdinClosed
 

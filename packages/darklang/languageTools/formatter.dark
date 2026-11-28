@@ -9,15 +9,20 @@ type Comment =
   { /// The 0-based line of the code it goes above: the next line of code. For one that
     /// goes after code, the line it is on.
     row: Int64
+
     /// The 0-based line the comment itself is on.
     line: Int64
+
     /// After code on the same line, rather than on a line of its own above it.
     trailing: Bool
+
     /// The id of the node it goes with: for one on its own line, the one the next line of code
     /// starts; for one after code, the last to end before it. Empty if there is none.
     node: String
+
     /// The source had a blank line before it.
     blankBefore: Bool
+
     /// From the `//` on, as written.
     text: String }
 
@@ -27,17 +32,24 @@ type Comment =
 type RawComment =
   { /// From the `//` on, as written.
     text: String
+
     /// Where it starts, 0-based.
     line: Int64
+
     column: Int64
+
     /// The line the last thing before it ended on, a comment or code; -1 at the start.
     previousLine: Int64
+
     /// The token before it, as written, and the line that token ends on; "" and -1 at the start.
     previousToken: String
+
     previousEnd: Int64
+
     /// The line the code after it starts on, and where that token and the rest of that line's
     /// first few start, packed (`row * 1000000 + column`).
     nextLine: Int64
+
     nextStarts: List<Int64> }
 
 
@@ -51,17 +63,24 @@ type Item =
   /// `module Name =` and what it holds, or, with <field header>, the `module A.B` that
   /// opens a file and holds the rest of it.
   | Module(name: String, header: Bool, declarations: List<Declaration>)
+
   | Fn(name: String, fn: ProgramTypes.PackageFn.PackageFn)
+
   | Type(name: String, typ: ProgramTypes.PackageType.PackageType)
+
   | Value(name: String, value: ProgramTypes.PackageValue.PackageValue)
+
   | Test(name: String, test: ProgramTypes.PackageTest.PackageTest)
+
   | Trait(name: String, trait_: ProgramTypes.Trait.Trait)
+
   /// The impl, the module its methods live in (owner first), and its methods as the block
   /// wrote them.
   | Impl(
     implementation: ProgramTypes.TraitImpl.TraitImpl,
     memberPath: List<String>,
     members: List<ImplMember>)
+
   /// Printed as written: a trailing expression, or something lowering refused.
   | Verbatim
 
@@ -70,43 +89,58 @@ type Item =
 type ImplMember =
   /// `let show(p: Point): String = ...`, declared in the block.
   | Declared(name: String, fn: ProgramTypes.PackageFn.PackageFn)
+
   /// `let add = Stdlib.String.append`: a method that is a fn from elsewhere.
   | Named(name: String)
 
 
 type Declaration =
   { item: Item
+
     /// Its content hash, which leaves out ids, positions and comments; empty for a module and for
     /// what is printed as written.
     meaning: String
+
     /// The 0-based lines it spans in the source, its `///` lines included.
     row: Int64
+
     endRow: Int64
+
     /// The column its code starts at: its indentation.
     column: Int64
+
     /// Where those lines start and end in the source text.
     startOffset: Int64
+
     endOffset: Int64 }
 
 
 type File =
   { declarations: List<Declaration>
+
     /// The source, as read.
     text: String
+
     rawComments: List<RawComment>
+
     /// Every expression, pattern and pipe stage a comment could belong to (one starting where code
     /// after a comment does, or ending on a comment's line): its id and where it starts and ends,
     /// packed (`row * 1000000 + column`), in the order lowering noted them, a node's parts before
     /// it.
     ranges: List<(String * Int64 * Int64)>
+
     /// The signature of each local fn, by the id of the lambda it lowers to.
     localFns: Dict<String, LocalFn>
+
     /// The ids of the strings written between triple quotes.
     tripleQuoted: List<String>
+
     /// What lowering a list written with `...` left; see `PrettyPrinter.ProgramTypes.Context.spreads`.
     spreads: Dict<String, String>
+
     /// How each plain string and char literal was written, by node id.
     spellings: Dict<String, String>
+
     /// The text between the interpolations of each `$"..."`, as written, by node id.
     textParts: Dict<String, List<String>> }
 
@@ -114,6 +148,7 @@ type File =
 /// A formatted file.
 type Formatted =
   { text: String
+
     /// The declarations printed as written: the ones the printer can't print yet (traits and
     /// impls), and any where printing would have lost a comment.
     asWritten: List<String> }

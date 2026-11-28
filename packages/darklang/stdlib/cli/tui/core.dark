@@ -18,6 +18,7 @@ type Size =
 type ViewMode =
   /// Own the complete terminal using its alternate screen.
   | Fullscreen
+
   /// Occupy the view's logical rows while preserving normal terminal scrollback.
   | Inline
 
@@ -28,6 +29,7 @@ type ViewMode =
 type Cursor =
   /// Do not show the terminal cursor.
   | Hidden
+
   /// Show the cursor at a logical row and column in the view.
   | Visible(row: Int64, column: Int64)
 
@@ -39,7 +41,9 @@ type Cursor =
 type View =
   { /// Rows to render, ordered from top to bottom.
     rows: List<String>
+
     /// Cursor state to apply after presenting the frame.
     cursor: Cursor
+
     /// How the frame occupies the terminal.
     mode: ViewMode }

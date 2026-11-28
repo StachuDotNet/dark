@@ -6,15 +6,20 @@ module Darklang.LanguageTools.ScriptTests
 /// directly.
 type BelowLet =
   { test: String
+
     /// where the test names the first of `calls`, or the `let` itself
     range: Parser.Range
+
     /// When `usesLet`, the script's functions from the one the test names to the one that uses
     /// the `let`, empty when the test uses it directly. Otherwise the one function the test names.
     calls: List<String>
+
     /// Whether `calls` reaches the `let`. If not, the `let` is the first top-level one, which
     /// `calls` is below.
     usesLet: Bool
+
     letName: String
+
     /// counted from 1
     letLine: Int64 }
 

@@ -11,7 +11,9 @@ type Orientation =
 
 type Focus =
   | First
+
   | Second
+
   /// Neither pane has focus; both borders are dim.
   | Neither
 

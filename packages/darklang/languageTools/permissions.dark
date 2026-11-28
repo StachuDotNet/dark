@@ -21,10 +21,15 @@ type HttpPath =
 
 type HttpRule =
   { method: Scope<String>
+
     scheme: Scope<String>
+
     host: HostRule
+
     port: Scope<Int64>
+
     path: HttpPath
+
     /// The query string is part of the request, so `/x?id=public` and
     /// `/x?id=secret` are different requests. A rule written with a query
     /// covers only that exact one (`Only "?id=public"`, leading `?` kept, as
@@ -35,6 +40,7 @@ type HttpRule =
 
 type ProcessRule =
   { executable: Scope<String>
+
     /// The exact argument list, in order, or any.
     args: Scope<List<String>> }
 
@@ -45,26 +51,44 @@ type ProcessRule =
 /// case name and its rule name.
 type Effect =
   | Http
+
   | HttpServer
+
   | FileRead
+
   | FileWrite
+
   | EnvRead
+
   | EnvWrite
+
   | Stdin
+
   | Stdout
+
   | Clock
+
   | Random
+
   | Process
+
   | PackageRead
+
   | PackageWrite
+
   | TraceRead
+
   | TraceWrite
+
   /// Starting a process beside this one (`Exec.spawn`); it runs under the spawner's access.
   /// Not a permission: no rule grants or denies it.
   | Concurrency
+
   /// This process's own in-memory state: its package caches and store watch.
   | Runtime
+
   | Native
+
   /// A call can stop with a runtime error. Not a permission: no rule grants or denies it.
   | Raise
 
@@ -90,10 +114,13 @@ type Policy =
 type ApprovalReviewReason =
   /// The previously approved version could not be loaded for comparison.
   | ApprovedVersionUnavailable(String)
+
   /// The function's type parameters, parameters, or return type changed.
   | FunctionTypeChanged
+
   /// The host could not determine all required permissions.
   | PermissionAnalysisIncomplete
+
   /// The function requires a different set of permissions.
   | RequiredPermissionsChanged(before: List<Effect>, after: List<Effect>)
 
@@ -104,6 +131,7 @@ type ApprovalReviewReason =
 type ApprovalFailure =
   /// Differences from the approved version that need another review.
   | ContractChanged(List<ApprovalReviewReason>)
+
   /// The version cannot be approved as asked: an unknown hash, an
   /// unacknowledged incomplete analysis, rules that never allow an effect it
   /// requires, or a storage failure. The message is complete.
@@ -114,6 +142,7 @@ type ApprovalFailure =
 type ApprovalTarget =
   /// Remove these approvals only if permissions have not changed since review.
   | Names(expected: String, names: List<String>)
+
   /// Change saved rules while keeping the approved version and its analysis fingerprint.
   | EditPolicy(name: String, expected: String, policy: Policy)
 
@@ -121,10 +150,13 @@ type ApprovalTarget =
 /// One approval as an account sees it. A hash approved under several names appears once per name.
 type Approval =
   { hash: String
+
     /// A logical name whose approved version is this hash; None when no name points at it.
     name: Option<String>
+
     /// The consumer policy stored for this hash, when it is approved.
     policy: Option<Policy>
+
     /// The rules written when approving this hash as a root; None for a derived approval.
     explicitRules: Option<Policy> }
 

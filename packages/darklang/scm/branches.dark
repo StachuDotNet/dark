@@ -25,13 +25,17 @@ let current(): Uuid =
 type BranchFilter =
   /// Every branch not archived, newest first, each with its op count.
   | All
+
   /// The branch with this id, archived or not. At most one row.
   | ById(id: Uuid)
+
   /// The newest branch not archived that goes by this name. At most one row.
   | ByName(name: String)
+
   /// The active (unmerged, unarchived) children of this branch, ordered by display name (the id when
   /// the name is "").
   | ChildrenOf(id: Uuid)
+
   /// The bases this branch recorded, one per name it touched, on a single row. Answers whether or not
   /// the branch has a `branches` row, since the bases are kept by id alone.
   | NameBasesOf(id: Uuid)
@@ -41,12 +45,17 @@ type BranchFilter =
 /// "", 0 or empty.
 type BranchInfo =
   { id: String
+
     /// "" when the id is the only handle.
     name: String
+
     parentId: String
+
     merged: Bool
+
     /// `All` only: how many ops it holds.
     ops: Int64
+
     /// `NameBasesOf` only.
     nameBases: List<Conflicts.NameBase> }
 
@@ -63,8 +72,10 @@ let query(f: BranchFilter): List<BranchInfo> =
 type MergeRefusal =
   /// Main is the trunk; there is nothing above it to merge into.
   | IsMain
+
   /// The branch holds no ops, so a merge would move nothing.
   | NothingToMerge
+
   /// Unmerged, unarchived branches sit under this one.
   | HasActiveChildren
 
@@ -118,11 +129,15 @@ let activeChildNames(branchId: Uuid): List<String> =
 /// one place and neither surface has to know the table.
 type BranchRow =
   { id: Uuid
+
     /// a mutable display alias; "" when the id is the only handle
     name: String
+
     parent: Uuid
+
     /// how many ops are on its frontier
     ops: Int64
+
     merged: Bool }
 
 
@@ -254,6 +269,7 @@ type Rebased =
   { /// Names the parent changed that this branch had ALSO changed: a divergence. The newer edit wins
     /// (the branch takes the parent's version when that is the parent's), and the other is recorded.
     diverged: List<String>
+
     /// The branch's own callers of names the parent moved, repointed at the parent's version. Not a
     /// divergence: nobody on the branch touched these, and after the repoint they agree with the
     /// parent by construction.
@@ -375,6 +391,7 @@ let opBindsKey(
 type Keep =
   /// The branch's.
   | Mine
+
   /// The parent's.
   | Theirs
 

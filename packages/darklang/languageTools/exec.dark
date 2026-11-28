@@ -16,16 +16,22 @@ type ParkedOn =
   /// A host operation being performed for a builtin: a file read, an HTTP request, a process
   /// run. The text names the operation and its resource (`file-read /some/path`).
   | Host(String)
+
   /// A builtin that had to wait: `sleep`, the script an `eval` runs.
   | Builtin(RuntimeTypes.FQFnName.Builtin)
+
   /// A package function call that had to wait.
   | PackageFn(RuntimeTypes.FQFnName.Package)
+
   /// A lambda application that had to wait.
   | Lambda
+
   /// The interpreter waiting on the store for a type or value.
   | RareOpcode
+
   /// `Host.await`: one of these.
   | Events(List<Stdlib.Host.EventSpec>)
+
   /// `Exec.await`: this process finishing.
   | Process(Uuid)
 
@@ -39,15 +45,22 @@ type Status =
 
 type Summary =
   { id: Uuid
+
     entry: Entry
+
     status: Status
+
     /// The process that spawned this one, if any (an `eval` expression's is the CLI's).
     parent: Option<Uuid>
+
     started: DateTime
+
     /// How many instructions it has run.
     instructionsTaken: Int64
+
     /// Bytes it has allocated.
     allocated: Int64
+
     /// Reads it started that have not landed yet.
     inflight: Int64 }
 
@@ -58,6 +71,7 @@ type ExecutionPoint = RuntimeTypes.ExecutionPoint
 
 type Detail =
   { summary: Summary
+
     /// The call stack at the moment of the snapshot, outermost first.
     frames: List<ExecutionPoint> }
 
@@ -71,10 +85,14 @@ let list(): List<Summary> =
 /// shows across processes, as against `list`, which is this process's own table.
 type MachineProcess =
   { pid: Int64
+
     /// What a system monitor shows: `dark serve :9090`, `dark eval`.
     title: String
+
     command: String
+
     branch: String
+
     started: DateTime }
 
 

@@ -14,10 +14,14 @@ module Darklang.Tracing
 /// Where a run stands.
 type Status =
   | Running
+
   | Done
+
   | Failed
+
   /// Stopped by Ctrl-C, or a fork nobody has resumed yet. `resume` takes it from here.
   | Suspended
+
   /// Was running when its process went away (killed, or crashed), so it never finished.
   | Lost
 
@@ -37,32 +41,44 @@ type ScriptOrEvalInput =
 /// A run: one row of `traces`.
 type Trace =
   { id: String
+
     /// `eval`, `run <file>`, or `GET /path`: what ran.
     entry: String
+
     /// Source text for CLI runs, or the HTTP request.
     input: LanguageTools.RuntimeTypes.Dval
+
     /// Saved CLI input for replay. HTTP request input is in TraceData.inputs.
     scriptOrEvalInput: Option<ScriptOrEvalInput>
+
     /// True for an HTTP request.
     servedRequest: Bool
+
     /// What the trace answered, once it has. `None` while it is still going, and for one that
     /// failed: there is no answer to show.
     result: Option<LanguageTools.RuntimeTypes.Dval>
+
     status: Status
+
     /// For a fork: the trace it branched from, and the position in that log it kept.
     parent: Option<(String * Int64)>
+
     /// Retention never drops a pinned trace, whatever the caps say.
     pinned: Bool
+
     /// Wall clock for the whole trace, measured by the recorder. `0` for one still going.
     /// Not `updated - created`: those are the same
     /// instant for a served request, and a resumed trace's pair spans the suspension.
     durationMs: Int64
+
     /// Which handler served this, for a trace that is a served request. The only field that
     /// names the ROOT of the trace: `entry` says `GET /orders`, this says which function
     /// answered it.
     entryHash: Option<String>
+
     /// When the trace started.
     created: String
+
     updated: String }
 
 
@@ -75,17 +91,24 @@ type InputVar =
 /// One call a run made, as it was recorded.
 type FnCall =
   { callId: String
+
     fnName: String
+
     args: List<LanguageTools.RuntimeTypes.Dval>
+
     result: LanguageTools.RuntimeTypes.Dval
+
     /// Wall clock for the call. For a read in flight it is measured at the landing, so an HTTP
     /// call carries its round trip rather than the time to hand back a promise.
     durationMs: Int64
+
     /// The process that made the call. `None` for a run nobody scheduled.
     processId: Option<Uuid>
+
     /// Where this call completed in the whole trace, across processes. One process's rows in
     /// `seq` order are its log; all of them are the interleaving.
     seq: Int64
+
     /// This call's place in its process's effect log, what a resume keys on; -1 for a row that
     /// is not in the log, such as the marker a truncated trace ends with.
     ord: Int64 }
@@ -95,12 +118,16 @@ type FnCall =
 /// same idea as classic's trace dots, for any function rather than only a handler.
 type Call =
   { callId: String
+
     /// The trace it was made in.
     traceId: String
+
     /// What that trace was: `eval`, `run <file>`, `GET /path`.
     entry: String
+
     /// When the run started.
     created: String
+
     /// Where the call sits in the run's effect log, or -1 for a call with no effects.
     ord: Int64 }
 
@@ -117,32 +144,45 @@ type TraceData =
 type TraceQuery =
   /// The newest runs.
   | Newest(limit: Int64)
+
   /// The newest runs with a call whose function name contains this text.
   | Calling(fnName: String, limit: Int64)
+
   /// The newest runs that went through a function: by its name, or by its hash when that is
   /// not "". `Tracing.Store.wentThrough` says why it takes both.
   | WentThrough(fnName: String, fnHash: String, limit: Int64)
+
   /// What each of the runs `WentThrough` finds spent in that function, in the same order.
   | TimeIn(fnName: String, fnHash: String, limit: Int64)
+
   /// One run by its full id.
   | ById(traceID: String)
+
   /// The newest runs whose input, result or any recorded call's args or result contains this
   /// text (case-sensitive), searching the newest 2000 runs.
   | Containing(pattern: String, limit: Int64)
+
   /// One run with its inputs and its calls.
   | Detail(traceID: String)
+
   /// The ids that start with this text, newest first, at most six.
   | IdsStartingWith(prefix: String)
+
   /// A run's saved CLI input, without its result.
   | SavedInput(traceID: String)
+
   /// The package functions one run went through, with the hash it went through.
   | FnsOf(traceID: String)
+
   /// How many times each loop in one run went round, as recorded.
   | LoopPasses(traceID: String)
+
   /// Which package functions the last N runs went through, and in how many runs each.
   | FnCounts(traceLimit: Int64)
+
   /// Impure call timings over the last N runs, per function.
   | Hotspots(traceLimit: Int64)
+
   /// Run timings over the last N runs, per entry.
   | StatsByHandler(traceLimit: Int64)
 
@@ -151,16 +191,22 @@ type TraceQuery =
 /// `runs` answers `Newest`, `Calling`, `WentThrough`, `ById` and `Containing`.
 type TraceAnswer =
   { runs: List<Trace>
+
     /// `Detail`.
     detail: Option<TraceData>
+
     /// `IdsStartingWith`.
     ids: List<String>
+
     /// `SavedInput`.
     savedInput: Option<ScriptOrEvalInput>
+
     /// `FnsOf`: (name, hash).
     fns: List<(String * String)>
+
     /// `LoopPasses`: (call site, passes). `FnCounts`: (function name, runs).
     counts: List<(String * Int64)>
+
     /// `Hotspots`: (function name, calls, total ms, max ms). `StatsByHandler`: (entry, runs,
     /// total ms, max ms). `TimeIn`: (trace id, calls, total µs, slowest call's µs).
     totals: List<(String * Int64 * Int64 * Int64)> }
@@ -170,9 +216,12 @@ type TraceAnswer =
 type TraceSelection =
   /// One run by its full id.
   | One(traceID: String)
+
   | All
+
   /// The runs recorded before this ISO 8601 timestamp.
   | Before(cutoff: String)
+
   /// All but the newest few, keeping any run a suspended one still needs.
   | AllButNewest(keep: Int64)
 

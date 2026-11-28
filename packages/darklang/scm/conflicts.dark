@@ -26,14 +26,21 @@ let onBranch(): Uuid =
 /// (the same `origin_ts` the fold's LWW compares).
 type Binding =
   { owner: String
+
     modules: String
+
     name: String
+
     itemType: String
+
     hash: String
+
     originTs: String
+
     /// WHO wrote it, when that is known. "" for anything read out of the local projection, which does not
     /// record authorship per name; the local side of a conflict is labelled by the caller instead.
     author: String
+
     /// The hash this binding REPLACED, when the op said. `None` means no predecessor was recorded, as by a
     /// parser that had no store to ask.
     ///
@@ -48,10 +55,15 @@ type Binding =
 /// then have to know about a case that has no version to offer.
 type Removal =
   { owner: String
+
     modules: String
+
     name: String
+
     originTs: String
+
     author: String
+
     /// What the name held when it was ended. A removal of exactly what you hold is an ordinary
     /// removal; a removal of something you have since edited is the divergence.
     previous: Option<String> }
@@ -69,14 +81,19 @@ type NameBase =
 /// a best-effort label (an identity or a source id) -- ops aren't signed yet, so it's attribution, not proof.
 type Candidate =
   { side: String
+
     hash: String
+
     /// This side ENDED the name rather than binding it. `hash` is empty, and there is nothing to
     /// take but the removal itself.
     removed: Bool
+
     /// The competing TEXT, for a divergence whose sides are prose rather than versions. Empty for a
     /// name divergence, where the hash is what identifies a side and the text is the item itself.
     text: String
+
     originTs: String
+
     author: String }
 
 
@@ -84,18 +101,29 @@ type Candidate =
 /// `candidates` so the choice is reviewable and reversible rather than silent.
 type Conflict =
   { id: String
+
     owner: String
+
     modules: String
+
     name: String
+
     itemType: String
+
     /// WHICH part of the declaration, for a doc divergence: "item", "record-field:x",
     /// "enum-case:X", "parameter:0". Empty for a name divergence, which is about the whole binding.
     part: String
+
     kind: String
+
     candidates: List<Candidate>
+
     autoResolvedTo: String
+
     reason: String
+
     status: String
+
     resolvedBy: String }
 
 
@@ -103,9 +131,11 @@ type Conflict =
 type ConflictFilter =
   /// Conflicts awaiting a human on this branch, oldest first.
   | Pending(branchId: Uuid)
+
   /// The one conflict on this branch whose id starts with the reference, or whose name (dotted, or
   /// bare) is that. Pending ones first, then oldest. At most one comes back.
   | ByRef(reference: String, branchId: Uuid)
+
   /// The acked records that are not name conflicts: the constraint acks. Only `id` is filled.
   | AckedConstraints
 

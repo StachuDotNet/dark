@@ -397,16 +397,21 @@ let prepareDeclarations(env: Model.Environment): Model.Environment =
 /// nextIndex assigns discovery numbers; groups finish after their dependencies.
 type Components =
   { nextIndex: Int64
+
     /// Discovery number for every declaration visited so far.
     index: Dict<ProgramTypes.Hash, Int64>
+
     /// Lowest discovery number propagated from a newly visited dependency or
     /// a reference to a declaration still on stack. Equality with a declaration's
     /// own index identifies the root of its component.
     lowLink: Dict<ProgramTypes.Hash, Int64>
+
     /// Visited declarations whose component has not yet been completed.
     stack: List<ProgramTypes.Hash>
+
     /// Membership lookup for stack, avoiding a list scan for each dependency.
     onStack: Dict<ProgramTypes.Hash, Bool>
+
     /// Completed groups, with the most recently completed group first.
     completed: List<List<ProgramTypes.Hash>> }
 

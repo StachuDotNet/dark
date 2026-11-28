@@ -15,13 +15,18 @@ type Tone =
 type Frame =
   { /// Left of the title bar. The document name, the branch, whatever names the thing on screen.
     title: String
+
     /// The mode badge, right of the title. "" for none.
     badge: String
+
     badgeTone: Tone
+
     /// The key hints along the bottom.
     help: String
+
     /// A transient status line. When set it replaces the help bar for that frame.
     message: String
+
     messageTone: Tone }
 
 

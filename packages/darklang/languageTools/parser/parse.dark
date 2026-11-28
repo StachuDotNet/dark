@@ -24,8 +24,10 @@ let diagnostics(code: String): List<(Range * String)> =
 type ParseError =
   /// The parser's syntax diagnostics, as (range, message) pairs, in source order. Never empty.
   | Syntax(diagnostics: List<(Range * String)>)
+
   /// The tokenizer failed outright, so there is no tree and nothing more specific to say.
   | NoTree
+
   /// `parsePTExpr` wants exactly one expression, and the source held this many.
   | NotOneExpression(count: Int64)
 

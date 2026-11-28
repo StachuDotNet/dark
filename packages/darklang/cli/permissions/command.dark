@@ -2,13 +2,20 @@ module Darklang.Cli.Permissions.Command
 
 type AccessReportFacts =
   { hash: String
+
     effects: List<LanguageTools.Permissions.Effect>
+
     complete: Bool
+
     bundled: Bool
+
     approvals: List<(String * LanguageTools.Permissions.Policy)>
+
     approvedAs: List<String>
+
     /// The version an approval under this name is for, when that is another version.
     olderApproval: Option<String>
+
     instancePolicy: LanguageTools.Permissions.Policy }
 
 

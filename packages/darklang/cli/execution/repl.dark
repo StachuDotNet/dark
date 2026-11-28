@@ -16,13 +16,16 @@ module Darklang.Cli.Repl
 /// A session binding: the name, the source it stands for, and what that source last evaluated to.
 type Binding =
   { name: String
+
     /// Source text - either a captured literal or the original expression (see `captured`). This is what
     /// gets re-injected as the `let` chain.
     source: String
+
     /// What to show for this binding: its value. For a captured binding that IS the source, since the
     /// source is a literal. For an uncaptured one the source is an expression, and the pane shows what it
     /// evaluated to rather than repeating text already visible in the log on the left.
     value: String
+
     /// True when `source` is the value itself, false when it's the expression that recomputes it.
     captured: Bool }
 

@@ -9,8 +9,11 @@ module Darklang.Cli
 
 type SubAppAction =
   | Continue
+
   | Save
+
   | Exit
+
   /// Hand off to another command (e.g. a browser launching a foreground app), replacing this page.
   | LaunchCommand(String)
 
@@ -18,21 +21,26 @@ type SubAppAction =
 type SubApp =
   { onKey: (Stdlib.Cli.Stdin.Key.Key, Stdlib.Cli.Stdin.Modifiers.Modifiers, Option<String>) ->
     (SubAppAction * SubApp)
+
     onDisplay: Unit -> Unit
+
     /// Persist, and return the app as it stands afterwards.
     ///
     /// Returns a `SubApp` rather than `Unit` because saving can fail (a full disk, a read-only home) and
     /// the only place that can say so is the app itself, on the frame after the write.
     onSave: Unit -> SubApp
+
     /// Restore the app's terminal surface when the CLI exits on Ctrl-C,
     /// bypassing the app's own exit action. Safe when already stopped.
     onTerminate: Unit -> Unit
+
     /// Re-take the terminal after another page owned it (see `pageStack`).
     ///
     /// The returned SubApp must hold a freshly started terminal session: the retained one is stale, because
     /// whatever ran on top tore the surface down when it stopped. Diffing against that stale view would
     /// paint garbage, so resuming repaints from scratch.
     onResume: Unit -> SubApp
+
     /// The package store changed under the page (an edit from another process, a pull). The page
     /// re-reads what it shows, or ignores it, and presents.
     onStoreChanged: LanguageTools.Live.Change -> SubApp }
@@ -47,42 +55,61 @@ type Page =
 
 type AppState =
   { isExiting: Bool
+
     prompt: Prompt.State
+
     packageData: Packages.State
+
     currentPage: Page
+
     /// Pages to return to, innermost first. A SubApp that launches another page (e.g. the workbench opening a
     /// foreground app) pushes itself here; when the launched page exits, we pop back instead of quitting.
     pageStack: List<Page>
+
     /// The branch this session is on, `SCM.Branch.mainBranchId` for main. A NAME is what you type; the
     /// entry point resolves it once.
     currentBranchId: Uuid
+
     accountID: Option<Uuid>
+
     /// Retained presentation state while the main prompt owns an inline region.
     promptTerminal: Option<Stdlib.Cli.Tui.TerminalSession.State>
+
     /// True when invoked from the command line (not the interactive REPL)
     nonInteractive: Bool
+
     /// Cached completion hint — skip recompute when prompt text unchanged
     cachedHintInput: String
+
     cachedHintValue: String
+
     /// Completion results for the current *context* (command + completed args), which is what an expensive
     /// completion actually depends on. Keyed by `Registry.completionContextKey`, so it survives every
     /// keystroke of the word being typed rather than being thrown away on each character.
     cachedCompletionKey: String
+
     cachedCompletionItems: List<Completion.CompletionItem>
+
     /// The last partial token filtered and what it produced, so the next keystroke can narrow from it
     /// instead of re-filtering the whole context list. Empty partial means "no usable base".
     cachedFilterPartial: String
+
     cachedFilterItems: List<Completion.CompletionItem>
+
     /// Cached command list and option strings — built once at startup
     allCommandsCache: List<Registry.CommandHandler>
+
     commandOptionsCache: List<String>
+
     /// When true, write telemetry to rundir/logs/telemetry.jsonl
     telemetryEnabled: Bool
+
     /// What the process exits with in non-interactive use. 0 unless a command sets it: an unknown
     /// command, a failed `eval`, and the `--json` failure paths do, so scripts and agents can
     /// branch on the exit rather than parse prose. (Most commands still report failure in prose
     /// only; they set this as they are touched.)
     exitCode: Int64
+
     /// How the command being run prints its answer; `Registry.executeCommand` sets it per command.
     output: Output.Mode }
 
@@ -163,6 +190,7 @@ module Stderr =
 type Confirm =
   /// Ask, and take only `y` as yes.
   | Ask
+
   /// Go ahead without asking: the command line said `-y` or `--yes`.
   | Assume
 
@@ -287,11 +315,16 @@ module ExecutionError =
   /// and the function whose approval was checked (None for the instance policy).
   type PermissionDenied =
     { error: LanguageTools.RuntimeTypes.RuntimeError.Error
+
       resource: String
+
       rule: Option<String>
+
       /// For a process, the rule allowing that program with any arguments.
       anyArgsRule: Option<String>
+
       entry: Option<String>
+
       callStack: List<LanguageTools.RuntimeTypes.ExecutionPoint> }
 
 
@@ -299,20 +332,25 @@ module ExecutionError =
   /// structured payload — no flattening to strings at the boundary.
   type ExecutionError =
     | Parse(LanguageTools.Parser.CliScript.ParseError)
+
     /// A definite type error found before anything ran, and where each node the report
     /// names starts in the source: (node id, line, column), both 1-based.
     | TypeCheck(
       report: LanguageTools.AtRestTypeChecker.Report,
       locations: List<(UInt64 * Int64 * Int64)>)
+
     /// `lambdaLines`: the line each lambda in the stack starts on, by its node id, when the
     /// script's source has it.
     | Runtime(
       error: LanguageTools.RuntimeTypes.RuntimeError.Error,
       callStack: List<LanguageTools.RuntimeTypes.ExecutionPoint>,
       lambdaLines: List<(UInt64 * Int64)>)
+
     | Denied(PermissionDenied)
+
     /// The user cancelled a permission prompt.
     | Cancelled
+
     | Unhandled(Unhandled)
 
 
@@ -460,6 +498,7 @@ module ExecutionError =
   type Entry =
     /// A script file or `run -`: its lines are the user's, so a crash there is shown by line.
     | Script
+
     /// A saved function or an `eval`: the source is a one-line call the reader did not write.
     | Call
 

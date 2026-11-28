@@ -6,11 +6,15 @@ module Darklang.LanguageTools.AtRestTypeChecker.Items
 /// The verdict and reported issues for one declaration.
 type Outcome =
   { verdict: Verdict
+
     diagnostics: List<Issue>
+
     warnings: List<Issue>
+
     /// Present only for Checked declarations. The batch saves package values'
     /// schemes so later declarations can use their inferred types.
     scheme: Option<Model.Scheme>
+
     /// Which implementation each trait call in this declaration resolved to, in the
     /// order the solver saw them. Empty unless the declaration is Checked, for the same
     /// reason scheme is: these come off a type assignment, and one the checker rejected
@@ -447,8 +451,11 @@ let valueDependencies(c: Model.Constraint): List<ProgramTypes.Hash> =
 /// the syntax walk.
 type PendingValue =
   { value: ProgramTypes.PackageValue.PackageValue
+
     typ: Model.Ty
+
     constraints: Model.Constraint
+
     /// Distinct package-value hashes referenced by the generated requirements.
     uses: List<ProgramTypes.Hash> }
 

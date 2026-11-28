@@ -341,9 +341,12 @@ module Middleware =
 module Config =
   type Config =
     { address: String
+
       port: Net.Port
+
       /// Maximum request body size in bytes (over-limit → 413).
       maxBodyBytes: Int64
+
       /// Wraps every handler, first listed outermost (<type Stdlib.HttpServer.Middleware>).
       middleware: List<Middleware> }
 
@@ -387,6 +390,7 @@ type Reload =
   /// (`GET /__live` is an event stream; HTML responses carry the script that listens). For a
   /// dev site, not production.
   | OnSave
+
   /// Pages are served as they are, with no script and no `/__live`.
   | Off
 

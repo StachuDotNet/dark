@@ -13,8 +13,10 @@ module Darklang.SCM.Deps
 type DepQuery =
   /// What one item references, as distinct (hash, kind) pairs.
   | Of(hash: String)
+
   /// The distinct hashes these items reference.
   | Closure(hashes: List<String>)
+
   /// Whether anything references this hash: at most one edge comes back.
   | Referenced(hash: String)
 
@@ -23,8 +25,10 @@ type DepQuery =
 type DepEdge =
   { /// The item holding the reference.
     itemHash: String
+
     /// What it references, as the edge recorded it.
     dependsOnHash: String
+
     dependsOnType: String }
 
 

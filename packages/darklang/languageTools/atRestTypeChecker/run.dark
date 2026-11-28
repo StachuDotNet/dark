@@ -6,11 +6,16 @@ module Darklang.LanguageTools.AtRestTypeChecker.Run
 /// Repeated operations for the same declaration share one entry.
 type Candidates =
   { types: Dict<ProgramTypes.Hash, ProgramTypes.PackageType.PackageType>
+
     values: Dict<ProgramTypes.Hash, ProgramTypes.PackageValue.PackageValue>
+
     fns: Dict<ProgramTypes.Hash, ProgramTypes.PackageFn.PackageFn>
+
     impls: Dict<ProgramTypes.Hash, ProgramTypes.TraitImpl.TraitImpl>
+
     /// Not checked themselves, but their methods are what calls in this batch are typed against
     traits: Dict<ProgramTypes.Hash, ProgramTypes.Trait.Trait>
+
     tests: Dict<ProgramTypes.Hash, ProgramTypes.PackageTest.PackageTest> }
 
 
@@ -113,12 +118,15 @@ let collectItemReferences(
 /// prepared, built once (`baseFor`).
 type Base =
   { env: Model.Environment
+
     /// When true, the pool is the whole branch and closed (every type, fn signature and value in
     /// it refers only to things in it), so <param env> also holds every pool value's scheme and a
     /// piece loads nothing the pool holds. Its fns' bodies are covered only because every fn they
     /// can call is in the pool too. When false, pieces load their closures as before.
     closed: Bool
+
     pool: Environment.Closure
+
     /// Each pool value's outcome, worked out once in <param env>. Empty unless closed.
     values: Dict<ProgramTypes.Hash, Items.Outcome> }
 

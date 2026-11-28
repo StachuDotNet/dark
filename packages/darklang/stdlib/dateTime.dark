@@ -233,6 +233,7 @@ let __roundedDifference(endDate: DateTime, startDate: DateTime, ticksPerUnit: In
 type ParseError =
   /// The input does not use a supported ISO 8601 format, time or UTC offset.
   | InvalidFormat
+
   /// The input uses a supported format, but its year, month or day is not a valid calendar date.
   | InvalidDate
 
@@ -696,8 +697,10 @@ let format(date: DateTime, pattern: String): Result<String, String> =
 type PatternMismatch =
   /// The expected character and the character found, or {{None}} at the end of the text.
   | Literal(Char, Option<Char>)
+
   /// The directive whose field could not be read, given as the character after {{%}}.
   | Field(Char)
+
   /// The first character left over after the pattern matched.
   | TrailingText(Char)
 
@@ -707,14 +710,17 @@ type PatternParseError =
   /// The pattern has a {{%}} sequence that is not a directive, or ends in a lone {{%}}.
   /// The {{String}} is the sequence as written, such as {{"%Q"}} or {{"%"}}.
   | UnknownDirective(String)
+
   /// The pattern names the same field twice, such as {{"%d/%d"}}, which could hide an
   /// impossible date behind a later value. The {{String}} is the directive, such as
   /// {{"%d"}}. {{%%}} may appear any number of times.
   | RepeatedDirective(String)
+
   /// The zero-based character position of the mismatched literal, the start of a field
   /// that could not be read, or the first character left over after the pattern.
   /// The displayed message counts characters from one.
   | Mismatch(Int64, PatternMismatch)
+
   /// Every field matched, but together they name no real moment: February 30th, hour 24,
   /// an offset of {{+25:00}}, or a time outside -9998-01-01 to 9999-12-31 in UTC
   | InvalidDate

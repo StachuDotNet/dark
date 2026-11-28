@@ -10,6 +10,7 @@ module Darklang.LanguageTools.PackageManager
 /// structurally identical), we use context to pick the best display name.
 type PickContext =
   { currentModule: List<String>
+
     /// Which name to pick when the hash has several, if this is one of them.
     ///
     /// A hash can be bound to more than one location -- two items with identical

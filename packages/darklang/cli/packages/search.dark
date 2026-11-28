@@ -214,15 +214,21 @@ let synonymQueries(query: String): List<(String * String)> =
 // A query read once for ranking, since a search ranks every result against it.
 type Ranker =
   { item: String
+
     joined: String
+
     // Each word ranks too, unless the query is dotted: `List.map` names its item last.
     words: List<String>
+
     // The names and modules its synonyms stand for, lowercased: `length` for `size`,
     // and `datetime` with `now` for `current time`.
     synonymNames: List<String>
+
     synonymModules: List<String>
+
     // The words, then the synonym names: what a name is ranked by beside the item token.
     names: List<String>
+
     // How many items call each result, by its full path.
     uses: Dict<String, Int64> }
 
@@ -684,9 +690,12 @@ type NothingFound =
   { // Each word of a several-word query, and how many items it finds alone. Empty
     // for a one-word query.
     wordCounts: List<(String * Int64)>
+
     // Each word that finds nothing, and the names it may be a typo of.
     didYouMean: List<(String * List<String>)>
+
     fallback: Option<FallbackSuggestions>
+
     // Closest matches when nothing has every word: each name, with the words it matched.
     partial: List<(String * List<String>)> }
 

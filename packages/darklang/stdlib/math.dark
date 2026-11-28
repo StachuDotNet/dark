@@ -498,8 +498,10 @@ type ShiftError =
 type NonFinite =
   /// The result is too large for the type
   | Overflow
+
   /// The divisor, or the base of a negative power, is zero
   | DivisionByZero
+
   /// The result is NaN, as for the square root of a negative number
   | NotANumber
 

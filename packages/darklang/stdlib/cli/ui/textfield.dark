@@ -14,6 +14,7 @@ module Darklang.Stdlib.Cli.UI.TextField
 
 type State =
   { text: String
+
     /// Grapheme index the cursor sits *before*: 0 is the start, `length text` is the end.
     cursor: Int64 }
 
@@ -22,6 +23,7 @@ type State =
 type Msg =
   /// Enter, with the text as it stands.
   | Submitted(String)
+
   /// Escape. The parent decides whether that discards anything.
   | Cancelled
 

@@ -5,14 +5,19 @@ module Darklang.Cli.Http.Serve
 /// Parsed flags + positional. `routerPath = ""` means "no router given".
 type Args =
   { address: String
+
     routerPath: String
+
     port: Stdlib.Net.Port
+
     maxBodyBytes: Int64
+
     /// `--live`: resolve the router by name per request, on the last version that passes its
     /// checks (`LanguageTools.Live`), and tell an open browser page to reload itself when the version
     /// moves. OFF unless asked for: a server that changes under you while you edit is a thing
     /// to opt into, not something to discover.
     live: Bool
+
     error: Option<String> }
 
 

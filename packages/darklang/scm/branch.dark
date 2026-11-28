@@ -51,12 +51,16 @@ let fromTextField(text: Option<String>): Uuid =
 /// reads and can change.
 type Branch =
   { id: Uuid
+
     name: String
+
     /// The parent's id, or None when the parent is main. Main has no `branches` row of its own, so it is
     /// never itself a `Branch` here even though it has an ordinary id.
     parentBranchId: Option<Uuid>
+
     /// How many ops sit on this branch's frontier.
     ops: Int64
+
     merged: Bool }
 
 

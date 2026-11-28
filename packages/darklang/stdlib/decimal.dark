@@ -138,14 +138,19 @@ let __stripZeros(unscaled: BigInt, scale: Int64): (BigInt * Int64) =
 type RoundingMode =
   /// To the nearer neighbour, a tie away from zero: 2.5 is 3, -2.5 is -3
   | HalfAwayFromZero
+
   /// To the nearer neighbour, a tie to the even one (banker's rounding): 2.5 is 2, 3.5 is 4
   | HalfEven
+
   /// Drop them: 2.9 is 2, -2.9 is -2
   | TowardsZero
+
   /// Round up in magnitude whenever anything is dropped: 2.1 is 3, -2.1 is -3
   | AwayFromZero
+
   /// Towards negative infinity: 2.9 is 2, -2.1 is -3
   | Floor
+
   /// Towards positive infinity: 2.1 is 3, -2.9 is -2
   | Ceiling
 
@@ -154,6 +159,7 @@ type RoundingMode =
 type RoundError =
   /// The places asked for are outside 0 to 28
   | PlacesOutOfRange
+
   /// Padding to the places asked for needs more than 96 bits
   | OutOfRange
 

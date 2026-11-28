@@ -9,26 +9,38 @@ type Range = Parser.Range
 type TokenType =
   // universal
   | Symbol
+
   | Keyword
 
   // types
   | ModuleName
+
   | TypeName
 
   // exprs and fns
   | Operator
+
   | String
+
   | Number
+
   | ParameterName
+
   | VariableName
+
   | FunctionName
 
   // FUTURE: these are not yet used
   | Comment
+
   | TypeParameter
+
   | EnumMember  // in Option.Some, this would be `Some`
+
   | Property  // ? maybe this should be used for fields
+
   | Method  // ? or maybe this should be used for fields
+
   | RegularExpression
 
 

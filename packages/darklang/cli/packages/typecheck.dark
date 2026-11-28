@@ -3,8 +3,11 @@ module Darklang.Cli.Packages.Typecheck
 
 type Counts =
   { checkedCount: Int64
+
     failedCount: Int64
+
     incompleteCount: Int64
+
     /// Of the failed, how many name something that resolves to nothing.
     unresolvedCount: Int64 }
 

@@ -36,8 +36,10 @@ type Touched =
 type Change =
   { /// The ops that landed since the last poll, oldest first, as the branch sees them.
     ops: List<SCM.PackageOps.OpSummary>
+
     /// The names those ops bound or unbound. What `affects` walks from.
     touched: List<Touched>
+
     /// The store moved but the ops could not be named: a pull that landed ops stamped before the newest
     /// one here, or more ops than the poll is willing to describe. `affects` answers true for everything.
     unknown: Bool }
@@ -47,14 +49,18 @@ type Change =
 /// has reported.
 type Watch =
   { branchId: Uuid
+
     version: Int64
+
     /// The newest insert time (`created_at`, millisecond resolution) seen so far. The next poll asks
     /// for everything from it on, itself included.
     since: String
+
     /// The ids already seen at `since`, so they are not reported twice. Kept until a later landing
     /// moves `since`: the clock passing `since` does not close it, because a transaction that stamped
     /// it can still be committing.
     reported: List<String>
+
     /// What `live.show` named at the last poll, so a poll can tell a show from a trace write when
     /// the store moved and no op landed.
     shown: Option<String> }
@@ -609,9 +615,11 @@ type Observation =
   { /// The at-rest report of the newest version, when it failed its checks and an earlier
     /// version is what rendered. `None` when the newest is what you are looking at.
     report: Option<AtRestTypeChecker.Report>
+
     /// The view as plain text (`Stdlib.Cli.UI.Text.render`), from the newest version whose
     /// checks pass and whose `render` runs. Empty when no version got that far.
     render: String
+
     /// The runtime error of the newest version that passed its checks, when `init` or `render`
     /// raised; an older version's picture is above it, if one rendered.
     rte: Option<String> }
@@ -755,10 +763,12 @@ module Values =
       /// Calls made inside callees are here too, under their own expressions' ids; a printer
       /// looking up the ids of one function's body simply never meets them.
       byExpr: Dict<String, RuntimeTypes.Dval>
+
       /// The replay stopped early; the values up to that point are still above. Says what
       /// moved first when the store has changed under the recording, since the error itself
       /// is about running code and reads as the reader's own bug.
       problem: Option<String>
+
       /// The replay was not run, and why: the recorded run is past `replayWithin`'s limits.
       /// `byExpr` is empty.
       skipped: Option<String> }

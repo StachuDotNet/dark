@@ -21,11 +21,15 @@ val fnKey = "traces.watch.fn"
 
 type Model =
   { accountID: Option<Uuid>
+
     branchId: Uuid
+
     /// The function being watched, as the trace index names it.
     fn: String
+
     /// The traces that went through it, newest first.
     traces: List<Tracing.Trace>
+
     /// One line per trace, already rendered.
     ///
     /// Built here rather than in `render` because the "2 minutes ago" column reads the CLOCK,
@@ -33,16 +37,20 @@ type Model =
     /// render that asks the time is a panel that shows an error instead of itself. `reload` is
     /// where effects are allowed, and it already runs on every tick, move and edit.
     traceLines: List<String>
+
     cursor: Int64
+
     /// The selected trace's code, already annotated. Recomputed on a move, a tick and an edit,
     /// because all three can change it: a different trace, a new one arriving, different code.
     source: List<String>
+
     /// Set when the replay stopped before the end: the error, whether the store moved under
     /// the recording, and what to do about it.
     ///
     /// Already resolved, for the same reason `traceLines` is: rendering a runtime error reads
     /// the package store to spell names, and a render may not. `annotate` does it.
     problem: Option<TraceVerbs.ProblemJson>
+
     /// The store's change counter when this was built. A tick that finds it unmoved has
     /// nothing new to show, so it skips the replay rather than redoing it twice a second.
     storeVersion: Int64 }

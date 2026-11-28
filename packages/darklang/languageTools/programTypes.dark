@@ -67,10 +67,12 @@ module FQFnName =
   type ImplChoice =
     /// The save picked it; stored code goes on running it
     | Chosen(ResolvedName<Package>)
+
     /// The self type is this type param of the item the call sits in, so the
     /// implementation is whatever the caller's type argument implies, and the
     /// caller records it.
     | FromTypeParam(String)
+
     /// Nothing to say. Only code parsed and run without being saved gets here.
     | Unknown
 
@@ -79,9 +81,12 @@ module FQFnName =
   /// param `param` owing `trait_`, what this call's type argument implies.
   type BoundImpl =
     { param: String
+
       trait_: FQTraitName.Package
+
       /// One entry per method of the trait: the callee's body may call any of them
       method_: String
+
       choice: ImplChoice }
 
 
@@ -117,32 +122,59 @@ type NameResolution<'a> =
 type TypeReference =
   // A named variable, eg `a` in `List<a>`, matches anything
   | TVariable(String)
+
   | TUnit
+
   | TBool
+
   | TInt8
+
   | TUInt8
+
   | TInt16
+
   | TUInt16
+
   | TInt32
+
   | TUInt32
+
   | TInt64
+
   | TUInt64
+
   | TInt128
+
   | TUInt128
+
   | TBigInt
+
   | TFloat64
+
   | TFloat32
+
   | TDecimal
+
   | TChar
+
   | TString
+
   | TDateTime
+
   | TUuid
+
   | TBytes
+
   | TStream(TypeReference)
+
   | TList(TypeReference)
+
   | TTuple(TypeReference, TypeReference, List<TypeReference>)
+
   | TDict(key: TypeReference, value: TypeReference)
+
   | TCustomType(NameResolution<FQTypeName.FQTypeName>, typeArgs: List<TypeReference>)
+
   | TFn(List<TypeReference>, TypeReference)
 
 
@@ -156,31 +188,56 @@ type LetPattern =
 /// Used for pattern matching in a match statement
 type MatchPattern =
   | MPVariable(ID, String)
+
   | MPUnit(ID)
+
   | MPBool(ID, Bool)
+
   | MPInt8(ID, Int8)
+
   | MPUInt8(ID, UInt8)
+
   | MPInt16(ID, Int16)
+
   | MPUInt16(ID, UInt16)
+
   | MPInt32(ID, Int32)
+
   | MPUInt32(ID, UInt32)
+
   | MPInt64(ID, Int64)
+
   | MPUInt64(ID, UInt64)
+
   | MPInt128(ID, Int128)
+
   | MPUInt128(ID, UInt128)
+
   | MPBigInt(ID, BigInt)
+
   | MPFloat64(ID, Sign, String, String)
+
   | MPFloat32(ID, Sign, String, String)
+
   | MPDecimal(ID, Decimal)
+
   | MPChar(ID, String)
+
   | MPString(ID, String)
+
   | MPList(ID, List<MatchPattern>)
+
   | MPListCons(ID, head: MatchPattern, tail: MatchPattern)
+
   | MPTuple(ID, MatchPattern, MatchPattern, List<MatchPattern>)
+
   | MPEnum(ID, caseName: String, fieldPats: List<MatchPattern>)
+
   | MPOr(ID, List<MatchPattern>)
+
   /// `pattern as name`: matches what `pattern` matches and binds the whole value
   | MPAs(ID, pattern: MatchPattern, name: String)
+
   /// `{ name = p, … }`: matches a record whose named fields match their patterns.
   /// Fields left out are ignored; `{ name }` arrives as `name = name`.
   | MPRecord(ID, fields: List<(String * MatchPattern)>)
@@ -263,40 +320,59 @@ type Expr =
 
   // simple data
   | EBool(ID, Bool)
+
   | EInt8(ID, Int8)
+
   | EUInt8(ID, UInt8)
+
   | EInt16(ID, Int16)
+
   | EUInt16(ID, UInt16)
+
   | EInt32(ID, Int32)
+
   | EUInt32(ID, UInt32)
+
   | EInt64(ID, Int64)
+
   | EUInt64(ID, UInt64)
+
   | EInt128(ID, Int128)
+
   | EUInt128(ID, UInt128)
+
   | EBigInt(ID, BigInt)
 
   // Allow the user to have arbitrarily big numbers, even if they don't make sense as
   // floats. The float is split as we want to preserve what the user entered.
   // Strings are used as numbers lose the leading zeros (eg 7.00007)
   | EFloat64(ID, Sign, String, String)
+
   /// A decimal literal, `19.99dec`; the value keeps its written scale
   | EDecimal(ID, Decimal)
+
   /// Single precision, written `1.5f32`. Same shape as `EFloat64`.
   | EFloat32(ID, Sign, String, String)
+
   /// A character is an Extended Grapheme Cluster (hence why we use a String). This
   /// is equivalent to one screen-visible "character" in Unicode.
   | EChar(ID, String)
+
   | EString(ID, List<StringSegment>)
 
   // structures of data
   | EList(ID, List<Expr>)
+
   | EDict(ID, List<(Expr * Expr)>)
+
   | ETuple(ID, Expr, Expr, List<Expr>)
+
   | ERecord(
     ID,
     typeName: NameResolution<FQTypeName.FQTypeName>,
     typeArgs: List<TypeReference>,
     fields: List<(String * Expr)>)
+
   | EEnum(
     ID,
     typeName: NameResolution<FQTypeName.FQTypeName>,
@@ -306,15 +382,22 @@ type Expr =
 
   // declaring and accessing variables
   | ELet(ID, LetPattern, Expr, Expr)
+
   | ERecordFieldAccess(ID, Expr, String)
+
   | EVariable(ID, String)
+
   | EArg(ID, Int64)
+
   | EValue(ID, NameResolution<FQValueName.FQValueName>)
 
   // control flow
   | EUnwrap(ID, Expr)
+
   | EIf(ID, cond: Expr, thenExpr: Expr, elseExpr: Option<Expr>)
+
   | EMatch(ID, arg: Expr, cases: List<MatchCase>)
+
   | EPipe(ID, Expr, List<PipeExpr>)
 
   // function calls
@@ -323,8 +406,11 @@ type Expr =
   /// it meant. `Unknown` for the operators that are no trait method (`==`, `!=`, `&&`, `||`)
   /// and where the operand type is only known at run time.
   | EInfix(ID, Infix, Expr, Expr, implFn: FQFnName.ImplChoice)
+
   | ELambda(ID, List<LetPattern>, Expr)
+
   | EApply(ID, Expr, typeArgs: List<TypeReference>, args: List<Expr>)
+
   /// A fn by name. `typeArgs` are for a reference that is not called:
   /// `let h = Stdlib.List.map<Int64, Int64>` is the fn as a value, specialised to them.
   /// A call keeps its type args on the `EApply`, so they are empty for every call.
@@ -333,8 +419,11 @@ type Expr =
     NameResolution<FQFnName.FQFnName>,
     List<FQFnName.BoundImpl>,
     typeArgs: List<TypeReference>)
+
   | ERecordUpdate(ID, record: Expr, updates: List<(String * Expr)>)
+
   | EStatement(ID, first: Expr, next: Expr)
+
   | ESelf(ID)
 
 
@@ -387,10 +476,13 @@ module Expr =
 // details about possible replacements/alternatives, and reasoning
 type Deprecation<'name> =
   | NotDeprecated
+
   /// The exact same thing is available under a new, preferred name
   | RenamedTo('name)
+
   /// This has been deprecated and has a replacement we can suggest
   | ReplacedBy('name)
+
   /// This has been deprecated and not replaced, provide a message for the user
   | DeprecatedBecause(String)
 
@@ -491,8 +583,10 @@ module TypeDeclaration =
 
   type TypeDeclaration =
     { typeParams: List<String>
+
       /// `type Set<'a: Compare> = ...`
       bounds: List<Bound>
+
       definition: Definition }
 
 
@@ -521,11 +615,17 @@ module PackageFn =
 
   type PackageFn =
     { hash: FQFnName.Package
+
       body: Expr
+
       typeParams: List<String>
+
       parameters: List<Parameter>
+
       returnType: TypeReference
+
       description: String
+
       /// `'a: Show + Compare` on the type params; part of the content hash. Checked
       /// at fn entry by the interpreter and statically by the at-rest checker.
       bounds: List<Bound> }
@@ -536,22 +636,31 @@ module Trait =
   /// One method's signature; no body (the impls have those).
   type Method =
     { name: String
+
       typeParams: List<String>
+
       /// `let convert<'b: Compare> (v: 'a) : 'b`: what the method's own type params owe, on
       /// top of the trait's bound on the self type
       bounds: List<Bound>
+
       parameters: List<PackageFn.Parameter>
+
       returnType: TypeReference
+
       description: String }
 
 
   type Trait =
     { hash: FQTraitName.Package
+
       /// The first is the self type
       typeParams: List<String>
+
       /// Supertraits, as bounds on the params
       bounds: List<Bound>
+
       methods: List<Method>
+
       description: String }
 
 
@@ -560,16 +669,23 @@ module Trait =
 module TraitImpl =
   type TraitImpl =
     { hash: Hash
+
       trait_: NameResolution<FQTraitName.FQTraitName>
+
       /// The trait's non-self type args
       traitTypeArgs: List<TypeReference>
+
       /// What the impl is for: `Point`, `Int64`, `List<'a>`
       self: TypeReference
+
       /// `impl<'a: Show> Show for List<'a>`: the impl's own params and bounds
       typeParams: List<String>
+
       bounds: List<Bound>
+
       /// method name and the fn that implements it, in the trait's order
       methods: List<(String * NameResolution<FQFnName.FQFnName>)>
+
       description: String }
 
 
@@ -672,8 +788,10 @@ module Reference =
 type DeprecationKind =
   /// A different item (different hash) should be used instead.
   | WithReplacement(replacement: Reference)
+
   /// Actively dangerous — runtime halts on invocation by default.
   | Harmful
+
   /// The item remains callable and has no named replacement.
   | Deprecated
 
@@ -694,10 +812,12 @@ type DecisionKind =
   /// already exists and folds nothing. Binds with source='resolution' and closes the conflict as
   /// `overridden`.
   | Override(target: Reference)
+
   /// Used by `dark undo` to bring back an earlier edit.
   /// Restore both the declaration's content and the names its references used.
   /// `revision` records which edit we returned to, so the next undo can go further back.
   | Restore(revision: Uuid, target: Reference, names: List<(Reference * Option<PackageLocation>)>)
+
   /// A standing finding has been seen and accepted. Closes it as `acked`, and binds nothing.
   | Ack(findingId: String)
 
@@ -708,11 +828,15 @@ type DecisionKind =
 /// hash too, so before these there was no op that could carry an edit to one.
 type DocPart =
   | WholeItem
+
   | RecordField(fieldName: String)
+
   | EnumCase(caseName: String)
+
   /// By POSITION, not name: a parameter's name is not in the identity hash, so a name would not
   /// survive the version it was written against. Field and case names ARE hashed.
   | Parameter(parameterIndex: Int64)
+
   /// A parameter's NAME, which is not in the identity hash either: two names holding one body
   /// each show the parameter names they were written with.
   | ParameterName(parameterIndex: Int64)
@@ -760,11 +884,17 @@ type ReferenceNamesSnapshot =
 
 type PackageOp =
   | AddType(PackageType.PackageType)
+
   | AddValue(PackageValue.PackageValue)
+
   | AddFn(PackageFn.PackageFn)
+
   | AddTrait(Trait.Trait)
+
   | AddTraitImpl(TraitImpl.TraitImpl)
+
   | AddTest(PackageTest.PackageTest)
+
   /// Bind a name (location) to a piece of content (target).
   ///
   /// `previous` is the hash this binding REPLACED, or None when the location was empty (or when whoever
@@ -772,10 +902,12 @@ type PackageOp =
   /// BOTH name no predecessor are two independent creations, which is a conflict; one that names the
   /// other's hash is an ordinary edit, which is not.
   | SetName(location: PackageLocation, target: Reference, previous: Option<Hash>)
+
   /// A name stops existing. Unlists whatever is live at the location and nothing else: the content stays
   /// reachable by hash. `previous` is the hash it unbound. Not a Deprecate: a deprecated name still
   /// resolves, an unbound one does not.
   | Unbind(location: PackageLocation, previous: Option<Hash>)
+
   /// Author-initiated deprecation of a NAME, and the content it held. Keyed on the location, like
   /// `UpdateDoc`, because content is shared: deprecating `Probe.v = 5` leaves every other `= 5` alone.
   ///
@@ -789,8 +921,10 @@ type PackageOp =
     kind: DeprecationKind,
     message: String,
     restating: Option<String>)
+
   /// Clear any prior deprecation of `target` at `location`.
   | Undeprecate(location: PackageLocation, target: Reference, restating: Option<String>)
+
   /// What the thing at a NAME says about itself, or one named part of it.
   ///
   /// Scoped to a location, not to content, and that is the point: content is shared. Ten names hold
@@ -807,6 +941,7 @@ type PackageOp =
     text: String,
     previous: Option<Hash>,
     restating: Option<String>)
+
   /// Save which name each package reference uses in this declaration.
   /// For example, `double` and `twice` can point to the same function hash.
   /// Renaming `double` should update calls to `double`, leaving calls to `twice` alone.
@@ -818,6 +953,7 @@ type PackageOp =
     target: Reference,
     names: List<(Reference * Option<PackageLocation>)>,
     restating: Option<String>)
+
   /// Rename an item and update the names its callers use, all in one operation.
   /// `references` includes saved names for the callers and the item being moved.
   | Rename(
@@ -826,6 +962,7 @@ type PackageOp =
     target: Reference,
     references: List<ReferenceNamesSnapshot>,
     stamp: String)
+
   /// A human's judgment about a NAME, recorded so that it travels. Overriding a binding and acking a
   /// finding are one class of act -- someone decided something about a location, and it has to hold on
   /// every machine -- so they are one op differing by `kind`. `id` is what makes each decision distinct,
@@ -880,11 +1017,15 @@ module Search =
   type SearchQuery =
     { /// i.e. "Darklang.Stdlib"
       currentModule: List<String>
+
       /// i.e. "List" or "map"
       text: String
+
       searchDepth: SearchDepth
+
       /// empty list implies 'any'
       entityTypes: List<EntityType>
+
       /// if true, require exact matches for names and modules instead of fuzzy matching
       exactMatch: Bool }
 
@@ -1120,12 +1261,18 @@ type Definitions =
 module SourceFile =
   type Declaration =
     | Type(PackageType.PackageType)
+
     | Value(PackageValue.PackageValue)
+
     | Function(PackageFn.PackageFn)
+
     | Trait(Trait.Trait)
+
     /// The impl item; its method fns are separate `Function` declarations
     | Impl(TraitImpl.TraitImpl)
+
     | Test(PackageTest.PackageTest)
+
     // db and handlers
     | Module(Definitions)  // re-evaluate if this makes sense to be here
 

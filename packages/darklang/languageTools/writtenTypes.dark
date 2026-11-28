@@ -23,9 +23,12 @@ type TypeIdentifier =
 
 type QualifiedTypeIdentifier =
   { range: Range
+
     /// the Range corresponds to the `.` after the module name
     modules: List<(ModuleIdentifier * Range)>
+
     typ: TypeIdentifier
+
     typeArgs: List<TypeReference.TypeReference> }
 
 
@@ -46,8 +49,10 @@ type FnIdentifier =
 
 type QualifiedFnIdentifier =
   { range: Range
+
     /// the range corresponds to the `.` after the module name
     modules: List<(ModuleIdentifier * Range)>
+
     fn: FnIdentifier }
 
 
@@ -535,21 +540,30 @@ module TypeDeclaration =
 
   type Definition =
     | Alias(TypeReference.TypeReference)
+
     /// the Range corresponds to the `,` symbol
     | Record(List<(RecordField * Option<Range>)>)
+
     /// the Range corresponds to the `|` symbol
     | Enum(List<(Range * EnumCase)>)
 
 
   type TypeDeclaration =
     { range: Range
+
       name: TypeIdentifier
+
       typeParams: List<(Range * String)>
+
       /// `'a: Compare` on the type params
       bounds: List<TypeParamBound>
+
       definition: Definition
+
       description: String
+
       keywordType: Range
+
       symbolEquals: Range }
 
 
@@ -591,12 +605,18 @@ module FnDeclaration =
 
   type NormalParameter =
     { range: Range
+
       name: VariableIdentifier
+
       typ: TypeReference.TypeReference
+
       /// The `///` written above the parameter.
       description: String
+
       symbolLeftParen: Range
+
       symbolColon: Range
+
       symbolRightParen: Range }
 
 
@@ -607,18 +627,29 @@ module FnDeclaration =
 
   type FnDeclaration =
     { range: Range
+
       name: FnIdentifier
+
       typeParams: List<(Range * String)>
+
       /// `'a: Show + Compare` on the type params, one entry per trait
       bounds: List<TypeParamBound>
+
       parameters: List<Parameter>
+
       /// Legacy tree field; new source always produces None.
       effects: Option<List<(Range * String)>>
+
       returnType: TypeReference.TypeReference
+
       body: Expr
+
       description: String
+
       keywordLet: Range
+
       symbolColon: Range
+
       symbolEquals: Range }
 
 
@@ -653,6 +684,7 @@ module ImplDeclaration =
   type Member =
     /// A full fn declaration in the block
     | Method(FnDeclaration.FnDeclaration)
+
     /// `let name = Existing.fn`: the method is a fn that already exists
     | Alias(ValueDeclaration.ValueDeclaration)
 

@@ -3,9 +3,12 @@ module Darklang.Stdlib.HttpClient
 type BadHeader =
   // Occurs whrn a header key is empty. eg. [ ("", "") ]
   | EmptyKey
+
   | InvalidContentType
+
   /// Occurs when a header name holds a character not allowed in an HTTP token, eg. [ ("X A", "") ]
   | InvalidName
+
   /// Occurs when a header value holds a CR, LF or NUL, eg. [ ("X-A", "a\r\nB: c") ]
   | InvalidValue
 
@@ -13,14 +16,19 @@ type BadHeader =
 type BadUrlDetails =
   /// Occurs when the URI scheme is not allowed. eg. "ftp://darklang.com"
   | UnsupportedProtocol
+
   /// Occurs when the host is not allowed. eg. "http://0"
   | InvalidHost
+
   /// The host is this machine, eg. "http://127.0.0.1:8080", which `http.loopback` opens
   | Loopback
+
   /// The host is on a private network, eg. "http://192.168.1.5", which `http.private` opens
   | PrivateNetwork
+
   /// Occurs when the URI does not conform to the format specified by RFC 2396. eg. "{ ] nonsense ^#( :"
   | InvalidUri
+
   /// Occurs when the request contains invalid headers. eg.A request to "http://google.com" with [("Metadata-Flavor", "Google")] header
   | InvalidRequest
 
@@ -35,27 +43,37 @@ type NetworkTarget =
 type NetworkFailure =
   /// Hostname lookup failed.
   | DnsFailure(NetworkTarget)
+
   /// The target is a host and optional port. Guard refusals omit details.
   | ConnectionFailure(NetworkTarget, Option<String>)
+
   /// Request authority and I/O error.
   | IoFailure(String, String)
 
 
 type RequestError =
   | BadUrl(BadUrlDetails)
+
   /// Occurs when the request is cancelled due to a timeout
   | Timeout
+
   | BadHeader(BadHeader)
+
   /// A DNS, connection, or I/O failure.
   | NetworkError(NetworkFailure)
+
   /// Occurs when the TLS handshake fails, eg. the server's certificate can't be verified. The message says why.
   | TlsError(String)
+
   /// Occurs when the request method is not invalid.
   | BadMethod
+
   /// Occurs when a request was redirected more times than <fn Middleware.followRedirects> allows
   | TooManyRedirects
+
   /// Occurs when a response's body is not what it was read as, eg. text that is not UTF-8 (<fn Response.text>). The message says why.
   | Decode(String)
+
   /// Occurs when a response's body is not JSON of the type it was read as (<fn Response.json>)
   | BadJson(Json.ParseError.ParseError)
 
@@ -109,6 +127,7 @@ impl Display for RequestError =
 type RetryPolicy =
   { /// How many times it may be sent in all.
     attempts: Int64
+
     /// The wait before the first retry, doubled for each one after.
     delayMs: Int64 }
 
@@ -119,21 +138,29 @@ type RetryPolicy =
 /// over them all (<fn client>).
 type Request =
   { method: String
+
     url: String
+
     headers: List<(String * String)>
+
     body: Bytes
+
     /// How long the exchange may take in milliseconds, redirects and retries included: all of
     /// it for a buffered response, and until the last response's headers arrive for a stream.
     /// {{None}} is 30 seconds, and 0 is no limit. Set by <fn Middleware.timeout>.
     timeoutMs: Option<Int64>
+
     /// How many redirects to follow; {{None}} follows none. Set by <fn Middleware.followRedirects>.
     redirects: Option<Int64>
+
     /// {{None}} sends it once. Set by <fn Middleware.retry>.
     retry: Option<RetryPolicy>
+
     /// Headers that go only to one origin, as {{(origin, name, value)}}: added when the request
     /// is sent, to the url it is sent to, unless it carries that header already. Set by
     /// <fn Middleware.headerFor> and <fn Middleware.bearer>.
     originHeaders: List<(String * String * String)>
+
     /// Whether the host undoes a gzip or brotli {{Content-Encoding}} on the body. Set by
     /// <fn Middleware.decompress>.
     decompress: Bool }
@@ -210,8 +237,11 @@ module Request =
 /// <fn Response.header> looks one up whatever its case.
 type Response<'body> =
   { statusCode: Int64
+
     headers: List<(String * String)>
+
     body: 'body
+
     /// Where the response came from: the request's url, or where its redirects led.
     url: String }
 

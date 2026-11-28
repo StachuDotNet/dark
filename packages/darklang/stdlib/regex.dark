@@ -15,15 +15,18 @@ type RegexError =
   /// The pattern does not parse. The message says why, and the position is the
   /// character of the pattern it points at.
   | InvalidPattern(message: String, position: Int64)
+
   /// The pattern needs backtracking: a backreference, a lookahead or lookbehind, an
   /// atomic group, a conditional, or `\G`.
   | UnsupportedSyntax(construct: String)
+
   /// A match would start or end between the two halves of an emoji (or any
   /// character past U+FFFF), and half of one is not text. `.` and `[^x]` step
   /// through such a character half at a time; `.+` takes it whole. An empty match,
   /// from `x*` or an empty pattern, is never this error: it lands before or after
   /// such a character, not inside it.
   | InvalidUnicodeMatch
+
   /// Matching ran out of time. Only very large inputs get here.
   | MatchLimitExceeded
 
@@ -45,16 +48,20 @@ type Capture =
 /// One match. A group inside a repetition holds its last capture.
 type Match =
   { text: String
+
     range: Range
+
     /// The unnamed groups, in order. {{None}} for a group that took no part in the
     /// match.
     captures: List<Option<Capture>>
+
     /// The named groups, `(?<name>...)`, by name.
     namedCaptures: Dict<String, Option<Capture>> }
 
 
 type Options =
   { caseInsensitive: Bool
+
     /// `^` and `$` match at every line break, not only at the ends of the input.
     multiline: Bool }
 
@@ -72,6 +79,7 @@ val defaultOptions = Options { caseInsensitive = false, multiline = false }
 type Limit =
   /// At most one: the first.
   | First
+
   /// Every match.
   | All
 
@@ -80,6 +88,7 @@ type Limit =
 type Collect =
   /// The matches too, with their groups.
   | Matches
+
   /// An empty list of matches, which is much cheaper when only the text between them
   /// is needed.
   | TextOnly

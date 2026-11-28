@@ -49,11 +49,14 @@ let printRecordingOffHint(): Unit =
 /// order they completed, so a filter narrows the list and never changes its shape.
 type ViewOptions =
   { filter: Option<String>
+
     /// Inverse of `filter` — hide calls whose name contains this pattern.
     /// Children still recurse so the surrounding structure stays intact.
     exclude: Option<String>
+
     /// When Some N, hide calls whose durationMs < N (keeps the slow stuff).
     slowThresholdMs: Option<Int64>
+
     /// Print every logged call. Off, the log is cut at forty lines with a count of the rest,
     /// because a served request can log thousands and a screenful is what a person wanted.
     all: Bool }

@@ -288,10 +288,15 @@ let shortenName(
 /// without the printer changing.
 type Palette =
   { string_: String
+
     number: String
+
     typeName: String
+
     caseName: String
+
     keyword: String
+
     /// Emitted after every painted piece, so it has to end whatever the others start.
     reset: String }
 
@@ -312,14 +317,18 @@ type DisplayOptions =
   { /// Columns available for the whole line, counted from column 0. A printer that starts partway
     /// along a line accounts for that itself; this is the page width, not the room remaining.
     width: Int64
+
     /// The module the reader is standing in, owner-first. Names are spelled relative to it.
     currentModule: List<String>
+
     /// Print type arguments on enum and record values (`Option<Int64>.Some(1)`). Off is usually right for
     /// a person reading a value, since the payload shows the type; on is useful when the type is the
     /// question being asked.
     showTypeArgs: Bool
+
     /// How to paint each kind of piece. `Palette.plain` for none.
     palette: Palette
+
     /// Stop descending past this depth and print a marker instead. `None` means print it all. Traces and
     /// error messages want a shallow cap; `eval` generally doesn't.
     maxDepth: Option<Int64> }

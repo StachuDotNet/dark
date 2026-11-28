@@ -19,6 +19,7 @@ module Darklang.SCM.Constraints
 /// signature, both want this same detect / record / ack lifecycle.
 type Kind =
   | StaleUsage
+
   /// The name moved to a different KIND of item, and this usage is still on the old one.
   ///
   /// Its own kind rather than a flavour of StaleUsage because the two want opposite advice: a stale usage
@@ -26,6 +27,7 @@ type Kind =
   /// a value reference's hash to a fn's produces code that claims one thing and points at another. Nothing
   /// breaks meanwhile: references resolve by hash, and the old item is still there.
   | KindChanged
+
   /// Two visible implementations of one trait for one type. Legal to store, and a call runs the
   /// newer of them: the same last-writer-wins rule that settles two bindings of one name, so every
   /// instance runs the same one. This says so, because the loser is still there and the second
@@ -75,8 +77,10 @@ let offersResolution(k: Kind, choice: String): Bool =
 type RivalChoice =
   /// The finding's own implementation (`usage`): it was written later.
   | Mine
+
   /// The other one (`rival`).
   | Theirs
+
   /// Neither: nothing orders them, so the call errors. Only reachable when no op introduced
   /// either implementation, which means something grafted them in (a script's own).
   | Neither
@@ -89,6 +93,7 @@ type RivalChoice =
 type FindingDetail =
   /// A usage still on an old version: what it references, and what that name means now.
   | Versions(using: LanguageTools.ProgramTypes.Hash, current: LanguageTools.ProgramTypes.Hash)
+
   /// Two implementations of one trait for one type: the type, as printed, the other
   /// implementation (`usage` is this one, `dependency` the trait), and which of the two a call
   /// runs.
@@ -99,12 +104,18 @@ type FindingDetail =
 /// needs to say beyond that.
 type Finding =
   { kind: Kind
+
     /// stable across re-detection, so an ack sticks
     id: String
+
     usage: LanguageTools.ProgramTypes.PackageLocation
+
     usageKind: LanguageTools.ProgramTypes.ItemKind
+
     dependency: LanguageTools.ProgramTypes.PackageLocation
+
     dependencyKind: LanguageTools.ProgramTypes.ItemKind
+
     detail: FindingDetail }
 
 
@@ -299,6 +310,7 @@ let detectOutdatedUsagesOn(branchId: Uuid): Result<List<Finding>, String> =
 /// prints "no constraints" has to be able to tell that from "nothing found".
 type Detection =
   { findings: List<Finding>
+
     /// One sentence per detector that could not run. Empty is the normal case.
     blocked: List<String> }
 

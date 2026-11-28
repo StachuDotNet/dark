@@ -58,6 +58,7 @@ module Lists =
       expectedType: ValueType,
       actualType: ValueType,
       actualValue: Dval)
+
     /// A sort met a value with no order: Bytes, a function or a stream.
     | CannotSort(value: Dval)
 
@@ -69,10 +70,13 @@ module Dicts =
       expectedType: ValueType,
       actualType: ValueType,
       actualValue: Dval)
+
     | UnsupportedKeyType(keyType: ValueType, key: Dval)
+
     /// A key that is or holds a NaN. NaN is not equal to itself, so no lookup
     /// could find it.
     | NaNKey(key: Dval)
+
     | MismatchedKeyType(expectedType: ValueType, actualType: ValueType, actualKey: Dval)
 
 
@@ -107,10 +111,15 @@ module Records =
   type Error =
     // -- Creation --
     | CreationTypeNotRecord(name: FQTypeName.FQTypeName)
+
     | CreationEmptyKey
+
     | CreationMissingField(fieldName: String)
+
     | CreationDuplicateField(fieldName: String)
+
     | CreationFieldNotExpected(fieldName: String)
+
     | CreationFieldOfWrongType(
       fieldName: String,
       declaredType: Stdlib.Option.Option<TypeReference>,
@@ -120,9 +129,13 @@ module Records =
 
     // -- Update --
     | UpdateNotRecord(actualType: ValueType)
+
     | UpdateEmptyKey
+
     | UpdateDuplicateField(fieldName: String)
+
     | UpdateFieldNotExpected(fieldName: String)
+
     | UpdateFieldOfWrongType(
       fieldName: String,
       declaredType: Stdlib.Option.Option<TypeReference>,
@@ -132,8 +145,11 @@ module Records =
 
     // -- Field Access --
     | FieldAccessEmptyFieldName
+
     | FieldAccessFieldNotFound(fieldName: String)
+
     | FieldAccessNotRecord(actualType: ValueType)
+
     /// Invalid or out-of-range tuple index, such as `t.0` or `t.x`.
     | FieldAccessTupleIndexOutOfRange(fieldName: String, tupleLength: Int64)
 
@@ -141,10 +157,15 @@ module Records =
 module Applications =
   type Error =
     | ExpectedApplicableButNot(actualType: ValueType, actualValue: Dval)
+
     | WrongNumberOfTypeArgsForFn(fn: FQFnName.FQFnName, expected: Int64, actual: Int64)
+
     | CannotApplyTypeArgsMoreThanOnce
+
     | TooManyArgsForFn(fn: FQFnName.FQFnName, expected: Int64, actual: Int64)
+
     | TooFewArgsForFn(fn: FQFnName.FQFnName, expected: Int64, actual: Int64)
+
     | FnParameterNotExpectedType(
       fnName: FQFnName.FQFnName,
       paramIndex: Int64,
@@ -153,12 +174,14 @@ module Applications =
       expectedType: ValueType,
       actualType: ValueType,
       actualValue: Dval)
+
     | FnResultNotExpectedType(
       fnName: FQFnName.FQFnName,
       declaredType: Stdlib.Option.Option<TypeReference>,
       expectedType: ValueType,
       actualType: ValueType,
       actualValue: Dval)
+
     | LambdaResultNotExpectedType(
       fnName: FQFnName.FQFnName,
       paramIndex: Int64,
@@ -167,10 +190,15 @@ module Applications =
       expectedType: ValueType,
       actualType: ValueType,
       actualValue: Dval)
+
     | CannotApplyTypeArgsToLambda
+
     | TooManyArgsForLambda(lambdaExprId: ID, expected: Int64, actual: Int64)
+
     | TooFewArgsForLambda(lambdaExprId: ID, expected: Int64, actual: Int64)
+
     | LambdaNotAvailable(lambdaExprId: ID)
+
     /// A builtin with effects, called where only computing may happen: a spread list op's chunk,
     /// or a function of a read in flight, which runs once the read lands.
     | EffectWhereOnlyComputing(fn: FQFnName.FQFnName)
@@ -206,14 +234,19 @@ module Traits =
   type Error =
     /// No impl of the trait for the self type is visible on this branch
     | MissingImpl(trait_: FQTraitName.FQTraitName, self: ValueType)
+
     /// More than one impl of the trait for the self type is visible
     | DispatchAmbiguous(trait_: FQTraitName.FQTraitName, self: ValueType, candidates: List<Hash>)
+
     /// `x.m` where `x` has no field `m` and several traits have a method `m` for its type
     | MethodAmbiguous(method_: String, self: ValueType, traits: List<FQTraitName.FQTraitName>)
+
     /// The self type could not be determined at the call
     | SelfTypeUnknown(trait_: FQTraitName.FQTraitName, method_: String)
+
     /// The trait has no method of that name
     | NoSuchMethod(trait_: FQTraitName.FQTraitName, method_: String)
+
     /// The trait itself is not in the package manager
     | TraitNotFound(trait_: FQTraitName.FQTraitName)
 
@@ -229,48 +262,80 @@ module TrustedCommands =
   type Action =
     /// `dark run` with `--allow` or an approval prompt
     | RunApprovals
+
     /// `dark eval` with `--allow`
     | EvalApprovals
+
     /// `dark permissions`
     | PolicyChanges
+
     /// `dark backups`
     | StoreBackups
+
     /// `dark config set` of a setting that opens the network guard or decides what traces record
     | PersonOnlySetting(key: String)
 
 
 type Error =
   | Bool(Bools.Error)
+
   | BigInt(BigInts.Error)
+
   | DecimalOutOfRange
+
   | String(Strings.Error)
+
   | List(Lists.Error)
+
   | Dict(Dicts.Error)
+
   | Let(Lets.Error)
+
   | VariableNotFound(attemptedVarName: String)
+
   | EqualityCheckOnIncompatibleTypes(left: ValueType, right: ValueType)
+
   | NumericOperationOnIncompatibleTypes(left: ValueType, right: ValueType)
+
   | IfConditionNotBool(actualValue: Dval, actualValueType: ValueType)
+
   | Match(Matches.Error)
+
   | ParseTimeNameResolution(originalName: List<String>, error: NameResolutionError)
+
   | TypeNotFound(name: FQTypeName.FQTypeName)
+
   | FnNotFound(name: FQFnName.FQFnName)
+
   | ValueNotFound(name: FQValueName.FQValueName)
+
   /// Invoked a package fn whose content hash is marked `Harmful` via a
   /// Deprecate op. Override with --allow-harmful on run/eval.
   | DeprecatedItemHalted(target: FQFnName.Package)
+
   | WrongNumberOfTypeArgsForType(fn: FQTypeName.FQTypeName, expected: Int64, actual: Int64)
+
   | Enum(Enums.Error)
+
   | Record(Records.Error)
+
   | Apply(Applications.Error)
+
   | Unwrap(Unwraps.Error)
+
   | Json(Jsons.Error)
+
   | Trait(Traits.Error)
+
   | CLI(CLIs.Error)
+
   | Statement(Statements.Error)
+
   /// Code asked for something only the trusted CLI command may do
   | TrustedCommandOnly(action: TrustedCommands.Action)
+
   | UncaughtException(msg: String, metadata: List<(String * Dval)>)
+
   /// Something the person running the program can resolve once told, with the sentence that tells
   /// them: an approval names a version the store no longer holds, the policy file cannot be trusted.
   | Condition(message: String)

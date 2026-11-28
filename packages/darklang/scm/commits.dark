@@ -16,12 +16,17 @@ module Darklang.SCM.Commits
 
 type Commit =
   { hash: String
+
     message: String
+
     originTs: String
+
     createdAt: String
+
     /// The commit this one follows on the line it was made on, or "" for the first commit in a store.
     /// Part of the hash, so a commit's id says where it sits as well as what it holds.
     parent: String
+
     /// A commit that records what happened to a branch rather than work: archiving one.
     housekeeping: Bool }
 
@@ -30,11 +35,14 @@ type Commit =
 type CommitFilter =
   /// Every commit in the store, newest first by when it was written here.
   | Recent
+
   /// The commits in this branch's own history, newest first. A merge moves a branch's commits to its
   /// parent.
   | OnBranch(branchId: Uuid)
+
   /// The commits whose hash starts with this, newest first. `%` and `_` match only themselves.
   | HashPrefix(prefix: String)
+
   /// The commits that name this one as their parent.
   | ChildrenOf(hash: String)
 

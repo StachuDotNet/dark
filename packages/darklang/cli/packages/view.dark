@@ -567,13 +567,16 @@ let viewEntity(branchId: Uuid, location: PackageLocation, tests: Tests): Unit =
 /// other two are compiler views of a function.
 type ViewMode =
   | Source
+
   /// The declaration alone: no highlighting, no deprecation header, no capabilities
   /// line. What you get back is what `dark import` and `dark edit` accept, so
   /// reading an item and writing it back is a pipe rather than a screen-scrape. The
   /// default view is for a person; this is for whatever reads it next.
   | Raw
+
   /// The ProgramTypes tree the parser built, before compilation.
   | Ast
+
   /// The register-machine instructions the function actually runs.
   | Instructions
 

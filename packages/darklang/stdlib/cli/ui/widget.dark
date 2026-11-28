@@ -43,8 +43,10 @@ type KeyPress =
 type Outcome<'s, 'msg> =
   /// Not mine. The parent (or its parent) should have a look.
   | Ignored
+
   /// Mine, and here's the new state.
   | Handled('s)
+
   /// Mine, and here's something for the parent: a value, not a screen change.
   | Emitted('s, 'msg)
 

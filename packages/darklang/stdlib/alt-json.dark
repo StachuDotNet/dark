@@ -2,13 +2,19 @@ module Darklang.Stdlib.AltJson
 
 type Json =
   | Null
+
   | Bool(Bool)
+
   // These were originally flattened as a single Number case, to match JSON spec
   // CLEANUP there may be benefits to flattening back to a `Number(JsonNumber)` case, where `JsonNumber = | Integer(Int64) | Float(Float64)`. Not sure if there's a benefit or not, but there was _some_ reason we kept it to the strict single Number case to start.
   | Integer(Int64)
+
   | Float(Float64)
+
   | String(String)
+
   | Array(List<Json>)
+
   | Object(List<(String * Json)>)
 
 

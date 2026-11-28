@@ -18,7 +18,9 @@ type Range =
 /// and test assertions.
 type FileKind =
   | Script
+
   | Package
+
   /// Package input for `dark import`. Keep declarations that pass syntax and package checks.
   | PackagePartialSave
 

@@ -60,14 +60,18 @@ type Backup =
 type BackupAction =
   /// Every backup, newest first. The upgrade path's are among them.
   | List
+
   /// Take one now (`data.db.manual-<time>`).
   | Create
+
   /// Put the named backup in place of the store. The store as it is now is copied aside first
   /// (`data.db.pre-restore-<time>`), and that copy is the answer. Anything this process has already
   /// read is still the old store, so the caller should say to restart.
   | Restore(String)
+
   /// Delete the named backup.
   | Delete(String)
+
   /// Write a copy of the store to a path outside the folder, such as a store to try a new
   /// release against. A database already there has its contents replaced.
   | SnapshotTo(String)

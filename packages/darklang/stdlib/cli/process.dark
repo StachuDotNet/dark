@@ -10,6 +10,7 @@ type ProcessHandle =
 type Stdio =
   /// Pipes this process reads and writes.
   | Capture
+
   /// This process's own terminal, for a child the user types into.
   | Inherit
 

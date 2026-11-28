@@ -37,7 +37,9 @@ type SearchHit =
 /// What the Matter view is showing: the whole tree, or values only (the Values lens, `L`).
 type Lens =
   | WholeTree
+
   | ValuesOnly
+
   /// Just what the draft has touched. Like `ValuesOnly` its items are FULL paths rather than leaves,
   /// because what changed is not confined to where you are standing.
   | Changed
@@ -122,8 +124,10 @@ type BranchPicker =
 
 type Overlay =
   | NoOverlay
+
   /// The `?` keymap, drawn centred with its interior cleared. Any key closes it.
   | Keymap
+
   /// Searchable branch list. Selection is by id, never by a decorated label.
   | Branches(BranchPicker)
 
@@ -132,13 +136,16 @@ type Overlay =
 type ReplState =
   { /// The eval log, newest last, each entry already rendered (the `> expr` and its result lines).
     log: List<String>
+
     /// Session bindings, in the order they were first bound. `let x = ...` at the REPL records one, and
     /// every later expression is evaluated with them in scope (see `Darklang.Cli.Repl`). Session-lived:
     /// they go away when the CLI exits.
     bindings: List<Repl.Binding>
+
     /// The result of the last expression, unstyled - what the session pane shows under "last result".
     /// Held rather than scraped back out of `log`, which is display text.
     last: String
+
     /// Lines of a multi-line statement typed so far, each ended with a `\`. Empty except while one is being
     /// assembled; the next unbackslashed line completes it and the whole thing runs as one statement.
     pending: String }
@@ -155,8 +162,10 @@ let emptyRepl(): ReplState =
 type MessageKind =
   /// It did what was asked.
   | Succeeded
+
   /// It did not, by design, and the message says why: nothing selected, nothing found, a name too short.
   | Refused
+
   /// It tried and something went wrong.
   | Failed
 
@@ -165,15 +174,25 @@ type MessageKind =
 /// moves without moving the page: scrolling, focus, the command bar and the overlays are absent.
 type PreviewKey =
   { view: Int64
+
     lens: Lens
+
     branchId: Uuid
+
     location: Packages.PackageLocation
+
     items: List<BodyItem>
+
     selected: Int64
+
     accountId: Option<Uuid>
+
     liveValues: Dict<String, String>
+
     renderPeek: String
+
     width: Int64
+
     /// The draft's op count, so your own save, discard or deprecation rebuilds the page.
     draftOps: Int64 }
 
@@ -194,6 +213,7 @@ type LiveRun =
 type Reader =
   /// Source: syntax-highlighted.
   | Code
+
   /// Docs, help, search results, ops: shown as they are.
   | Prose
 
@@ -201,6 +221,7 @@ type Reader =
 /// Whether a move is remembered, so esc can come back to where it left.
 type History =
   | Record
+
   /// Back navigation: it must not make a return trip of its own.
   | Skip
 
@@ -209,66 +230,91 @@ type History =
 type Updates =
   /// Reload when something changes the store under you.
   | Live
+
   /// Nothing is said and nothing moves until you press `R`.
   | Manual
 
 
 type State =
   { activeView: Int64
+
     /// `--live`: reload when something changes the store under you. Off, nothing is said and
     /// nothing moves until you press `R`, which is the difference
     /// between a viewer telling you something happened and a viewer rearranging itself while
     /// you read it.
     live: Bool
+
     location: Packages.PackageLocation
+
     items: List<BodyItem>
+
     selected: Int64
+
     /// Which content pane has focus. `Neither` while the navbar does.
     focus: Stdlib.Cli.UI.SplitPane.Focus
+
     detailScroll: Int64
+
     /// When Some, a full-body reader is open (e.g. a Docs topic); its text scrolls via detailScroll.
     reading: Option<String>
+
     /// Whether the open reader's content is Dark code (so it gets syntax-highlighted). False for docs/help/
     /// search/ops which aren't code.
     readingIsCode: Bool
+
     /// When Some, a single-line text prompt is open (e.g. a commit message).
     input: Option<InputState>
+
     /// When Some, the multiline editor is open (authoring a fn body).
     editing: Option<EditingState>
+
     accountId: Option<Uuid>
+
     /// This instance's human name for the context line - config `instance.name` if set, else the machine
     /// hostname. Each instance also registers a UUID (`instance.id`) in config on first run.
     instanceName: String
+
     /// A transient status message (e.g. "committed", "saved foo") shown in the footer after a write action,
     /// then cleared on the next keypress. "" = nothing to show.
     message: String
+
     /// What <field message> reports, which decides its mark in the footer.
     messageKind: MessageKind
+
     /// The search-results mode: open when it has hits, with its own cursor.
     search: SearchState
+
     /// The overlay drawn over the frame, if any.
     overlay: Overlay
+
     /// The navbar cursor, as a position into `navbarRows`. `focus ==
     /// Neither` means the navbar owns the keyboard.
     navbarSel: Int64
+
     /// The last destination visited in each workspace.
     wsLast: List<(Int64 * Dest)>
+
     /// Where you have been, most recent first: what esc returns to. Every move
     /// - a view switch, entering a module, a jump from search - pushes the place
     /// it left. Capped, so a long session cannot grow it without bound.
     back: List<ReturnPoint>
+
     /// `:` command bar: which completion in the dropdown is highlighted (↑↓ move, tab accepts it). Reset to 0
     /// whenever the text changes.
     completionSel: Int64
+
     /// Names of items with uncommitted edits, and of deprecated items in the current module.
     ///
     /// Cached rather than read in the renderer. Both are DB reads, the renderer runs on every keypress, and
     /// rendering has to stay a pure function of state for frame diffing to be sound. Refreshed on transitions
     /// by `refreshBadges`.
     wipNames: List<String>
+
     deprecatedNames: List<String>
+
     /// The whole SCM picture, read once per transition rather than per surface.
     scmStatus: ScmStatus
+
     /// The tree-native view peek: the captured output of the selected `render` fn, or "" when the selection
     /// isn't one.
     ///
@@ -276,40 +322,51 @@ type State =
     /// renderer has to stay a pure function of state for frame diffing to be sound. Refreshed on transitions
     /// by `refreshPeek`.
     renderPeek: String
+
     /// Live values for the selected fn: what each call in it produced the last time it ran, keyed
     /// by the call's expression id, rendered. Runs user code, so it is refreshed on transitions
     /// (`refreshLiveValues`) and read by the printer, never computed while drawing.
     liveValues: Dict<String, String>
+
     /// The fn and draft op count `liveValues` were built for, so a key that moves neither does not
     /// replay again. "" whenever the store may have moved under them.
     liveFor: String
+
     /// Why a fn with a recorded run shows no values (`Values.skipped`); "" otherwise.
     liveNote: String
+
     /// The last few fns' live values, newest first, so moving back to one whose newest run has
     /// not changed draws them again rather than replaying it. Empty whenever the store may have
     /// moved under them.
     liveRuns: List<LiveRun>
+
     /// The REPL view's own state. Everything in here belongs to that one view, so it lives in one field
     /// rather than as four more on the workbench: a view you can hand a record to is a view you could mount
     /// somewhere else, and the parent stops being the place every view keeps its things.
     repl: ReplState
+
     matter: MatterState
+
     /// In-view find-as-you-type filter (`f`); "" = no filter. Narrows the current list by substring.
     filter: String
+
     /// The Code view's item pages, newest first, built on the transition (`refreshPreview`). A page
     /// reads the store several times over, so building it per frame cost every scroll and
     /// command-bar key the same as moving to a new item, and keeping only the last one rebuilt it
     /// on every move back. Empty whenever the store may have moved under them.
     previews: List<PreviewCache>
+
     branchId: Uuid }
 
 
 /// A single-line text entry. `action` tags what Enter does (e.g. "commit").
 type InputState =
   { prompt: String
+
     /// The text being typed, as a `Stdlib.Cli.UI.TextField`: a cursor you can move, rather than a string you could
     /// only append to and backspace off the end of.
     field: Stdlib.Cli.UI.TextField.State
+
     action: String }
 
 
@@ -317,17 +374,23 @@ type InputState =
 /// authored, the text buffer, and a last-error line.
 type EditingState =
   { kind: String
+
     nameStr: String
+
     /// The owner or module (Owner.Module...) the item saves into - from the tree location, or asked for at
     /// the root. Lets you author from anywhere.
     targetModule: List<String>
+
     buf: Stdlib.Cli.UI.Editor.Buf
+
     err: String }
 
 
 type Step =
   | Continue(State)
+
   | Exit(State)
+
   /// Hand off to a foreground command (e.g. a full-screen app opened from the Apps view). The CLI pushes the
   /// workbench and returns to it when that command's page exits. Carries the workbench State to return to.
   | Launch(State, String)
@@ -338,8 +401,10 @@ type ViewBehavior =
   /// A list beside a detail pane: ←→ and Tab move between them, and ↑↓
   /// follow whichever has focus. E.g. Code: modules left, source right.
   | Split
+
   /// One pane with a cursor over its rows and nothing to the right of it.
   | List
+
   /// A `List` whose rows include section headers, which the cursor skips.
   /// E.g. Home: "Branches", "History" and the rows under each.
   | SectionedList
@@ -350,15 +415,21 @@ type ViewBehavior =
 type ViewDef =
   { /// Stable slug, independent of its numeric view index.
     id: String
+
     /// navbar label
     name: String
+
     behavior: ViewBehavior
+
     /// the selectable rows (for the shared cursor + list pane); Unit-in since extension views are self-contained
     loadItems: Unit -> List<BodyItem>
+
     /// the body's spans for the region (returned, not printed, so frames can be diffed)
     render: (State, Stdlib.Cli.UI.Layout.Region) -> List<Stdlib.Cli.UI.Layout.Span>
+
     /// preview/detail lines for the selected row
     detail: State -> List<String>
+
     /// context key-hints for the footer
     hints: State -> List<(String * String)> }
 

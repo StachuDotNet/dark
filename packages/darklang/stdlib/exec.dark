@@ -45,6 +45,7 @@ type Stop =
   /// Whatever it is doing on the host right now (a write, a request) completes first, and an
   /// `await` on it raises "cancelled" (`dark ps cancel`).
   | Cancel
+
   /// It does not wait for the host, and an `await` on it raises "killed from ps"
   /// (`dark ps kill`).
   | Kill

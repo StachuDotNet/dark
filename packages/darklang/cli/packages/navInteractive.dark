@@ -21,18 +21,28 @@ type Mode =
 
 type State =
   { items: List<NavItem>
+
     selectedIndex: Int64
+
     scrollOffset: Int64
+
     currentLocation: PackageLocation
+
     mode: Mode
+
     display: Display
+
     searchQuery: String
+
     allItems: List<NavItem>
+
     /// Prepared detail rows for the selected item while focus mode is active.
     /// Package reads happen during state transitions, never in `view`.
     focusRows: List<String>
+
     /// First logical row visible in the independently scrollable preview.
     focusScrollOffset: Int64
+
     branchId: Uuid }
 
 

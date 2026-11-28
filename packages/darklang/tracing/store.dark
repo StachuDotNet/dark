@@ -166,12 +166,15 @@ let hashNamed(branchId: Uuid, fnName: String): String =
 /// What a function cost in one recorded run.
 type TimeInFn =
   { traceId: String
+
     /// How many times the run called it.
     calls: Int64
+
     /// Wall clock inside it, in microseconds, counted from the outermost call only, so a
     /// recursive function is not counted once per level. 0 for a function answered without a
     /// frame of its own (a forwarder to a builtin).
     totalUs: Int64
+
     /// The longest of those outermost calls.
     slowestUs: Int64 }
 
@@ -188,18 +191,24 @@ let timeInNamed(branchId: Uuid, fnName: String, limit: Int64): List<TimeInFn> =
 /// that share a parent and a `callSite`, numbered by `pass` in the order they ran.
 type ViewFrame =
   { id: String
+
     parent: String
+
     /// The SITE: the thing a trace can enter more than once. A lambda's own expression id, or
     /// a hash of a function's name. Frames sharing one are the iterations of a loop, whether
     /// that loop is a `List.map` going round or a function calling itself.
     callSite: Int64
+
     /// "source" | "function" | "lambda"
     kind: String
+
     /// The callee's hash, for a `function` frame. "" otherwise.
     callee: String
+
     /// The order this frame was pushed, across the whole view. `pass` counts within one call
     /// site and cannot order frames at different sites; this can.
     ord: Int64
+
     /// What this entry was given, in order. Empty for a frame outside the window the view
     /// keeps, which is how the arguments cost what the values cost rather than more.
     args: List<LanguageTools.RuntimeTypes.Dval> }

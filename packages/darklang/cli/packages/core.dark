@@ -302,21 +302,31 @@ let updateDocsThatChanged(
 /// propagated.
 type Committed =
   { isUpdate: Bool
+
     /// Anything happened at all: a new item, a new version, a doc change, or a revert.
     landed: Bool
+
     /// The name went back to a version it held before.
     reverted: Bool
+
     boundHash: LanguageTools.ProgramTypes.Hash
+
     followed: Propagate.Followed
+
     /// The save's own type error, named, if it has one.
     ownIssue: Option<String>
+
     /// The node the issue in <field ownIssue> is about, which may carry where it is.
     ownIssueNode: Option<UInt64>
+
     /// How many issues there are besides the one in <field ownIssue>.
     otherIssues: Int64
+
     /// Another name that already held the version this name now holds.
     sameAs: Option<LanguageTools.ProgramTypes.PackageLocation>
+
     report: LanguageTools.AtRestTypeChecker.Report
+
     unresolvedTraitCalls: List<(String * List<LanguageTools.PackageManager.UnresolvedTraitCall>)> }
 
 

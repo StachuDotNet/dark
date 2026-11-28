@@ -110,9 +110,12 @@ let shellSettingOf(key: String): Option<String> =
 /// One row of `config list`: the value in effect, and where it came from.
 type Current =
   { key: String
+
     value: String
+
     /// `set`, `env` or `default`
     source: String
+
     what: String }
 
 

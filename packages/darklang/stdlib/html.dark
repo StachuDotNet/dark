@@ -47,10 +47,12 @@ type Attributes = List<(String * Option<String>)>
 /// Represents an HTML tag with its name, attributes, and children.
 type HtmlTag =
   { name: String
+
     /// Attributes use `Option<String>` for values:
     /// - `Some value` for attributes with values (e.g., `("href", Some "url")`)
     /// - `None` for boolean attributes (e.g., `("required", None)`)
     attrs: Attributes
+
     children: List<Node> }
 
 
@@ -58,6 +60,7 @@ type HtmlTag =
 type Node =
   /// Raw text content, comments, or any string to include as-is
   | String(String)
+
   /// A structured HTML element with attributes and children
   | HtmlTag(HtmlTag)
 

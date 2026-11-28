@@ -7,9 +7,11 @@ module Darklang.Cli.Output
 type Mode =
   /// Headers, glyphs and colour, for a person at a terminal.
   | Pretty
+
   /// One record per line, fields split by tabs, nothing else: for `grep`, `awk`, a script or an
   /// agent.
   | Plain
+
   /// One JSON value.
   | Json
 

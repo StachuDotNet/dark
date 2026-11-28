@@ -2065,6 +2065,7 @@ type BlockItem =
   /// The ids of the nodes starting here (the `let`, and any sequence it opens), its pattern and
   /// its right-hand side.
   | Binding(List<Int64>, LanguageTools.ProgramTypes.LetPattern, LanguageTools.ProgramTypes.Expr)
+
   /// The same ids, then the statement.
   | Statement(List<Int64>, LanguageTools.ProgramTypes.Expr)
 
@@ -3038,9 +3039,10 @@ let customTypeDoc(
     let fieldsPart =
       fields
       |> Stdlib.List.map(fun field ->
-        ($"field {field.name}",
-         field.description,
-         (fun ctx -> TypeDeclaration.recordFieldDoc(ctx, field))))
+        (
+          $"field {field.name}",
+          field.description,
+          (fun ctx -> TypeDeclaration.recordFieldDoc(ctx, field))))
       |> typeParts(ctx)
 
     Stdlib.Pretty.Doc.Concat(
@@ -3049,9 +3051,7 @@ let customTypeDoc(
   | Enum(cases) ->
     cases
     |> Stdlib.List.map(fun case ->
-      ($"case {case.name}",
-       case.description,
-       (fun ctx -> TypeDeclaration.enumCaseDoc(ctx, case))))
+      ($"case {case.name}", case.description, (fun ctx -> TypeDeclaration.enumCaseDoc(ctx, case))))
     |> typeParts(ctx)
 
 
@@ -3062,10 +3062,9 @@ let typeParts(
   parts: List<(String * String * (Context -> Stdlib.Pretty.Doc))>,
   ctx: Context)
   : Stdlib.Pretty.Doc =
-  let spaced =
-    Stdlib.List.any(parts, fun part ->
-      let (key, description, _) = part
-      description != "" || commentAboveAt(ctx, key))
+  let spaced = Stdlib.List.any(parts, fun part ->
+    let (key, description, _) = part
+    description != "" || commentAboveAt(ctx, key))
 
   parts
   |> Stdlib.List.indexedMap(fun(i, part) ->

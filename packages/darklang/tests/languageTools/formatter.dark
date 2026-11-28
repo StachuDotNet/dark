@@ -195,7 +195,10 @@ type Turn =
 
 
 test aCommentAboveOneMemberSpacesThemAll =
-  LanguageTools.Formatter.source(SCM.Branch.mainBranchId, 100, commentAboveOneMember)
+  LanguageTools.Formatter.source(
+    SCM.Branch.mainBranchId,
+    100,
+    commentAboveOneMember)
   |> Stdlib.Result.map(fun f -> f.text)
   |> Stdlib.Test.equal(
     Ok(

@@ -133,8 +133,10 @@ let fnSignatureEqual(
 type Followed =
   { /// The dependents now on the new version, by name, in the order they were repointed.
     names: List<String>
+
     /// The ones that no longer type-check, with the first issue each, as `Live.issueText` puts it.
     broken: List<(String * String)>
+
     /// Propagation itself failed; the names above are empty.
     failure: Option<String> }
 

@@ -40,6 +40,7 @@ let revisionTouches(
 type Edits =
   /// Its own, draft included.
   | Own
+
   /// Only the committed history it inherited.
   | Inherited
 
@@ -118,6 +119,7 @@ type UndoHistory =
 type Revision =
   /// Start a revision of its own.
   | Append
+
   /// Replace the current revision's snapshot: names saved with its binding.
   | Amend
 

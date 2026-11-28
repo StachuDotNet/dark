@@ -26,13 +26,18 @@ type BuiltinFunctionPurity =
 /// A Darklang builtin function
 type BuiltinFunction =
   { name: RuntimeTypes.FQFnName.Builtin
+
     description: String
+
     /// Type parameter names explicitly listed in the builtin's metadata.
     /// Some older builtins use additional type variables in their parameter or
     /// return types without listing them here.
     typeParams: List<String>
+
     parameters: List<BuiltinFunctionParameter>
+
     returnType: RuntimeTypes.TypeReference
+
     purity: BuiltinFunctionPurity }
 
 

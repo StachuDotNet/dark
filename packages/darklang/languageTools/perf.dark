@@ -18,16 +18,24 @@ type Counters =
 /// What one thunk cost.
 type Measurement =
   { allocBytes: Int64
+
     ms: Int64
+
     instructions: Int64
+
     builtinCalls: Int64
+
     packageCalls: Int64
+
     framePushes: Int64
+
     /// `debug`, `release-r2r` or `release-aot`. Carried on every measurement because those are up
     /// to 3x and 5x apart, so a number without it cannot be compared with another number.
     buildMode: String
+
     /// The commit the build came from, short, or "dev" when the build does not say.
     buildHash: String
+
     /// 0 when these are the whole process (telemetry off), positive when they are the calling VM's
     /// share of that many counter sets (telemetry on).
     statSets: Int64 }

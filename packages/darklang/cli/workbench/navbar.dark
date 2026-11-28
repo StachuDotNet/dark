@@ -25,11 +25,15 @@ type Workspace =
 /// One rendered nav row.
 type NavbarRow =
   { ws: Int64
+
     label: String
+
     /// Where ⏎ goes: the view, on the section you last had it on.
     dest: Dest
+
     /// A right-aligned marker: a WIP/conflict count. "" for none.
     badge: String
+
     badgeColor: String }
 
 

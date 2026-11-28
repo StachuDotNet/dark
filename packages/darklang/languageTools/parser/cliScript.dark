@@ -28,12 +28,18 @@ type WTCliScriptModule =
 
 type PTCliScriptModule =
   { types: List<ProgramTypes.PackageType.PackageType>
+
     values: List<ProgramTypes.PackageValue.PackageValue>
+
     /// Includes the method fns of top-level impls, at the impls' member paths
     fns: List<ProgramTypes.PackageFn.PackageFn>
+
     traits: List<ProgramTypes.Trait.Trait>
+
     impls: List<ProgramTypes.TraitImpl.TraitImpl>
+
     submodules: List<ProgramTypes.Definitions>
+
     exprs: List<ProgramTypes.Expr> }
 
 

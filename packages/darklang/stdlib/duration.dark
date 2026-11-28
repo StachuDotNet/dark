@@ -10,8 +10,10 @@ type Duration =
 type ParseError =
   /// No unit was given, as in "5" or "".
   | MissingUnit
+
   /// The number is missing or isn't a whole number, as in "s", "xm" or "1.5h".
   | InvalidNumber
+
   /// The unit isn't s, m, h or d, as in "5x" or "5ms".
   | UnknownUnit
 

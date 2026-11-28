@@ -5,7 +5,9 @@ module Darklang.Stdlib.Cli.UI.Confirm
 
 type State =
   { question: String
+
     detail: String
+
     /// Draws the box in red and makes `n` the default reading of the prompt.
     danger: Bool }
 

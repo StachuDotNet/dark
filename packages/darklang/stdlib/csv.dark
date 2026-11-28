@@ -8,8 +8,10 @@ module ParseError =
   type ParseError =
     /// A quoted field runs to the end of the text.
     | UnclosedQuote(line: Int64)
+
     /// A `"` inside a field that does not start with one.
     | QuoteInUnquotedField(line: Int64)
+
     /// Something other than a comma or a line break right after a quoted field closes.
     | TextAfterClosingQuote(line: Int64)
 

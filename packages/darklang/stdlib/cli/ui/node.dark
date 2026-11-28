@@ -49,26 +49,38 @@ type InputSpec<'msg> =
 type Node<'msg> =
   /// One line of text, clipped to the width it is given.
   | Text(String)
+
   | Styled(Style, Node<'msg>)
+
   /// Children side by side.
   | Row(List<Node<'msg>>)
+
   /// Children stacked.
   | Column(List<Node<'msg>>)
+
   /// A header row, a rule, then the rows; column widths from the content.
   | Table(columns: List<String>, rows: List<List<String>>)
+
   /// Children stacked, each marked as an item.
   | ListOf(List<Node<'msg>>)
+
   | Input(InputSpec<'msg>)
+
   /// A label that sends `'msg` when pressed.
   | Button(label: String, 'msg)
+
   | Link(label: String, href: String)
+
   /// `node` in a box of exactly this many rows and columns (clipped, or padded).
   | Region(rows: Int64, cols: Int64, Node<'msg>)
+
   /// A full-width message in the severity's colour. This is where a diagnostic goes when the host
   /// keeps the last good frame under it.
   | Band(Severity, String)
+
   /// Rows already rendered by something older. The escape hatch for views written as lines.
   | Rows(List<String>)
+
   /// Nothing. A branch of a view that has nothing to say this frame.
   | Empty
 

@@ -14,16 +14,23 @@ val darklangRepoBaseUrl = "https://api.github.com/repos/darklang/dark"
 type ReleaseError =
   /// The request didn't complete: no network, DNS, TLS, a timeout
   | RequestFailed(Stdlib.HttpClient.RequestError)
+
   /// GitHub answered with a status other than 200
   | BadStatus(Int64)
+
   /// GitHub's answer wasn't the JSON a release has
   | UnexpectedResponse
+
   | NoReleases
+
   | ReleaseNotFound(String)
+
   /// This OS and architecture have no build
   | UnsupportedHost
+
   /// The release has no binary for this platform id
   | NoAssetForPlatform(String)
+
   /// The release has no checksums file, so its download can't be checked
   | NoChecksums(String)
 

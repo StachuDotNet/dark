@@ -16,47 +16,61 @@ module Darklang.Stdlib.Pretty
 type Doc =
   /// Renders to nothing.
   | Empty
+
   /// Literal text. Never broken, so it can exceed the width if a single token is wider than the page.
   /// `width` is its columns, measured once by `text`, or -1 when it holds a line break.
   | Text(text: String, width: Int64)
+
   /// A soft break: a space when the enclosing group fits on one line, a newline plus the current
   /// indentation when it doesn't.
   | Line
+
   /// A break that is always a newline, and which forces every enclosing group to break.
   | HardLine
+
   /// A break that is nothing at all when the enclosing group fits, and a newline plus indentation when
   /// it doesn't. The difference from `Line` is what separates `[1, 2]` from `[ 1, 2 ]`: use this where a
   /// delimiter shouldn't gain a space just because everything fit.
   | SoftLine
+
   /// Two documents, one after the other, with nothing between them.
   | Concat(Doc, Doc)
+
   /// Indent everything inside by `n` columns, applied after each break rather than once at the front.
   | Nest(Int64, Doc)
+
   /// Try to fit the inside on one line. `flatWidth` is its width on one line, measured once by
   /// `group`, or -1 when it holds a break that keeps it from being laid flat.
   | Group(doc: Doc, flatWidth: Int64)
+
   /// Indent everything inside to the column it starts at, so its later lines line up under its
   /// first: `[ a` then `  b ]`, wherever on the line the `[` is.
   | Align(Doc)
+
   /// Text with something wrapped around it that occupies no columns -- a terminal escape, typically.
   /// Only the middle is measured, which is the entire point: decoration must not change where a
   /// document breaks, and it silently would if the escapes were part of a `Text`.
   | Styled(opening: String, text: String, closing: String)
+
   /// Text held back until the line ends: it is emitted just before the next newline (or at the
   /// end), after whatever else is laid out on that line. Zero columns wide, so it never changes
   /// where anything breaks. A trailing `// comment` needs this, or a `)` or `,` printed after it
   /// on the same line would land inside the comment.
   | LineSuffix(String)
+
   /// `flat` when the enclosing group is laid out on one line, `broken` when it isn't. What lets a
   /// list read `[ a, b ]` flat and put one item per line, without commas, when broken.
   | IfFlat(flat: Doc, broken: Doc)
+
   /// `first` when its first line fits (laid out flat up to its first hard break), `otherwise`
   /// when it doesn't. The choice a plain group can't make: `f(a, fun x ->` with the body on the
   /// lines below, or, if even that first line is too long, every argument on its own line.
   | FitsOr(first: Doc, otherwise: Doc)
+
   /// Nothing, except that the groups around it can't be laid flat. What a trailing `// comment`
   /// needs: its line has to end where the comment is.
   | BreakParent
+
   /// Siblings, one per line when broken and joined by `flat` when not: the statements of a block,
   /// the items of a list. Each is (what is printed, what is measured, its shape, whether the
   /// source set it off). Broken, a blank line follows one that takes more than one line, and goes

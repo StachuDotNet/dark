@@ -15,24 +15,34 @@ module Darklang.Cli.Workbench
 type ScmStatus =
   { /// The NAME, never the uuid. Every surface here is something a person reads.
     branchName: String
+
     /// Names in the draft, fully qualified -- the Matter tree's badge set.
     wipNames: List<String>
+
     /// The three-way split. `changed` counts both halves, because both are in the draft and both get
     /// committed, but a bare total is nearly useless: "3 changed" after you edited one thing is either fine or
     /// a disaster, and the number can't say which.
     changed: Int64
+
     authored: Int64
+
     followed: Int64
+
     /// References a pin is holding on an older version. On screen because it's the thing people forget they
     /// asked for.
     /// Conflicts plus standing findings: everything waiting on a person.
     needsYou: Int64
+
     conflicts: List<SCM.Conflicts.Conflict>
+
     commits: Int64
+
     lastCommit: String
+
     /// The draft's op count. Carried so `refreshScmStatus` has a cheap thing to compare against: it's one
     /// indexed count, and it moves whenever anything in here could have.
     ops: Int64
+
     /// Has this ever been read, as opposed to being the placeholder a fresh state starts with?
     ///
     /// Needed because the placeholder's `ops` is 0, which is ALSO the honest answer on a clean tree -- so

@@ -12,13 +12,17 @@ module Darklang.LanguageTools.AtRestTypeChecker.Generate
 /// names to either a shared type or a reusable scheme identified by its binding node.
 type Scope =
   { locals: Dict<String, Model.Binder>
+
     /// Package function parameter types, indexed by zero-based EArg positions.
     arguments: List<Model.Ty>
+
     /// The enclosing package function's type, used for recursive ESelf references.
     self: Option<Model.Ty>
+
     /// Declared type-parameter names and their types, for converting explicit
     /// type arguments written within this scope.
     typeVariables: Dict<String, Model.Ty>
+
     /// Return type of the nearest function or lambda, used to check early returns
     /// from ?. None means ? is outside a function and invalid.
     returns: Option<Model.Ty> }

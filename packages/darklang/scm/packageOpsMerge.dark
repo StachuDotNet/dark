@@ -91,6 +91,7 @@ let discardDraftFor(branchId: Uuid): Int64 =
 type Namings =
   /// Drop them first.
   | Collapse
+
   | KeepAll
 
 
@@ -114,9 +115,12 @@ let commitOn(
 /// something that went wrong after it landed (its values failed to evaluate), or "".
 type MergeOutcome =
   { merged: Int64
+
     conflicts: List<Conflicts.Conflict>
+
     /// The branch's callers repointed at the parent's version before it landed.
     repointed: List<String>
+
     warning: String }
 
 
@@ -293,11 +297,15 @@ let ensureBranch(name: String, parentId: Uuid): Result<(Uuid * Bool), Actions.Fa
 type BranchDiffEntry =
   { /// Dotted, as a person reads it.
     name: String
+
     /// "fn" / "type" / "value" -- named `kind`, as every other JSON surface spells it.
     kind: String
+
     /// "new" when the parent does not have this name at all, "changed" when it has a different version.
     change: String
+
     /// What the parent binds. "" when the name is new there.
     parentHash: String
+
     /// What the branch binds.
     hash: String }

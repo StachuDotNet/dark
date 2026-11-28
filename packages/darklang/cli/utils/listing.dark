@@ -30,9 +30,12 @@ type Version =
 /// One item as `ls` and `tree` answer it.
 type Item =
   { kind: String
+
     /// Dotted, from the root.
     name: String
+
     deprecated: Bool
+
     /// Oldest first, under `ls --versions` when there is more than one; empty otherwise.
     versions: List<Version> }
 

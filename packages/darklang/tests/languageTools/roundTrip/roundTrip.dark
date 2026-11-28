@@ -20,10 +20,13 @@ module Darklang.LanguageTools.Parser.RoundTrip.Tests
 type Parsed =
   { /// The tree with the real content hashes in place of the parser's placeholders
     tree: LanguageTools.ProgramTypes.SourceFile.SourceFile
+
     /// The declarations' ops, with real hashes
     ops: List<LanguageTools.ProgramTypes.PackageOp>
+
     /// One content hash per top-level expression
     exprHashes: List<String>
+
     unresolved: List<
       (List<String> * LanguageTools.ProgramTypes.NameResolutionError)> }
 
