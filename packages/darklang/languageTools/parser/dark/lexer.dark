@@ -190,31 +190,31 @@ let operatorAt(src: Source, i: Int64, c: UInt32, c1: UInt32): Option<(Int64 * To
   else if c == 124u32 && c1 == 124u32 then Stdlib.Option.Option.Some((2, TokenKind.TOr))
   else if c == 124u32 && c1 == cGt then Stdlib.Option.Option.Some((2, TokenKind.TPipe))
   else
-    match Stdlib.UInt32.toInt64(c) with
-    | 43 -> Stdlib.Option.Option.Some((1, TokenKind.TPlus))
-    | 45 -> Stdlib.Option.Option.Some((1, TokenKind.TMinus))
-    | 42 -> Stdlib.Option.Option.Some((1, TokenKind.TStar))
-    | 47 -> Stdlib.Option.Option.Some((1, TokenKind.TSlash))
-    | 40 -> Stdlib.Option.Option.Some((1, TokenKind.TLParen))
-    | 41 -> Stdlib.Option.Option.Some((1, TokenKind.TRParen))
-    | 123 -> Stdlib.Option.Option.Some((1, TokenKind.TLBrace))
-    | 125 -> Stdlib.Option.Option.Some((1, TokenKind.TRBrace))
-    | 91 -> Stdlib.Option.Option.Some((1, TokenKind.TLBracket))
-    | 93 -> Stdlib.Option.Option.Some((1, TokenKind.TRBracket))
-    | 58 -> Stdlib.Option.Option.Some((1, TokenKind.TColon))
-    | 44 -> Stdlib.Option.Option.Some((1, TokenKind.TComma))
-    | 59 -> Stdlib.Option.Option.Some((1, TokenKind.TSemicolon))
-    | 46 -> Stdlib.Option.Option.Some((1, TokenKind.TDot))
-    | 61 -> Stdlib.Option.Option.Some((1, TokenKind.TEquals))
-    | 63 -> Stdlib.Option.Option.Some((1, TokenKind.TQuestion))
-    | 33 -> Stdlib.Option.Option.Some((1, TokenKind.TNot))
-    | 60 -> Stdlib.Option.Option.Some((1, TokenKind.TLt))
-    | 62 -> Stdlib.Option.Option.Some((1, TokenKind.TGt))
-    | 38 -> Stdlib.Option.Option.Some((1, TokenKind.TBitAnd))
-    | 94 -> Stdlib.Option.Option.Some((1, TokenKind.TBitXor))
-    | 126 -> Stdlib.Option.Option.Some((1, TokenKind.TBitNot))
-    | 37 -> Stdlib.Option.Option.Some((1, TokenKind.TPercent))
-    | 124 -> Stdlib.Option.Option.Some((1, TokenKind.TBar))
+    match c with
+    | 43u32 -> Stdlib.Option.Option.Some((1, TokenKind.TPlus))
+    | 45u32 -> Stdlib.Option.Option.Some((1, TokenKind.TMinus))
+    | 42u32 -> Stdlib.Option.Option.Some((1, TokenKind.TStar))
+    | 47u32 -> Stdlib.Option.Option.Some((1, TokenKind.TSlash))
+    | 40u32 -> Stdlib.Option.Option.Some((1, TokenKind.TLParen))
+    | 41u32 -> Stdlib.Option.Option.Some((1, TokenKind.TRParen))
+    | 123u32 -> Stdlib.Option.Option.Some((1, TokenKind.TLBrace))
+    | 125u32 -> Stdlib.Option.Option.Some((1, TokenKind.TRBrace))
+    | 91u32 -> Stdlib.Option.Option.Some((1, TokenKind.TLBracket))
+    | 93u32 -> Stdlib.Option.Option.Some((1, TokenKind.TRBracket))
+    | 58u32 -> Stdlib.Option.Option.Some((1, TokenKind.TColon))
+    | 44u32 -> Stdlib.Option.Option.Some((1, TokenKind.TComma))
+    | 59u32 -> Stdlib.Option.Option.Some((1, TokenKind.TSemicolon))
+    | 46u32 -> Stdlib.Option.Option.Some((1, TokenKind.TDot))
+    | 61u32 -> Stdlib.Option.Option.Some((1, TokenKind.TEquals))
+    | 63u32 -> Stdlib.Option.Option.Some((1, TokenKind.TQuestion))
+    | 33u32 -> Stdlib.Option.Option.Some((1, TokenKind.TNot))
+    | 60u32 -> Stdlib.Option.Option.Some((1, TokenKind.TLt))
+    | 62u32 -> Stdlib.Option.Option.Some((1, TokenKind.TGt))
+    | 38u32 -> Stdlib.Option.Option.Some((1, TokenKind.TBitAnd))
+    | 94u32 -> Stdlib.Option.Option.Some((1, TokenKind.TBitXor))
+    | 126u32 -> Stdlib.Option.Option.Some((1, TokenKind.TBitNot))
+    | 37u32 -> Stdlib.Option.Option.Some((1, TokenKind.TPercent))
+    | 124u32 -> Stdlib.Option.Option.Some((1, TokenKind.TBar))
     | _ -> Stdlib.Option.Option.None
 
 
@@ -842,7 +842,11 @@ let emitEndingAt(src: Source, st: State, kind: TokenKind, endIndex: Int64, endPo
         text = text(src, st.index, endIndex)
         range = Range { start = st.pos, end_ = endPos }
         docComment = st.doc
-        leadingTrivia = Stdlib.List.reverse(st.triviaRev)
+        leadingTrivia =
+          match st.triviaRev with
+          | [] -> []
+          | [ one ] -> [ one ]
+          | many -> Builtin.listReverse(many)
         lexError = false }
 
   { st with
